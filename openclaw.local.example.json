@@ -1,0 +1,12 @@
+{
+  "skills": {
+    "load": {
+      "extraDirs": ["/absolute/path/to/your/shared/skills"]
+    }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "/absolute/path/to/your/local/project/workspace"
+    }
+  }
+}
