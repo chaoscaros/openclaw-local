@@ -12,11 +12,7 @@
 - 在这个项目里持续做我自己的本地优化和定制
 - 将我常用的默认技能、交互体验优化、界面调整一起固化下来
 
-当前本地项目路径：
-
-```bash
-/Users/fenglian1/AI/projects/openclaw-local
-```
+当前项目为本地长期维护版本。
 
 Git 仓库：
 
@@ -26,17 +22,9 @@ git@github.com:chaoscaros/openclaw-local.git
 
 ## 和官方仓库的关系
 
-官方仓库保留在原目录，不作为我的日常改版仓库：
+官方仓库保留为上游参考版本，不作为我的日常改版仓库。
 
-```bash
-/Users/fenglian1/projects/AI/openclaw
-```
-
-我自己的改动只放在：
-
-```bash
-/Users/fenglian1/AI/projects/openclaw-local
-```
+我自己的改动只放在当前这个本地 fork 项目中。
 
 这样做的好处：
 
@@ -65,25 +53,13 @@ git@github.com:chaoscaros/openclaw-local.git
 - 只有在用户明确说“直接开发 / 应用修改 / 直接改代码”时才进入开发模式
 - 用来约束需求分析和开发边界，减少误改和过度执行
 
-当前项目内技能目录：
+当前项目内技能位于项目内的 `.agents/skills/dev-spec-first`。
 
-```bash
-/Users/fenglian1/AI/projects/openclaw-local/.agents/skills/dev-spec-first
-```
-
-外部技能源目录：
-
-```bash
-/Users/fenglian1/AI/openclaw/skills
-```
+如需扩展技能，可通过项目内 skills 目录或配置里的额外 skills 目录接入。
 
 ### 3. 项目默认配置
 
-项目根目录包含本地配置文件：
-
-```bash
-/Users/fenglian1/AI/projects/openclaw-local/openclaw.json
-```
+项目根目录包含本地配置文件 `openclaw.json`。
 
 目前已配置：
 
@@ -96,7 +72,6 @@ git@github.com:chaoscaros/openclaw-local.git
 在项目目录下运行：
 
 ```bash
-cd /Users/fenglian1/AI/projects/openclaw-local
 pnpm install
 pnpm build
 pnpm fast
@@ -105,7 +80,6 @@ pnpm fast
 如果依赖已经安装过，通常只需要：
 
 ```bash
-cd /Users/fenglian1/AI/projects/openclaw-local
 pnpm fast
 ```
 
