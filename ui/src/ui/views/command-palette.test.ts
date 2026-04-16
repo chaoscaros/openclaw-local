@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { i18n } from "../../i18n/index.ts";
 import { refreshSlashCommands, resetSlashCommandsForTest } from "../chat/slash-commands.ts";
 import { getPaletteItems } from "./command-palette.ts";
 
-afterEach(() => {
+afterEach(async () => {
   resetSlashCommandsForTest();
+  await i18n.setLocale("en");
 });
 
 describe("command palette", () => {
@@ -48,6 +50,42 @@ describe("command palette", () => {
       expect.objectContaining({
         id: "slash:prose",
         label: "/prose",
+      }),
+    );
+  });
+
+  it("uses translated labels, categories, and quick-action descriptions in zh-CN", async () => {
+    await i18n.setLocale("zh-CN");
+    resetSlashCommandsForTest();
+
+    const items = getPaletteItems();
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        id: "nav-overview",
+        label: "概览",
+        category: "navigation",
+      }),
+    );
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        id: "skill-shell",
+        label: "Shell 命令",
+        description: "运行 shell 技能命令。",
+        category: "skills",
+      }),
+    );
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        id: "skill-debug",
+        label: "调试模式",
+        description: "将 verbose 切换为完整输出。",
+        category: "skills",
+      }),
+    );
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        id: "slash:steer",
+        description: "向当前活动运行注入一条消息。",
       }),
     );
   });

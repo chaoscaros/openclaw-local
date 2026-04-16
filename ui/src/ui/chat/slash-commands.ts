@@ -2,6 +2,7 @@ import { buildBuiltinChatCommands } from "../../../../src/auto-reply/commands-re
 import type { CommandEntry, CommandsListResult } from "../../../../src/gateway/protocol/index.js";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import type { IconName } from "../icons.ts";
+import { t } from "../../i18n/index.ts";
 import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
 
 export type SlashCommandCategory = "session" | "model" | "agents" | "tools";
@@ -93,25 +94,27 @@ const LOCAL_COMMANDS = new Set([
   "redirect",
 ]);
 
-const UI_ONLY_COMMANDS: SlashCommandDef[] = [
-  {
-    key: "clear",
-    name: "clear",
-    description: "Clear chat history",
-    icon: "trash",
-    category: "session",
-    executeLocal: true,
-  },
-  {
-    key: "redirect",
-    name: "redirect",
-    description: "Abort and restart with a new message",
-    args: "[id] <message>",
-    icon: "refresh",
-    category: "agents",
-    executeLocal: true,
-  },
-];
+function buildUiOnlyCommands(): SlashCommandDef[] {
+  return [
+    {
+      key: "clear",
+      name: "clear",
+      description: t("overview.palette.commands.clearHistory"),
+      icon: "trash",
+      category: "session",
+      executeLocal: true,
+    },
+    {
+      key: "redirect",
+      name: "redirect",
+      description: t("overview.palette.commands.redirect"),
+      args: "[id] <message>",
+      icon: "refresh",
+      category: "agents",
+      executeLocal: true,
+    },
+  ];
+}
 
 const CATEGORY_OVERRIDES: Partial<Record<string, SlashCommandCategory>> = {
   help: "tools",
@@ -144,8 +147,81 @@ const CATEGORY_OVERRIDES: Partial<Record<string, SlashCommandCategory>> = {
   queue: "model",
 };
 
-const COMMAND_DESCRIPTION_OVERRIDES: Partial<Record<string, string>> = {
-  steer: "Inject a message into the active run",
+const COMMAND_DESCRIPTION_OVERRIDES: Partial<Record<string, string>> = {};
+
+const COMMAND_DESCRIPTION_I18N_KEYS: Partial<Record<string, string>> = {
+  clear: "overview.palette.commands.clearHistory",
+  redirect: "overview.palette.commands.redirect",
+  help: "overview.palette.commands.help",
+  commands: "overview.palette.commands.commands",
+  tools: "overview.palette.commands.tools",
+  skill: "overview.palette.commands.skill",
+  status: "overview.palette.commands.status",
+  tasks: "overview.palette.commands.tasks",
+  allowlist: "overview.palette.commands.allowlist",
+  approve: "overview.palette.commands.approve",
+  context: "overview.palette.commands.context",
+  btw: "overview.palette.commands.btw",
+  "export-session": "overview.palette.commands.exportSession",
+  export: "overview.palette.commands.exportSession",
+  tts: "overview.palette.commands.tts",
+  whoami: "overview.palette.commands.whoami",
+  session: "overview.palette.commands.session",
+  subagents: "overview.palette.commands.subagents",
+  acp: "overview.palette.commands.acp",
+  focus: "overview.palette.commands.focus",
+  unfocus: "overview.palette.commands.unfocus",
+  agents: "overview.palette.commands.agents",
+  kill: "overview.palette.commands.kill",
+  steer: "overview.palette.commands.steer",
+  config: "overview.palette.commands.config",
+  mcp: "overview.palette.commands.mcp",
+  plugins: "overview.palette.commands.plugins",
+  debug: "overview.palette.commands.debug",
+  usage: "overview.palette.commands.usage",
+  stop: "overview.palette.commands.stop",
+  restart: "overview.palette.commands.restart",
+  activation: "overview.palette.commands.activation",
+  send: "overview.palette.commands.send",
+  reset: "overview.palette.commands.reset",
+  new: "overview.palette.commands.new",
+  compact: "overview.palette.commands.compact",
+  think: "overview.palette.commands.think",
+  verbose: "overview.palette.commands.verbose",
+  trace: "overview.palette.commands.trace",
+  fast: "overview.palette.commands.fast",
+  reasoning: "overview.palette.commands.reasoning",
+  elevated: "overview.palette.commands.elevated",
+  exec: "overview.palette.commands.exec",
+  model: "overview.palette.commands.model",
+  models: "overview.palette.commands.models",
+  queue: "overview.palette.commands.queue",
+  bash: "overview.palette.commands.bash",
+  dock_telegram: "overview.palette.commands.dockTelegram",
+  "dock-telegram": "overview.palette.commands.dockTelegram",
+  pair: "overview.palette.commands.pair",
+  dreaming: "overview.palette.commands.dreaming",
+  phone: "overview.palette.commands.phone",
+  voice: "overview.palette.commands.voice",
+  agent_browser: "overview.palette.commands.agentBrowser",
+  agent_browserer: "overview.palette.commands.agentBrowser",
+  "agent-browser": "overview.palette.commands.agentBrowser",
+  peekaboo: "overview.palette.commands.peekaboo",
+  cf_image_gen: "overview.palette.commands.cfImageGen",
+  chart_image: "overview.palette.commands.chartImage",
+  clawdhub: "overview.palette.commands.clawdhub",
+  command_center: "overview.palette.commands.commandCenter",
+  frontend_design: "overview.palette.commands.frontendDesign",
+  markdown_converter: "overview.palette.commands.markdownConverter",
+  moltguard: "overview.palette.commands.moltguard",
+  multi_search_engine: "overview.palette.commands.multiSearchEngine",
+  ocr_local: "overview.palette.commands.ocrLocal",
+  ontology: "overview.palette.commands.ontology",
+  planning_with_files: "overview.palette.commands.planningWithFiles",
+  proactive_agent: "overview.palette.commands.proactiveAgent",
+  senior_architect: "overview.palette.commands.seniorArchitect",
+  tdd_guide: "overview.palette.commands.tddGuide",
+  web_search_plus: "overview.palette.commands.webSearchPlus",
 };
 
 const COMMAND_ARGS_OVERRIDES: Partial<Record<string, string>> = {
@@ -225,7 +301,10 @@ function toSlashCommand(
     key: command.key,
     name,
     aliases: getSlashAliases(command).filter((alias) => alias !== name),
-    description: COMMAND_DESCRIPTION_OVERRIDES[command.key] ?? command.description,
+    description:
+      (COMMAND_DESCRIPTION_I18N_KEYS[command.key]
+        ? t(COMMAND_DESCRIPTION_I18N_KEYS[command.key] as string)
+        : undefined) ?? COMMAND_DESCRIPTION_OVERRIDES[command.key] ?? command.description,
     args: COMMAND_ARGS_OVERRIDES[command.key] ?? formatArgs(command),
     icon: mapIcon(command),
     category: mapCategory(command),
@@ -312,7 +391,7 @@ function buildLocalSlashCommands(): SlashCommandDef[] {
     }))
     .map((command) => toSlashCommand(command, "local"))
     .filter((command): command is SlashCommandDef => command !== null);
-  return [...builtins, ...UI_ONLY_COMMANDS];
+  return [...builtins, ...buildUiOnlyCommands()];
 }
 
 function buildReservedLocalSlashNames(): Set<string> {
@@ -357,11 +436,15 @@ function normalizeCommandEntry(
       ...(arg.required ? { required: true } : {}),
       ...(arg.choices.length > 0 ? { choices: arg.choices } : {}),
     }));
+  const normalizedDescription = clampText(entry.description, MAX_REMOTE_DESCRIPTION_LENGTH);
   return {
     key: primaryName,
     name: primaryName,
     aliases: aliases.map((alias) => `/${alias}`),
-    description: clampText(entry.description, MAX_REMOTE_DESCRIPTION_LENGTH),
+    description:
+      (COMMAND_DESCRIPTION_I18N_KEYS[primaryName]
+        ? t(COMMAND_DESCRIPTION_I18N_KEYS[primaryName] as string)
+        : undefined) ?? normalizedDescription,
     ...(args.length > 0 ? { args } : {}),
     category: typeof entry.category === "string" ? entry.category : undefined,
   };
@@ -448,10 +531,10 @@ export function resetSlashCommandsForTest(): void {
 const CATEGORY_ORDER: SlashCommandCategory[] = ["session", "model", "tools", "agents"];
 
 export const CATEGORY_LABELS: Record<SlashCommandCategory, string> = {
-  session: "Session",
-  model: "Model",
-  agents: "Agents",
-  tools: "Tools",
+  session: t("commandPalette.slashCategories.session"),
+  model: t("commandPalette.slashCategories.model"),
+  agents: t("commandPalette.slashCategories.agents"),
+  tools: t("commandPalette.slashCategories.tools"),
 };
 
 export function getSlashCommandCompletions(filter: string): SlashCommandDef[] {
