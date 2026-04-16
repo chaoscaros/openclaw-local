@@ -1,0 +1,13 @@
+{
+  "skills": {
+    "load": {
+      "extraDirs": ["/Users/fenglian1/AI/openclaw/skills"]
+    }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "/Users/fenglian1/AI/projects/openclaw-local",
+      "skills": ["dev-spec-first"]
+    }
+  }
+}

@@ -422,6 +422,9 @@ function handleSessionMessageGatewayEvent(
   if (!sessionKey || sessionKey !== host.sessionKey) {
     return;
   }
+  if (host.chatRunId) {
+    return;
+  }
   void loadChatHistory(host as unknown as ChatState);
 }
 

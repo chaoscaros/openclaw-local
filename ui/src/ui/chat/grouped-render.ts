@@ -101,11 +101,13 @@ export function renderReadingIndicatorGroup(assistant?: AssistantIdentity, baseP
           aria-live="polite"
           aria-label=${`${name} is working`}
         >
-          <div class="chat-reading-indicator__label">Working on it…</div>
           <span class="chat-reading-indicator__dots" aria-hidden="true">
             <span></span><span></span><span></span>
           </span>
-          <div class="chat-reading-indicator__subtle">Waiting for first response…</div>
+          <div class="chat-reading-indicator__content">
+            <div class="chat-reading-indicator__label">Thinking</div>
+            <div class="chat-reading-indicator__subtle">Preparing a reply</div>
+          </div>
         </div>
       </div>
     </div>

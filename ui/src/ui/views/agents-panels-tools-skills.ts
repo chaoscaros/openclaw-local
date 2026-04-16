@@ -563,7 +563,7 @@ function renderAgentSkillGroup(
     onToggle: (agentId: string, skillName: string, enabled: boolean) => void;
   },
 ) {
-  const collapsedByDefault = group.id === "workspace" || group.id === "built-in";
+  const collapsedByDefault = group.id === "built-in";
   return html`
     <details class="agent-skills-group" ?open=${!collapsedByDefault}>
       <summary class="agent-skills-header">

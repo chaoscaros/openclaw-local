@@ -2268,8 +2268,8 @@ describe("chat view", () => {
       container,
     );
 
-    expect(container.textContent).toContain("Working on it…");
-    expect(container.textContent).toContain("Waiting for first response…");
+    expect(container.textContent).toContain("Thinking");
+    expect(container.textContent).toContain("Preparing a reply");
     expect(container.querySelector(".chat-reading-indicator")).not.toBeNull();
   });
 
@@ -2296,7 +2296,7 @@ describe("chat view", () => {
 
     expect(container.querySelector(".chat-loading-skeleton")).toBeNull();
     expect(container.textContent).toContain("hello");
-    expect(container.textContent).toContain("Working on it…");
+    expect(container.textContent).toContain("Thinking");
   });
 
   it("shows a pending assistant indicator when a run exists before stream text arrives", () => {
@@ -2319,7 +2319,7 @@ describe("chat view", () => {
     );
 
     expect(container.textContent).toContain("hello again");
-    expect(container.textContent).toContain("Working on it…");
+    expect(container.textContent).toContain("Thinking");
     expect(container.querySelector(".chat-reading-indicator")).not.toBeNull();
   });
 

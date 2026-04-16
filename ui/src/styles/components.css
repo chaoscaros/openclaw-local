@@ -2649,7 +2649,35 @@ td.data-table-key-col {
 /* Reading indicator */
 .chat-bubble.chat-reading-indicator {
   width: fit-content;
-  padding: 10px 16px;
+  min-width: 168px;
+  padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--card) 92%, var(--accent) 8%);
+  border-color: color-mix(in srgb, var(--border) 78%, var(--accent) 22%);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
+}
+
+.chat-reading-indicator__content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chat-reading-indicator__label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.chat-reading-indicator__subtle {
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--muted);
 }
 
 .chat-reading-indicator__dots {
@@ -2657,6 +2685,8 @@ td.data-table-key-col {
   align-items: center;
   gap: 4px;
   height: 12px;
+  padding-top: 1px;
+  flex: 0 0 auto;
 }
 
 .chat-reading-indicator__dots > span {
@@ -2664,9 +2694,9 @@ td.data-table-key-col {
   width: 6px;
   height: 6px;
   border-radius: var(--radius-full);
-  background: var(--muted);
-  opacity: 0.6;
-  transform: translateY(0);
+  background: color-mix(in srgb, var(--accent) 72%, white 28%);
+  opacity: 0.7;
+  transform: scale(0.88);
   animation: chatReadingDot 1.2s ease-in-out infinite;
   will-change: transform, opacity;
 }
@@ -2683,20 +2713,21 @@ td.data-table-key-col {
   0%,
   80%,
   100% {
-    opacity: 0.4;
-    transform: translateY(0);
+    opacity: 0.35;
+    transform: scale(0.88);
   }
 
   40% {
     opacity: 1;
-    transform: translateY(-3px);
+    transform: scale(1.12);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .chat-reading-indicator__dots > span {
     animation: none;
-    opacity: 0.6;
+    opacity: 0.75;
+    transform: scale(1);
   }
 }
 
