@@ -12,6 +12,7 @@ import {
 import { refreshSlashCommands } from "./chat/slash-commands.ts";
 import { refreshVisibleToolsEffectiveForCurrentSession } from "./controllers/agents.ts";
 import { ChatState, loadChatHistory } from "./controllers/chat.ts";
+import { formatRelativeTimestamp } from "./format.ts";
 import { loadSessions } from "./controllers/sessions.ts";
 import { icons } from "./icons.ts";
 import { iconForTab, pathForTab, titleForTab, type Tab } from "./navigation.ts";
@@ -173,6 +174,274 @@ function renderCronFilterIcon(hiddenCount: number) {
   `;
 }
 
+function localizeTaskText(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "active" ||
+    normalized === "paused" ||
+    normalized === "interrupted" ||
+    normalized === "completed" ||
+    normalized === "ended"
+  ) {
+    return String(t(`taskModeUi.status.${normalized}`));
+  }
+  if (normalized === "running") {
+    return String(t("taskModeUi.flowStatus.running"));
+  }
+  if (normalized === "waiting") {
+    return String(t("taskModeUi.flowStatus.waiting"));
+  }
+  if (normalized === "blocked") {
+    return String(t("taskModeUi.flowStatus.blocked"));
+  }
+  if (normalized === "queued") {
+    return String(t("taskModeUi.flowStatus.queued"));
+  }
+  if (normalized === "succeeded") {
+    return String(t("taskModeUi.flowStatus.succeeded"));
+  }
+  if (normalized === "failed") {
+    return String(t("taskModeUi.flowStatus.failed"));
+  }
+  if (normalized === "cancelled") {
+    return String(t("taskModeUi.flowStatus.cancelled"));
+  }
+  return value;
+}
+
+const chatTaskHeaderUi = {
+  query: "",
+  detailOpen: false,
+  switcherOpen: false,
+};
+
+function requestViewUpdate(state: AppViewState) {
+  (state as AppViewState & { requestUpdate?: () => void }).requestUpdate?.();
+}
+
+function matchTaskScore(task: { title?: string; description?: string; flowCurrentStep?: string; taskId: string }, query: string) {
+  const normalized = normalizeLowercaseStringOrEmpty(query);
+  if (!normalized) {
+    return 0;
+  }
+  const title = normalizeLowercaseStringOrEmpty(task.title ?? "");
+  const description = normalizeLowercaseStringOrEmpty(task.description ?? "");
+  const step = normalizeLowercaseStringOrEmpty(task.flowCurrentStep ?? "");
+  if (title === normalized) {
+    return 100;
+  }
+  if (title.startsWith(normalized)) {
+    return 80;
+  }
+  if (title.includes(normalized)) {
+    return 60;
+  }
+  if (description.includes(normalized) || step.includes(normalized)) {
+    return 40;
+  }
+  const parts = normalized.split(/\s+/).filter(Boolean);
+  if (parts.length > 1 && parts.every((part) => `${title} ${description} ${step}`.includes(part))) {
+    return 30;
+  }
+  return 0;
+}
+
+function renderChatTaskHeaderBar(state: AppViewState) {
+  const currentSession = state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey) ?? null;
+  const mode = currentSession?.mode ?? "normal";
+  const taskItems = state.tasksItems ?? [];
+  const currentTask = currentSession?.taskId
+    ? taskItems.find((task) => task.taskId === currentSession.taskId) ??
+      state.archivedTaskItems?.find((task) => task.taskId === currentSession.taskId) ??
+      null
+    : null;
+  const recentTaskIds = Array.from(
+    new Set([
+      ...(currentTask ? [currentTask.taskId] : []),
+      ...taskItems
+        .slice()
+        .sort((left, right) => (right.updatedAt ?? right.createdAt) - (left.updatedAt ?? left.createdAt))
+        .slice(0, 6)
+        .map((task) => task.taskId),
+    ]),
+  );
+  const filteredTasks = taskItems
+    .map((task) => ({ task, score: chatTaskHeaderUi.query ? matchTaskScore(task, chatTaskHeaderUi.query) : 0 }))
+    .filter((entry) => !chatTaskHeaderUi.query || entry.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      return (right.task.updatedAt ?? right.task.createdAt) - (left.task.updatedAt ?? left.task.createdAt);
+    })
+    .slice(0, 6)
+    .map((entry) => entry.task);
+  const quickSwitcherTasks = chatTaskHeaderUi.query
+    ? filteredTasks
+    : recentTaskIds
+        .map((id) => taskItems.find((task) => task.taskId === id) ?? null)
+        .filter(Boolean)
+        .slice(0, 6);
+  const currentTaskSummary = normalizeOptionalString(currentTask?.flowCurrentStep) ?? normalizeOptionalString(currentTask?.description) ?? null;
+  const currentTaskStatus = localizeTaskText(currentTask?.effectiveStatus ?? currentTask?.status ?? null);
+  const quickSwitcherLabel = currentTask?.title ?? "选择任务";
+  const currentTaskTimeline = currentTask
+    ? [
+        {
+          label: t("taskWorkspace.progress"),
+          value: currentTaskSummary ?? t("taskWorkspace.noneYet"),
+        },
+        {
+          label: t("taskWorkspace.updated"),
+          value: currentTask.updatedAt ? formatRelativeTimestamp(currentTask.updatedAt) : t("common.na"),
+        },
+        {
+          label: t("taskWorkspace.lastLinkedSession"),
+          value: currentTask.lastSessionKey ?? t("common.na"),
+        },
+      ]
+    : [];
+  return html`
+    <div class="chat-task-context-bar" aria-label=${t("taskModeUi.banner.currentTask")}>
+      <div class="chat-task-context-bar__left">
+        <button
+          type="button"
+          class="chat-task-context-bar__mode ${mode === "task" ? "chat-task-context-bar__mode--task" : ""}"
+          @click=${() => state.setCurrentSessionMode(mode === "task" ? "normal" : "task")}
+        >
+          <span class="chat-task-context-bar__mode-dot"></span>
+          <span class="chat-task-context-bar__mode-text">${mode === "task" ? t("taskModeUi.banner.task") : t("taskModeUi.banner.normal")}</span>
+        </button>
+
+        <button
+          type="button"
+          class="chat-task-context-bar__task-chip ${currentTask ? "" : "chat-task-context-bar__task-chip--empty"}"
+          @click=${() => {
+            chatTaskHeaderUi.switcherOpen = !chatTaskHeaderUi.switcherOpen;
+            if (!chatTaskHeaderUi.switcherOpen) {
+              chatTaskHeaderUi.query = "";
+            }
+            requestViewUpdate(state);
+          }}
+        >
+          <span class="chat-task-context-bar__task-chip-label">${t("taskModeUi.banner.currentTask")}</span>
+          <span class="chat-task-context-bar__task-chip-title">${quickSwitcherLabel}</span>
+          ${currentTaskStatus ? html`<span class="chat-task-context-bar__task-chip-status">${currentTaskStatus}</span>` : nothing}
+        </button>
+      </div>
+
+      <div class="chat-task-context-bar__actions">
+        <button
+          type="button"
+          class="chat-task-context-bar__action-btn chat-task-context-bar__action-btn--ghost"
+          @click=${() => {
+            chatTaskHeaderUi.switcherOpen = !chatTaskHeaderUi.switcherOpen;
+            requestViewUpdate(state);
+          }}
+        >
+          ${chatTaskHeaderUi.switcherOpen ? "收起切换" : "切换任务"}
+        </button>
+        <button
+          type="button"
+          class="chat-task-context-bar__action-btn"
+          @click=${() => {
+            chatTaskHeaderUi.detailOpen = !chatTaskHeaderUi.detailOpen;
+            requestViewUpdate(state);
+          }}
+        >
+          ${chatTaskHeaderUi.detailOpen ? "收起详情" : "任务详情"}
+        </button>
+        <button type="button" class="chat-task-context-bar__action-btn chat-task-context-bar__action-btn--ghost" @click=${() => state.setTab("tasks")}>
+          ${t("taskModeUi.banner.openTasks")}
+        </button>
+      </div>
+
+      ${chatTaskHeaderUi.switcherOpen
+        ? html`
+            <div class="chat-task-context-bar__switcher-panel">
+              <label class="field chat-task-context-bar__search">
+                <span>查找任务</span>
+                <input
+                  .value=${chatTaskHeaderUi.query}
+                  placeholder="按任务名称或描述搜索"
+                  @input=${(event: Event) => {
+                    chatTaskHeaderUi.query = (event.target as HTMLInputElement).value;
+                    requestViewUpdate(state);
+                  }}
+                />
+              </label>
+              <div class="chat-task-context-bar__suggestions-title">${chatTaskHeaderUi.query ? "推荐匹配" : "当前与最近任务"}</div>
+              <div class="chat-task-context-bar__suggestions">
+                ${quickSwitcherTasks.length
+                  ? quickSwitcherTasks.map(
+                      (task) => html`
+                        <button
+                          type="button"
+                          class="chat-task-context-bar__suggestion"
+                          @click=${() => {
+                            void state.setCurrentTaskForSession(task.taskId);
+                            chatTaskHeaderUi.query = "";
+                            chatTaskHeaderUi.switcherOpen = false;
+                            requestViewUpdate(state);
+                          }}
+                        >
+                          <span class="chat-task-context-bar__suggestion-title">${task.title}</span>
+                          <span class="chat-task-context-bar__suggestion-meta">
+                            ${localizeTaskText(task.effectiveStatus ?? task.status)} ·
+                            ${task.taskId === currentSession?.taskId ? "当前会话" : formatRelativeTimestamp(task.updatedAt ?? task.createdAt)}
+                          </span>
+                        </button>
+                      `,
+                    )
+                  : html`<div class="chat-task-context-bar__empty">没有匹配任务，可去任务中心创建或切换。</div>`}
+              </div>
+            </div>
+          `
+        : nothing}
+
+      ${chatTaskHeaderUi.detailOpen
+        ? html`
+            <div class="chat-task-context-bar__drawer">
+              <div class="chat-task-context-bar__drawer-header">
+                <div>
+                  <div class="chat-task-context-bar__drawer-eyebrow">任务上下文</div>
+                  <div class="chat-task-context-bar__drawer-title">${currentTask?.title ?? "当前未绑定任务"}</div>
+                </div>
+                ${currentTaskStatus
+                  ? html`<span class="chat-task-context-bar__drawer-status">${currentTaskStatus}</span>`
+                  : nothing}
+              </div>
+              <div class="chat-task-context-bar__drawer-summary">
+                ${currentTaskSummary ?? "给当前会话绑定任务后，用户和 agent 会围绕同一份任务上下文继续协作。"}
+              </div>
+              <div class="chat-task-context-bar__drawer-grid">
+                ${currentTaskTimeline.map(
+                  (item) => html`
+                    <article class="chat-task-context-bar__drawer-card">
+                      <div class="chat-task-context-bar__drawer-card-label">${item.label}</div>
+                      <div class="chat-task-context-bar__drawer-card-value">${item.value}</div>
+                    </article>
+                  `,
+                )}
+              </div>
+              <div class="chat-task-context-bar__drawer-footer">
+                ${currentTask && currentSession?.taskId !== currentTask.taskId
+                  ? html`<button type="button" class="btn" @click=${() => state.setCurrentTaskForSession(currentTask.taskId)}>
+                      ${t("taskModeUi.actions.setCurrent")}
+                    </button>`
+                  : nothing}
+                <button type="button" class="btn btn--ghost" @click=${() => state.setTab("tasks")}>打开任务中心</button>
+              </div>
+            </div>
+          `
+        : nothing}
+    </div>
+  `;
+}
+
 export function renderChatSessionSelect(state: AppViewState) {
   const sessionGroups = resolveSessionOptionGroups(state, state.sessionKey, state.sessionsResult);
   const modelSelect = renderChatModelSelect(state);
@@ -216,7 +485,9 @@ export function renderChatSessionSelect(state: AppViewState) {
           )}
         </select>
       </label>
-      ${modelSelect} ${thinkingSelect}
+      ${modelSelect}
+      ${thinkingSelect}
+      ${renderChatTaskHeaderBar(state)}
     </div>
   `;
 }
@@ -580,7 +851,10 @@ async function refreshSessionOptions(state: AppViewState) {
 }
 
 function renderChatModelSelect(state: AppViewState) {
-  const { currentOverride, defaultLabel, options } = resolveChatModelSelectState(state);
+  let { currentOverride, defaultLabel, options } = resolveChatModelSelectState(state);
+  defaultLabel = defaultLabel
+    .replace("__I18N_DEFAULT_MODEL__", String(t("chatUi.defaultModel")))
+    .replace("__I18N_DEFAULT__", String(t("chatUi.default")));
   const busy =
     state.chatLoading || state.chatSending || Boolean(state.chatRunId) || state.chatStream !== null;
   const disabled =
@@ -676,6 +950,10 @@ function buildThinkingOptions(
   return options;
 }
 
+function localizeThinkingLevelLabel(value: string): string {
+  return String(t(`chatUi.thinkingLevels.${value}`));
+}
+
 function resolveChatThinkingSelectState(state: AppViewState): ChatThinkingSelectState {
   const activeRow = state.sessionsResult?.sessions?.find((row) => row.key === state.sessionKey);
   const persisted = activeRow?.thinkingLevel;
@@ -694,8 +972,11 @@ function resolveChatThinkingSelectState(state: AppViewState): ChatThinkingSelect
       : "off";
   return {
     currentOverride,
-    defaultLabel: `Default (${defaultLevel})`,
-    options: buildThinkingOptions(provider, model, currentOverride),
+    defaultLabel: String(t("chatUi.defaultWithValue", { value: localizeThinkingLevelLabel(defaultLevel) })),
+    options: buildThinkingOptions(provider, model, currentOverride).map((entry) => ({
+      ...entry,
+      label: localizeThinkingLevelLabel(entry.value),
+    })),
   };
 }
 
@@ -854,7 +1135,7 @@ export function parseSessionKey(key: string): SessionKeyInfo {
 
   // ── Main session ─────────────────────────────────
   if (key === "main" || key === "agent:main:main") {
-    return { prefix: "", fallbackName: "Main Session" };
+    return { prefix: "", fallbackName: t("chatUi.mainSession") };
   }
 
   // ── Subagent ─────────────────────────────────────

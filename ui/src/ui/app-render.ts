@@ -135,6 +135,7 @@ import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderLoginGate } from "./views/login-gate.ts";
 import { renderOverview } from "./views/overview.ts";
+import { renderTasks } from "./views/tasks.ts";
 
 // Lazy-loaded view modules – deferred so the initial bundle stays small.
 // Each loader resolves once; subsequent calls return the cached module.
@@ -415,7 +416,20 @@ export function renderApp(state: AppViewState) {
   const presenceCount = state.presenceEntries.length;
   const sessionsCount = state.sessionsResult?.count ?? null;
   const cronNext = state.cronStatus?.nextWakeAtMs ?? null;
-  const chatDisabledReason = state.connected ? null : t("chat.disconnected");
+  const currentSession = state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey) ?? null;
+  const currentTask =
+    currentSession?.taskId
+      ? state.tasksItems.find((task) => task.taskId === currentSession.taskId) ??
+        state.archivedTaskItems.find((task) => task.taskId === currentSession.taskId) ??
+        null
+      : null;
+  const chatDisabledReason = !state.connected
+    ? t("chat.disconnected")
+    : state.tasksBusy
+      ? "正在切换任务模式，请稍候…"
+      : currentSession?.mode === "task" && !currentTask
+        ? t("taskModeUi.emptyTaskModeHint")
+        : null;
   const isChat = state.tab === "chat";
   const chatFocus = isChat && (state.settings.chatFocusMode || state.onboarding);
   const navDrawerOpen = state.navDrawerOpen && !chatFocus && !state.onboarding;
@@ -1047,8 +1061,10 @@ export function renderApp(state: AppViewState) {
               <div>
                 ${isChat
                   ? renderChatSessionSelect(state)
-                  : html`<div class="page-title">${titleForTab(state.tab)}</div>`}
-                ${isChat ? nothing : html`<div class="page-sub">${subtitleForTab(state.tab)}</div>`}
+                  : state.tab === "tasks" || state.tab === "archives"
+                    ? nothing
+                    : html`<div class="page-title">${titleForTab(state.tab)}</div>`}
+                ${isChat || state.tab === "tasks" || state.tab === "archives" ? nothing : html`<div class="page-sub">${subtitleForTab(state.tab)}</div>`}
               </div>
               <div class="page-meta">
                 ${state.tab === "dreams"
@@ -1830,6 +1846,105 @@ export function renderApp(state: AppViewState) {
               }),
             )
           : nothing}
+        ${state.tab === "tasks"
+          ? renderTasks({
+              loading: state.tasksLoading,
+              items: state.tasksItems,
+              error: state.tasksError,
+              currentSession,
+              createOpen: state.taskCreateOpen,
+              createTitle: state.taskCreateTitle,
+              createDescription: state.taskCreateDescription,
+              editId: state.taskEditId,
+              editTitle: state.taskEditTitle,
+              editDescription: state.taskEditDescription,
+              onRefresh: () => state.loadTaskModeData(),
+              onRequestUpdate: requestHostUpdate,
+              onToggleCreate: () => {
+                state.taskCreateOpen = !state.taskCreateOpen;
+                if (!state.taskCreateOpen) {
+                  state.taskCreateTitle = "";
+                  state.taskCreateDescription = "";
+                }
+              },
+              onCreateTitleChange: (value) => (state.taskCreateTitle = value),
+              onCreateDescriptionChange: (value) => (state.taskCreateDescription = value),
+              onCreateTask: async () => {
+                if (!state.taskCreateTitle.trim()) {
+                  return;
+                }
+                await state.createTaskForCurrentSession(
+                  state.taskCreateTitle.trim(),
+                  state.taskCreateDescription.trim() || undefined,
+                );
+              },
+              onToggleEdit: (task) => {
+                state.taskEditId = task?.taskId ?? null;
+                state.taskEditTitle = task?.title ?? "";
+                state.taskEditDescription = task?.description ?? "";
+              },
+              onEditTitleChange: (value) => (state.taskEditTitle = value),
+              onEditDescriptionChange: (value) => (state.taskEditDescription = value),
+              onSaveEdit: async () => {
+                if (!state.taskEditId || !state.taskEditTitle.trim()) {
+                  return;
+                }
+                await state.updateTaskModeTask(state.taskEditId, {
+                  title: state.taskEditTitle.trim(),
+                  description: state.taskEditDescription.trim() || null,
+                });
+                state.taskEditId = null;
+                state.taskEditTitle = "";
+                state.taskEditDescription = "";
+              },
+              onSelectCurrent: (taskId) => state.setCurrentTaskForSession(taskId),
+              onChangeStatus: (taskId, status) => state.updateTaskModeTask(taskId, { status }),
+              onArchive: (taskId) => state.archiveTaskForSession(taskId),
+              onRestore: (taskId) => state.restoreArchivedTask(taskId),
+              onDelete: (taskId) => state.deleteTaskForSession(taskId),
+              onEditTask: () => undefined,
+            })
+          : nothing}
+        ${state.tab === "archives"
+          ? renderTasks({
+              archiveMode: true,
+              loading: state.tasksLoading,
+              items: state.archivedTaskItems,
+              error: state.tasksError,
+              currentSession,
+              onRefresh: () => state.loadTaskModeData(),
+              onRequestUpdate: requestHostUpdate,
+              editId: state.taskEditId,
+              editTitle: state.taskEditTitle,
+              editDescription: state.taskEditDescription,
+              onCreateTask: () => undefined,
+              onToggleEdit: (task) => {
+                state.taskEditId = task?.taskId ?? null;
+                state.taskEditTitle = task?.title ?? "";
+                state.taskEditDescription = task?.description ?? "";
+              },
+              onEditTitleChange: (value) => (state.taskEditTitle = value),
+              onEditDescriptionChange: (value) => (state.taskEditDescription = value),
+              onSaveEdit: async () => {
+                if (!state.taskEditId || !state.taskEditTitle.trim()) {
+                  return;
+                }
+                await state.updateTaskModeTask(state.taskEditId, {
+                  title: state.taskEditTitle.trim(),
+                  description: state.taskEditDescription.trim() || null,
+                });
+                state.taskEditId = null;
+                state.taskEditTitle = "";
+                state.taskEditDescription = "";
+              },
+              onSelectCurrent: () => undefined,
+              onChangeStatus: () => undefined,
+              onArchive: () => undefined,
+              onRestore: (taskId) => state.restoreArchivedTask(taskId),
+              onDelete: (taskId) => state.deleteTaskForSession(taskId),
+              onEditTask: () => undefined,
+            })
+          : nothing}
         ${state.tab === "chat"
           ? renderChat({
               sessionKey: state.sessionKey,
@@ -1854,11 +1969,26 @@ export function renderApp(state: AppViewState) {
               draft: state.chatMessage,
               queue: state.chatQueue,
               connected: state.connected,
-              canSend: state.connected,
+              canSend: state.connected && !state.tasksBusy && !(currentSession?.mode === "task" && !currentTask),
               disabledReason: chatDisabledReason,
               error: state.lastError,
               sessions: state.sessionsResult,
               focusMode: chatFocus,
+              sessionMode: currentSession?.mode ?? "normal",
+              currentTaskId: currentTask?.taskId ?? null,
+              currentTaskTitle: currentTask?.title ?? null,
+              currentTaskStatus: currentTask ? (currentTask.effectiveStatus ?? currentTask.status) : null,
+              currentTaskStep: currentTask?.flowCurrentStep ?? currentTask?.description ?? null,
+              currentTask,
+              taskItems: state.tasksItems,
+              taskOptions: state.tasksItems.map((task) => ({
+                id: task.taskId,
+                title: task.title,
+                status: task.effectiveStatus ?? task.status,
+              })),
+              onSetSessionMode: (mode) => state.setCurrentSessionMode(mode),
+              onSelectTask: (taskId) => state.setCurrentTaskForSession(taskId),
+              onOpenTasksTab: () => state.setTab("tasks"),
               autoExpandToolCalls: false,
               onRefresh: () => {
                 state.chatSideResult = null;
@@ -1880,7 +2010,10 @@ export function renderApp(state: AppViewState) {
               onRequestUpdate: requestHostUpdate,
               attachments: state.chatAttachments,
               onAttachmentsChange: (next) => (state.chatAttachments = next),
-              onSend: () => state.handleSendChat(),
+              onSend: async () => {
+                await state.handleSendChat();
+                await Promise.all([loadSessions(state), state.loadTaskModeData()]);
+              },
               canAbort: Boolean(state.chatRunId),
               onAbort: () => void state.handleAbortChat(),
               onQueueRemove: (id) => state.removeQueuedMessage(id),

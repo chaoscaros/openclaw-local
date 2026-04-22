@@ -46,6 +46,8 @@ export type SessionsProps = {
     key: string,
     patch: {
       label?: string | null;
+      mode?: "normal" | "task" | null;
+      taskId?: string | null;
       thinkingLevel?: string | null;
       fastMode?: boolean | null;
       verboseLevel?: string | null;
@@ -154,7 +156,16 @@ function filterRows(rows: GatewaySessionRow[], query: string): GatewaySessionRow
     const label = normalizeLowercaseStringOrEmpty(row.label);
     const kind = normalizeLowercaseStringOrEmpty(row.kind);
     const displayName = normalizeLowercaseStringOrEmpty(row.displayName);
-    return key.includes(q) || label.includes(q) || kind.includes(q) || displayName.includes(q);
+    const mode = normalizeLowercaseStringOrEmpty(row.mode);
+    const taskId = normalizeLowercaseStringOrEmpty(row.taskId);
+    return (
+      key.includes(q) ||
+      label.includes(q) ||
+      kind.includes(q) ||
+      displayName.includes(q) ||
+      mode.includes(q) ||
+      taskId.includes(q)
+    );
   });
 }
 
@@ -392,6 +403,8 @@ export function renderSessions(props: SessionsProps) {
                 <th>Label</th>
                 ${sortHeader("kind", "Kind")} ${sortHeader("updated", "Updated")}
                 ${sortHeader("tokens", "Tokens")}
+                <th>Mode</th>
+                <th>Current task</th>
                 <th>Compaction</th>
                 <th>Thinking</th>
                 <th>Fast</th>
@@ -404,7 +417,7 @@ export function renderSessions(props: SessionsProps) {
                 ? html`
                     <tr>
                       <td
-                        colspan="11"
+                        colspan="13"
                         style="text-align: center; padding: 48px 16px; color: var(--muted)"
                       >
                         No sessions found.
@@ -542,6 +555,27 @@ function renderRows(row: GatewaySessionRow, props: SessionsProps) {
       </td>
       <td>${updated}</td>
       <td>${formatSessionTokens(row)}</td>
+      <td>
+        <select
+          ?disabled=${props.loading}
+          style="padding: 6px 10px; font-size: 13px; border: 1px solid var(--border); border-radius: var(--radius-sm); min-width: 90px;"
+          @change=${(e: Event) => {
+            const value = (e.target as HTMLSelectElement).value as "normal" | "task";
+            props.onPatch(row.key, { mode: value, taskId: value === "normal" ? null : row.taskId ?? null });
+          }}
+        >
+          <option value="normal" ?selected=${(row.mode ?? "normal") === "normal"}>normal</option>
+          <option value="task" ?selected=${row.mode === "task"}>task</option>
+        </select>
+      </td>
+      <td>
+        <div style="display:grid; gap:4px;">
+          <span class="mono" style="font-size:12px;">${row.taskId ?? "—"}</span>
+          ${row.mode === "task" && !row.taskId
+            ? html`<span class="muted" style="font-size:11px; color: var(--danger-color, #ff8080);">needs task selection</span>`
+            : nothing}
+        </div>
+      </td>
       <td>
         <div style="display: grid; gap: 6px;">
           <span class="muted" style="font-size: 12px;">

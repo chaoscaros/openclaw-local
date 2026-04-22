@@ -50,6 +50,14 @@ function invalid(message: string): { ok: false; error: ErrorShape } {
   return { ok: false, error: errorShape(ErrorCodes.INVALID_REQUEST, message) };
 }
 
+function normalizeSessionMode(raw: string): "normal" | "task" | undefined {
+  const normalized = normalizeOptionalLowercaseString(raw);
+  if (normalized === "normal" || normalized === "task") {
+    return normalized;
+  }
+  return undefined;
+}
+
 function normalizeExecSecurity(raw: string): "deny" | "allowlist" | "full" | undefined {
   const normalized = normalizeOptionalLowercaseString(raw);
   if (normalized === "deny" || normalized === "allowlist" || normalized === "full") {
@@ -109,6 +117,38 @@ export async function applySessionsPatchToStore(params: {
         updatedAt: Math.max(existing.updatedAt ?? 0, now),
       }
     : { sessionId: randomUUID(), updatedAt: now };
+
+  if ("mode" in patch) {
+    const raw = patch.mode;
+    if (raw === null) {
+      delete next.mode;
+    } else if (raw !== undefined) {
+      const normalized = normalizeSessionMode(raw);
+      if (!normalized) {
+        return invalid("invalid mode (use normal or task)");
+      }
+      next.mode = normalized;
+      if (normalized === "normal") {
+        delete next.taskId;
+      }
+    }
+  }
+
+  if ("taskId" in patch) {
+    const raw = patch.taskId;
+    if (raw === null) {
+      delete next.taskId;
+    } else if (raw !== undefined) {
+      const trimmed = normalizeOptionalString(raw) ?? "";
+      if (!trimmed) {
+        return invalid("invalid taskId: empty");
+      }
+      next.taskId = trimmed;
+      if ((next.mode ?? existing?.mode) !== "task") {
+        next.mode = "task";
+      }
+    }
+  }
 
   if ("spawnedBy" in patch) {
     const raw = patch.spawnedBy;

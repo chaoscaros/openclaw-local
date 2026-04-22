@@ -38,12 +38,13 @@ type OwnerIdDisplay = "raw" | "hash";
 
 const CONTEXT_FILE_ORDER = new Map<string, number>([
   ["agents.md", 10],
-  ["soul.md", 20],
-  ["identity.md", 30],
-  ["user.md", 40],
-  ["tools.md", 50],
-  ["bootstrap.md", 60],
-  ["memory.md", 70],
+  ["rules.md", 20],
+  ["soul.md", 30],
+  ["identity.md", 40],
+  ["user.md", 50],
+  ["tools.md", 60],
+  ["bootstrap.md", 70],
+  ["memory.md", 80],
 ]);
 
 const DYNAMIC_CONTEXT_FILE_BASENAMES = new Set(["heartbeat.md"]);

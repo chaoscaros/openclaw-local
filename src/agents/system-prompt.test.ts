@@ -559,6 +559,24 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("Bravo");
   });
 
+  it("orders RULES.md immediately after AGENTS.md in project context", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      contextFiles: [
+        { path: "USER.md", content: "User" },
+        { path: "RULES.md", content: "Rules" },
+        { path: "AGENTS.md", content: "Agents" },
+      ],
+    });
+
+    const agentsIndex = prompt.indexOf("## AGENTS.md");
+    const rulesIndex = prompt.indexOf("## RULES.md");
+    const userIndex = prompt.indexOf("## USER.md");
+    expect(agentsIndex).toBeGreaterThan(-1);
+    expect(rulesIndex).toBeGreaterThan(agentsIndex);
+    expect(userIndex).toBeGreaterThan(rulesIndex);
+  });
+
   it("ignores context files with missing or blank paths", () => {
     const prompt = buildAgentSystemPrompt({
       workspaceDir: "/tmp/openclaw",

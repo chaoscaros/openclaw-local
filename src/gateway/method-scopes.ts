@@ -113,6 +113,8 @@ const METHOD_SCOPE_GROUPS: Record<OperatorScope, readonly string[]> = {
     "talk.config",
     "agents.files.list",
     "agents.files.get",
+    "taskmode.list",
+    "taskmode.get",
   ],
   [WRITE_SCOPE]: [
     "message.action",
@@ -143,6 +145,11 @@ const METHOD_SCOPE_GROUPS: Record<OperatorScope, readonly string[]> = {
     "doctor.memory.dedupeDreamDiary",
     "push.test",
     "node.pending.enqueue",
+    "taskmode.create",
+    "taskmode.update",
+    "taskmode.archive",
+    "taskmode.restore",
+    "taskmode.delete",
   ],
   [ADMIN_SCOPE]: [
     "channels.logout",

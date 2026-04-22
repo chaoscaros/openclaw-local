@@ -69,6 +69,16 @@ import type {
 } from "./controllers/dreaming.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
+import {
+  archiveTaskForSession,
+  createTaskForCurrentSession,
+  deleteTaskForSession,
+  loadTaskModeData,
+  restoreArchivedTask,
+  setCurrentSessionMode,
+  setCurrentTaskForSession,
+  updateTaskModeTask,
+} from "./controllers/tasks.ts";
 import type {
   ClawHubSearchResult,
   ClawHubSkillDetail,
@@ -322,6 +332,18 @@ export class OpenClawApp extends LitElement {
   @state() sessionsLoading = false;
   @state() sessionsResult: SessionsListResult | null = null;
   @state() sessionsError: string | null = null;
+  @state() tasksLoading = false;
+  @state() tasksError: string | null = null;
+  @state() tasksItems: import("./controllers/tasks.ts").TaskItem[] = [];
+  @state() archivedTaskItems: import("./controllers/tasks.ts").TaskItem[] = [];
+  @state() tasksSelectedId: string | null = null;
+  @state() tasksBusy = false;
+  @state() taskCreateOpen = false;
+  @state() taskCreateTitle = "";
+  @state() taskCreateDescription = "";
+  @state() taskEditId: string | null = null;
+  @state() taskEditTitle = "";
+  @state() taskEditDescription = "";
   @state() sessionsFilterActive = "";
   @state() sessionsFilterLimit = "120";
   @state() sessionsIncludeGlobal = true;
@@ -685,6 +707,44 @@ export class OpenClawApp extends LitElement {
       messageOverride,
       opts,
     );
+  }
+
+  async loadTaskModeData() {
+    await loadTaskModeData(this as unknown as Parameters<typeof loadTaskModeData>[0]);
+  }
+
+  async createTaskForCurrentSession(title: string, description?: string) {
+    const result = await createTaskForCurrentSession(this as unknown as Parameters<typeof createTaskForCurrentSession>[0], { title, description });
+    if (result) {
+      this.taskCreateOpen = false;
+      this.taskCreateTitle = "";
+      this.taskCreateDescription = "";
+    }
+    return result;
+  }
+
+  async setCurrentTaskForSession(taskId: string) {
+    await setCurrentTaskForSession(this as unknown as Parameters<typeof setCurrentTaskForSession>[0], taskId);
+  }
+
+  async setCurrentSessionMode(mode: "normal" | "task") {
+    await setCurrentSessionMode(this as unknown as Parameters<typeof setCurrentSessionMode>[0], mode);
+  }
+
+  async updateTaskModeTask(taskId: string, patch: { title?: string; description?: string | null; status?: import("./controllers/tasks.ts").TaskStatus }) {
+    return await updateTaskModeTask(this as unknown as Parameters<typeof updateTaskModeTask>[0], taskId, patch);
+  }
+
+  async archiveTaskForSession(taskId: string) {
+    await archiveTaskForSession(this as unknown as Parameters<typeof archiveTaskForSession>[0], taskId);
+  }
+
+  async restoreArchivedTask(taskId: string) {
+    await restoreArchivedTask(this as unknown as Parameters<typeof restoreArchivedTask>[0], taskId);
+  }
+
+  async deleteTaskForSession(taskId: string) {
+    await deleteTaskForSession(this as unknown as Parameters<typeof deleteTaskForSession>[0], taskId);
   }
 
   async handleWhatsAppStart(force: boolean) {

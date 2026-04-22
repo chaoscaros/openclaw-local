@@ -13,6 +13,7 @@ import { resolveSessionStoreEntry } from "../../config/sessions/store.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { logVerbose } from "../../globals.js";
+import { getTaskModeTask } from "../../gateway/task-mode-store.js";
 import { clearCommandLane, getQueueSize } from "../../process/command-queue.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
@@ -52,6 +53,83 @@ import type { TypingController } from "./typing.js";
 
 type AgentDefaults = NonNullable<OpenClawConfig["agents"]>["defaults"];
 type ExecOverrides = Pick<ExecToolDefaults, "host" | "security" | "ask" | "node">;
+
+export function buildTaskModePromptHint(params: {
+  sessionEntry?: Pick<SessionEntry, "mode" | "taskId">;
+  taskTitle?: string | null;
+  taskDescription?: string | null;
+}): string | undefined {
+  const mode = params.sessionEntry?.mode;
+  if (mode !== "task" && mode !== "normal") {
+    return undefined;
+  }
+  const taskId = normalizeOptionalString(params.sessionEntry?.taskId);
+  const taskTitle = normalizeOptionalString(params.taskTitle);
+  const taskDescription = normalizeOptionalString(params.taskDescription);
+  if (mode === "normal") {
+    return [
+      "## Current Task Session State",
+      "Current session mode: normal.",
+      "This session is not in task mode.",
+      "Do not describe the current session as task mode unless the user explicitly switches modes again.",
+      "When the user asks what mode the session is in, answer that it is normal chat mode.",
+      "Do not infer an active task from older conversation context when the session mode is normal.",
+      "Any earlier task-binding blocks in the transcript are stale after the mode switch and must not be treated as the active task for this turn.",
+      "If the user asks what the current task is while the session mode is normal, do not answer from a previous task binding unless the user explicitly re-enables task mode or names a task in the new request.",
+    ].join("\n");
+  }
+  return [
+    "## Current Task Session State",
+    "Current session mode: task.",
+    taskId ? `Current task id: ${taskId}.` : "Current task id: none selected.",
+    taskTitle ? `Current task title: ${taskTitle}.` : undefined,
+    taskDescription ? `Current task summary: ${taskDescription}.` : undefined,
+    "This session is already in task mode. Do not describe it as normal chat mode.",
+    "The current task binding above is authoritative for this session and overrides older task references in the transcript.",
+    "When the user asks whether task mode is enabled, acknowledge that task mode is active and answer using task-workflow framing.",
+    taskTitle
+      ? "When the user asks what the current task is, answer from the current task title/summary above instead of unrelated prior chat context."
+      : undefined,
+    taskTitle
+      ? "If the user says continue/继续 without naming a task, continue the current task above rather than resuming an older task from chat history."
+      : undefined,
+    taskTitle
+      ? "If earlier messages conflict with the current task binding, explicitly follow the current task and ignore the stale task context."
+      : undefined,
+  ].filter(Boolean).join("\n");
+}
+
+export function buildTaskModeUserPromptPrefix(params: {
+  sessionEntry?: Pick<SessionEntry, "mode" | "taskId">;
+  taskTitle?: string | null;
+  taskDescription?: string | null;
+}): string | undefined {
+  const mode = params.sessionEntry?.mode;
+  if (mode === "normal") {
+    return [
+      "[Current task binding for this turn]",
+      "Task mode is currently off for this session.",
+      "There is no active task binding for this turn.",
+      "Ignore any task-binding blocks from earlier turns unless the user explicitly switches back to task mode or names a task again.",
+    ].join("\n");
+  }
+  if (mode !== "task") {
+    return undefined;
+  }
+  const taskId = normalizeOptionalString(params.sessionEntry?.taskId);
+  const taskTitle = normalizeOptionalString(params.taskTitle);
+  const taskDescription = normalizeOptionalString(params.taskDescription);
+  return [
+    "[Current task binding for this turn]",
+    taskId ? `Task id: ${taskId}` : undefined,
+    taskTitle ? `Task title: ${taskTitle}` : undefined,
+    taskDescription ? `Task summary: ${taskDescription}` : undefined,
+    "Use the task binding above as the task the user is continuing right now.",
+    "If earlier conversation history mentions different tasks, treat those as stale unless the user explicitly switches again.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 export function buildExecOverridePromptHint(params: {
   execOverrides?: ExecOverrides;
@@ -247,6 +325,9 @@ export async function runPreparedReply(
   });
   let currentSystemSent = systemSent;
 
+  const currentTask = sessionEntry?.mode === "task" && sessionEntry.taskId
+    ? await getTaskModeTask(sessionEntry.taskId)
+    : null;
   const isFirstTurnInSession = isNewSession || !currentSystemSent;
   const isGroupChat = sessionCtx.ChatType === "group";
   const wasMentioned = ctx.WasMentioned === true;
@@ -290,6 +371,11 @@ export async function runPreparedReply(
     groupChatContext,
     groupIntro,
     groupSystemPrompt,
+    buildTaskModePromptHint({
+      sessionEntry,
+      taskTitle: currentTask?.title,
+      taskDescription: currentTask?.description,
+    }),
     buildExecOverridePromptHint({
       execOverrides,
       elevatedLevel: resolvedElevatedLevel,
@@ -376,6 +462,12 @@ export async function runPreparedReply(
     storePath,
     abortKey: command.abortKey,
   });
+  const taskModeUserPromptPrefix = buildTaskModeUserPromptPrefix({
+    sessionEntry,
+    taskTitle: currentTask?.title,
+    taskDescription: currentTask?.description,
+  });
+  prefixedBodyBase = [taskModeUserPromptPrefix, prefixedBodyBase].filter(Boolean).join("\n\n");
   const isGroupSession = sessionEntry?.chatType === "group" || sessionEntry?.chatType === "channel";
   const isMainSession = !isGroupSession && sessionKey === normalizeMainKey(sessionCfg?.mainKey);
   // Extract first-token think hint from the user body BEFORE prepending system events.

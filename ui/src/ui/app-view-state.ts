@@ -216,6 +216,29 @@ export type AppViewState = {
   sessionsLoading: boolean;
   sessionsResult: SessionsListResult | null;
   sessionsError: string | null;
+  tasksLoading: boolean;
+  tasksError: string | null;
+  tasksItems: import("./controllers/tasks.ts").TaskItem[];
+  archivedTaskItems: import("./controllers/tasks.ts").TaskItem[];
+  tasksSelectedId: string | null;
+  tasksBusy: boolean;
+  taskCreateOpen: boolean;
+  taskCreateTitle: string;
+  taskCreateDescription: string;
+  taskEditId: string | null;
+  taskEditTitle: string;
+  taskEditDescription: string;
+  loadTaskModeData: () => Promise<void>;
+  createTaskForCurrentSession: (title: string, description?: string) => Promise<unknown>;
+  setCurrentTaskForSession: (taskId: string) => Promise<void>;
+  setCurrentSessionMode: (mode: "normal" | "task") => Promise<void>;
+  updateTaskModeTask: (
+    taskId: string,
+    patch: { title?: string; description?: string | null; status?: import("./controllers/tasks.ts").TaskStatus },
+  ) => Promise<unknown>;
+  archiveTaskForSession: (taskId: string) => Promise<void>;
+  restoreArchivedTask: (taskId: string) => Promise<void>;
+  deleteTaskForSession: (taskId: string) => Promise<void>;
   threadsLoading: boolean;
   threadsResult: SessionsListResult | null;
   threadsError: string | null;

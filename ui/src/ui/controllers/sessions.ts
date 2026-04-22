@@ -210,6 +210,8 @@ export async function patchSession(
   key: string,
   patch: {
     label?: string | null;
+    mode?: "normal" | "task" | null;
+    taskId?: string | null;
     thinkingLevel?: string | null;
     fastMode?: boolean | null;
     verboseLevel?: string | null;
@@ -222,6 +224,8 @@ export async function patchSession(
   const params: Record<string, unknown> = { key };
   for (const field of [
     "label",
+    "mode",
+    "taskId",
     "thinkingLevel",
     "fastMode",
     "verboseLevel",

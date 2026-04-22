@@ -37,6 +37,7 @@ import { loadLogs, type LogsState } from "./controllers/logs.ts";
 import { loadNodes, type NodesState } from "./controllers/nodes.ts";
 import { loadPresence, type PresenceState } from "./controllers/presence.ts";
 import { loadSessions, type SessionsState } from "./controllers/sessions.ts";
+import { loadTaskModeData, type TasksState } from "./controllers/tasks.ts";
 import { loadSkills, type SkillsState } from "./controllers/skills.ts";
 import { loadUsage, type UsageState } from "./controllers/usage.ts";
 import {
@@ -103,6 +104,7 @@ type SettingsAppHost = SettingsHost &
   NodesState &
   PresenceState &
   SessionsState &
+  TasksState &
   SkillsState &
   UsageState & {
     overviewLogCursor: number | null;
@@ -319,6 +321,10 @@ export async function refreshActiveTab(host: SettingsHost) {
     case "sessions":
       await loadSessions(app);
       return;
+    case "tasks":
+    case "archives":
+      await Promise.all([loadSessions(app), loadTaskModeData(app)]);
+      return;
     case "cron":
       await loadCron(host);
       return;
@@ -344,7 +350,11 @@ export async function refreshActiveTab(host: SettingsHost) {
       ]);
       return;
     case "chat":
-      await refreshChat(host as unknown as Parameters<typeof refreshChat>[0]);
+      await Promise.all([
+        loadSessions(app),
+        loadTaskModeData(app),
+        refreshChat(host as unknown as Parameters<typeof refreshChat>[0]),
+      ]);
       scheduleChatScroll(
         host as unknown as Parameters<typeof scheduleChatScroll>[0],
         !host.chatHasAutoScrolled,

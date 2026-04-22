@@ -251,6 +251,88 @@ function createOverviewProps(overrides: Partial<OverviewProps> = {}): OverviewPr
 }
 
 describe("chat view", () => {
+  it("keeps task controls out of the chat message surface", async () => {
+    await i18n.setLocale("en");
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          sessionMode: "task",
+          currentTaskId: "task-1",
+          currentTaskTitle: "Task 1",
+          currentTaskStatus: "active",
+          currentTaskStep: "finish ui polish",
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+    const text = container.textContent ?? "";
+    expect(text).not.toContain("Mode:");
+    expect(text).not.toContain("Current task:");
+    expect(text).not.toContain("Open tasks");
+    expect(text).not.toContain("Task goal");
+    expect(text).not.toContain("Timeline");
+    expect(text).not.toContain("Technical context");
+  });
+
+  it("renders the chat task context bar in the header row", async () => {
+    await i18n.setLocale("en");
+    const container = document.createElement("div");
+    const { state } = createChatHeaderState();
+    state.tasksItems = [
+      {
+        taskId: "task-1",
+        title: "Task 1",
+        description: "summary",
+        status: "active",
+        effectiveStatus: "active",
+        archived: false,
+        createdAt: 1,
+        updatedAt: 2,
+        flowCurrentStep: "Polish quick switcher",
+      },
+      {
+        taskId: "task-2",
+        title: "Task 2",
+        description: "recover archive interactions",
+        status: "paused",
+        effectiveStatus: "paused",
+        archived: false,
+        createdAt: 1,
+        updatedAt: 3,
+      },
+    ] as never;
+    state.sessionsResult = {
+      ...state.sessionsResult,
+      sessions: [{ ...(state.sessionsResult.sessions[0] ?? { key: "main", kind: "direct", updatedAt: Date.now() }), key: "main", mode: "task", taskId: "task-1" }],
+    };
+    state.setCurrentSessionMode = vi.fn();
+    state.setCurrentTaskForSession = vi.fn();
+    state.setTab = vi.fn();
+    state.requestUpdate = () => render(renderChatSessionSelect(state), container);
+    render(renderChatSessionSelect(state), container);
+    await Promise.resolve();
+    const text = container.textContent ?? "";
+    expect(text).toContain("Task mode");
+    expect(text).toContain("Current task");
+    expect(text).toContain("任务详情");
+    expect(text).toContain("Open task board");
+    expect(text).toContain("Task 1");
+    expect(text).toContain("Active");
+
+    const switchBtn = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('切换任务')) as HTMLButtonElement;
+    switchBtn.click();
+    await Promise.resolve();
+    const input = container.querySelector('.chat-task-context-bar__search input') as HTMLInputElement;
+    input.value = 'Task 2';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await Promise.resolve();
+    const buttons = Array.from(container.querySelectorAll('.chat-task-context-bar__suggestion')) as HTMLButtonElement[];
+    buttons.find((button) => button.textContent?.includes('Task 2'))?.click();
+    expect(state.setCurrentTaskForSession).toHaveBeenCalledWith("task-2");
+  });
+
   it("renders BTW side results outside transcript history", () => {
     const container = document.createElement("div");
     render(

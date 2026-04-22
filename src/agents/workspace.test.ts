@@ -10,6 +10,7 @@ import {
   DEFAULT_IDENTITY_FILENAME,
   DEFAULT_MEMORY_ALT_FILENAME,
   DEFAULT_MEMORY_FILENAME,
+  DEFAULT_RULES_FILENAME,
   DEFAULT_TOOLS_FILENAME,
   DEFAULT_USER_FILENAME,
   ensureAgentWorkspace,
@@ -63,6 +64,7 @@ async function expectCompletedWithoutBootstrap(dir: string) {
 function expectSubagentAllowedBootstrapNames(files: WorkspaceBootstrapFile[]) {
   const names = files.map((file) => file.name);
   expect(names).toContain("AGENTS.md");
+  expect(names).toContain("RULES.md");
   expect(names).toContain("TOOLS.md");
   expect(names).toContain("SOUL.md");
   expect(names).toContain("IDENTITY.md");
@@ -206,6 +208,16 @@ describe("loadWorkspaceBootstrapFiles", () => {
     expect(memoryEntries[0]?.content).toBe(content);
   };
 
+  it("includes RULES.md when present", async () => {
+    const tempDir = await makeTempWorkspace("openclaw-workspace-");
+    await writeWorkspaceFile({ dir: tempDir, name: DEFAULT_RULES_FILENAME, content: "rules" });
+
+    const files = await loadWorkspaceBootstrapFiles(tempDir);
+    const rulesEntry = files.find((file) => file.name === DEFAULT_RULES_FILENAME);
+    expect(rulesEntry?.missing).toBe(false);
+    expect(rulesEntry?.content).toBe("rules");
+  });
+
   it("includes MEMORY.md when present", async () => {
     const tempDir = await makeTempWorkspace("openclaw-workspace-");
     await writeWorkspaceFile({ dir: tempDir, name: "MEMORY.md", content: "memory" });
@@ -264,6 +276,7 @@ describe("loadWorkspaceBootstrapFiles", () => {
 describe("filterBootstrapFilesForSession", () => {
   const mockFiles: WorkspaceBootstrapFile[] = [
     { name: "AGENTS.md", path: "/w/AGENTS.md", content: "", missing: false },
+    { name: "RULES.md", path: "/w/RULES.md", content: "", missing: false },
     { name: "SOUL.md", path: "/w/SOUL.md", content: "", missing: false },
     { name: "TOOLS.md", path: "/w/TOOLS.md", content: "", missing: false },
     { name: "IDENTITY.md", path: "/w/IDENTITY.md", content: "", missing: false },

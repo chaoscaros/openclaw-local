@@ -26,6 +26,8 @@ export type GatewaySessionRow = {
   kind: "direct" | "group" | "global" | "unknown";
   label?: string;
   displayName?: string;
+  mode?: "normal" | "task";
+  taskId?: string;
   derivedTitle?: string;
   lastMessagePreview?: string;
   channel?: string;

@@ -1261,6 +1261,8 @@ export function buildGatewaySessionRow(params: {
     kind: classifySessionKey(key, entry),
     label: entry?.label,
     displayName,
+    mode: entry?.mode,
+    taskId: entry?.taskId,
     derivedTitle,
     lastMessagePreview,
     channel,

@@ -303,7 +303,8 @@
     "ui:i18n:check": "node --import tsx scripts/control-ui-i18n.ts check",
     "ui:i18n:sync": "node --import tsx scripts/control-ui-i18n.ts sync --write",
     "ui:install": "node scripts/ui.js install",
-    "fast": "OPENCLAW_SKIP_DIRTY_TREE_BUILD=1 pnpm openclaw gateway --verbose"
+    "fast": "OPENCLAW_SKIP_DIRTY_TREE_BUILD=1 pnpm openclaw gateway --verbose",
+    "stop": "node scripts/stop-fast.mjs"
   },
   "exports": {
     ".": "./dist/index.js",

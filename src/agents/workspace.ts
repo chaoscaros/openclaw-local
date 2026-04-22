@@ -24,6 +24,7 @@ export function resolveDefaultAgentWorkspaceDir(
 
 export const DEFAULT_AGENT_WORKSPACE_DIR = resolveDefaultAgentWorkspaceDir();
 export const DEFAULT_AGENTS_FILENAME = "AGENTS.md";
+export const DEFAULT_RULES_FILENAME = "RULES.md";
 export const DEFAULT_SOUL_FILENAME = "SOUL.md";
 export const DEFAULT_TOOLS_FILENAME = "TOOLS.md";
 export const DEFAULT_IDENTITY_FILENAME = "IDENTITY.md";
@@ -132,6 +133,7 @@ async function loadTemplate(name: string): Promise<string> {
 
 export type WorkspaceBootstrapFileName =
   | typeof DEFAULT_AGENTS_FILENAME
+  | typeof DEFAULT_RULES_FILENAME
   | typeof DEFAULT_SOUL_FILENAME
   | typeof DEFAULT_TOOLS_FILENAME
   | typeof DEFAULT_IDENTITY_FILENAME
@@ -169,6 +171,7 @@ type WorkspaceSetupState = {
 /** Set of recognized bootstrap filenames for runtime validation */
 const VALID_BOOTSTRAP_NAMES: ReadonlySet<string> = new Set([
   DEFAULT_AGENTS_FILENAME,
+  DEFAULT_RULES_FILENAME,
   DEFAULT_SOUL_FILENAME,
   DEFAULT_TOOLS_FILENAME,
   DEFAULT_IDENTITY_FILENAME,
@@ -496,6 +499,10 @@ export async function loadWorkspaceBootstrapFiles(dir: string): Promise<Workspac
       filePath: path.join(resolvedDir, DEFAULT_AGENTS_FILENAME),
     },
     {
+      name: DEFAULT_RULES_FILENAME,
+      filePath: path.join(resolvedDir, DEFAULT_RULES_FILENAME),
+    },
+    {
       name: DEFAULT_SOUL_FILENAME,
       filePath: path.join(resolvedDir, DEFAULT_SOUL_FILENAME),
     },
@@ -548,6 +555,7 @@ export async function loadWorkspaceBootstrapFiles(dir: string): Promise<Workspac
 
 const MINIMAL_BOOTSTRAP_ALLOWLIST = new Set([
   DEFAULT_AGENTS_FILENAME,
+  DEFAULT_RULES_FILENAME,
   DEFAULT_TOOLS_FILENAME,
   DEFAULT_SOUL_FILENAME,
   DEFAULT_IDENTITY_FILENAME,

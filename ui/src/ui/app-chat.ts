@@ -2,6 +2,7 @@ import { setLastActiveSessionKey } from "./app-last-active-session.ts";
 import { scheduleChatScroll, resetChatScroll } from "./app-scroll.ts";
 import { resetToolStream } from "./app-tool-stream.ts";
 import type { ChatSideResult } from "./chat/side-result.ts";
+import { t } from "../i18n/index.ts";
 import { executeSlashCommand } from "./chat/slash-command-executor.ts";
 import { parseSlashCommand, refreshSlashCommands } from "./chat/slash-commands.ts";
 import {
@@ -43,6 +44,7 @@ export type ChatHost = {
   chatModelsLoading: boolean;
   chatModelCatalog: ModelCatalogEntry[];
   sessionsResult?: SessionsListResult | null;
+  tasksBusy?: boolean;
   updateComplete?: Promise<unknown>;
   refreshSessionsAfterChat: Set<string>;
   /** Callback for slash-command side effects that need app-level access. */
@@ -276,6 +278,17 @@ export async function handleSendChat(
   const hasAttachments = attachmentsToSend.length > 0;
 
   if (!message && !hasAttachments) {
+    return;
+  }
+
+  if (host.tasksBusy) {
+    host.lastError = "正在切换任务模式，请稍候…";
+    return;
+  }
+
+  const currentSession = host.sessionsResult?.sessions.find((row) => row.key === host.sessionKey);
+  if (currentSession?.mode === "task" && !currentSession.taskId) {
+    host.lastError = t("taskModeUi.emptyTaskModeHint");
     return;
   }
 

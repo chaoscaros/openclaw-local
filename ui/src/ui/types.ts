@@ -402,6 +402,8 @@ export type GatewaySessionRow = {
   kind: "direct" | "group" | "global" | "unknown";
   label?: string;
   displayName?: string;
+  mode?: "normal" | "task";
+  taskId?: string;
   surface?: string;
   subject?: string;
   room?: string;
@@ -471,6 +473,8 @@ export type SessionsCompactionRestoreResult = {
 export type SessionsPatchResult = SessionsPatchResultBase<{
   sessionId: string;
   updatedAt?: number;
+  mode?: "normal" | "task";
+  taskId?: string;
   thinkingLevel?: string;
   fastMode?: boolean;
   verboseLevel?: string;

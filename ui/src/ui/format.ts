@@ -1,9 +1,51 @@
 import { formatDurationHuman } from "../../../src/infra/format-time/format-duration.ts";
-import { formatRelativeTimestamp } from "../../../src/infra/format-time/format-relative.ts";
+import { formatRelativeTimestamp as baseFormatRelativeTimestamp } from "../../../src/infra/format-time/format-relative.ts";
 import { stripAssistantInternalScaffolding } from "../../../src/shared/text/assistant-visible-text.js";
-import { t } from "../i18n/index.ts";
+import { i18n, t } from "../i18n/index.ts";
 
-export { formatRelativeTimestamp, formatDurationHuman };
+export { formatDurationHuman };
+
+function localizeRelativeText(value: string): string {
+  if (i18n.getLocale() !== "zh-CN") {
+    return value;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return value;
+  }
+  if (trimmed === "just now") {
+    return "刚刚";
+  }
+  const minute = trimmed.match(/^(\d+)m ago$/);
+  if (minute) {
+    return `${minute[1]} 分钟前`;
+  }
+  const hour = trimmed.match(/^(\d+)h ago$/);
+  if (hour) {
+    return `${hour[1]} 小时前`;
+  }
+  const day = trimmed.match(/^(\d+)d ago$/);
+  if (day) {
+    return `${day[1]} 天前`;
+  }
+  const week = trimmed.match(/^(\d+)w ago$/);
+  if (week) {
+    return `${week[1]} 周前`;
+  }
+  const month = trimmed.match(/^(\d+)mo ago$/);
+  if (month) {
+    return `${month[1]} 个月前`;
+  }
+  const year = trimmed.match(/^(\d+)y ago$/);
+  if (year) {
+    return `${year[1]} 年前`;
+  }
+  return value;
+}
+
+export function formatRelativeTimestamp(value?: number | null): string {
+  return localizeRelativeText(baseFormatRelativeTimestamp(value));
+}
 
 export function formatUnknownText(
   value: unknown,

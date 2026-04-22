@@ -167,6 +167,8 @@ export type SessionEntry = {
   reasoningLevel?: string;
   elevatedLevel?: string;
   ttsAuto?: TtsAutoMode;
+  mode?: "normal" | "task";
+  taskId?: string;
   execHost?: string;
   execSecurity?: string;
   execAsk?: string;
