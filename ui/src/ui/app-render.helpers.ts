@@ -216,6 +216,8 @@ const chatTaskHeaderUi = {
   query: "",
   detailOpen: false,
   switcherOpen: false,
+  switchedTaskId: null as string | null,
+  switchedTaskTitle: "",
 };
 
 function requestViewUpdate(state: AppViewState) {
@@ -249,7 +251,7 @@ function matchTaskScore(task: { title?: string; description?: string; flowCurren
   return 0;
 }
 
-function renderChatTaskHeaderBar(state: AppViewState) {
+export function renderChatTaskHeaderBar(state: AppViewState) {
   const currentSession = state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey) ?? null;
   const mode = currentSession?.mode ?? "normal";
   const taskItems = state.tasksItems ?? [];
@@ -287,7 +289,18 @@ function renderChatTaskHeaderBar(state: AppViewState) {
         .slice(0, 6);
   const currentTaskSummary = normalizeOptionalString(currentTask?.flowCurrentStep) ?? normalizeOptionalString(currentTask?.description) ?? null;
   const currentTaskStatus = localizeTaskText(currentTask?.effectiveStatus ?? currentTask?.status ?? null);
-  const quickSwitcherLabel = currentTask?.title ?? "选择任务";
+  const quickSwitcherLabel = currentTask?.title ?? "当前未绑定任务";
+  const currentTaskMeta = currentTask
+    ? `${currentTaskStatus || "未标记状态"} · 当前会话任务`
+    : mode === "task"
+      ? "任务模式 · 当前未绑定任务"
+      : "普通模式 · 当前未绑定任务";
+  const lastSwitchFeedback =
+    chatTaskHeaderUi.switchedTaskId && currentTask?.taskId === chatTaskHeaderUi.switchedTaskId
+      ? `已切换到：${chatTaskHeaderUi.switchedTaskTitle || currentTask.title}`
+      : null;
+  const currentTaskSection = currentTask ? [currentTask] : [];
+  const recentTasks = quickSwitcherTasks.filter((task) => task.taskId !== currentTask?.taskId);
   const currentTaskTimeline = currentTask
     ? [
         {
@@ -329,7 +342,7 @@ function renderChatTaskHeaderBar(state: AppViewState) {
         >
           <span class="chat-task-context-bar__task-chip-label">${t("taskModeUi.banner.currentTask")}</span>
           <span class="chat-task-context-bar__task-chip-title">${quickSwitcherLabel}</span>
-          ${currentTaskStatus ? html`<span class="chat-task-context-bar__task-chip-status">${currentTaskStatus}</span>` : nothing}
+          <span class="chat-task-context-bar__task-chip-status">${currentTaskMeta}</span>
         </button>
       </div>
 
@@ -373,15 +386,35 @@ function renderChatTaskHeaderBar(state: AppViewState) {
                   }}
                 />
               </label>
-              <div class="chat-task-context-bar__suggestions-title">${chatTaskHeaderUi.query ? "推荐匹配" : "当前与最近任务"}</div>
+              ${lastSwitchFeedback
+                ? html`<div class="chat-task-context-bar__suggestions-title">${lastSwitchFeedback}</div>`
+                : nothing}
+              <div class="chat-task-context-bar__suggestions-title">当前任务</div>
               <div class="chat-task-context-bar__suggestions">
-                ${quickSwitcherTasks.length
-                  ? quickSwitcherTasks.map(
+                ${currentTaskSection.length
+                  ? currentTaskSection.map(
+                      (task) => html`
+                        <div class="chat-task-context-bar__suggestion chat-task-context-bar__suggestion--current" aria-current="true">
+                          <span class="chat-task-context-bar__suggestion-title">${task.title}</span>
+                          <span class="chat-task-context-bar__suggestion-meta">
+                            ${localizeTaskText(task.effectiveStatus ?? task.status)} · 当前会话任务
+                          </span>
+                        </div>
+                      `,
+                    )
+                  : html`<div class="chat-task-context-bar__empty">当前会话还没有绑定任务。</div>`}
+              </div>
+              <div class="chat-task-context-bar__suggestions-title">${chatTaskHeaderUi.query ? "推荐匹配" : "最近任务"}</div>
+              <div class="chat-task-context-bar__suggestions">
+                ${recentTasks.length
+                  ? recentTasks.map(
                       (task) => html`
                         <button
                           type="button"
                           class="chat-task-context-bar__suggestion"
                           @click=${() => {
+                            chatTaskHeaderUi.switchedTaskId = task.taskId;
+                            chatTaskHeaderUi.switchedTaskTitle = task.title;
                             void state.setCurrentTaskForSession(task.taskId);
                             chatTaskHeaderUi.query = "";
                             chatTaskHeaderUi.switcherOpen = false;
@@ -390,13 +423,12 @@ function renderChatTaskHeaderBar(state: AppViewState) {
                         >
                           <span class="chat-task-context-bar__suggestion-title">${task.title}</span>
                           <span class="chat-task-context-bar__suggestion-meta">
-                            ${localizeTaskText(task.effectiveStatus ?? task.status)} ·
-                            ${task.taskId === currentSession?.taskId ? "当前会话" : formatRelativeTimestamp(task.updatedAt ?? task.createdAt)}
+                            ${localizeTaskText(task.effectiveStatus ?? task.status)} · ${formatRelativeTimestamp(task.updatedAt ?? task.createdAt)}
                           </span>
                         </button>
                       `,
                     )
-                  : html`<div class="chat-task-context-bar__empty">没有匹配任务，可去任务中心创建或切换。</div>`}
+                  : html`<div class="chat-task-context-bar__empty">没有可切换的最近任务。</div>`}
               </div>
             </div>
           `

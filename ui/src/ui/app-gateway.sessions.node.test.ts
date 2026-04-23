@@ -7,11 +7,14 @@ vi.mock("./app-chat.ts", () => ({
   CHAT_SESSIONS_ACTIVE_MINUTES: 10,
   flushChatQueueForEvent: vi.fn(),
 }));
+const syncUrlWithSessionKeyMock = vi.fn();
+
 vi.mock("./app-settings.ts", () => ({
   applySettings: vi.fn(),
   loadCron: vi.fn(),
   refreshActiveTab: vi.fn(),
   setLastActiveSessionKey: vi.fn(),
+  syncUrlWithSessionKey: syncUrlWithSessionKeyMock,
 }));
 vi.mock("./app-tool-stream.ts", () => ({
   handleAgentEvent: vi.fn(),
@@ -49,7 +52,7 @@ vi.mock("./gateway.ts", () => ({
   resolveGatewayErrorDetailCode: () => null,
 }));
 
-const { handleGatewayEvent } = await import("./app-gateway.ts");
+const { applySnapshot, handleGatewayEvent } = await import("./app-gateway.ts");
 const { addExecApproval } = await vi.importActual<typeof import("./controllers/exec-approval.ts")>(
   "./controllers/exec-approval.ts",
 );
@@ -121,7 +124,33 @@ describe("handleGatewayEvent sessions.changed", () => {
     });
 
     expect(loadSessionsMock).toHaveBeenCalledTimes(1);
-    expect(loadSessionsMock).toHaveBeenCalledWith(host);
+    expect(loadSessionsMock).toHaveBeenCalledWith(host, undefined);
+  });
+});
+
+describe("applySnapshot session defaults", () => {
+  it("syncs the URL when gateway defaults move chat to a different concrete session", () => {
+    syncUrlWithSessionKeyMock.mockReset();
+    const host = createHost();
+    host.tab = "chat";
+    host.sessionKey = "main";
+    host.settings.sessionKey = "main";
+    host.settings.lastActiveSessionKey = "main";
+
+    applySnapshot(host, {
+      type: "hello-ok",
+      protocol: 3,
+      snapshot: {
+        sessionDefaults: {
+          defaultAgentId: "solo",
+          mainKey: "main",
+          mainSessionKey: "webchat:abc123",
+        },
+      },
+    });
+
+    expect(host.sessionKey).toBe("webchat:abc123");
+    expect(syncUrlWithSessionKeyMock).toHaveBeenCalledWith(host, "webchat:abc123", true);
   });
 });
 

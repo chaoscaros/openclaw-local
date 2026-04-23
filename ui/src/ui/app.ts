@@ -77,6 +77,7 @@ import {
   restoreArchivedTask,
   setCurrentSessionMode,
   setCurrentTaskForSession,
+  syncTaskModeTaskProgress,
   updateTaskModeTask,
 } from "./controllers/tasks.ts";
 import type {
@@ -733,6 +734,10 @@ export class OpenClawApp extends LitElement {
 
   async updateTaskModeTask(taskId: string, patch: { title?: string; description?: string | null; status?: import("./controllers/tasks.ts").TaskStatus }) {
     return await updateTaskModeTask(this as unknown as Parameters<typeof updateTaskModeTask>[0], taskId, patch);
+  }
+
+  async syncTaskModeTaskProgress(taskId: string, opts?: { silent?: boolean; reload?: boolean }) {
+    return await syncTaskModeTaskProgress(this as unknown as Parameters<typeof syncTaskModeTaskProgress>[0], taskId, opts);
   }
 
   async archiveTaskForSession(taskId: string) {

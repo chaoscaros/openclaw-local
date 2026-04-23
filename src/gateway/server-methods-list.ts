@@ -91,6 +91,7 @@ const BASE_METHODS = [
   "taskmode.get",
   "taskmode.create",
   "taskmode.update",
+  "taskmode.sync",
   "taskmode.archive",
   "taskmode.restore",
   "taskmode.delete",

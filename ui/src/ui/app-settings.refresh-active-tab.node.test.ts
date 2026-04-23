@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   loadCronJobsPageMock: vi.fn(async () => {}),
   loadCronRunsMock: vi.fn(async () => {}),
   loadLogsMock: vi.fn(async () => {}),
+  loadSessionsMock: vi.fn(async () => {}),
+  loadTaskModeDataMock: vi.fn(async () => {}),
 }));
 
 vi.mock("./app-chat.ts", () => ({
@@ -52,6 +54,12 @@ vi.mock("./controllers/cron.ts", () => ({
 }));
 vi.mock("./controllers/logs.ts", () => ({
   loadLogs: mocks.loadLogsMock,
+}));
+vi.mock("./controllers/sessions.ts", () => ({
+  loadSessions: mocks.loadSessionsMock,
+}));
+vi.mock("./controllers/tasks.ts", () => ({
+  loadTaskModeData: mocks.loadTaskModeDataMock,
 }));
 
 import { refreshActiveTab } from "./app-settings.ts";
@@ -137,6 +145,31 @@ describe("refreshActiveTab", () => {
     expect(mocks.loadCronRunsMock).toHaveBeenCalledWith(host, "job-123");
     expect(mocks.loadAgentFilesMock).not.toHaveBeenCalled();
     expect(mocks.loadAgentSkillsMock).not.toHaveBeenCalled();
+  });
+
+  it("refreshes chat task-mode state in session-first order", async () => {
+    const host = createHost();
+    host.tab = "chat";
+    const order: string[] = [];
+    mocks.loadSessionsMock.mockImplementationOnce(async () => {
+      order.push("sessions");
+    });
+    mocks.loadTaskModeDataMock.mockImplementationOnce(async () => {
+      order.push("tasks");
+    });
+    mocks.refreshChatMock.mockImplementationOnce(async () => {
+      order.push("chat");
+    });
+
+    await refreshActiveTab(host as never);
+
+    expect(order).toEqual(["sessions", "tasks", "chat"]);
+    expect(mocks.loadSessionsMock).toHaveBeenCalledWith(host, {
+      activeMinutes: 0,
+      limit: 0,
+      includeGlobal: true,
+      includeUnknown: true,
+    });
   });
 
   it("refreshes logs tab by resetting bottom-follow and scheduling scroll", async () => {

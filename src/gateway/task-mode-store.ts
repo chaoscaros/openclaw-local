@@ -1,10 +1,13 @@
 import path from "node:path";
 import { loadConfig } from "../config/config.js";
 import {
+  loadSessionStore,
   resolveAllAgentSessionStoreTargetsSync,
   updateSessionStore,
   type SessionEntry,
 } from "../config/sessions.js";
+import { extractFirstTextBlock, extractAssistantVisibleText } from "../shared/chat-message-content.js";
+import { loadSessionEntry, readSessionMessages } from "./session-utils.js";
 import { resolveStateDir } from "../config/paths.js";
 import { createAsyncLock, readJsonFile, writeJsonAtomic } from "../infra/json-files.js";
 import {
@@ -15,14 +18,40 @@ import {
   setFlowWaiting,
   updateFlowRecordByIdExpectedRevision,
 } from "../tasks/task-flow-runtime-internal.js";
+import { listTasksForFlowId, listTasksForRelatedSessionKey } from "../tasks/task-registry.js";
+import { reconcileTaskRecordForOperatorInspection } from "../tasks/task-registry.maintenance.js";
 import type { TaskFlowRecord } from "../tasks/task-flow-registry.types.js";
+import type { TaskRecord } from "../tasks/task-registry.types.js";
 
 export type TaskModeStatus = "active" | "paused" | "interrupted" | "completed" | "ended";
+
+export type TaskModeRuntimeTaskSummary = {
+  taskId: string;
+  runtime: TaskRecord["runtime"];
+  status: TaskRecord["status"];
+  runId?: string;
+  startedAt?: number;
+  endedAt?: number;
+  lastEventAt?: number;
+  error?: string;
+  progressSummary?: string;
+  terminalSummary?: string;
+};
 
 export type TaskModeRecord = {
   id: string;
   title: string;
   description?: string;
+  progressSummary?: string;
+  completedSummary?: string;
+  nextStep?: string;
+  resourceContext?: string[];
+  timeline?: Array<{ at: number; label: string; detail: string }>;
+  lastSyncedAt?: number;
+  linkedRuntimeTaskIds?: string[];
+  latestRuntimeTaskId?: string;
+  latestRunId?: string;
+  runtimeTaskSummaries?: TaskModeRuntimeTaskSummary[];
   status: TaskModeStatus;
   archived: boolean;
   createdAt: number;
@@ -32,8 +61,15 @@ export type TaskModeRecord = {
   flowId?: string;
 };
 
+export type TaskModeRuntimeHealth = "healthy" | "stale" | "lost" | "recovering";
+
 export type TaskModeView = TaskModeRecord & {
   effectiveStatus: TaskModeStatus;
+  runtimeHealth?: TaskModeRuntimeHealth;
+  linkedRuntimeTaskIds?: string[];
+  latestRuntimeTaskId?: string;
+  latestRunId?: string;
+  runtimeTaskSummaries?: TaskModeRuntimeTaskSummary[];
   flow?: {
     id: string;
     status: TaskFlowRecord["status"];
@@ -61,6 +97,108 @@ function normalizeTaskRecord(raw: TaskModeRecord): TaskModeRecord {
     title: String(raw.title || "").trim(),
     ...(typeof raw.description === "string" && raw.description.trim()
       ? { description: raw.description.trim() }
+      : {}),
+    ...(typeof raw.progressSummary === "string" && raw.progressSummary.trim()
+      ? { progressSummary: raw.progressSummary.trim() }
+      : {}),
+    ...(typeof raw.completedSummary === "string" && raw.completedSummary.trim()
+      ? { completedSummary: raw.completedSummary.trim() }
+      : {}),
+    ...(typeof raw.nextStep === "string" && raw.nextStep.trim() ? { nextStep: raw.nextStep.trim() } : {}),
+    ...(Array.isArray(raw.resourceContext)
+      ? {
+          resourceContext: Array.from(
+            new Set(
+              raw.resourceContext
+                .map((item) => (typeof item === "string" ? item.trim() : ""))
+                .filter(Boolean),
+            ),
+          ).slice(0, 12),
+        }
+      : {}),
+    ...(Array.isArray(raw.timeline)
+      ? {
+          timeline: raw.timeline
+            .map((entry) => {
+              if (!entry || typeof entry !== "object") {
+                return null;
+              }
+              const record = entry as { at?: unknown; label?: unknown; detail?: unknown };
+              const at = Number(record.at);
+              const label = typeof record.label === "string" ? record.label.trim() : "";
+              const detail = typeof record.detail === "string" ? record.detail.trim() : "";
+              if (!Number.isFinite(at) || !label || !detail) {
+                return null;
+              }
+              return { at, label, detail };
+            })
+            .filter((entry): entry is { at: number; label: string; detail: string } => Boolean(entry))
+            .sort((left, right) => right.at - left.at)
+            .slice(0, 12),
+        }
+      : {}),
+    ...(Number.isFinite(raw.lastSyncedAt) ? { lastSyncedAt: Number(raw.lastSyncedAt) } : {}),
+    ...(Array.isArray(raw.linkedRuntimeTaskIds)
+      ? {
+          linkedRuntimeTaskIds: Array.from(
+            new Set(
+              raw.linkedRuntimeTaskIds
+                .map((item) => (typeof item === "string" ? item.trim() : ""))
+                .filter(Boolean),
+            ),
+          ).slice(0, 12),
+        }
+      : {}),
+    ...(typeof raw.latestRuntimeTaskId === "string" && raw.latestRuntimeTaskId.trim()
+      ? { latestRuntimeTaskId: raw.latestRuntimeTaskId.trim() }
+      : {}),
+    ...(typeof raw.latestRunId === "string" && raw.latestRunId.trim()
+      ? { latestRunId: raw.latestRunId.trim() }
+      : {}),
+    ...(Array.isArray(raw.runtimeTaskSummaries)
+      ? {
+          runtimeTaskSummaries: raw.runtimeTaskSummaries
+            .map((entry) => {
+              if (!entry || typeof entry !== "object") {
+                return null;
+              }
+              const record = entry as Record<string, unknown>;
+              const taskId = typeof record.taskId === "string" ? record.taskId.trim() : "";
+              const runtime = record.runtime;
+              const status = record.status;
+              if (
+                !taskId ||
+                (runtime !== "subagent" && runtime !== "acp" && runtime !== "cli" && runtime !== "cron") ||
+                (status !== "queued" &&
+                  status !== "running" &&
+                  status !== "succeeded" &&
+                  status !== "failed" &&
+                  status !== "timed_out" &&
+                  status !== "cancelled" &&
+                  status !== "lost")
+              ) {
+                return null;
+              }
+              return {
+                taskId,
+                runtime,
+                status,
+                ...(typeof record.runId === "string" && record.runId.trim() ? { runId: record.runId.trim() } : {}),
+                ...(Number.isFinite(record.startedAt) ? { startedAt: Number(record.startedAt) } : {}),
+                ...(Number.isFinite(record.endedAt) ? { endedAt: Number(record.endedAt) } : {}),
+                ...(Number.isFinite(record.lastEventAt) ? { lastEventAt: Number(record.lastEventAt) } : {}),
+                ...(typeof record.error === "string" && record.error.trim() ? { error: record.error.trim() } : {}),
+                ...(typeof record.progressSummary === "string" && record.progressSummary.trim()
+                  ? { progressSummary: record.progressSummary.trim() }
+                  : {}),
+                ...(typeof record.terminalSummary === "string" && record.terminalSummary.trim()
+                  ? { terminalSummary: record.terminalSummary.trim() }
+                  : {}),
+              } satisfies TaskModeRuntimeTaskSummary;
+            })
+            .filter((entry): entry is TaskModeRuntimeTaskSummary => Boolean(entry))
+            .slice(0, 12),
+        }
       : {}),
     status:
       raw.status === "active" ||
@@ -104,6 +242,9 @@ async function loadTaskModeStore(): Promise<TaskModeStore> {
 function compactTaskModeRecordForPersistence(task: TaskModeRecord): Record<string, object | string | number | boolean | null> {
   const base: Record<string, object | string | number | boolean | null> = {
     id: task.id,
+    title: task.title,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
     status: task.status,
     archived: task.archived,
     archivedAt: task.archivedAt ?? null,
@@ -111,16 +252,41 @@ function compactTaskModeRecordForPersistence(task: TaskModeRecord): Record<strin
   if (task.flowId) {
     base.flowId = task.flowId;
   }
+  if (task.description) {
+    base.description = task.description;
+  }
   if (task.lastSessionKey) {
     base.lastSessionKey = task.lastSessionKey;
   }
-  if (!task.flowId) {
-    base.title = task.title;
-    base.createdAt = task.createdAt;
-    base.updatedAt = task.updatedAt;
-    if (task.description) {
-      base.description = task.description;
-    }
+  if (task.progressSummary) {
+    base.progressSummary = task.progressSummary;
+  }
+  if (task.completedSummary) {
+    base.completedSummary = task.completedSummary;
+  }
+  if (task.nextStep) {
+    base.nextStep = task.nextStep;
+  }
+  if (task.resourceContext?.length) {
+    base.resourceContext = task.resourceContext;
+  }
+  if (task.timeline?.length) {
+    base.timeline = task.timeline;
+  }
+  if (task.lastSyncedAt) {
+    base.lastSyncedAt = task.lastSyncedAt;
+  }
+  if (task.linkedRuntimeTaskIds?.length) {
+    base.linkedRuntimeTaskIds = task.linkedRuntimeTaskIds;
+  }
+  if (task.latestRuntimeTaskId) {
+    base.latestRuntimeTaskId = task.latestRuntimeTaskId;
+  }
+  if (task.latestRunId) {
+    base.latestRunId = task.latestRunId;
+  }
+  if (task.runtimeTaskSummaries?.length) {
+    base.runtimeTaskSummaries = task.runtimeTaskSummaries;
   }
   return base;
 }
@@ -194,8 +360,70 @@ function mapFlowStatusToEffectiveTaskStatus(params: {
   return params.taskStatus;
 }
 
+function resolveTaskModeRuntimeTasks(task: TaskModeRecord): TaskRecord[] {
+  const matches = new Map<string, TaskRecord>();
+  const addTasks = (items: TaskRecord[]) => {
+    for (const item of items) {
+      const reconciled = reconcileTaskRecordForOperatorInspection(item);
+      matches.set(reconciled.taskId, reconciled);
+    }
+  };
+  if (task.flowId) {
+    addTasks(listTasksForFlowId(task.flowId));
+  }
+  if (task.lastSessionKey) {
+    addTasks(listTasksForRelatedSessionKey(task.lastSessionKey));
+  }
+  return [...matches.values()].sort((left, right) => {
+    const leftAt = left.lastEventAt ?? left.endedAt ?? left.startedAt ?? left.createdAt;
+    const rightAt = right.lastEventAt ?? right.endedAt ?? right.startedAt ?? right.createdAt;
+    return rightAt - leftAt;
+  });
+}
+
+function resolveTaskModeRuntimeHealth(tasks: TaskRecord[]): TaskModeRuntimeHealth | undefined {
+  const latest = tasks[0];
+  if (!latest) {
+    return undefined;
+  }
+  if (latest.status === "lost") {
+    return "lost";
+  }
+  if (latest.status === "queued" || latest.status === "running") {
+    return "healthy";
+  }
+  const latestAt = latest.lastEventAt ?? latest.endedAt ?? latest.startedAt ?? latest.createdAt;
+  if (Date.now() - latestAt > 5 * 60_000) {
+    return "stale";
+  }
+  return latest.status === "failed" || latest.status === "timed_out" ? "recovering" : "healthy";
+}
+
+function syncTaskModeRuntimeLinks(task: TaskModeRecord): TaskModeRecord {
+  const runtimeTasks = resolveTaskModeRuntimeTasks(task);
+  const latestRuntimeTask = runtimeTasks[0];
+  return normalizeTaskRecord({
+    ...task,
+    linkedRuntimeTaskIds: runtimeTasks.map((item) => item.taskId),
+    latestRuntimeTaskId: latestRuntimeTask?.taskId,
+    latestRunId: latestRuntimeTask?.runId,
+    runtimeTaskSummaries: runtimeTasks.slice(0, 8).map((item) => ({
+      taskId: item.taskId,
+      runtime: item.runtime,
+      status: item.status,
+      ...(item.runId ? { runId: item.runId } : {}),
+      ...(typeof item.lastEventAt === "number" ? { lastEventAt: item.lastEventAt } : {}),
+      ...(item.error ? { error: item.error } : {}),
+      ...(item.progressSummary ? { progressSummary: item.progressSummary } : {}),
+      ...(item.terminalSummary ? { terminalSummary: item.terminalSummary } : {}),
+    })),
+  });
+}
+
 function toTaskModeView(task: TaskModeRecord): TaskModeView {
   const flow = task.flowId ? getTaskFlowById(task.flowId) : undefined;
+  const runtimeTasks = resolveTaskModeRuntimeTasks(task);
+  const latestRuntimeTask = runtimeTasks[0];
   return {
     ...task,
     effectiveStatus: mapFlowStatusToEffectiveTaskStatus({
@@ -207,6 +435,23 @@ function toTaskModeView(task: TaskModeRecord): TaskModeView {
     ...(flow?.currentStep ? { description: flow.currentStep } : task.description ? { description: task.description } : {}),
     ...(typeof flow?.createdAt === 'number' ? { createdAt: flow.createdAt } : {}),
     ...(typeof flow?.updatedAt === 'number' ? { updatedAt: flow.updatedAt } : {}),
+    ...(task.progressSummary ? { progressSummary: task.progressSummary } : {}),
+    ...(task.completedSummary ? { completedSummary: task.completedSummary } : {}),
+    ...(task.nextStep ? { nextStep: task.nextStep } : {}),
+    ...(task.resourceContext?.length ? { resourceContext: [...task.resourceContext] } : {}),
+    ...(task.timeline?.length ? { timeline: task.timeline.map((entry) => ({ ...entry })) } : {}),
+    ...(task.lastSyncedAt ? { lastSyncedAt: task.lastSyncedAt } : {}),
+    ...(runtimeTasks.length ? { linkedRuntimeTaskIds: runtimeTasks.map((item) => item.taskId) } : {}),
+    ...(latestRuntimeTask ? { latestRuntimeTaskId: latestRuntimeTask.taskId } : {}),
+    ...(latestRuntimeTask?.runId ? { latestRunId: latestRuntimeTask.runId } : {}),
+    ...(task.runtimeTaskSummaries?.length
+      ? {
+          runtimeTaskSummaries: task.runtimeTaskSummaries.map((entry) => ({ ...entry }))
+        }
+      : {}),
+    ...(resolveTaskModeRuntimeHealth(runtimeTasks)
+      ? { runtimeHealth: resolveTaskModeRuntimeHealth(runtimeTasks) }
+      : {}),
     flow: flow
       ? {
           id: flow.flowId,
@@ -216,6 +461,145 @@ function toTaskModeView(task: TaskModeRecord): TaskModeView {
           updatedAt: flow.updatedAt,
         }
       : null,
+  };
+}
+
+type SyncMessageEntry = {
+  role: "user" | "assistant";
+  text: string;
+  at?: number;
+};
+
+function extractTaskSyncText(message: unknown, role: "user" | "assistant"): string | undefined {
+  if (!message || typeof message !== "object") {
+    return undefined;
+  }
+  const actualRole = typeof (message as { role?: unknown }).role === "string" ? (message as { role?: string }).role : "";
+  if (actualRole !== role) {
+    return undefined;
+  }
+  const text = role === "assistant" ? extractAssistantVisibleText(message) : extractFirstTextBlock(message);
+  return typeof text === "string" && text.trim() ? text.trim() : undefined;
+}
+
+function extractTaskSyncTimestamp(message: unknown): number | undefined {
+  if (!message || typeof message !== "object") {
+    return undefined;
+  }
+  const direct = Number((message as { timestamp?: unknown }).timestamp);
+  if (Number.isFinite(direct)) {
+    return direct;
+  }
+  const createdAt = Number((message as { createdAt?: unknown }).createdAt);
+  return Number.isFinite(createdAt) ? createdAt : undefined;
+}
+
+function extractResourceContextFromText(text: string): string[] {
+  const matches = text.match(/(?:\/[A-Za-z0-9_./-]+|[A-Za-z0-9_./-]+\.(?:vue|js|ts|tsx|jsx|json|md))/g) ?? [];
+  return Array.from(new Set(matches.map((item) => item.trim()).filter(Boolean))).slice(0, 12);
+}
+
+function trimSyncText(value: string | undefined, maxLen: number): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized.length <= maxLen ? normalized : `${normalized.slice(0, maxLen - 1).trim()}…`;
+}
+
+function collectLinkedTaskSessions(task: TaskModeRecord, preferredSessionKeys?: string[]): Array<{
+  sessionKey: string;
+  entry: SessionEntry;
+  storePath: string;
+}> {
+  const cfg = loadConfig();
+  const targets = resolveAllAgentSessionStoreTargetsSync(cfg);
+  const matches = new Map<string, { sessionKey: string; entry: SessionEntry; storePath: string }>();
+  const preferred = new Set((preferredSessionKeys ?? []).map((key) => key.trim()).filter(Boolean));
+  for (const target of targets) {
+    const store = loadSessionStore(target.storePath);
+    for (const [sessionKey, entry] of Object.entries(store)) {
+      if (!entry?.sessionId) {
+        continue;
+      }
+      const normalizedKey = sessionKey.trim();
+      const directlyLinked = preferred.has(normalizedKey);
+      const taskLinked = entry.taskId?.trim() === task.id;
+      const spawnedFromLinked = preferred.has(entry.parentSessionKey?.trim() ?? "") || preferred.has(entry.spawnedBy?.trim() ?? "");
+      if (!directlyLinked && !taskLinked && !spawnedFromLinked) {
+        continue;
+      }
+      const existing = matches.get(normalizedKey);
+      if (!existing || (existing.entry.updatedAt ?? 0) < (entry.updatedAt ?? 0)) {
+        matches.set(normalizedKey, { sessionKey: normalizedKey, entry, storePath: target.storePath });
+      }
+    }
+  }
+  return [...matches.values()].sort((left, right) => (left.entry.updatedAt ?? 0) - (right.entry.updatedAt ?? 0));
+}
+
+function buildTaskProgressSyncSnapshot(messages: unknown[], task: TaskModeRecord) {
+  const parsed: SyncMessageEntry[] = [];
+  for (const message of messages) {
+    const userText = extractTaskSyncText(message, "user");
+    if (userText) {
+      parsed.push({ role: "user", text: userText, at: extractTaskSyncTimestamp(message) });
+      continue;
+    }
+    const assistantText = extractTaskSyncText(message, "assistant");
+    if (assistantText) {
+      parsed.push({ role: "assistant", text: assistantText, at: extractTaskSyncTimestamp(message) });
+    }
+  }
+  if (parsed.length === 0) {
+    return null;
+  }
+  const users = parsed.filter((entry) => entry.role === "user");
+  const assistants = parsed.filter((entry) => entry.role === "assistant");
+  const latestUser = users.at(-1);
+  const latestAssistant = assistants.at(-1);
+  const previousAssistant = assistants.length > 1 ? assistants.at(-2) : undefined;
+  const progressSummary =
+    trimSyncText(latestAssistant?.text, 220) ??
+    trimSyncText(task.progressSummary, 220) ??
+    trimSyncText(task.description, 220);
+  const completedSummary =
+    trimSyncText([previousAssistant?.text, latestAssistant?.text].filter(Boolean).join(" · "), 260) ??
+    trimSyncText(progressSummary, 260);
+  const nextStep =
+    trimSyncText(latestUser?.text, 220) ?? trimSyncText(task.nextStep, 220) ?? trimSyncText(task.description, 220);
+  const resourceContext = Array.from(
+    new Set(
+      [task.title, task.description, ...parsed.slice(-8).map((entry) => entry.text)]
+        .flatMap((text) => extractResourceContextFromText(text ?? ""))
+        .concat(task.resourceContext ?? []),
+    ),
+  ).slice(0, 12);
+  const timeline = [
+    ...(latestUser?.at && latestUser.text
+      ? [{ at: latestUser.at, label: "最近需求", detail: trimSyncText(latestUser.text, 160) ?? latestUser.text }]
+      : []),
+    ...(latestAssistant?.at && latestAssistant.text
+      ? [{ at: latestAssistant.at, label: "最近进展", detail: trimSyncText(latestAssistant.text, 160) ?? latestAssistant.text }]
+      : []),
+    ...(task.timeline ?? []).map((entry) => ({ ...entry })),
+  ]
+    .filter(
+      (entry, index, array) =>
+        array.findIndex((item) => item.at === entry.at && item.label === entry.label && item.detail === entry.detail) ===
+        index,
+    )
+    .sort((left, right) => right.at - left.at)
+    .slice(0, 12);
+  return {
+    progressSummary,
+    completedSummary,
+    nextStep,
+    resourceContext,
+    timeline,
   };
 }
 
@@ -348,7 +732,7 @@ export async function createTaskModeTask(input: {
       archivedAt: null,
       lastSessionKey: input.sessionKey,
     });
-    const syncedTask = syncTaskModeToFlow(task, input.sessionKey);
+    const syncedTask = syncTaskModeRuntimeLinks(syncTaskModeToFlow(task, input.sessionKey));
     store.tasks = [syncedTask, ...store.tasks.filter((item) => item.id !== syncedTask.id)];
     await saveTaskModeStore(store);
     return syncedTask;
@@ -382,6 +766,80 @@ async function clearSessionTaskBindings(taskId: string): Promise<string[]> {
     }),
   );
   return touched;
+}
+
+export async function syncTaskModeTaskProgress(params: {
+  id: string;
+  sessionKey?: string;
+}): Promise<{ task: TaskModeRecord | null; synced: boolean }> {
+  return withTaskModeStoreLock(async () => {
+    const store = await loadTaskModeStore();
+    const index = store.tasks.findIndex((task) => task.id === params.id.trim());
+    if (index < 0) {
+      return { task: null, synced: false };
+    }
+    const current = store.tasks[index]!;
+    const targetSessionKey = params.sessionKey?.trim() || current.lastSessionKey?.trim();
+    if (!targetSessionKey) {
+      return { task: current, synced: false };
+    }
+    const directLoaded = loadSessionEntry(targetSessionKey);
+    const linkedSessions = collectLinkedTaskSessions(current, [
+      targetSessionKey,
+      directLoaded.canonicalKey ?? "",
+      directLoaded.legacyKey ?? "",
+    ]);
+    const messages = linkedSessions.flatMap((item) =>
+      readSessionMessages(item.entry.sessionId, item.storePath, item.entry.sessionFile),
+    );
+    const snapshot = buildTaskProgressSyncSnapshot(messages, current);
+    if (!snapshot) {
+      return { task: current, synced: false };
+    }
+    const lastLinkedSession = linkedSessions.at(-1)?.sessionKey ?? directLoaded.canonicalKey ?? targetSessionKey;
+    const now = Date.now();
+    const next = syncTaskModeRuntimeLinks(
+      normalizeTaskRecord({
+        ...current,
+        progressSummary: snapshot.progressSummary,
+        completedSummary: snapshot.completedSummary,
+        nextStep: snapshot.nextStep,
+        resourceContext: snapshot.resourceContext,
+        timeline: snapshot.timeline,
+        lastSessionKey: lastLinkedSession,
+        lastSyncedAt: now,
+        updatedAt: Math.max(current.updatedAt, now),
+      }),
+    );
+    const changed =
+      JSON.stringify({
+        progressSummary: current.progressSummary ?? null,
+        completedSummary: current.completedSummary ?? null,
+        nextStep: current.nextStep ?? null,
+        resourceContext: current.resourceContext ?? [],
+        timeline: current.timeline ?? [],
+        lastSessionKey: current.lastSessionKey ?? null,
+        linkedRuntimeTaskIds: current.linkedRuntimeTaskIds ?? [],
+        latestRuntimeTaskId: current.latestRuntimeTaskId ?? null,
+        latestRunId: current.latestRunId ?? null,
+      }) !==
+      JSON.stringify({
+        progressSummary: next.progressSummary ?? null,
+        completedSummary: next.completedSummary ?? null,
+        nextStep: next.nextStep ?? null,
+        resourceContext: next.resourceContext ?? [],
+        timeline: next.timeline ?? [],
+        lastSessionKey: next.lastSessionKey ?? null,
+        linkedRuntimeTaskIds: next.linkedRuntimeTaskIds ?? [],
+        latestRuntimeTaskId: next.latestRuntimeTaskId ?? null,
+        latestRunId: next.latestRunId ?? null,
+      });
+    store.tasks[index] = next;
+    if (changed) {
+      await saveTaskModeStore(store);
+    }
+    return { task: store.tasks[index] ?? null, synced: changed };
+  });
 }
 
 export async function updateTaskModeTask(params: {
@@ -427,7 +885,7 @@ export async function updateTaskModeTask(params: {
       next.archivedAt = null;
     }
     const normalizedNext = normalizeTaskRecord(next);
-    store.tasks[index] = syncTaskModeToFlow(normalizedNext, params.sessionKey);
+    store.tasks[index] = syncTaskModeRuntimeLinks(syncTaskModeToFlow(normalizedNext, params.sessionKey));
     await saveTaskModeStore(store);
     if (store.tasks[index]?.archived || store.tasks[index]?.status === "ended") {
       await clearSessionTaskBindings(store.tasks[index]!.id);

@@ -4,7 +4,11 @@ import { ConnectErrorDetailCodes } from "../../../src/gateway/protocol/connect-e
 import { connectGateway, resolveControlUiClientVersion } from "./app-gateway.ts";
 import type { GatewayHelloOk } from "./gateway.ts";
 
-const loadChatHistoryMock = vi.hoisted(() => vi.fn(async () => undefined));
+const { loadChatHistoryMock, loadTaskModeDataMock, loadSessionsMock } = vi.hoisted(() => ({
+  loadChatHistoryMock: vi.fn(async () => undefined),
+  loadTaskModeDataMock: vi.fn(async () => undefined),
+  loadSessionsMock: vi.fn(async () => undefined),
+}));
 
 type GatewayClientMock = {
   start: ReturnType<typeof vi.fn>;
@@ -94,6 +98,22 @@ vi.mock("./controllers/chat.ts", async (importOriginal) => {
   };
 });
 
+vi.mock("./controllers/tasks.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./controllers/tasks.ts")>();
+  return {
+    ...actual,
+    loadTaskModeData: loadTaskModeDataMock,
+  };
+});
+
+vi.mock("./controllers/sessions.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./controllers/sessions.ts")>();
+  return {
+    ...actual,
+    loadSessions: loadSessionsMock,
+  };
+});
+
 type TestGatewayHost = Parameters<typeof connectGateway>[0] & {
   chatSideResult: unknown;
   chatSideResultTerminalRuns: Set<string>;
@@ -119,6 +139,9 @@ function createHost(): TestGatewayHost {
       borderRadius: 50,
     },
     password: "",
+    applySettings: vi.fn(function (this: { settings: TestGatewayHost["settings"] }, next) {
+      this.settings = next;
+    }),
     clientInstanceId: "instance-test",
     client: null,
     connected: false,
@@ -192,6 +215,8 @@ describe("connectGateway", () => {
   beforeEach(() => {
     gatewayClientInstances.length = 0;
     loadChatHistoryMock.mockClear();
+    loadTaskModeDataMock.mockClear();
+    loadSessionsMock.mockClear();
   });
 
   it("ignores stale client onGap callbacks after reconnect", () => {
@@ -525,6 +550,69 @@ describe("connectGateway", () => {
     emitToolResultEvent(client);
 
     expect(loadChatHistoryMock).not.toHaveBeenCalled();
+    expect(loadTaskModeDataMock).not.toHaveBeenCalled();
+  });
+
+  it("reloads sessions before task-mode data when session bindings change", async () => {
+    const { client, host } = connectHostGateway();
+    host.tab = "chat";
+    const order: string[] = [];
+    loadSessionsMock.mockImplementationOnce(async () => {
+      order.push("sessions");
+    });
+    loadTaskModeDataMock.mockImplementationOnce(async () => {
+      order.push("tasks");
+    });
+
+    client.emitEvent({ event: "sessions.changed", payload: { sessionKey: "main" } });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(order).toEqual(["sessions", "tasks"]);
+    expect(loadSessionsMock).toHaveBeenCalledWith(host, {
+      activeMinutes: 0,
+      limit: 0,
+      includeGlobal: true,
+      includeUnknown: true,
+    });
+    expect(loadTaskModeDataMock).toHaveBeenCalledWith(host);
+  });
+
+  it.each(["final", "aborted", "error"] as const)(
+    "reloads task-mode data after chat %s events for the active session",
+    (terminalState) => {
+      const { client, host } = connectHostGateway();
+      host.chatRunId = "run-task-1";
+
+      client.emitEvent({
+        event: "chat",
+        payload: {
+          runId: "run-task-1",
+          sessionKey: "main",
+          state: terminalState,
+          ...(terminalState === "error" ? { errorMessage: "run failed" } : {}),
+        },
+      });
+
+      expect(loadTaskModeDataMock).toHaveBeenCalledTimes(1);
+      expect(loadTaskModeDataMock).toHaveBeenCalledWith(host);
+    },
+  );
+
+  it("does not reload task-mode data for terminal chat events from other sessions", () => {
+    const { client, host } = connectHostGateway();
+    host.chatRunId = "run-other";
+
+    client.emitEvent({
+      event: "chat",
+      payload: {
+        runId: "run-other",
+        sessionKey: "other-session",
+        state: "final",
+      },
+    });
+
+    expect(loadTaskModeDataMock).not.toHaveBeenCalled();
   });
 
   it("stores BTW side results for the active session", () => {

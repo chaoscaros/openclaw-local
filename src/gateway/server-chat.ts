@@ -574,7 +574,7 @@ export function createAgentEventHandler({
 
   const finalizeLifecycleEvent = (
     evt: AgentEventPayload,
-    opts?: { skipChatErrorFinal?: boolean },
+    opts?: { skipChatSendErrorIfRunAlreadyHandled?: boolean },
   ) => {
     const lifecyclePhase =
       evt.stream === "lifecycle" && typeof evt.data?.phase === "string" ? evt.data.phase : null;
@@ -595,6 +595,12 @@ export function createAgentEventHandler({
     const isAborted =
       chatRunState.abortedRuns.has(clientRunId) || chatRunState.abortedRuns.has(evt.runId);
 
+    const skipChatErrorFinal =
+      lifecyclePhase === "error" &&
+      opts?.skipChatSendErrorIfRunAlreadyHandled === true &&
+      !chatLink &&
+      !isChatSendRunActive(evt.runId);
+
     if (isControlUiVisible && sessionKey) {
       if (!isAborted) {
         const evtStopReason =
@@ -607,7 +613,7 @@ export function createAgentEventHandler({
             clearAgentRunContext(evt.runId);
             return;
           }
-          if (!(opts?.skipChatErrorFinal && lifecyclePhase === "error")) {
+          if (!skipChatErrorFinal) {
             emitChatFinal(
               finished.sessionKey,
               finished.clientRunId,
@@ -619,7 +625,7 @@ export function createAgentEventHandler({
               evtErrorKind,
             );
           }
-        } else if (!(opts?.skipChatErrorFinal && lifecyclePhase === "error")) {
+        } else if (!skipChatErrorFinal) {
           emitChatFinal(
             sessionKey,
             eventRunId,
@@ -668,7 +674,7 @@ export function createAgentEventHandler({
 
   const scheduleTerminalLifecycleError = (
     evt: AgentEventPayload,
-    opts?: { skipChatErrorFinal?: boolean },
+    opts?: { skipChatSendErrorIfRunAlreadyHandled?: boolean },
   ) => {
     clearPendingTerminalLifecycleError(evt.runId);
     const delayMs = Math.max(1, Math.min(Math.floor(lifecycleErrorRetryGraceMs), 2_147_483_647));
@@ -987,11 +993,11 @@ export function createAgentEventHandler({
 
     if (lifecyclePhase === "error") {
       clearBufferedChatState(clientRunId);
-      const skipChatErrorFinal = isChatSendRunActive(evt.runId) && !chatLink;
+      const skipChatSendErrorIfRunAlreadyHandled = isChatSendRunActive(evt.runId) && !chatLink;
       if (isAborted || lifecycleErrorRetryGraceMs <= 0) {
-        finalizeLifecycleEvent(evt, { skipChatErrorFinal });
+        finalizeLifecycleEvent(evt, { skipChatSendErrorIfRunAlreadyHandled });
       } else {
-        scheduleTerminalLifecycleError(evt, { skipChatErrorFinal });
+        scheduleTerminalLifecycleError(evt, { skipChatSendErrorIfRunAlreadyHandled });
       }
       return;
     }

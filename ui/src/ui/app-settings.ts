@@ -113,6 +113,15 @@ type SettingsAppHost = SettingsHost &
     hello: { auth?: { role?: string; scopes?: string[] } } | null;
   };
 
+async function loadSessionsForLiveChatContext(app: SettingsAppHost) {
+  await loadSessions(app, {
+    activeMinutes: 0,
+    limit: 0,
+    includeGlobal: true,
+    includeUnknown: true,
+  });
+}
+
 export function applySettings(host: SettingsHost, next: UiSettings) {
   const normalized = {
     ...next,
@@ -323,7 +332,11 @@ export async function refreshActiveTab(host: SettingsHost) {
       return;
     case "tasks":
     case "archives":
-      await Promise.all([loadSessions(app), loadTaskModeData(app)]);
+      // Task-mode pages need the full session set so the bound chat session is
+      // still available after reload even when it falls outside the default
+      // active-session filter.
+      await loadSessionsForLiveChatContext(app);
+      await loadTaskModeData(app);
       return;
     case "cron":
       await loadCron(host);
@@ -350,11 +363,13 @@ export async function refreshActiveTab(host: SettingsHost) {
       ]);
       return;
     case "chat":
-      await Promise.all([
-        loadSessions(app),
-        loadTaskModeData(app),
-        refreshChat(host as unknown as Parameters<typeof refreshChat>[0]),
-      ]);
+      // Chat task-mode restore must see the full session set; otherwise the
+      // current bound session can disappear behind the default 120-session cap
+      // or active-session filter and the current task looks lost until a manual
+      // session switch reloads the full list.
+      await loadSessionsForLiveChatContext(app);
+      await loadTaskModeData(app);
+      await refreshChat(host as unknown as Parameters<typeof refreshChat>[0]);
       scheduleChatScroll(
         host as unknown as Parameters<typeof scheduleChatScroll>[0],
         !host.chatHasAutoScrolled,

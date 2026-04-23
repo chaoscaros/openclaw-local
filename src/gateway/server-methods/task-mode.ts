@@ -8,6 +8,7 @@ import {
   getTaskModeTask,
   listTaskModeTasks,
   restoreTaskModeTask,
+  syncTaskModeTaskProgress,
   updateTaskModeTask,
   type TaskModeStatus,
 } from "../task-mode-store.js";
@@ -80,6 +81,22 @@ export const taskModeHandlers: GatewayRequestHandlers = {
       return;
     }
     respond(true, { ok: true, task });
+  },
+  "taskmode.sync": async ({ params, respond }) => {
+    const id = readString(params.id);
+    if (!id) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "id required"));
+      return;
+    }
+    const result = await syncTaskModeTaskProgress({
+      id,
+      sessionKey: readString(params.sessionKey) || undefined,
+    });
+    if (!result.task) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "task not found"));
+      return;
+    }
+    respond(true, { ok: true, task: result.task, synced: result.synced });
   },
   "taskmode.archive": async ({ params, respond }) => {
     const id = readString(params.id);

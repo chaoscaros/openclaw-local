@@ -7,9 +7,12 @@ import {
   deleteTaskModeTask,
   listTaskModeTasks,
   restoreTaskModeTask,
+  syncTaskModeTaskProgress,
   updateTaskModeTask,
 } from "./task-mode-store.js";
+import { createTaskRecord, resetTaskRegistryForTests, setTaskTimingById } from "../tasks/task-registry.js";
 import { getTaskFlowById, updateFlowRecordByIdExpectedRevision } from "../tasks/task-flow-runtime-internal.js";
+import { resolveDefaultSessionStorePath, resolveSessionTranscriptPath } from "../config/sessions.js";
 
 function makeTempStateDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-taskmode-"));
@@ -19,6 +22,7 @@ describe("task-mode-store", () => {
   const previousStateDir = process.env.OPENCLAW_STATE_DIR;
 
   afterEach(() => {
+    resetTaskRegistryForTests();
     if (previousStateDir === undefined) {
       delete process.env.OPENCLAW_STATE_DIR;
     } else {
@@ -71,7 +75,7 @@ describe("task-mode-store", () => {
     expect(task?.flow?.currentStep).toBe("flow step");
   });
 
-  it("persists flow-backed tasks without redundant title/description/timestamp fields", async () => {
+  it("persists stable fallback task identity for flow-backed tasks", async () => {
     process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
     const created = await createTaskModeTask({ id: "task-compact", title: "Compact title", description: "compact desc" });
     expect(created.flowId).toBeTruthy();
@@ -79,20 +83,20 @@ describe("task-mode-store", () => {
     const payload = JSON.parse(fs.readFileSync(storePath, 'utf8'));
     const item = payload['tasks'][0];
     expect(item['flowId']).toBe(created.flowId);
-    expect('title' in item).toBe(false);
-    expect('description' in item).toBe(false);
-    expect('createdAt' in item).toBe(false);
-    expect('updatedAt' in item).toBe(false);
+    expect(item['title']).toBe('Compact title');
+    expect(item['description']).toBe('compact desc');
+    expect(typeof item['createdAt']).toBe('number');
+    expect(typeof item['updatedAt']).toBe('number');
   });
 
-  it("backfills timestamps from flow when persisted task omits them", async () => {
+  it("keeps timestamps aligned with flow metadata while retaining persisted fallbacks", async () => {
     process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
-    const created = await createTaskModeTask({ id: "task-timestamps", title: "Timestamp task" });
+    await createTaskModeTask({ id: "task-timestamps", title: "Timestamp task" });
     const storePath = path.join(process.env.OPENCLAW_STATE_DIR!, 'control-ui', 'task-mode-store.json');
     const payload = JSON.parse(fs.readFileSync(storePath, 'utf8'));
     const item = payload['tasks'][0];
-    expect('createdAt' in item).toBe(false);
-    expect('updatedAt' in item).toBe(false);
+    expect(typeof item['createdAt']).toBe('number');
+    expect(typeof item['updatedAt']).toBe('number');
     const listed = await listTaskModeTasks();
     const task = listed.tasks.find((entry) => entry.id === 'task-timestamps');
     expect(typeof task?.createdAt).toBe('number');
@@ -119,6 +123,163 @@ describe("task-mode-store", () => {
     const task = listed.tasks.find((item) => item.id === 'task-blocked');
     expect(task?.effectiveStatus).toBe('interrupted');
     expect(task?.description).toBe('blocked step');
+  });
+
+  it("projects linked runtime task health into task-mode views", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const created = await createTaskModeTask({ id: "task-runtime-health", title: "Runtime health task" });
+    const runtimeTask = createTaskRecord({
+      runtime: "subagent",
+      ownerKey: "main",
+      requesterSessionKey: "main",
+      scopeKind: "session",
+      parentFlowId: created.flowId,
+      runId: "run-runtime-health",
+      task: "Execute runtime health task",
+      status: "running",
+      childSessionKey: "agent:solo:child:runtime-health",
+    });
+    await updateTaskModeTask({ id: "task-runtime-health", description: "runtime linked" });
+    const listed = await listTaskModeTasks();
+    const task = listed.tasks.find((item) => item.id === "task-runtime-health");
+    expect(task?.runtimeHealth).toBe("healthy");
+    expect(task?.latestRunId).toBe("run-runtime-health");
+    expect(task?.latestRuntimeTaskId).toBe(runtimeTask.taskId);
+    expect(task?.linkedRuntimeTaskIds?.length).toBe(1);
+  });
+
+  it("persists explicit runtime linkage metadata", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const created = await createTaskModeTask({ id: "task-runtime-persist", title: "Persist runtime linkage" });
+    const runtimeTask = createTaskRecord({
+      runtime: "subagent",
+      ownerKey: "main",
+      requesterSessionKey: "main",
+      scopeKind: "session",
+      parentFlowId: created.flowId,
+      runId: "run-runtime-persist",
+      task: "Persist runtime linkage execution",
+      status: "running",
+      childSessionKey: "agent:solo:child:runtime-persist",
+    });
+    await updateTaskModeTask({ id: "task-runtime-persist", description: "persist runtime linkage" });
+    const storePath = path.join(process.env.OPENCLAW_STATE_DIR!, 'control-ui', 'task-mode-store.json');
+    const payload = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+    const item = payload['tasks'].find((entry: { id: string }) => entry.id === 'task-runtime-persist');
+    expect(item['linkedRuntimeTaskIds']).toEqual([runtimeTask.taskId]);
+    expect(item['latestRuntimeTaskId']).toBe(runtimeTask.taskId);
+    expect(item['latestRunId']).toBe('run-runtime-persist');
+    expect(item['runtimeTaskSummaries']).toEqual([
+      expect.objectContaining({
+        taskId: runtimeTask.taskId,
+        runtime: 'subagent',
+        status: 'running',
+        runId: 'run-runtime-persist',
+      }),
+    ]);
+  });
+
+  it("surfaces reconciled lost runtime tasks in task-mode views", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const created = await createTaskModeTask({ id: "task-runtime-lost", title: "Lost runtime task" });
+    const runtimeTask = createTaskRecord({
+      runtime: "subagent",
+      ownerKey: "main",
+      requesterSessionKey: "main",
+      scopeKind: "session",
+      parentFlowId: created.flowId,
+      runId: "run-runtime-lost",
+      task: "Execute lost runtime task",
+      status: "running",
+      childSessionKey: "agent:solo:child:runtime-lost",
+    });
+    setTaskTimingById({
+      taskId: runtimeTask.taskId,
+      startedAt: Date.now() - 10 * 60_000,
+      lastEventAt: Date.now() - 10 * 60_000,
+    });
+    const listed = await listTaskModeTasks();
+    const task = listed.tasks.find((item) => item.id === "task-runtime-lost");
+    expect(task?.runtimeHealth).toBe("lost");
+  });
+
+  it("syncs task progress from linked local session history", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const now = Date.now();
+    const sessionId = "session-progress";
+    const storePath = resolveDefaultSessionStorePath();
+    fs.mkdirSync(path.dirname(storePath), { recursive: true });
+    fs.writeFileSync(
+      storePath,
+      JSON.stringify({
+        main: {
+          sessionId,
+          updatedAt: now,
+        },
+      }),
+    );
+    const transcriptPath = resolveSessionTranscriptPath(sessionId);
+    fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+    fs.writeFileSync(
+      transcriptPath,
+      [
+        JSON.stringify({ message: { role: "user", timestamp: now - 2000, content: [{ type: "text", text: "继续完成 src/gateway/server-chat.ts 并验证" }] } }),
+        JSON.stringify({ message: { role: "assistant", timestamp: now - 1000, content: [{ type: "text", text: "已完成错误恢复修复，并补充 ui/src/ui/app-gateway.ts 回归测试。下一步执行 vitest 验证。" }] } }),
+      ].join("\n"),
+    );
+    await createTaskModeTask({ id: "task-sync", title: "历史同步任务", sessionKey: "main" });
+
+    const synced = await syncTaskModeTaskProgress({ id: "task-sync", sessionKey: "main" });
+
+    expect(synced.synced).toBe(true);
+    expect(synced.task?.progressSummary).toContain("已完成错误恢复修复");
+    expect(synced.task?.completedSummary).toContain("ui/src/ui/app-gateway.ts");
+    expect(synced.task?.nextStep).toContain("继续完成 src/gateway/server-chat.ts 并验证");
+    expect(synced.task?.resourceContext).toContain("src/gateway/server-chat.ts");
+    expect(synced.task?.timeline?.some((entry) => entry.label === "最近进展")).toBe(true);
+  });
+
+  it("aggregates progress across multiple sessions linked to the same task", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const now = Date.now();
+    const storePath = resolveDefaultSessionStorePath();
+    fs.mkdirSync(path.dirname(storePath), { recursive: true });
+    fs.writeFileSync(
+      storePath,
+      JSON.stringify({
+        main: {
+          sessionId: "session-main",
+          updatedAt: now - 1000,
+          taskId: "task-multi",
+        },
+        "agent:solo:child": {
+          sessionId: "session-child",
+          updatedAt: now,
+          taskId: "task-multi",
+          parentSessionKey: "main",
+        },
+      }),
+    );
+    fs.writeFileSync(
+      resolveSessionTranscriptPath("session-main"),
+      [JSON.stringify({ message: { role: "assistant", timestamp: now - 1500, content: [{ type: "text", text: "已完成网关清理修复。" }] } })].join("\n"),
+    );
+    fs.writeFileSync(
+      resolveSessionTranscriptPath("session-child"),
+      [
+        JSON.stringify({ message: { role: "user", timestamp: now - 500, content: [{ type: "text", text: "继续补 ui/src/ui/views/tasks.ts 的入口" }] } }),
+        JSON.stringify({ message: { role: "assistant", timestamp: now - 100, content: [{ type: "text", text: "已补上 ui/src/ui/views/tasks.ts 与 ui/src/ui/controllers/tasks.ts 的同步入口。" }] } }),
+      ].join("\n"),
+    );
+    await createTaskModeTask({ id: "task-multi", title: "多 session 聚合任务", sessionKey: "main" });
+
+    const synced = await syncTaskModeTaskProgress({ id: "task-multi", sessionKey: "main" });
+
+    expect(synced.synced).toBe(true);
+    expect(synced.task?.completedSummary).toContain("已完成网关清理修复");
+    expect(synced.task?.progressSummary).toContain("ui/src/ui/views/tasks.ts");
+    expect(synced.task?.nextStep).toContain("继续补 ui/src/ui/views/tasks.ts 的入口");
+    expect(synced.task?.resourceContext).toContain("ui/src/ui/controllers/tasks.ts");
   });
 
   it("restores archived tasks without resetting business status", async () => {

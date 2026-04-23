@@ -1902,6 +1902,7 @@ export function renderApp(state: AppViewState) {
               onArchive: (taskId) => state.archiveTaskForSession(taskId),
               onRestore: (taskId) => state.restoreArchivedTask(taskId),
               onDelete: (taskId) => state.deleteTaskForSession(taskId),
+              onSyncProgress: (taskId) => state.syncTaskModeTaskProgress(taskId, { reload: true }),
               onEditTask: () => undefined,
             })
           : nothing}
@@ -1942,6 +1943,7 @@ export function renderApp(state: AppViewState) {
               onArchive: () => undefined,
               onRestore: (taskId) => state.restoreArchivedTask(taskId),
               onDelete: (taskId) => state.deleteTaskForSession(taskId),
+              onSyncProgress: () => undefined,
               onEditTask: () => undefined,
             })
           : nothing}

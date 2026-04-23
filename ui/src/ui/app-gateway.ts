@@ -13,6 +13,7 @@ import {
   loadCron,
   refreshActiveTab,
   setLastActiveSessionKey,
+  syncUrlWithSessionKey,
 } from "./app-settings.ts";
 import { handleAgentEvent, resetToolStream, type AgentEventPayload } from "./app-tool-stream.ts";
 import { shouldReloadHistoryForFinalEvent } from "./chat-event-reload.ts";
@@ -42,6 +43,7 @@ import {
 import { loadHealthState, type HealthState } from "./controllers/health.ts";
 import { loadNodes, type NodesState } from "./controllers/nodes.ts";
 import { loadSessions, subscribeSessions, type SessionsState } from "./controllers/sessions.ts";
+import { loadTaskModeData, type TasksState } from "./controllers/tasks.ts";
 import {
   resolveGatewayErrorDetailCode,
   type GatewayEventFrame,
@@ -216,11 +218,19 @@ function applySessionDefaults(host: GatewayHost, defaults?: SessionDefaultsSnaps
   const shouldUpdateSettings =
     nextSettings.sessionKey !== host.settings.sessionKey ||
     nextSettings.lastActiveSessionKey !== host.settings.lastActiveSessionKey;
-  if (nextSessionKey !== host.sessionKey) {
+  const sessionChanged = nextSessionKey !== host.sessionKey;
+  if (sessionChanged) {
     host.sessionKey = nextSessionKey;
   }
   if (shouldUpdateSettings) {
     applySettings(host as unknown as Parameters<typeof applySettings>[0], nextSettings);
+  }
+  if (sessionChanged && host.tab === "chat") {
+    syncUrlWithSessionKey(
+      host as unknown as Parameters<typeof syncUrlWithSessionKey>[0],
+      nextSessionKey,
+      true,
+    );
   }
 }
 
@@ -373,6 +383,9 @@ function handleTerminalChatEvent(
       });
     }
   }
+  if (payload?.sessionKey === host.sessionKey) {
+    void loadTaskModeData(host as unknown as TasksState);
+  }
   // Reload history when tools were used so the persisted tool results
   // replace the now-cleared streaming state.
   if (hadToolEvents && state === "final") {
@@ -496,7 +509,14 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
   }
 
   if (evt.event === "sessions.changed") {
-    void loadSessions(host as unknown as SessionsState);
+    void (async () => {
+      const sessionOverrides =
+        host.tab === "chat" || host.tab === "tasks" || host.tab === "archives"
+          ? { activeMinutes: 0, limit: 0, includeGlobal: true, includeUnknown: true }
+          : undefined;
+      await loadSessions(host as unknown as SessionsState, sessionOverrides);
+      await loadTaskModeData(host as unknown as TasksState);
+    })();
     return;
   }
 

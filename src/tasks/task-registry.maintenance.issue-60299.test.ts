@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { resetDetachedTaskLifecycleRuntimeForTests } from "./detached-task-runtime.js";
 import type { TaskRecord } from "./task-registry.types.js";
 
 const GRACE_EXPIRED_MS = 10 * 60_000;
@@ -103,6 +104,9 @@ async function loadMaintenanceModule(params: {
 }
 
 describe("task-registry maintenance issue #60299", () => {
+  afterEach(() => {
+    resetDetachedTaskLifecycleRuntimeForTests();
+  });
   it("marks stale cron tasks lost once the runtime no longer tracks the job as active", async () => {
     const childSessionKey = "agent:main:slack:channel:test-channel";
     const task = makeStaleTask({
@@ -173,7 +177,35 @@ describe("task-registry maintenance issue #60299", () => {
       activeRunIds: ["run-chat-cli-live"],
     });
 
-    expect(await mod.runTaskRegistryMaintenance()).toMatchObject({ reconciled: 0 });
+    expect(await mod.runTaskRegistryMaintenance()).toMatchObject({ reconciled: 0, recovered: 0 });
+    expect(currentTasks.get(task.taskId)).toMatchObject({ status: "running" });
+  });
+
+  it("tries detached recovery before marking stale tasks lost", async () => {
+    const task = makeStaleTask({
+      runtime: "subagent",
+      sourceId: "subagent-run-1",
+      runId: "subagent-run-1",
+      ownerKey: "main",
+      requesterSessionKey: "main",
+      childSessionKey: "agent:solo:child:recoverable",
+    });
+    const { mod, currentTasks } = await loadMaintenanceModule({
+      tasks: [task],
+      sessionStore: {},
+    });
+    const recover = vi.fn(async () => ({ recovered: true }));
+    const detachedRuntime = await import("./detached-task-runtime.js");
+    detachedRuntime.registerDetachedTaskRuntime({ tryRecoverTaskBeforeMarkLost: recover });
+
+    expect(await mod.runTaskRegistryMaintenance()).toMatchObject({ reconciled: 0, recovered: 1 });
+    expect(recover).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.taskId,
+        runtime: "subagent",
+        runId: "subagent-run-1",
+      }),
+    );
     expect(currentTasks.get(task.taskId)).toMatchObject({ status: "running" });
   });
 });

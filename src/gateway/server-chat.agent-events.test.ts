@@ -1291,7 +1291,7 @@ describe("agent event handler", () => {
     expect(nodePayload.errorKind).toBe("rate_limit");
   });
 
-  it("suppresses delayed lifecycle chat errors for active chat.send runs while still cleaning up", () => {
+  it("emits delayed lifecycle chat errors when an active chat.send run never self-cleans", () => {
     vi.useFakeTimers();
     const { broadcast, clearAgentRunContext, agentRunSeq, handler } = createHarness({
       resolveSessionKeyForRun: () => "session-chat-send",
@@ -1317,13 +1317,55 @@ describe("agent event handler", () => {
 
     vi.advanceTimersByTime(100);
 
-    expect(
-      chatBroadcastCalls(broadcast).some(
-        ([, payload]) => (payload as { state?: string }).state === "error",
-      ),
-    ).toBe(false);
+    const errorPayload = chatBroadcastCalls(broadcast).at(-1)?.[1] as {
+      state?: string;
+      runId?: string;
+      errorMessage?: string;
+    };
+    expect(errorPayload.state).toBe("error");
+    expect(errorPayload.runId).toBe("run-chat-send");
+    expect(errorPayload.errorMessage).toContain("chat.send failed");
     expect(clearAgentRunContext).toHaveBeenCalledWith("run-chat-send");
     expect(agentRunSeq.has("run-chat-send")).toBe(false);
+  });
+
+  it("keeps suppressing delayed chat.send lifecycle errors once the run already self-cleaned", () => {
+    vi.useFakeTimers();
+    let active = true;
+    const { broadcast, clearAgentRunContext, agentRunSeq, handler } = createHarness({
+      resolveSessionKeyForRun: () => "session-chat-send",
+      lifecycleErrorRetryGraceMs: 100,
+      isChatSendRunActive: () => active,
+    });
+    registerAgentRunContext("run-chat-send-clean", { sessionKey: "session-chat-send" });
+
+    handler({
+      runId: "run-chat-send-clean",
+      seq: 1,
+      stream: "assistant",
+      ts: Date.now(),
+      data: { text: "partial" },
+    });
+    handler({
+      runId: "run-chat-send-clean",
+      seq: 2,
+      stream: "lifecycle",
+      ts: Date.now(),
+      data: { phase: "error", error: "chat.send failed" },
+    });
+    active = false;
+
+    vi.advanceTimersByTime(100);
+
+    expect(
+      chatBroadcastCalls(broadcast).some(
+        ([, payload]) =>
+          (payload as { state?: string; runId?: string }).state === "error" &&
+          (payload as { state?: string; runId?: string }).runId === "run-chat-send-clean",
+      ),
+    ).toBe(false);
+    expect(clearAgentRunContext).toHaveBeenCalledWith("run-chat-send-clean");
+    expect(agentRunSeq.has("run-chat-send-clean")).toBe(false);
   });
 
   it("suppresses chat and node session events for non-control-UI-visible runs", () => {
