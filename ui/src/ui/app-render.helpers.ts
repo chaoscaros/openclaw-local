@@ -186,28 +186,28 @@ function localizeTaskText(value: string | null | undefined): string {
     normalized === "completed" ||
     normalized === "ended"
   ) {
-    return String(t(`taskModeUi.status.${normalized}`));
+    return t(`taskModeUi.status.${normalized}`);
   }
   if (normalized === "running") {
-    return String(t("taskModeUi.flowStatus.running"));
+    return t("taskModeUi.flowStatus.running");
   }
   if (normalized === "waiting") {
-    return String(t("taskModeUi.flowStatus.waiting"));
+    return t("taskModeUi.flowStatus.waiting");
   }
   if (normalized === "blocked") {
-    return String(t("taskModeUi.flowStatus.blocked"));
+    return t("taskModeUi.flowStatus.blocked");
   }
   if (normalized === "queued") {
-    return String(t("taskModeUi.flowStatus.queued"));
+    return t("taskModeUi.flowStatus.queued");
   }
   if (normalized === "succeeded") {
-    return String(t("taskModeUi.flowStatus.succeeded"));
+    return t("taskModeUi.flowStatus.succeeded");
   }
   if (normalized === "failed") {
-    return String(t("taskModeUi.flowStatus.failed"));
+    return t("taskModeUi.flowStatus.failed");
   }
   if (normalized === "cancelled") {
-    return String(t("taskModeUi.flowStatus.cancelled"));
+    return t("taskModeUi.flowStatus.cancelled");
   }
   return value;
 }
@@ -265,7 +265,7 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
       ...(currentTask ? [currentTask.taskId] : []),
       ...taskItems
         .slice()
-        .sort((left, right) => (right.updatedAt ?? right.createdAt) - (left.updatedAt ?? left.createdAt))
+        .toSorted((left, right) => (right.updatedAt ?? right.createdAt) - (left.updatedAt ?? left.createdAt))
         .slice(0, 6)
         .map((task) => task.taskId),
     ]),
@@ -273,7 +273,7 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
   const filteredTasks = taskItems
     .map((task) => ({ task, score: chatTaskHeaderUi.query ? matchTaskScore(task, chatTaskHeaderUi.query) : 0 }))
     .filter((entry) => !chatTaskHeaderUi.query || entry.score > 0)
-    .sort((left, right) => {
+    .toSorted((left, right) => {
       if (right.score !== left.score) {
         return right.score - left.score;
       }
@@ -285,7 +285,7 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
     ? filteredTasks
     : recentTaskIds
         .map((id) => taskItems.find((task) => task.taskId === id) ?? null)
-        .filter(Boolean)
+        .filter((task): task is (typeof filteredTasks)[number] => task !== null)
         .slice(0, 6);
   const currentTaskSummary = normalizeOptionalString(currentTask?.flowCurrentStep) ?? normalizeOptionalString(currentTask?.description) ?? null;
   const currentTaskStatus = localizeTaskText(currentTask?.effectiveStatus ?? currentTask?.status ?? null);
@@ -885,8 +885,8 @@ async function refreshSessionOptions(state: AppViewState) {
 function renderChatModelSelect(state: AppViewState) {
   let { currentOverride, defaultLabel, options } = resolveChatModelSelectState(state);
   defaultLabel = defaultLabel
-    .replace("__I18N_DEFAULT_MODEL__", String(t("chatUi.defaultModel")))
-    .replace("__I18N_DEFAULT__", String(t("chatUi.default")));
+    .replace("__I18N_DEFAULT_MODEL__", t("chatUi.defaultModel"))
+    .replace("__I18N_DEFAULT__", t("chatUi.default"));
   const busy =
     state.chatLoading || state.chatSending || Boolean(state.chatRunId) || state.chatStream !== null;
   const disabled =
@@ -983,7 +983,7 @@ function buildThinkingOptions(
 }
 
 function localizeThinkingLevelLabel(value: string): string {
-  return String(t(`chatUi.thinkingLevels.${value}`));
+  return t(`chatUi.thinkingLevels.${value}`);
 }
 
 function resolveChatThinkingSelectState(state: AppViewState): ChatThinkingSelectState {
@@ -1004,7 +1004,7 @@ function resolveChatThinkingSelectState(state: AppViewState): ChatThinkingSelect
       : "off";
   return {
     currentOverride,
-    defaultLabel: String(t("chatUi.defaultWithValue", { value: localizeThinkingLevelLabel(defaultLevel) })),
+    defaultLabel: t("chatUi.defaultWithValue", { value: localizeThinkingLevelLabel(defaultLevel) }),
     options: buildThinkingOptions(provider, model, currentOverride).map((entry) => ({
       ...entry,
       label: localizeThinkingLevelLabel(entry.value),

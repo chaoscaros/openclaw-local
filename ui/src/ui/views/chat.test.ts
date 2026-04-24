@@ -37,7 +37,10 @@ function createChatHeaderState(
     models?: ModelCatalogEntry[];
     omitSessionFromList?: boolean;
   } = {},
-): { state: AppViewState; request: ReturnType<typeof vi.fn> } {
+): {
+  state: AppViewState & { requestUpdate?: () => void; sessionsResult: SessionsListResult };
+  request: ReturnType<typeof vi.fn>;
+} {
   let currentModel = overrides.model ?? null;
   let currentModelProvider = overrides.modelProvider ?? (currentModel ? "openai" : null);
   const omitSessionFromList = overrides.omitSessionFromList ?? false;
@@ -145,6 +148,8 @@ function createChatHeaderState(
   } as unknown as AppViewState & {
     client: GatewayBrowserClient;
     settings: AppViewState["settings"];
+    requestUpdate?: () => void;
+    sessionsResult: SessionsListResult;
   };
   return { state, request };
 }

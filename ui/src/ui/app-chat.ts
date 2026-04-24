@@ -40,9 +40,14 @@ export type ChatHost = {
   chatAvatarUrl: string | null;
   chatSideResult?: ChatSideResult | null;
   chatSideResultTerminalRuns?: Set<string>;
+  chatToolMessages?: unknown[];
+  chatStreamSegments?: Array<{ text: string; ts: number }>;
   chatModelOverrides: Record<string, ChatModelOverride | null>;
   chatModelsLoading: boolean;
   chatModelCatalog: ModelCatalogEntry[];
+  toolStreamById?: Map<string, unknown>;
+  toolStreamOrder?: string[];
+  toolStreamSyncTimer?: number | null;
   sessionsResult?: SessionsListResult | null;
   tasksBusy?: boolean;
   updateComplete?: Promise<unknown>;

@@ -182,7 +182,7 @@ describe("renderTasks", () => {
     const detailButtons = runtimeActionButtons.filter((button) => button.textContent?.includes('查看详情'));
     const nonDetailButtons = runtimeActionButtons.filter((button) => !button.textContent?.includes('查看详情'));
     expect(detailButtons.length).toBeGreaterThanOrEqual(1);
-    expect(detailButtons.every((button) => button.disabled === false)).toBe(true);
+    expect(detailButtons.every((button) => ! button.disabled)).toBe(true);
     expect(nonDetailButtons.every((button) => button.disabled)).toBe(true);
     detailButtons[detailButtons.length - 1]?.click();
     await Promise.resolve();
@@ -198,7 +198,7 @@ describe("renderTasks", () => {
       .find((node) => (node.textContent ?? '').includes('Runtime task 详情')) as HTMLElement | undefined;
     const terminalRecordButton = Array.from(runtimeDetailPanel?.querySelectorAll('button') ?? []).find(
       (button) => button.textContent?.includes('查看完整终端摘要') && button.parentElement?.textContent?.includes('terminalSummary'),
-    ) as HTMLButtonElement | undefined;
+    );
     expect(terminalRecordButton).toBeTruthy();
     terminalRecordButton?.click();
     await Promise.resolve();
@@ -214,7 +214,7 @@ describe("renderTasks", () => {
       .find((node) => (node.textContent ?? '').includes('资源上下文')) as HTMLElement | undefined;
     const resourceButton = Array.from(resourceBlock?.querySelectorAll('button') ?? []).find(
       (button) => button.textContent?.includes('查看完整资源上下文'),
-    ) as HTMLButtonElement | undefined;
+    );
     expect(resourceButton).toBeTruthy();
     resourceButton?.click();
     await Promise.resolve();
@@ -229,7 +229,7 @@ describe("renderTasks", () => {
       .find((node) => (node.textContent ?? '').includes('技术细节')) as HTMLElement | undefined;
     const detailsButton = Array.from(technicalDetailsBlock?.querySelectorAll('button') ?? []).find(
       (button) => button.textContent?.includes('查看完整技术细节') || button.textContent?.includes('查看技术细节'),
-    ) as HTMLButtonElement | undefined;
+    );
     expect(detailsButton).toBeTruthy();
     detailsButton?.click();
     await Promise.resolve();
@@ -240,7 +240,7 @@ describe("renderTasks", () => {
     expect(technicalDrawerText).toContain("参数数：5");
     expect(technicalDrawerText).toContain("/Admin/inventory/storehouse-bind");
     expect(technicalDrawerText).toContain("per_page");
-    const timelineButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('查看完整时间线')) as HTMLButtonElement | undefined;
+    const timelineButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('查看完整时间线'));
     timelineButton?.click();
     await Promise.resolve();
     const timelineDrawerText = container.textContent ?? "";

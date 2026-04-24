@@ -93,8 +93,8 @@ function normalizeTaskRecord(raw: TaskModeRecord): TaskModeRecord {
   const flowId = typeof raw.flowId === "string" && raw.flowId.trim() ? raw.flowId.trim() : undefined;
   const flow = flowId ? getTaskFlowById(flowId) : undefined;
   return {
-    id: String(raw.id || "").trim(),
-    title: String(raw.title || "").trim(),
+    id: raw.id.trim(),
+    title: raw.title.trim(),
     ...(typeof raw.description === "string" && raw.description.trim()
       ? { description: raw.description.trim() }
       : {}),
@@ -133,7 +133,7 @@ function normalizeTaskRecord(raw: TaskModeRecord): TaskModeRecord {
               return { at, label, detail };
             })
             .filter((entry): entry is { at: number; label: string; detail: string } => Boolean(entry))
-            .sort((left, right) => right.at - left.at)
+            .toSorted((left, right) => right.at - left.at)
             .slice(0, 12),
         }
       : {}),
@@ -208,7 +208,7 @@ function normalizeTaskRecord(raw: TaskModeRecord): TaskModeRecord {
       raw.status === "ended"
         ? raw.status
         : "active",
-    archived: raw.archived === true,
+    archived: raw.archived,
     createdAt: Number.isFinite(raw.createdAt)
       ? raw.createdAt
       : typeof flow?.createdAt === 'number'
@@ -233,7 +233,7 @@ async function loadTaskModeStore(): Promise<TaskModeStore> {
   return {
     tasks: Array.isArray(parsed?.tasks)
       ? parsed.tasks
-          .filter((task): task is TaskModeRecord => Boolean(task && typeof task === "object"))
+          .filter((task): task is TaskModeRecord => task !== null && typeof task === "object")
           .map((task) => normalizeTaskRecord(task))
       : [],
   };
@@ -300,11 +300,11 @@ async function saveTaskModeStore(store: TaskModeStore): Promise<void> {
 }
 
 function sortActiveTasks(tasks: TaskModeRecord[]): TaskModeRecord[] {
-  return [...tasks].sort((left, right) => right.updatedAt - left.updatedAt || left.createdAt - right.createdAt);
+  return [...tasks].toSorted((left, right) => right.updatedAt - left.updatedAt || left.createdAt - right.createdAt);
 }
 
 function sortArchivedTasks(tasks: TaskModeRecord[]): TaskModeRecord[] {
-  return [...tasks].sort(
+  return [...tasks].toSorted(
     (left, right) =>
       (right.archivedAt ?? right.updatedAt) - (left.archivedAt ?? left.updatedAt) ||
       left.createdAt - right.createdAt,
@@ -374,7 +374,7 @@ function resolveTaskModeRuntimeTasks(task: TaskModeRecord): TaskRecord[] {
   if (task.lastSessionKey) {
     addTasks(listTasksForRelatedSessionKey(task.lastSessionKey));
   }
-  return [...matches.values()].sort((left, right) => {
+  return [...matches.values()].toSorted((left, right) => {
     const leftAt = left.lastEventAt ?? left.endedAt ?? left.startedAt ?? left.createdAt;
     const rightAt = right.lastEventAt ?? right.endedAt ?? right.startedAt ?? right.createdAt;
     return rightAt - leftAt;
@@ -538,7 +538,7 @@ function collectLinkedTaskSessions(task: TaskModeRecord, preferredSessionKeys?: 
       }
     }
   }
-  return [...matches.values()].sort((left, right) => (left.entry.updatedAt ?? 0) - (right.entry.updatedAt ?? 0));
+  return [...matches.values()].toSorted((left, right) => (left.entry.updatedAt ?? 0) - (right.entry.updatedAt ?? 0));
 }
 
 function buildTaskProgressSyncSnapshot(messages: unknown[], task: TaskModeRecord) {
@@ -592,7 +592,7 @@ function buildTaskProgressSyncSnapshot(messages: unknown[], task: TaskModeRecord
         array.findIndex((item) => item.at === entry.at && item.label === entry.label && item.detail === entry.detail) ===
         index,
     )
-    .sort((left, right) => right.at - left.at)
+    .toSorted((left, right) => right.at - left.at)
     .slice(0, 12);
   return {
     progressSummary,
@@ -778,7 +778,7 @@ export async function syncTaskModeTaskProgress(params: {
     if (index < 0) {
       return { task: null, synced: false };
     }
-    const current = store.tasks[index]!;
+    const current = store.tasks[index];
     const targetSessionKey = params.sessionKey?.trim() || current.lastSessionKey?.trim();
     if (!targetSessionKey) {
       return { task: current, synced: false };
@@ -856,7 +856,7 @@ export async function updateTaskModeTask(params: {
     if (index < 0) {
       return null;
     }
-    const current = store.tasks[index]!;
+    const current = store.tasks[index];
     const now = Date.now();
     const next: TaskModeRecord = {
       ...current,
@@ -888,7 +888,7 @@ export async function updateTaskModeTask(params: {
     store.tasks[index] = syncTaskModeRuntimeLinks(syncTaskModeToFlow(normalizedNext, params.sessionKey));
     await saveTaskModeStore(store);
     if (store.tasks[index]?.archived || store.tasks[index]?.status === "ended") {
-      await clearSessionTaskBindings(store.tasks[index]!.id);
+      await clearSessionTaskBindings(store.tasks[index].id);
     }
     return store.tasks[index] ?? null;
   });

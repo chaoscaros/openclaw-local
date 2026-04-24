@@ -937,7 +937,7 @@ function renderWelcomeState(props: ChatProps): TemplateResult {
               type="button"
               class="agent-chat__suggestion"
               @click=${() => {
-                const text = String(t(key));
+                const text = t(key);
                 props.onDraftChange(text);
                 props.onSend();
               }}
@@ -1182,9 +1182,9 @@ export function renderChat(props: ChatProps) {
 
   const placeholder = props.connected
     ? hasAttachments
-      ? String(t("chatUi.placeholders.addMessageOrPasteImages"))
-      : String(t("chatUi.placeholders.messageAgent", { agent: props.assistantName || "agent" }))
-    : String(t("chatUi.placeholders.connectToGateway"));
+      ? t("chatUi.placeholders.addMessageOrPasteImages")
+      : t("chatUi.placeholders.messageAgent", { agent: props.assistantName || "agent" })
+    : t("chatUi.placeholders.connectToGateway");
 
   const requestUpdate = props.onRequestUpdate ?? (() => {});
   const getDraft = props.getDraft ?? (() => props.draft);
@@ -1453,15 +1453,15 @@ export function renderChat(props: ChatProps) {
     }
   };
 
-  const handleInput = (e: Event) => {
-    const target = e.target as HTMLTextAreaElement;
+  const handleInput = (event: Event) => {
+    const target = event.target as HTMLTextAreaElement;
     adjustTextareaHeight(target);
     updateSlashMenu(target.value, requestUpdate);
     inputHistory.reset();
     props.onDraftChange(target.value);
   };
 
-  return html`
+  const section = html`
     <section
       class="card chat"
       @drop=${(e: DragEvent) => handleDrop(e, props)}

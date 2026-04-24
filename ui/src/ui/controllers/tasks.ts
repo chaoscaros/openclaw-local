@@ -66,8 +66,8 @@ export type TasksState = SessionsState & {
 
 function mapTask(raw: Record<string, unknown>): TaskItem {
   return {
-    taskId: String(raw.id ?? "").trim(),
-    title: String(raw.title ?? "").trim(),
+    taskId: typeof raw.id === "string" ? raw.id.trim() : "",
+    title: typeof raw.title === "string" ? raw.title.trim() : "",
     ...(typeof raw.description === "string" && raw.description.trim()
       ? { description: raw.description.trim() }
       : {}),
@@ -342,7 +342,7 @@ function applyOptimisticSessionTaskBinding(
       return {
         ...row,
         mode: nextMode,
-        taskId: nextTaskId,
+        ...(nextTaskId ? { taskId: nextTaskId } : {}),
       };
     }),
   };

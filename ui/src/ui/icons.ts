@@ -40,6 +40,19 @@ export const icons = {
       <line x1="10" x2="8" y1="9" y2="9" />
     </svg>
   `,
+  checkSquare: html`
+    <svg viewBox="0 0 24 24">
+      <path d="M9 11l3 3L22 4" />
+      <rect x="2" y="2" width="20" height="20" rx="2" ry="2" />
+    </svg>
+  `,
+  archive: html`
+    <svg viewBox="0 0 24 24">
+      <rect x="3" y="4" width="18" height="4" rx="1" />
+      <path d="M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+      <path d="M10 12h4" />
+    </svg>
+  `,
   zap: html`
     <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
   `,

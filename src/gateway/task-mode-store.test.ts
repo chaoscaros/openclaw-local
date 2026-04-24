@@ -79,7 +79,7 @@ describe("task-mode-store", () => {
     process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
     const created = await createTaskModeTask({ id: "task-compact", title: "Compact title", description: "compact desc" });
     expect(created.flowId).toBeTruthy();
-    const storePath = path.join(process.env.OPENCLAW_STATE_DIR!, 'control-ui', 'task-mode-store.json');
+    const storePath = path.join(process.env.OPENCLAW_STATE_DIR, 'control-ui', 'task-mode-store.json');
     const payload = JSON.parse(fs.readFileSync(storePath, 'utf8'));
     const item = payload['tasks'][0];
     expect(item['flowId']).toBe(created.flowId);
@@ -92,7 +92,7 @@ describe("task-mode-store", () => {
   it("keeps timestamps aligned with flow metadata while retaining persisted fallbacks", async () => {
     process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
     await createTaskModeTask({ id: "task-timestamps", title: "Timestamp task" });
-    const storePath = path.join(process.env.OPENCLAW_STATE_DIR!, 'control-ui', 'task-mode-store.json');
+    const storePath = path.join(process.env.OPENCLAW_STATE_DIR, 'control-ui', 'task-mode-store.json');
     const payload = JSON.parse(fs.readFileSync(storePath, 'utf8'));
     const item = payload['tasks'][0];
     expect(typeof item['createdAt']).toBe('number');
@@ -163,7 +163,7 @@ describe("task-mode-store", () => {
       childSessionKey: "agent:solo:child:runtime-persist",
     });
     await updateTaskModeTask({ id: "task-runtime-persist", description: "persist runtime linkage" });
-    const storePath = path.join(process.env.OPENCLAW_STATE_DIR!, 'control-ui', 'task-mode-store.json');
+    const storePath = path.join(process.env.OPENCLAW_STATE_DIR, 'control-ui', 'task-mode-store.json');
     const payload = JSON.parse(fs.readFileSync(storePath, 'utf8'));
     const item = payload['tasks'].find((entry: { id: string }) => entry.id === 'task-runtime-persist');
     expect(item['linkedRuntimeTaskIds']).toEqual([runtimeTask.taskId]);

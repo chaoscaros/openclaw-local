@@ -443,7 +443,7 @@ function normalizeCommandEntry(
     aliases: aliases.map((alias) => `/${alias}`),
     description:
       (COMMAND_DESCRIPTION_I18N_KEYS[primaryName]
-        ? t(COMMAND_DESCRIPTION_I18N_KEYS[primaryName] as string)
+        ? t(COMMAND_DESCRIPTION_I18N_KEYS[primaryName])
         : undefined) ?? normalizedDescription,
     ...(args.length > 0 ? { args } : {}),
     category: typeof entry.category === "string" ? entry.category : undefined,

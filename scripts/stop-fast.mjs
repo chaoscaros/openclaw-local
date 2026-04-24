@@ -3,7 +3,7 @@
 import { execFileSync } from "node:child_process";
 import process from "node:process";
 
-const TARGET_PORT = String(process.env.OPENCLAW_GATEWAY_PORT || "18789");
+const TARGET_PORT = process.env.OPENCLAW_GATEWAY_PORT || "18789";
 const TARGET_MARKERS = [
   "openclaw-gateway",
   "scripts/run-node.mjs gateway",
@@ -118,7 +118,7 @@ const main = async () => {
     return;
   }
 
-  const sorted = [...targeted].sort((a, b) => b.pid - a.pid);
+  const sorted = [...targeted].toSorted((a, b) => b.pid - a.pid);
   const terminated = [];
   for (const proc of sorted) {
     if (sendSignal(proc.pid, "SIGTERM")) {
@@ -133,7 +133,7 @@ const main = async () => {
   if (remainingListeners.length > 0) {
     const refreshed = readProcessTable();
     const stubborn = uniqueByPid(remainingListeners.flatMap((pid) => collectAncestorChain(pid, refreshed)));
-    for (const proc of stubborn.sort((a, b) => b.pid - a.pid)) {
+    for (const proc of stubborn.toSorted((a, b) => b.pid - a.pid)) {
       if (isAlive(proc.pid) && sendSignal(proc.pid, "SIGKILL")) {
         forceKilled.push(proc);
       }

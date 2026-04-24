@@ -236,9 +236,14 @@ export type AppViewState = {
     taskId: string,
     patch: { title?: string; description?: string | null; status?: import("./controllers/tasks.ts").TaskStatus },
   ) => Promise<unknown>;
+  syncTaskModeTaskProgress: (
+    taskId: string,
+    opts?: { silent?: boolean; reload?: boolean },
+  ) => Promise<unknown>;
   archiveTaskForSession: (taskId: string) => Promise<void>;
   restoreArchivedTask: (taskId: string) => Promise<void>;
   deleteTaskForSession: (taskId: string) => Promise<void>;
+  requestUpdate?: () => void;
   threadsLoading: boolean;
   threadsResult: SessionsListResult | null;
   threadsError: string | null;

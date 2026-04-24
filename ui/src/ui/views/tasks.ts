@@ -1,4 +1,4 @@
-import { html, nothing } from "lit";
+import { html, nothing, type TemplateResult } from "lit";
 import { t } from "../../i18n/index.ts";
 import { formatRelativeTimestamp } from "../format.ts";
 import type { TaskItem, TaskRuntimeHealth, TaskStatus } from "../controllers/tasks.ts";
@@ -34,6 +34,8 @@ export type TasksViewProps = {
   onSyncProgress?: (taskId: string) => void;
   onEditTask: (task: TaskItem) => void;
 };
+
+type RuntimeTaskSummaryEntry = NonNullable<TaskItem["runtimeTaskSummaries"]>[number];
 
 const ACTIVE_STATUSES: TaskStatus[] = ["active", "paused", "interrupted", "completed", "ended"];
 const TASK_TIMELINE_PREVIEW_LIMIT = 3;
@@ -81,28 +83,28 @@ function localizeTaskText(value: string | null | undefined): string {
     normalized === "completed" ||
     normalized === "ended"
   ) {
-    return String(t(`taskModeUi.status.${normalized}`));
+    return t(`taskModeUi.status.${normalized}`);
   }
   if (normalized === "running") {
-    return String(t("taskModeUi.flowStatus.running"));
+    return t("taskModeUi.flowStatus.running");
   }
   if (normalized === "waiting") {
-    return String(t("taskModeUi.flowStatus.waiting"));
+    return t("taskModeUi.flowStatus.waiting");
   }
   if (normalized === "blocked") {
-    return String(t("taskModeUi.flowStatus.blocked"));
+    return t("taskModeUi.flowStatus.blocked");
   }
   if (normalized === "queued") {
-    return String(t("taskModeUi.flowStatus.queued"));
+    return t("taskModeUi.flowStatus.queued");
   }
   if (normalized === "succeeded") {
-    return String(t("taskModeUi.flowStatus.succeeded"));
+    return t("taskModeUi.flowStatus.succeeded");
   }
   if (normalized === "failed") {
-    return String(t("taskModeUi.flowStatus.failed"));
+    return t("taskModeUi.flowStatus.failed");
   }
   if (normalized === "cancelled") {
-    return String(t("taskModeUi.flowStatus.cancelled"));
+    return t("taskModeUi.flowStatus.cancelled");
   }
   return value;
 }
@@ -127,7 +129,7 @@ function runtimeHealthLabel(value: TaskRuntimeHealth | null | undefined): string
   return "";
 }
 
-function runtimeLabel(value: TaskItem["runtimeTaskSummaries"][number]["runtime"] | null | undefined): string {
+function runtimeLabel(value: RuntimeTaskSummaryEntry["runtime"] | null | undefined): string {
   if (value === "subagent") {
     return "subagent";
   }
@@ -218,7 +220,7 @@ function extractTaskHighlights(task: TaskItem | null | undefined) {
       clauses[0] ||
       cleanTitle ||
       statusLabel(task?.effectiveStatus ?? task?.status) ||
-      String(t("taskModeUi.empty")),
+      t("taskModeUi.empty"),
     78,
   );
   const nextStep = clampText(
@@ -226,23 +228,23 @@ function extractTaskHighlights(task: TaskItem | null | undefined) {
       clauses[1] ||
       cleanFlowStep ||
       (task?.effectiveStatus === "completed"
-        ? String(t("taskWorkspace.nextState.completed"))
-        : String(t("taskWorkspace.nextState.continue"))),
+        ? t("taskWorkspace.nextState.completed")
+        : t("taskWorkspace.nextState.continue")),
     78,
   );
   const fallbackTitle = humanizeTaskTitle(
     cleanTitle || title || cleanFlowStep || clauses[0] || normalizeTaskBody(task?.progressSummary) || normalizeTaskBody(task?.nextStep),
   );
   return {
-    title: fallbackTitle || String(t("taskModeUi.empty")),
+    title: fallbackTitle || t("taskModeUi.empty"),
     summary,
     nextStep,
     completedSummary: clampText(
-      normalizeTaskBody(task?.completedSummary) || clauses.slice(0, 2).join(" · ") || String(t("taskWorkspace.noneYet")),
+      normalizeTaskBody(task?.completedSummary) || clauses.slice(0, 2).join(" · ") || t("taskWorkspace.noneYet"),
       96,
     ),
-    fullDescription: clampText(cleanDescription || cleanTitle || String(t("taskModeUi.empty")), 160),
-    rawDescription: description || title || String(t("taskModeUi.empty")),
+    fullDescription: clampText(cleanDescription || cleanTitle || t("taskModeUi.empty"), 160),
+    rawDescription: description || title || t("taskModeUi.empty"),
   };
 }
 
@@ -361,7 +363,7 @@ function buildRuntimeTrajectory(task: TaskItem, entry: NonNullable<TaskItem["run
     },
   ]
     .filter((item) => item.detail)
-    .sort((left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0));
+    .toSorted((left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0));
 }
 
 function renderExpandableRuntimeText(
@@ -397,7 +399,7 @@ function renderExpandableRuntimeText(
 function renderRuntimeTaskLinks(task: TaskItem | null | undefined, props: TasksViewProps) {
   const linked = Array.from(new Set(task?.linkedRuntimeTaskIds ?? [])).filter(Boolean);
   const latest = task?.latestRuntimeTaskId?.trim() ?? "";
-  const summaries = [...(task?.runtimeTaskSummaries ?? [])].sort((left, right) => {
+  const summaries = [...(task?.runtimeTaskSummaries ?? [])].toSorted((left, right) => {
     const leftMeta = runtimeSummaryPriority(left, latest);
     const rightMeta = runtimeSummaryPriority(right, latest);
     if (leftMeta.isLatest !== rightMeta.isLatest) {
@@ -476,7 +478,7 @@ function renderRuntimeTaskLinks(task: TaskItem | null | undefined, props: TasksV
             <div><strong>startedAt：</strong>${selectedRuntimeTask.startedAt ? formatRelativeTimestamp(selectedRuntimeTask.startedAt) : "未记录"}</div>
             <div><strong>endedAt：</strong>${selectedRuntimeTask.endedAt ? formatRelativeTimestamp(selectedRuntimeTask.endedAt) : "未记录"}</div>
             <div><strong>lastEventAt：</strong>${selectedRuntimeTask.lastEventAt ? formatRelativeTimestamp(selectedRuntimeTask.lastEventAt) : "未记录"}</div>
-            <div><strong>runtimeHealth：</strong>${task.runtimeHealth ? runtimeHealthLabel(task.runtimeHealth) : "未记录"}</div>
+            <div><strong>runtimeHealth：</strong>${task?.runtimeHealth ? runtimeHealthLabel(task.runtimeHealth) : "未记录"}</div>
             <div><strong>是否 latest：</strong>${selectedRuntimeTask.taskId === latest ? "是" : "否"}</div>
             <div><strong>是否异常：</strong>${runtimeSummaryPriority(selectedRuntimeTask, latest).isException ? "是" : "否"}</div>
             ${renderExpandableRuntimeText(selectedRuntimeTask, "progressSummary", "progressSummary", props)}
@@ -531,34 +533,34 @@ function buildTaskTimeline(task: TaskItem | null | undefined) {
       timestamp: entry.at,
     })),
     {
-      label: String(t("taskWorkspace.timeline.created")),
-      detail: String(t("taskWorkspace.timeline.createdDetail", { title: task.title })),
+      label: t("taskWorkspace.timeline.created"),
+      detail: t("taskWorkspace.timeline.createdDetail", { title: task.title }),
       timestamp: task.createdAt ?? null,
     },
     ...(task.flowCreatedAt && task.flowCreatedAt !== task.createdAt
       ? [
           {
-            label: String(t("taskWorkspace.timeline.executionStarted")),
+            label: t("taskWorkspace.timeline.executionStarted"),
             detail: progressLabel,
             timestamp: task.flowCreatedAt,
           },
         ]
       : []),
     {
-      label: String(t("taskWorkspace.timeline.statusChanged", { status: statusLabel(effectiveStatus) })),
+      label: t("taskWorkspace.timeline.statusChanged", { status: statusLabel(effectiveStatus) }),
       detail: progressLabel,
       timestamp: task.flowUpdatedAt ?? task.updatedAt ?? null,
     },
     ...(task.archivedAt
       ? [
           {
-            label: String(t("taskModeUi.archivedAt")),
+            label: t("taskModeUi.archivedAt"),
             detail: statusLabel(effectiveStatus),
             timestamp: task.archivedAt,
           },
         ]
       : []),
-  ].sort((left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0));
+  ].toSorted((left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0));
 }
 
 function resolveFullRecordDrawer(task: TaskItem | null | undefined, latestRuntimeTaskId: string | null) {
@@ -603,8 +605,8 @@ function renderFullRecordDrawer(task: TaskItem | null, props: TasksViewProps) {
   }
   let eyebrow = "完整记录";
   let title = task.title;
-  let body = nothing;
-  let meta = nothing;
+  let body: TemplateResult | typeof nothing = nothing;
+  let meta: TemplateResult | typeof nothing = nothing;
   if (state.kind === "timeline") {
     const timeline = buildTaskTimeline(task);
     eyebrow = "任务时间线";
@@ -775,7 +777,7 @@ function scoreTaskForHub(task: TaskItem, currentTaskId: string | null) {
 }
 
 function sortTasks(items: TaskItem[], currentTaskId: string | null | undefined) {
-  return [...items].sort((left, right) => {
+  return [...items].toSorted((left, right) => {
     const scoreDelta = scoreTaskForHub(right, currentTaskId ?? null) - scoreTaskForHub(left, currentTaskId ?? null);
     if (scoreDelta !== 0) {
       return scoreDelta;
@@ -822,7 +824,8 @@ function taskSectionItems(items: TaskItem[], currentTaskId: string | null) {
 function selectedTask(items: TaskItem[], currentTaskId: string | null) {
   const selectedId = hubUiState.selectedTaskId;
   const selected = (selectedId ? items.find((task) => task.taskId === selectedId) : null) ?? null;
-  return selected ?? (currentTaskId ? items.find((task) => task.taskId === currentTaskId) ?? null : null) ?? items[0] ?? null;
+  const current = currentTaskId ? items.find((task) => task.taskId === currentTaskId) ?? null : null;
+  return selected ?? current ?? items[0] ?? null;
 }
 
 function requestTaskViewUpdate(props: TasksViewProps) {
@@ -1099,7 +1102,7 @@ function renderCreateDrawer(props: TasksViewProps) {
             <span>标题</span>
             <input
               type="text"
-              placeholder=${String(t("taskModeUi.placeholders.title"))}
+              placeholder=${t("taskModeUi.placeholders.title")}
               .value=${props.createTitle ?? ""}
               @input=${(event: Event) => props.onCreateTitleChange?.((event.target as HTMLInputElement).value)}
             />
@@ -1107,7 +1110,7 @@ function renderCreateDrawer(props: TasksViewProps) {
           <label class="field">
             <span>说明</span>
             <textarea
-              placeholder=${String(t("taskModeUi.placeholders.description"))}
+              placeholder=${t("taskModeUi.placeholders.description")}
               rows="6"
               .value=${props.createDescription ?? ""}
               @input=${(event: Event) => props.onCreateDescriptionChange?.((event.target as HTMLTextAreaElement).value)}
@@ -1146,7 +1149,7 @@ function renderEditDrawer(props: TasksViewProps) {
             <span>标题</span>
             <input
               type="text"
-              placeholder=${String(t("taskModeUi.placeholders.title"))}
+              placeholder=${t("taskModeUi.placeholders.title")}
               .value=${props.editTitle ?? ""}
               @input=${(event: Event) => props.onEditTitleChange?.((event.target as HTMLInputElement).value)}
             />
@@ -1154,7 +1157,7 @@ function renderEditDrawer(props: TasksViewProps) {
           <label class="field">
             <span>说明</span>
             <textarea
-              placeholder=${String(t("taskModeUi.placeholders.description"))}
+              placeholder=${t("taskModeUi.placeholders.description")}
               rows="6"
               .value=${props.editDescription ?? ""}
               @input=${(event: Event) => props.onEditDescriptionChange?.((event.target as HTMLTextAreaElement).value)}

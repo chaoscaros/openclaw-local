@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
-import { handleSendChat } from "./app-chat.ts";
+import { describe, expect, it } from "vitest";
+import { handleSendChat, type ChatHost } from "./app-chat.ts";
+import type { SessionsListResult } from "./types.ts";
 
-function buildHost() {
+function buildHost(): ChatHost & { sessionsResult: SessionsListResult } {
   return {
     client: {} as never,
     chatMessages: [],

@@ -96,7 +96,7 @@ describe("renderSessions task mode columns", () => {
     await Promise.resolve();
     const selects = Array.from(container.querySelectorAll("select"));
     const modeSelect = selects.find((select) =>
-      Array.from((select as HTMLSelectElement).options).some((option) => option.value === "normal"),
+      Array.from((select).options).some((option) => option.value === "normal"),
     ) as HTMLSelectElement;
     modeSelect.value = "normal";
     modeSelect.dispatchEvent(new Event("change", { bubbles: true }));
