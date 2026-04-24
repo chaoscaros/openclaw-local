@@ -93,6 +93,7 @@ describe("runManagedLobsterFlow", () => {
         prompt: "Approve this?",
         items: [{ id: "item-1", createdAt, count: 2n, skip: undefined }],
         resumeToken: "resume-1",
+        approvalId: "approval-1",
       },
     });
 
@@ -108,6 +109,7 @@ describe("runManagedLobsterFlow", () => {
         prompt: "Approve this?",
         items: [{ id: "item-1", createdAt: createdAt.toISOString(), count: "2" }],
         resumeToken: "resume-1",
+        approvalId: "approval-1",
       },
     });
   });
@@ -206,6 +208,7 @@ describe("resumeManagedLobsterFlow", () => {
         prompt: "Approve this too?",
         items: [{ id: "item-2" }],
         resumeToken: "resume-2",
+        approvalId: "approval-2",
       },
     });
 
@@ -221,6 +224,7 @@ describe("resumeManagedLobsterFlow", () => {
         prompt: "Approve this too?",
         items: [{ id: "item-2" }],
         resumeToken: "resume-2",
+        approvalId: "approval-2",
       },
     });
   });

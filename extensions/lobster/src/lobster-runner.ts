@@ -15,6 +15,7 @@ export type LobsterEnvelope =
         prompt: string;
         items: unknown[];
         resumeToken?: string;
+        approvalId?: string;
       };
     }
   | {
@@ -27,6 +28,7 @@ export type LobsterRunnerParams = {
   pipeline?: string;
   argsJson?: string;
   token?: string;
+  approvalId?: string;
   approve?: boolean;
   cwd: string;
   timeoutMs: number;
@@ -60,6 +62,7 @@ type EmbeddedToolEnvelope = {
     items: unknown[];
     preview?: string;
     resumeToken?: string;
+    approvalId?: string;
   } | null;
   requiresInput?: {
     prompt: string;
@@ -155,6 +158,9 @@ function normalizeEnvelope(envelope: EmbeddedToolEnvelope): LobsterEnvelope {
             items: envelope.requiresApproval.items,
             ...(envelope.requiresApproval.resumeToken
               ? { resumeToken: envelope.requiresApproval.resumeToken }
+              : {}),
+            ...(envelope.requiresApproval.approvalId
+              ? { approvalId: envelope.requiresApproval.approvalId }
               : {}),
           }
         : null,
@@ -296,8 +302,9 @@ export function createEmbeddedLobsterRunner(options?: {
         }
 
         const token = params.token?.trim() ?? "";
-        if (!token) {
-          throw new Error("token required");
+        const approvalId = params.approvalId?.trim() ?? "";
+        if (!token && !approvalId) {
+          throw new Error("token or approvalId required");
         }
         if (typeof params.approve !== "boolean") {
           throw new Error("approve required");
@@ -306,7 +313,8 @@ export function createEmbeddedLobsterRunner(options?: {
         return throwOnErrorEnvelope(
           normalizeEnvelope(
             await runtime.resumeToolRequest({
-              token,
+              ...(token ? { token } : {}),
+              ...(approvalId ? { approvalId } : {}),
               approved: params.approve,
               ctx,
             }),

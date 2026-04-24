@@ -227,7 +227,40 @@ describe("lobster plugin tool", () => {
         flowExpectedRevision: 1,
         approve: true,
       }),
-    ).rejects.toThrow(/token required when using managed TaskFlow resume mode/);
+    ).rejects.toThrow(/token or approvalId required when using managed TaskFlow resume mode/);
+  });
+
+  it("accepts approvalId for managed TaskFlow resume mode", async () => {
+    const taskFlow = createFakeTaskFlow();
+    const runner = {
+      run: vi.fn().mockResolvedValue({
+        ok: true,
+        status: "ok",
+        output: [],
+        requiresApproval: null,
+      }),
+    };
+    const tool = createLobsterTool(fakeApi(), {
+      runner,
+      taskFlow,
+    });
+
+    const res = await tool.execute("call-approval-id-resume", {
+      action: "resume",
+      approvalId: "approval-1",
+      flowId: "flow-1",
+      flowExpectedRevision: 1,
+      approve: true,
+    });
+
+    expect(runner.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "resume",
+        approvalId: "approval-1",
+        approve: true,
+      }),
+    );
+    expect(res.details).toMatchObject({ ok: true });
   });
 
   it("rejects managed TaskFlow resume mode without approve", async () => {

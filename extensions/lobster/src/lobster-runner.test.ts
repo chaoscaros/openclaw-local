@@ -294,7 +294,7 @@ describe("createEmbeddedLobsterRunner", () => {
     ).rejects.toThrow(/pipeline required/);
   });
 
-  it("requires token and approve for resume", async () => {
+  it("requires token or approvalId and approve for resume", async () => {
     const runner = createEmbeddedLobsterRunner({
       loadRuntime: vi.fn().mockResolvedValue({
         runToolRequest: vi.fn(),
@@ -310,7 +310,7 @@ describe("createEmbeddedLobsterRunner", () => {
         timeoutMs: 2000,
         maxStdoutBytes: 4096,
       }),
-    ).rejects.toThrow(/token required/);
+    ).rejects.toThrow(/token or approvalId required/);
 
     await expect(
       runner.run({
