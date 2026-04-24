@@ -324,4 +324,95 @@ describe("describeImageWithModel", () => {
     );
     expect(setRuntimeApiKeyMock).toHaveBeenCalledWith("google", "oauth-test");
   });
+
+  it("retries reasoning-only image responses with reasoning disabled", async () => {
+    discoverModelsMock.mockReturnValue({
+      find: vi.fn(() => ({
+        provider: "openai",
+        id: "gpt-5.4-mini",
+        api: "openai-responses",
+        input: ["text", "image"],
+        baseUrl: "https://api.openai.com/v1",
+      })),
+    });
+    completeMock
+      .mockResolvedValueOnce({
+        role: "assistant",
+        api: "openai-responses",
+        provider: "openai",
+        model: "gpt-5.4-mini",
+        stopReason: "stop",
+        timestamp: Date.now(),
+        content: [{ type: "reasoning", text: "internal" }],
+      })
+      .mockImplementationOnce(async (_model, _context, options) => {
+        options?.onPayload?.({
+          role: "assistant",
+          api: "openai-responses",
+          provider: "openai",
+          model: "gpt-5.4-mini",
+          stopReason: "stop",
+          timestamp: Date.now(),
+          content: [
+            {
+              type: "thinking",
+              thinking: "internal",
+              thinkingSignature: JSON.stringify({ id: "rs_123", type: "reasoning" }),
+            },
+          ],
+          reasoning: { effort: "medium" },
+          include: ["reasoning.encrypted_content", "other"],
+        });
+        return {
+          role: "assistant",
+          api: "openai-responses",
+          provider: "openai",
+          model: "gpt-5.4-mini",
+          stopReason: "stop",
+          timestamp: Date.now(),
+          content: [{ type: "text", text: "image ok after retry" }],
+        };
+      });
+
+    const result = await describeImageWithModel({
+      cfg: {},
+      agentDir: "/tmp/openclaw-agent",
+      provider: "openai",
+      model: "gpt-5.4-mini",
+      buffer: Buffer.from("png-bytes"),
+      fileName: "image.png",
+      mime: "image/png",
+      prompt: "Describe the image.",
+      timeoutMs: 1000,
+    });
+
+    expect(result).toEqual({
+      text: "image ok after retry",
+      model: "gpt-5.4-mini",
+    });
+    expect(completeMock).toHaveBeenCalledTimes(2);
+    const retryOptions = completeMock.mock.calls[1]?.[2];
+    expect(retryOptions?.onPayload).toBeTypeOf("function");
+    const patched = retryOptions?.onPayload?.({
+      role: "assistant",
+      api: "openai-responses",
+      provider: "openai",
+      model: "gpt-5.4-mini",
+      stopReason: "stop",
+      timestamp: Date.now(),
+      content: [
+        {
+          type: "thinking",
+          thinking: "internal",
+          thinkingSignature: JSON.stringify({ id: "rs_123", type: "reasoning" }),
+        },
+      ],
+      reasoning: { effort: "medium" },
+      include: ["reasoning.encrypted_content", "other"],
+    });
+    expect(patched).toMatchObject({
+      reasoning: { effort: "none" },
+      include: ["other"],
+    });
+  });
 });
