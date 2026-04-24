@@ -132,7 +132,6 @@ export async function persistSessionUsageUpdate(params: {
             providerUsed: params.providerUsed ?? entry.modelProvider,
             modelUsed: params.modelUsed ?? entry.model,
           });
-          const existingEstimatedCostUsd = resolveNonNegativeNumber(entry.estimatedCostUsd) ?? 0;
           const patch: Partial<SessionEntry> = {
             modelProvider: params.providerUsed ?? entry.modelProvider,
             model: params.modelUsed ?? entry.model,
@@ -150,7 +149,7 @@ export async function persistSessionUsageUpdate(params: {
             patch.cacheWrite = cacheUsage?.cacheWrite ?? 0;
           }
           if (runEstimatedCostUsd !== undefined) {
-            patch.estimatedCostUsd = existingEstimatedCostUsd + runEstimatedCostUsd;
+            patch.estimatedCostUsd = runEstimatedCostUsd;
           } else if (entry.estimatedCostUsd !== undefined) {
             patch.estimatedCostUsd = entry.estimatedCostUsd;
           }

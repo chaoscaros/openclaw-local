@@ -2273,7 +2273,7 @@ describe("persistSessionUsageUpdate", () => {
     expect(stored[sessionKey].totalTokensFresh).toBe(true);
   });
 
-  it("accumulates estimatedCostUsd across persisted usage updates", async () => {
+  it("snapshots estimatedCostUsd across persisted usage updates", async () => {
     const storePath = await createStorePath("openclaw-usage-cost-");
     const sessionKey = "main";
     await seedSessionStore({
@@ -2317,7 +2317,7 @@ describe("persistSessionUsageUpdate", () => {
     });
 
     const stored = JSON.parse(await fs.readFile(storePath, "utf-8"));
-    expect(stored[sessionKey].estimatedCostUsd).toBeCloseTo(0.009225, 8);
+    expect(stored[sessionKey].estimatedCostUsd).toBeCloseTo(0.007725, 8);
   });
 
   it("persists zero estimatedCostUsd for free priced models", async () => {

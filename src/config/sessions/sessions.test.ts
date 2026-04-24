@@ -15,6 +15,7 @@ import {
 } from "./paths.js";
 import { evaluateSessionFreshness, resolveSessionResetPolicy } from "./reset.js";
 import { resolveAndPersistSessionFile } from "./session-file.js";
+import { resolveMaintenanceConfigFromInput } from "./store-maintenance.js";
 import { clearSessionStoreCacheForTest, loadSessionStore, updateSessionStore } from "./store.js";
 import { useTempSessionsFixture } from "./test-helpers.js";
 import { mergeSessionEntry, type SessionEntry } from "./types.js";
@@ -144,6 +145,12 @@ describe("resolveSessionResetPolicy", () => {
   });
 });
 
+describe("session maintenance defaults", () => {
+  it("defaults maintenance mode to enforce", () => {
+    expect(resolveMaintenanceConfigFromInput().mode).toBe("enforce");
+  });
+});
+
 describe("session store lock (Promise chain mutex)", () => {
   const lockFixtureRootTracker = createSuiteTempRootTracker({ prefix: "openclaw-lock-test-" });
   let lockTmpDirs: string[] = [];
@@ -175,8 +182,9 @@ describe("session store lock (Promise chain mutex)", () => {
 
   it("serializes concurrent updateSessionStore calls without data loss", async () => {
     const key = "agent:main:test";
+    const updatedAt = Date.now();
     const { storePath } = await makeTmpStore({
-      [key]: { sessionId: "s1", updatedAt: 100, counter: 0 },
+      [key]: { sessionId: "s1", updatedAt, counter: 0 },
     });
 
     const N = 4;
@@ -213,10 +221,27 @@ describe("session store lock (Promise chain mutex)", () => {
     writeSpy.mockRestore();
   });
 
+  it("applies load-time pruning when the store is oversized", async () => {
+    const now = Date.now();
+    const staleUpdatedAt = now - 31 * 24 * 60 * 60 * 1000;
+    const oversizedStore = Object.fromEntries(
+      Array.from({ length: 501 }, (_, index) => [
+        `agent:main:stale:${index}`,
+        { sessionId: `stale-${index}`, updatedAt: staleUpdatedAt },
+      ]),
+    );
+    const { storePath } = await makeTmpStore(oversizedStore);
+
+    const store = loadSessionStore(storePath, { skipCache: true });
+
+    expect(Object.keys(store)).toHaveLength(0);
+  });
+
   it("multiple consecutive errors do not permanently poison the queue", async () => {
     const key = "agent:main:multi-err";
+    const updatedAt = Date.now();
     const { storePath } = await makeTmpStore({
-      [key]: { sessionId: "s1", updatedAt: 100 },
+      [key]: { sessionId: "s1", updatedAt },
     });
 
     const errors = Array.from({ length: 3 }, (_, i) =>
@@ -256,10 +281,11 @@ describe("session store lock (Promise chain mutex)", () => {
 
   it("normalizes orphan modelProvider fields at store write boundary", async () => {
     const key = "agent:main:orphan-provider";
+    const updatedAt = Date.now();
     const { storePath } = await makeTmpStore({
       [key]: {
         sessionId: "sess-orphan",
-        updatedAt: 100,
+        updatedAt,
         modelProvider: "anthropic",
       },
     });
@@ -276,6 +302,7 @@ describe("session store lock (Promise chain mutex)", () => {
 
   it("preserves ACP metadata when replacing a session entry wholesale", async () => {
     const key = "agent:codex:acp:binding:discord:default:feedface";
+    const updatedAt = Date.now();
     const acp = {
       backend: "acpx",
       agent: "codex",
@@ -287,7 +314,7 @@ describe("session store lock (Promise chain mutex)", () => {
     const { storePath } = await makeTmpStore({
       [key]: {
         sessionId: "sess-acp",
-        updatedAt: 100,
+        updatedAt,
         acp,
       },
     });
@@ -295,7 +322,7 @@ describe("session store lock (Promise chain mutex)", () => {
     await updateSessionStore(storePath, (store) => {
       store[key] = {
         sessionId: "sess-acp",
-        updatedAt: 200,
+        updatedAt: Date.now(),
         modelProvider: "openai-codex",
         model: "gpt-5.4",
       };
@@ -309,10 +336,11 @@ describe("session store lock (Promise chain mutex)", () => {
 
   it("allows explicit ACP metadata removal through the ACP session helper", async () => {
     const key = "agent:codex:acp:binding:discord:default:deadbeef";
+    const updatedAt = Date.now();
     const { storePath } = await makeTmpStore({
       [key]: {
         sessionId: "sess-acp-clear",
-        updatedAt: 100,
+        updatedAt,
         acp: {
           backend: "acpx",
           agent: "codex",

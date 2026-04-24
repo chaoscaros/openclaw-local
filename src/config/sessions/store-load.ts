@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { normalizeSessionDeliveryFields } from "../../utils/delivery-context.shared.js";
 import { getFileStatSnapshot } from "../cache-utils.js";
 import {
@@ -13,6 +14,40 @@ import { normalizeSessionRuntimeModelFields, type SessionEntry } from "./types.j
 export type LoadSessionStoreOptions = {
   skipCache?: boolean;
 };
+
+const log = createSubsystemLogger("sessions/store");
+const LOAD_TIME_SESSION_PRUNE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+const LOAD_TIME_SESSION_MAX_ENTRIES = 500;
+
+function pruneLoadTimeStaleEntries(
+  store: Record<string, SessionEntry>,
+  maxAgeMs: number,
+): number {
+  const cutoffMs = Date.now() - maxAgeMs;
+  let pruned = 0;
+  for (const [key, entry] of Object.entries(store)) {
+    if (entry?.updatedAt != null && entry.updatedAt < cutoffMs) {
+      delete store[key];
+      pruned += 1;
+    }
+  }
+  return pruned;
+}
+
+function capLoadTimeEntryCount(store: Record<string, SessionEntry>, maxEntries: number): number {
+  const keys = Object.keys(store);
+  if (keys.length <= maxEntries) {
+    return 0;
+  }
+  const sorted = keys.toSorted(
+    (left, right) => (store[right]?.updatedAt ?? Number.NEGATIVE_INFINITY) - (store[left]?.updatedAt ?? Number.NEGATIVE_INFINITY),
+  );
+  const toDrop = sorted.slice(maxEntries);
+  for (const key of toDrop) {
+    delete store[key];
+  }
+  return toDrop.length;
+}
 
 function isSessionStoreRecord(value: unknown): value is Record<string, SessionEntry> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -118,6 +153,24 @@ export function loadSessionStore(
 
   applySessionStoreMigrations(store);
   normalizeSessionStore(store);
+  if (Object.keys(store).length > LOAD_TIME_SESSION_MAX_ENTRIES) {
+    const beforeCount = Object.keys(store).length;
+    const pruned = pruneLoadTimeStaleEntries(store, LOAD_TIME_SESSION_PRUNE_AFTER_MS);
+    const capped = capLoadTimeEntryCount(store, LOAD_TIME_SESSION_MAX_ENTRIES);
+    const afterCount = Object.keys(store).length;
+    if (pruned > 0 || capped > 0) {
+      serializedFromDisk = undefined;
+      setSerializedSessionStore(storePath, undefined);
+      log.info("applied load-time maintenance to oversized session store", {
+        storePath,
+        before: beforeCount,
+        after: afterCount,
+        pruned,
+        capped,
+        maxEntries: LOAD_TIME_SESSION_MAX_ENTRIES,
+      });
+    }
+  }
 
   if (!opts.skipCache && isSessionStoreCacheEnabled()) {
     writeSessionStoreCache({

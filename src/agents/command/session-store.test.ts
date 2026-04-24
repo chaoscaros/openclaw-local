@@ -80,4 +80,65 @@ describe("updateSessionStoreAfterAgentRun", () => {
     expect(persisted[sessionKey]?.cliSessionIds?.["claude-cli"]).toBe("cli-session-123");
     expect(persisted[sessionKey]?.claudeCliSessionId).toBe("cli-session-123");
   });
+
+  it("snapshots estimatedCostUsd instead of accumulating it", async () => {
+    const cfg = {
+      models: {
+        providers: {
+          openai: {
+            baseUrl: "https://api.openai.com/v1",
+            models: [
+              {
+                id: "gpt-5.4",
+                name: "GPT 5.4",
+                reasoning: true,
+                input: ["text"],
+                cost: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 0.5 },
+                contextWindow: 200_000,
+                maxTokens: 8_192,
+              },
+            ],
+          },
+        },
+      },
+    } as OpenClawConfig;
+    const sessionKey = "agent:main:explicit:test-cost";
+    const sessionId = "test-openclaw-session";
+    const sessionStore: Record<string, SessionEntry> = {
+      [sessionKey]: {
+        sessionId,
+        updatedAt: 1,
+        estimatedCostUsd: 0.0015,
+      },
+    };
+    await fs.writeFile(storePath, JSON.stringify(sessionStore, null, 2));
+
+    const result: EmbeddedPiRunResult = {
+      meta: {
+        durationMs: 1,
+        agentMeta: {
+          sessionId: "embedded-session-1",
+          provider: "openai",
+          model: "gpt-5.4",
+          usage: { input: 2_000, output: 500, cacheRead: 1_000, cacheWrite: 200 },
+        },
+      },
+    };
+
+    await updateSessionStoreAfterAgentRun({
+      cfg,
+      sessionId,
+      sessionKey,
+      storePath,
+      sessionStore,
+      defaultProvider: "openai",
+      defaultModel: "gpt-5.4",
+      result,
+    });
+
+    expect(sessionStore[sessionKey]?.estimatedCostUsd).toBeCloseTo(0.007725, 8);
+
+    const persisted = loadSessionStore(storePath);
+    expect(persisted[sessionKey]?.estimatedCostUsd).toBeCloseTo(0.007725, 8);
+  });
 });

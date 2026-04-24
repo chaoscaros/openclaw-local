@@ -87,13 +87,14 @@ describe("session store key normalization", () => {
   });
 
   it("migrates legacy mixed-case entries to the canonical key on update", async () => {
+    const updatedAt = Date.now();
     await fs.writeFile(
       storePath,
       JSON.stringify(
         {
           [MIXED_CASE_KEY]: {
             sessionId: "legacy-session",
-            updatedAt: 1,
+            updatedAt,
             chatType: "direct",
             channel: "webchat",
           },
@@ -118,13 +119,14 @@ describe("session store key normalization", () => {
   });
 
   it("preserves updatedAt when recording inbound metadata for an existing session", async () => {
+    const updatedAt = Date.now();
     await fs.writeFile(
       storePath,
       JSON.stringify(
         {
           [CANONICAL_KEY]: {
             sessionId: "existing-session",
-            updatedAt: 1111,
+            updatedAt,
             chatType: "direct",
             channel: "webchat",
             origin: {
@@ -150,7 +152,42 @@ describe("session store key normalization", () => {
 
     const store = loadSessionStore(storePath, { skipCache: true });
     expect(store[CANONICAL_KEY]?.sessionId).toBe("existing-session");
-    expect(store[CANONICAL_KEY]?.updatedAt).toBe(1111);
+    expect(store[CANONICAL_KEY]?.updatedAt).toBe(updatedAt);
     expect(store[CANONICAL_KEY]?.origin?.provider).toBe("webchat");
+  });
+
+  it("preserves updatedAt when updateLastRoute changes delivery routing", async () => {
+    const updatedAt = Date.now();
+    await fs.writeFile(
+      storePath,
+      JSON.stringify(
+        {
+          [CANONICAL_KEY]: {
+            sessionId: "existing-session",
+            updatedAt,
+            chatType: "direct",
+            channel: "webchat",
+            lastChannel: "webchat",
+            lastTo: "webchat:user-1",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    clearSessionStoreCacheForTest();
+
+    await updateLastRoute({
+      storePath,
+      sessionKey: CANONICAL_KEY,
+      channel: "webchat",
+      to: "webchat:user-2",
+    });
+
+    const store = loadSessionStore(storePath, { skipCache: true });
+    expect(store[CANONICAL_KEY]?.sessionId).toBe("existing-session");
+    expect(store[CANONICAL_KEY]?.updatedAt).toBe(updatedAt);
+    expect(store[CANONICAL_KEY]?.lastTo).toBe("webchat:user-2");
   });
 });
