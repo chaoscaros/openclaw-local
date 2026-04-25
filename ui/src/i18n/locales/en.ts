@@ -604,6 +604,15 @@ export const en: TranslationMap = {
       reset: "Reset",
       clearGrounded: "Clear Replayed",
       repairCache: "Repair Dream Cache",
+      runNow: "Run now",
+      lastRunPrefix: "Last run:",
+      candidatesSuffix: "candidates",
+      diaryEntriesSuffix: "diary",
+      workspacesSuffix: "workspaces",
+      failedSuffix: "failed",
+      narrativeSkippedSuffix: "diary skipped",
+      manualRunNote:
+        "Manual Run now only performs background consolidation; it does not create a visible session.",
       working: "Working…",
     },
     phase: {

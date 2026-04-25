@@ -20,6 +20,8 @@ import {
   removeGroundedShortTermCandidates,
   previewGroundedRemMarkdown,
   repairDreamingArtifacts,
+  resolveShortTermPromotionDreamingConfig,
+  runShortTermDreamingPromotionNow,
   writeBackfillDiaryEntries,
 } from "./doctor.memory-core-runtime.js";
 import { asRecord, normalizeTrimmedString } from "./record-shared.js";
@@ -31,6 +33,14 @@ const MANAGED_DEEP_SLEEP_CRON_NAME = "Memory Dreaming Promotion";
 const MANAGED_DEEP_SLEEP_CRON_TAG = "[managed-by=memory-core.short-term-promotion]";
 const DEEP_SLEEP_SYSTEM_EVENT_TEXT = "__openclaw_memory_core_short_term_promotion_dream__";
 const DREAM_DIARY_FILE_NAMES = ["DREAMS.md", "dreams.md"] as const;
+const DREAMING_LAST_RUN_RELATIVE_PATH = path.join("memory", ".dreams", "last-run.json");
+
+type DreamingLastRunPayload = NonNullable<DoctorMemoryDreamingPayload["lastRun"]>;
+const DREAMING_RUN_LOGGER = {
+  info: (_message: string) => {},
+  warn: (_message: string) => {},
+  error: (_message: string) => {},
+};
 
 type DoctorMemoryDreamingPhasePayload = {
   enabled: boolean;
@@ -100,6 +110,15 @@ type DoctorMemoryDreamingPayload = {
   shortTermEntries: DoctorMemoryDreamingEntryPayload[];
   signalEntries: DoctorMemoryDreamingEntryPayload[];
   promotedEntries: DoctorMemoryDreamingEntryPayload[];
+  lastRun?: {
+    at: string;
+    workspaces: number;
+    candidates: number;
+    applied: number;
+    failed: number;
+    narrativeWritten: number;
+    narrativeSkipped: number;
+  };
   phases: {
     light: DoctorMemoryLightDreamingPayload;
     deep: DoctorMemoryDeepDreamingPayload;
@@ -132,7 +151,8 @@ export type DoctorMemoryDreamActionPayload = {
     | "reset"
     | "resetGroundedShortTerm"
     | "repairDreamingArtifacts"
-    | "dedupeDreamDiary";
+    | "dedupeDreamDiary"
+    | "run";
   path?: string;
   found?: boolean;
   scannedFiles?: number;
@@ -148,7 +168,57 @@ export type DoctorMemoryDreamActionPayload = {
   warnings?: string[];
   dedupedEntries?: number;
   keptEntries?: number;
+  runSummary?: {
+    at: string;
+    workspaces: number;
+    candidates: number;
+    applied: number;
+    failed: number;
+    narrativeWritten: number;
+    narrativeSkipped: number;
+  };
 };
+
+async function readDreamingLastRun(workspaceDir: string): Promise<DreamingLastRunPayload | undefined> {
+  const filePath = path.join(workspaceDir, DREAMING_LAST_RUN_RELATIVE_PATH);
+  let raw: string;
+  try {
+    raw = await fs.readFile(filePath, "utf-8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+      return undefined;
+    }
+    throw err;
+  }
+  const record = asRecord(JSON.parse(raw));
+  const at = normalizeTrimmedString(record?.at);
+  if (!at) {
+    return undefined;
+  }
+  return {
+    at,
+    workspaces: toNonNegativeInt(record?.workspaces),
+    candidates: toNonNegativeInt(record?.candidates),
+    applied: toNonNegativeInt(record?.applied),
+    failed: toNonNegativeInt(record?.failed),
+    narrativeWritten: toNonNegativeInt(record?.narrativeWritten),
+    narrativeSkipped: toNonNegativeInt(record?.narrativeSkipped),
+  };
+}
+
+async function writeDreamingLastRun(params: {
+  workspaceDir: string;
+  summary: Omit<DreamingLastRunPayload, "at">;
+}): Promise<DreamingLastRunPayload> {
+  const filePath = path.join(params.workspaceDir, DREAMING_LAST_RUN_RELATIVE_PATH);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const payload: DreamingLastRunPayload = {
+    at: new Date().toISOString(),
+    ...params.summary,
+  };
+  await fs.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
+  return payload;
+}
 
 function extractIsoDayFromPath(filePath: string): string | null {
   const match = filePath.replaceAll("\\", "/").match(/(\d{4}-\d{2}-\d{2})\.md$/i);
@@ -845,6 +915,7 @@ export const doctorHandlers: GatewayRequestHandlers = {
         dreaming: {
           ...dreamingConfig,
           ...storeStats,
+          ...(workspaceDir ? { lastRun: await readDreamingLastRun(workspaceDir) } : {}),
           phases: {
             light: {
               ...dreamingConfig.phases.light,
@@ -1002,6 +1073,37 @@ export const doctorHandlers: GatewayRequestHandlers = {
       removedEntries: dedupe.removed,
       dedupedEntries: dedupe.removed,
       keptEntries: dedupe.kept,
+    };
+    respond(true, payload, undefined);
+  },
+  "doctor.memory.run": async ({ respond }) => {
+    const cfg = loadConfig();
+    const agentId = resolveDefaultAgentId(cfg);
+    const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
+    const summary = await runShortTermDreamingPromotionNow({
+      workspaceDir,
+      cfg,
+      config: resolveShortTermPromotionDreamingConfig({
+        pluginConfig: resolveMemoryDreamingPluginConfig(cfg),
+        cfg,
+      }),
+      logger: DREAMING_RUN_LOGGER,
+    });
+    const runSummary = await writeDreamingLastRun({
+      workspaceDir,
+      summary: {
+        workspaces: summary.workspaces,
+        candidates: summary.candidates,
+        applied: summary.applied,
+        failed: summary.failed,
+        narrativeWritten: summary.narrativeWritten,
+        narrativeSkipped: summary.narrativeSkipped,
+      },
+    });
+    const payload: DoctorMemoryDreamActionPayload = {
+      agentId,
+      action: "run",
+      runSummary,
     };
     respond(true, payload, undefined);
   },

@@ -105,6 +105,15 @@ export type DreamingProps = {
   };
   shortTermEntries: DreamingEntry[];
   promotedEntries: DreamingEntry[];
+  latestRun: {
+    at: string;
+    workspaces: number;
+    candidates: number;
+    applied: number;
+    failed: number;
+    narrativeWritten: number;
+    narrativeSkipped: number;
+  } | null;
   dreamingOf: string | null;
   nextCycle: string | null;
   timezone: string | null;
@@ -130,6 +139,7 @@ export type DreamingProps = {
   onRefreshImports: () => void;
   onRefreshMemoryPalace: () => void;
   onOpenConfig: () => void;
+  onRunNow: () => void;
   onOpenWikiPage: (lookup: string) => Promise<{
     title: string;
     path: string;
@@ -370,6 +380,51 @@ function formatPhaseNextRun(nextRunAtMs?: number): string {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+function renderLatestRunSummary(latestRun: NonNullable<DreamingProps["latestRun"]>) {
+  return html`
+    <div class="row wrap items-center gap-2">
+      <span class="dreams__phase-next"
+        >${t("dreaming.scene.lastRunPrefix")} ${latestRun.applied} ${t("dreaming.status.promotedSuffix")} · ${latestRun.candidates} ${t("dreaming.scene.candidatesSuffix")} · ${latestRun.narrativeWritten} ${t("dreaming.scene.diaryEntriesSuffix")} · ${formatCompactDateTime(latestRun.at)}</span
+      >
+    </div>
+    <div class="row wrap items-center gap-2">
+      <span class="dreams__phase-next"
+        >${latestRun.workspaces} ${t("dreaming.scene.workspacesSuffix")} · ${latestRun.failed} ${t("dreaming.scene.failedSuffix")} · ${latestRun.narrativeSkipped} ${t("dreaming.scene.narrativeSkippedSuffix")}</span
+      >
+    </div>
+    <div class="row wrap items-center gap-2">
+      <span class="dreams__phase-next">${t("dreaming.scene.manualRunNote")}</span>
+    </div>
+  `;
+}
+
+function renderActionCallout(props: DreamingProps) {
+  if (!props.dreamDiaryActionMessage) {
+    return nothing;
+  }
+  return html`
+    <div
+      class="callout ${props.dreamDiaryActionMessage.kind === "success" ? "success" : "danger"}"
+      role="status"
+    >
+      <div class="row wrap items-center gap-2">
+        <span>${props.dreamDiaryActionMessage.text}</span>
+        ${props.dreamDiaryActionArchivePath
+          ? html`
+              <button
+                class="btn btn--subtle btn--sm"
+                ?disabled=${props.dreamDiaryActionLoading}
+                @click=${() => props.onCopyDreamingArchivePath()}
+              >
+                Copy archive path
+              </button>
+            `
+          : nothing}
+      </div>
+    </div>
+  `;
+}
+
 function renderScene(props: DreamingProps, idle: boolean, dreamText: string) {
   return html`
     <section class="dreams ${idle ? "dreams--idle" : ""}">
@@ -427,6 +482,17 @@ function renderScene(props: DreamingProps, idle: boolean, dreamText: string) {
             ${props.timezone ? html`· ${props.timezone}` : nothing}
           </span>
         </div>
+        <div class="row wrap items-center gap-2 mt-2">
+          <button
+            class="btn btn--primary btn--sm"
+            ?disabled=${props.modeSaving || props.dreamDiaryActionLoading}
+            @click=${() => props.onRunNow()}
+          >
+            ${props.dreamDiaryActionLoading ? t("dreaming.scene.working") : t("dreaming.scene.runNow")}
+          </button>
+        </div>
+        ${props.latestRun ? renderLatestRunSummary(props.latestRun) : nothing}
+        ${renderActionCallout(props)}
       </div>
 
       <!-- Sleep phases -->
@@ -809,31 +875,7 @@ function renderAdvancedSection(props: DreamingProps) {
           </button>
         </div>
       </div>
-      ${props.dreamDiaryActionMessage
-        ? html`
-            <div
-              class="callout ${props.dreamDiaryActionMessage.kind === "success"
-                ? "success"
-                : "danger"}"
-              role="status"
-            >
-              <div class="row wrap items-center gap-2">
-                <span>${props.dreamDiaryActionMessage.text}</span>
-                ${props.dreamDiaryActionArchivePath
-                  ? html`
-                      <button
-                        class="btn btn--subtle btn--sm"
-                        ?disabled=${props.dreamDiaryActionLoading}
-                        @click=${() => props.onCopyDreamingArchivePath()}
-                      >
-                        Copy archive path
-                      </button>
-                    `
-                  : nothing}
-              </div>
-            </div>
-          `
-        : nothing}
+      ${renderActionCallout(props)}
 
       <div class="dreams-advanced__sections">
         ${renderAdvancedEntryList({

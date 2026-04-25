@@ -1128,17 +1128,17 @@
 
 .chat-task-context-bar__task-chip {
   display: inline-flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 12px;
   min-width: 0;
-  min-height: 40px;
-  padding: 0 14px;
+  min-height: 56px;
+  padding: 10px 14px;
   border-radius: var(--radius-lg);
   border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
   background: linear-gradient(180deg, color-mix(in srgb, var(--card) 98%, var(--bg)), color-mix(in srgb, var(--card) 94%, var(--bg)));
   cursor: pointer;
-  flex: 0 1 min(520px, 46vw);
-  max-width: min(520px, 46vw);
+  flex: 0 1 min(560px, 52vw);
+  max-width: min(560px, 52vw);
 }
 
 .chat-task-context-bar__task-chip--empty {
@@ -1152,6 +1152,22 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   white-space: nowrap;
+  padding-top: 2px;
+}
+
+.chat-task-context-bar__task-chip-main {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-task-context-bar__task-chip-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .chat-task-context-bar__task-chip-title {
@@ -1162,13 +1178,37 @@
   color: var(--text);
   font-size: 14px;
   font-weight: 700;
+  flex: 1 1 auto;
+}
+
+.chat-task-context-bar__task-chip-badge {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--accent) 78%, var(--text));
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .chat-task-context-bar__task-chip-status {
   color: var(--muted);
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.35;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-task-context-bar__task-chip-summary {
+  color: color-mix(in srgb, var(--text) 78%, var(--muted));
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat-task-context-bar__switcher-panel {
@@ -1317,6 +1357,10 @@
   background: color-mix(in srgb, var(--panel) 88%, transparent);
 }
 
+.chat-task-context-bar__drawer-card--wide {
+  grid-column: span 3;
+}
+
 .chat-task-context-bar__drawer-card-label {
   color: var(--muted);
   font-size: 11px;
@@ -1358,18 +1402,100 @@
   }
 
   .chat-task-context-bar__task-chip {
-    width: 100%;
-    justify-content: flex-start;
+    max-width: none;
   }
 
   .chat-task-context-bar__switcher-panel {
-    width: 100%;
+    width: min(100%, 520px);
   }
 
   .chat-task-context-bar__drawer-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chat-task-context-bar__drawer-card--wide {
+    grid-column: span 2;
   }
 }
+
+.task-todo-toolbar {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 10px;
+}
+
+.task-todo-draft {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.task-todo-draft input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.task-todo-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+}
+
+.task-todo-row__main {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.task-todo-row__top,
+.task-todo-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.task-todo-row__status,
+.task-todo-row__priority,
+.task-todo-row__source {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.task-todo-row__time {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.task-todo-row__content {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.task-todo-row__meta {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.task-todo-row__editor {
+  display: grid;
+  gap: 8px;
+}
+
+.task-preview-pane__meta-inline {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 
 /* ===========================================
    Grid Utilities

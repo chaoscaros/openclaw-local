@@ -55,6 +55,15 @@ function buildProps(overrides?: Partial<DreamingProps>): DreamingProps {
         promotedAt: "2026-04-05T04:00:00.000Z",
       },
     ],
+    latestRun: {
+      at: "2026-04-05T04:30:00.000Z",
+      workspaces: 1,
+      candidates: 4,
+      applied: 2,
+      failed: 0,
+      narrativeWritten: 1,
+      narrativeSkipped: 0,
+    },
     dreamingOf: null,
     nextCycle: "4:00 AM",
     timezone: "America/Los_Angeles",
@@ -180,6 +189,7 @@ function buildProps(overrides?: Partial<DreamingProps>): DreamingProps {
     onRefreshImports: () => {},
     onRefreshMemoryPalace: () => {},
     onOpenConfig: () => {},
+    onRunNow: () => {},
     onOpenWikiPage: async () => null,
     onBackfillDiary: () => {},
     onCopyDreamingArchivePath: () => {},
@@ -232,7 +242,7 @@ describe("dreaming view", () => {
   });
 
   it("shows unknown phase status when phase data is unavailable", () => {
-    const container = renderInto(buildProps({ phases: undefined }));
+    const container = renderInto(buildProps({ phases: undefined, latestRun: null }));
     const statuses = [...container.querySelectorAll(".dreams__phase-next")].map((node) =>
       node.textContent?.trim(),
     );
@@ -253,6 +263,22 @@ describe("dreaming view", () => {
   it("shows dream bubble when active", () => {
     const container = renderInto(buildProps({ active: true }));
     expect(container.querySelector(".dreams__bubble")).not.toBeNull();
+  });
+
+  it("renders and fires the run now button", () => {
+    const onRunNow = vi.fn();
+    const container = renderInto(buildProps({ onRunNow }));
+    const button = Array.from(container.querySelectorAll("button")).find((node) =>
+      node.textContent?.includes("Run now"),
+    );
+    expect(button).toBeTruthy();
+    button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onRunNow).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain("Last run:");
+    expect(container.textContent).toContain("1 workspaces · 0 failed · 0 diary skipped");
+    expect(container.textContent).toContain(
+      "Manual Run now only performs background consolidation; it does not create a visible session.",
+    );
   });
 
   it("hides dream bubble when idle", () => {

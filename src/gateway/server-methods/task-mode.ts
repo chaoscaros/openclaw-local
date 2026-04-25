@@ -4,13 +4,19 @@ import type { GatewayRequestHandlers } from "./types.js";
 import {
   archiveTaskModeTask,
   createTaskModeTask,
+  createTaskModeTodo,
   deleteTaskModeTask,
+  deleteTaskModeTodo,
   getTaskModeTask,
   listTaskModeTasks,
   restoreTaskModeTask,
+  setTaskModeTodoStatus,
   syncTaskModeTaskProgress,
   updateTaskModeTask,
+  updateTaskModeTodo,
   type TaskModeStatus,
+  type TaskModeTodoPriority,
+  type TaskModeTodoStatus,
 } from "../task-mode-store.js";
 
 function readString(value: unknown): string {
@@ -25,6 +31,16 @@ function readOptionalStatus(value: unknown): TaskModeStatus | null {
     value === "ended"
     ? value
     : null;
+}
+
+function readOptionalTodoStatus(value: unknown): TaskModeTodoStatus | null {
+  return value === "pending" || value === "in_progress" || value === "completed" || value === "cancelled"
+    ? value
+    : null;
+}
+
+function readOptionalTodoPriority(value: unknown): TaskModeTodoPriority | null {
+  return value === "low" || value === "normal" || value === "high" ? value : null;
 }
 
 export const taskModeHandlers: GatewayRequestHandlers = {
@@ -136,5 +152,89 @@ export const taskModeHandlers: GatewayRequestHandlers = {
       return;
     }
     respond(true, { ok: true, id });
+  },
+  "taskmode.todo.create": async ({ params, respond }) => {
+    const taskId = readString(params.taskId);
+    const content = readString(params.content);
+    if (!taskId || !content) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "taskId and content required"));
+      return;
+    }
+    const priority = params.priority === undefined ? undefined : readOptionalTodoPriority(params.priority);
+    if (params.priority !== undefined && !priority) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "invalid priority"));
+      return;
+    }
+    const task = await createTaskModeTodo({
+      taskId,
+      todoId: randomUUID(),
+      content,
+      ...(priority ? { priority } : {}),
+      note: readString(params.note) || undefined,
+      verification: readString(params.verification) || undefined,
+      source: "user",
+    });
+    if (!task) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "task not found"));
+      return;
+    }
+    respond(true, { ok: true, task });
+  },
+  "taskmode.todo.update": async ({ params, respond }) => {
+    const taskId = readString(params.taskId);
+    const todoId = readString(params.todoId);
+    if (!taskId || !todoId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "taskId and todoId required"));
+      return;
+    }
+    const priority = params.priority === undefined ? undefined : readOptionalTodoPriority(params.priority);
+    if (params.priority !== undefined && !priority) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "invalid priority"));
+      return;
+    }
+    const task = await updateTaskModeTodo({
+      taskId,
+      todoId,
+      ...(params.content !== undefined ? { content: readString(params.content) } : {}),
+      ...(priority ? { priority } : {}),
+      ...(params.note !== undefined ? { note: typeof params.note === "string" ? params.note : null } : {}),
+      ...(params.verification !== undefined
+        ? { verification: typeof params.verification === "string" ? params.verification : null }
+        : {}),
+    });
+    if (!task) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "task or todo not found"));
+      return;
+    }
+    respond(true, { ok: true, task });
+  },
+  "taskmode.todo.setStatus": async ({ params, respond }) => {
+    const taskId = readString(params.taskId);
+    const todoId = readString(params.todoId);
+    const status = readOptionalTodoStatus(params.status);
+    if (!taskId || !todoId || !status) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "taskId, todoId, and valid status required"));
+      return;
+    }
+    const task = await setTaskModeTodoStatus({ taskId, todoId, status });
+    if (!task) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "task or todo not found"));
+      return;
+    }
+    respond(true, { ok: true, task });
+  },
+  "taskmode.todo.delete": async ({ params, respond }) => {
+    const taskId = readString(params.taskId);
+    const todoId = readString(params.todoId);
+    if (!taskId || !todoId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "taskId and todoId required"));
+      return;
+    }
+    const task = await deleteTaskModeTodo({ taskId, todoId });
+    if (!task) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "task or todo not found"));
+      return;
+    }
+    respond(true, { ok: true, task });
   },
 };

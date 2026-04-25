@@ -1,3 +1,4 @@
+import { t } from "../../i18n/index.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import { isPluginEnabledInConfigSnapshot } from "../plugin-activation.ts";
 import type { ConfigSnapshot } from "../types.ts";
@@ -74,6 +75,15 @@ export type DreamingStatus = {
   shortTermEntries: DreamingEntry[];
   signalEntries: DreamingEntry[];
   promotedEntries: DreamingEntry[];
+  lastRun?: {
+    at: string;
+    workspaces: number;
+    candidates: number;
+    applied: number;
+    failed: number;
+    narrativeWritten: number;
+    narrativeSkipped: number;
+  };
   phases?: {
     light: LightDreamingStatus;
     deep: DeepDreamingStatus;
@@ -181,6 +191,7 @@ type DoctorMemoryDreamActionPayload = {
   archivedSessionIngestion?: unknown;
   archivedDreamsDiary?: unknown;
   warnings?: unknown;
+  runSummary?: unknown;
 };
 
 type WikiImportInsightsPayload = {
@@ -242,7 +253,8 @@ function buildDreamDiaryActionSuccessMessage(
     | "doctor.memory.resetDreamDiary"
     | "doctor.memory.resetGroundedShortTerm"
     | "doctor.memory.repairDreamingArtifacts"
-    | "doctor.memory.dedupeDreamDiary",
+    | "doctor.memory.dedupeDreamDiary"
+    | "doctor.memory.run",
   payload: DoctorMemoryDreamActionPayload | undefined,
 ): string {
   switch (method) {
@@ -283,6 +295,14 @@ function buildDreamDiaryActionSuccessMessage(
       return `Removed ${typeof payload?.removedEntries === "number" ? payload.removedEntries : 0} backfilled dream diary entries.`;
     case "doctor.memory.resetGroundedShortTerm":
       return `Cleared ${typeof payload?.removedShortTermEntries === "number" ? payload.removedShortTermEntries : 0} replayed short-term entries.`;
+    case "doctor.memory.run": {
+      const run = asRecord(payload?.runSummary);
+      return [
+        `Dreaming run finished: ${normalizeFiniteInt(run?.applied, 0)} ${t("dreaming.status.promotedSuffix")}, ${normalizeFiniteInt(run?.candidates, 0)} ${t("dreaming.scene.candidatesSuffix")}, ${normalizeFiniteInt(run?.narrativeWritten, 0)} ${t("dreaming.scene.diaryEntriesSuffix")}.`,
+        `${normalizeFiniteInt(run?.workspaces, 0)} ${t("dreaming.scene.workspacesSuffix")} · ${normalizeFiniteInt(run?.failed, 0)} ${t("dreaming.scene.failedSuffix")} · ${normalizeFiniteInt(run?.narrativeSkipped, 0)} ${t("dreaming.scene.narrativeSkippedSuffix")}.`,
+        t("dreaming.scene.manualRunNote"),
+      ].join(" ");
+    }
   }
   return "Dream diary action complete.";
 }
@@ -694,6 +714,19 @@ function normalizeDreamingStatus(raw: unknown): DreamingStatus | null {
     shortTermEntries: normalizeDreamingEntries(record.shortTermEntries),
     signalEntries: normalizeDreamingEntries(record.signalEntries),
     promotedEntries: normalizeDreamingEntries(record.promotedEntries),
+    ...(asRecord(record.lastRun)
+      ? {
+          lastRun: {
+            at: normalizeTrimmedString(asRecord(record.lastRun)?.at) ?? "",
+            workspaces: normalizeFiniteInt(asRecord(record.lastRun)?.workspaces, 0),
+            candidates: normalizeFiniteInt(asRecord(record.lastRun)?.candidates, 0),
+            applied: normalizeFiniteInt(asRecord(record.lastRun)?.applied, 0),
+            failed: normalizeFiniteInt(asRecord(record.lastRun)?.failed, 0),
+            narrativeWritten: normalizeFiniteInt(asRecord(record.lastRun)?.narrativeWritten, 0),
+            narrativeSkipped: normalizeFiniteInt(asRecord(record.lastRun)?.narrativeSkipped, 0),
+          },
+        }
+      : {}),
     ...(phases ? { phases } : {}),
   };
 }
@@ -796,7 +829,8 @@ async function runDreamDiaryAction(
     | "doctor.memory.resetDreamDiary"
     | "doctor.memory.resetGroundedShortTerm"
     | "doctor.memory.repairDreamingArtifacts"
-    | "doctor.memory.dedupeDreamDiary",
+    | "doctor.memory.dedupeDreamDiary"
+    | "doctor.memory.run",
   options?: {
     reloadDiary?: boolean;
   },
@@ -902,6 +936,12 @@ export async function copyDreamingArchivePath(state: DreamingState): Promise<boo
 
 export async function dedupeDreamDiary(state: DreamingState): Promise<boolean> {
   return runDreamDiaryAction(state, "doctor.memory.dedupeDreamDiary");
+}
+
+export async function runDreamingNow(state: DreamingState): Promise<boolean> {
+  return runDreamDiaryAction(state, "doctor.memory.run", {
+    reloadDiary: false,
+  });
 }
 
 async function writeDreamingPatch(

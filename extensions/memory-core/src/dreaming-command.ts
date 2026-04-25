@@ -2,7 +2,10 @@ import type { OpenClawConfig, OpenClawPluginApi } from "openclaw/plugin-sdk/memo
 import { resolveMemoryDreamingConfig } from "openclaw/plugin-sdk/memory-core-host-status";
 import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/text-runtime";
 import { asRecord } from "./dreaming-shared.js";
-import { resolveShortTermPromotionDreamingConfig } from "./dreaming.js";
+import {
+  resolveShortTermPromotionDreamingConfig,
+  runShortTermDreamingPromotionNow,
+} from "./dreaming.js";
 
 function resolveMemoryCorePluginConfig(cfg: OpenClawConfig): Record<string, unknown> {
   const entry = asRecord(cfg.plugins?.entries?.["memory-core"]);
@@ -67,6 +70,7 @@ function formatUsage(includeStatus: string): string {
   return [
     "Usage: /dreaming status",
     "Usage: /dreaming on|off",
+    "Usage: /dreaming run",
     "",
     includeStatus,
     "",
@@ -103,6 +107,32 @@ export function registerDreamingCommand(api: OpenClawPluginApi): void {
 
       if (firstToken === "status") {
         return { text: formatStatus(currentConfig) };
+      }
+
+      if (firstToken === "run") {
+        if (requiresAdminToMutateDreaming(ctx.gatewayClientScopes)) {
+          return { text: "⚠️ /dreaming run requires operator.admin for gateway clients." };
+        }
+        const summary = await runShortTermDreamingPromotionNow({
+          cfg: currentConfig,
+          config: resolveShortTermPromotionDreamingConfig({
+            pluginConfig: resolveMemoryCorePluginConfig(currentConfig),
+            cfg: currentConfig,
+          }),
+          logger: api.logger,
+          subagent: api.runtime?.subagent,
+        });
+        return {
+          text: [
+            "Dreaming sweep finished.",
+            `- workspaces: ${summary.workspaces}`,
+            `- candidates: ${summary.candidates}`,
+            `- promoted: ${summary.applied}`,
+            `- diary entries: ${summary.narrativeWritten}`,
+            `- diary skipped: ${summary.narrativeSkipped}`,
+            `- failed workspaces: ${summary.failed}`,
+          ].join("\n"),
+        };
       }
 
       if (firstToken === "on" || firstToken === "off") {

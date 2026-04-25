@@ -168,8 +168,13 @@ Enable dreaming with a custom sweep cadence:
 /dreaming status
 /dreaming on
 /dreaming off
+/dreaming run
 /dreaming help
 ```
+
+`/dreaming run` triggers a full dreaming sweep immediately using the current
+deep-phase promotion settings. This is useful when you want to consolidate
+memory on demand instead of waiting for the next idle/cron heartbeat.
 
 ## CLI workflow
 

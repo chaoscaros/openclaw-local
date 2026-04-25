@@ -34,6 +34,7 @@ import {
 } from "./controllers/agents.ts";
 import { loadChannels } from "./controllers/channels.ts";
 import { loadChatHistory } from "./controllers/chat.ts";
+import { resolveSessionTask } from "./controllers/tasks.ts";
 import {
   applyConfig,
   ensureAgentConfigEntry,
@@ -83,6 +84,7 @@ import {
   resetGroundedShortTerm,
   resetDreamDiary,
   resolveConfiguredDreaming,
+  runDreamingNow,
   updateDreamingEnabled,
 } from "./controllers/dreaming.ts";
 import {
@@ -417,12 +419,13 @@ export function renderApp(state: AppViewState) {
   const sessionsCount = state.sessionsResult?.count ?? null;
   const cronNext = state.cronStatus?.nextWakeAtMs ?? null;
   const currentSession = state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey) ?? null;
-  const currentTask =
-    currentSession?.taskId
-      ? state.tasksItems.find((task) => task.taskId === currentSession.taskId) ??
-        state.archivedTaskItems.find((task) => task.taskId === currentSession.taskId) ??
-        null
-      : null;
+  const currentTask = resolveSessionTask(
+    state.sessionKey,
+    currentSession?.taskId ?? null,
+    state.tasksItems,
+    state.archivedTaskItems,
+    { mode: currentSession?.mode ?? "normal" },
+  ).displayTask;
   const chatDisabledReason = !state.connected
     ? t("chat.disconnected")
     : state.tasksBusy
@@ -1903,6 +1906,10 @@ export function renderApp(state: AppViewState) {
               onRestore: (taskId) => state.restoreArchivedTask(taskId),
               onDelete: (taskId) => state.deleteTaskForSession(taskId),
               onSyncProgress: (taskId) => state.syncTaskModeTaskProgress(taskId, { reload: true }),
+              onCreateTodo: (taskId, input) => state.createTaskTodo(taskId, input),
+              onUpdateTodo: (taskId, todoId, patch) => state.updateTaskTodo(taskId, todoId, patch),
+              onSetTodoStatus: (taskId, todoId, status) => state.setTaskTodoStatus(taskId, todoId, status),
+              onDeleteTodo: (taskId, todoId) => state.deleteTaskTodo(taskId, todoId),
               onEditTask: () => undefined,
             })
           : nothing}
@@ -1944,6 +1951,10 @@ export function renderApp(state: AppViewState) {
               onRestore: (taskId) => state.restoreArchivedTask(taskId),
               onDelete: (taskId) => state.deleteTaskForSession(taskId),
               onSyncProgress: () => undefined,
+              onCreateTodo: () => Promise.resolve(null),
+              onUpdateTodo: () => Promise.resolve(null),
+              onSetTodoStatus: () => Promise.resolve(null),
+              onDeleteTodo: () => Promise.resolve(null),
               onEditTask: () => undefined,
             })
           : nothing}
@@ -2124,6 +2135,7 @@ export function renderApp(state: AppViewState) {
               phases: state.dreamingStatus?.phases ?? undefined,
               shortTermEntries: state.dreamingStatus?.shortTermEntries ?? [],
               promotedEntries: state.dreamingStatus?.promotedEntries ?? [],
+              latestRun: state.dreamingStatus?.lastRun ?? null,
               dreamingOf: null,
               nextCycle: dreamingNextCycle,
               timezone: state.dreamingStatus?.timezone ?? null,
@@ -2164,6 +2176,7 @@ export function renderApp(state: AppViewState) {
               },
               onOpenConfig: () => openConfigFile(state),
               onOpenWikiPage: (lookup: string) => openWikiPage(lookup),
+              onRunNow: () => runDreamingNow(state),
               onBackfillDiary: () => backfillDreamDiary(state),
               onCopyDreamingArchivePath: () => {
                 void copyDreamingArchivePath(state);

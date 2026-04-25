@@ -240,6 +240,31 @@ export type AppViewState = {
     taskId: string,
     opts?: { silent?: boolean; reload?: boolean },
   ) => Promise<unknown>;
+  createTaskTodo: (
+    taskId: string,
+    input: {
+      content: string;
+      priority?: import("./controllers/tasks.ts").TaskTodoPriority;
+      note?: string;
+      verification?: string;
+    },
+  ) => Promise<unknown>;
+  updateTaskTodo: (
+    taskId: string,
+    todoId: string,
+    patch: {
+      content?: string;
+      priority?: import("./controllers/tasks.ts").TaskTodoPriority;
+      note?: string | null;
+      verification?: string | null;
+    },
+  ) => Promise<unknown>;
+  setTaskTodoStatus: (
+    taskId: string,
+    todoId: string,
+    status: import("./controllers/tasks.ts").TaskTodoStatus,
+  ) => Promise<unknown>;
+  deleteTaskTodo: (taskId: string, todoId: string) => Promise<unknown>;
   archiveTaskForSession: (taskId: string) => Promise<void>;
   restoreArchivedTask: (taskId: string) => Promise<void>;
   deleteTaskForSession: (taskId: string) => Promise<void>;

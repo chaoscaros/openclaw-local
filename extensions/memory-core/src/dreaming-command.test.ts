@@ -30,10 +30,16 @@ function createHarness(initialConfig: OpenClawConfig = {}) {
         runtimeConfig = nextConfig;
       }),
     },
+    subagent: undefined,
   } as unknown as OpenClawPluginApi["runtime"];
 
   const api = {
     runtime,
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
     registerCommand: vi.fn((definition: OpenClawPluginCommandDefinition) => {
       registered.command = definition;
     }),
@@ -188,6 +194,29 @@ describe("memory-core /dreaming command", () => {
     expect(result.text).toContain("- sweep cadence: 15 */8 * * *");
     expect(result.text).toContain("- promotion policy: score>=0.8, recalls>=3, uniqueQueries>=3");
     expect(runtime.config.writeConfigFile).not.toHaveBeenCalled();
+  });
+
+  it("runs a dreaming sweep on demand", async () => {
+    const { command, runtime } = createHarness();
+
+    const result = await command.handler(createCommandContext("run"));
+
+    expect(result.text).toContain("Dreaming sweep finished.");
+    expect(result.text).toContain("- workspaces: 0");
+    expect(result.text).toContain("- promoted: 0");
+    expect(runtime.config.writeConfigFile).not.toHaveBeenCalled();
+  });
+
+  it("blocks unscoped gateway callers from running dreaming manually", async () => {
+    const { command } = createHarness();
+
+    const result = await command.handler(
+      createCommandContext("run", {
+        gatewayClientScopes: [],
+      }),
+    );
+
+    expect(result.text).toContain("/dreaming run requires operator.admin");
   });
 
   it("shows usage for invalid args and does not mutate config", async () => {

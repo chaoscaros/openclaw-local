@@ -143,6 +143,7 @@ const METHOD_SCOPE_GROUPS: Record<OperatorScope, readonly string[]> = {
     "doctor.memory.resetGroundedShortTerm",
     "doctor.memory.repairDreamingArtifacts",
     "doctor.memory.dedupeDreamDiary",
+    "doctor.memory.run",
     "push.test",
     "node.pending.enqueue",
     "taskmode.create",
@@ -151,6 +152,10 @@ const METHOD_SCOPE_GROUPS: Record<OperatorScope, readonly string[]> = {
     "taskmode.archive",
     "taskmode.restore",
     "taskmode.delete",
+    "taskmode.todo.create",
+    "taskmode.todo.update",
+    "taskmode.todo.setStatus",
+    "taskmode.todo.delete",
   ],
   [ADMIN_SCOPE]: [
     "channels.logout",

@@ -72,13 +72,17 @@ import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exe
 import {
   archiveTaskForSession,
   createTaskForCurrentSession,
+  createTaskTodo,
   deleteTaskForSession,
+  deleteTaskTodo,
   loadTaskModeData,
   restoreArchivedTask,
   setCurrentSessionMode,
   setCurrentTaskForSession,
+  setTaskTodoStatus,
   syncTaskModeTaskProgress,
   updateTaskModeTask,
+  updateTaskTodo,
 } from "./controllers/tasks.ts";
 import type {
   ClawHubSearchResult,
@@ -738,6 +742,22 @@ export class OpenClawApp extends LitElement {
 
   async syncTaskModeTaskProgress(taskId: string, opts?: { silent?: boolean; reload?: boolean }) {
     return await syncTaskModeTaskProgress(this as unknown as Parameters<typeof syncTaskModeTaskProgress>[0], taskId, opts);
+  }
+
+  async createTaskTodo(taskId: string, input: { content: string; priority?: import("./controllers/tasks.ts").TaskTodoPriority; note?: string; verification?: string }) {
+    return await createTaskTodo(this as unknown as Parameters<typeof createTaskTodo>[0], taskId, input);
+  }
+
+  async updateTaskTodo(taskId: string, todoId: string, patch: { content?: string; priority?: import("./controllers/tasks.ts").TaskTodoPriority; note?: string | null; verification?: string | null }) {
+    return await updateTaskTodo(this as unknown as Parameters<typeof updateTaskTodo>[0], taskId, todoId, patch);
+  }
+
+  async setTaskTodoStatus(taskId: string, todoId: string, status: import("./controllers/tasks.ts").TaskTodoStatus) {
+    return await setTaskTodoStatus(this as unknown as Parameters<typeof setTaskTodoStatus>[0], taskId, todoId, status);
+  }
+
+  async deleteTaskTodo(taskId: string, todoId: string) {
+    return await deleteTaskTodo(this as unknown as Parameters<typeof deleteTaskTodo>[0], taskId, todoId);
   }
 
   async archiveTaskForSession(taskId: string) {

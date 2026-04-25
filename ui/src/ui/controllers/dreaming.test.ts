@@ -11,6 +11,7 @@ import {
   resetGroundedShortTerm,
   resetDreamDiary,
   resolveConfiguredDreaming,
+  runDreamingNow,
   updateDreamingEnabled,
   type DreamingState,
 } from "./dreaming.ts";
@@ -123,6 +124,15 @@ describe("dreaming controller", () => {
             promotedAt: "2026-04-05T04:00:00.000Z",
           },
         ],
+        lastRun: {
+          at: "2026-04-05T04:30:00.000Z",
+          workspaces: 1,
+          candidates: 4,
+          applied: 2,
+          failed: 0,
+          narrativeWritten: 1,
+          narrativeSkipped: 0,
+        },
         phases: {
           light: {
             enabled: true,
@@ -181,6 +191,11 @@ describe("dreaming controller", () => {
             snippet: "Use the Happy Together calendar for flights.",
           }),
         ],
+        lastRun: expect.objectContaining({
+          applied: 2,
+          candidates: 4,
+          narrativeWritten: 1,
+        }),
         phases: expect.objectContaining({
           deep: expect.objectContaining({
             minScore: 0.8,
@@ -737,6 +752,93 @@ describe("dreaming controller", () => {
     expect(request).toHaveBeenCalledWith("doctor.memory.status", {});
     expect(state.dreamDiaryContent).toBeNull();
     expect(state.dreamDiaryActionLoading).toBe(false);
+  });
+
+  it("runs dreaming now and reloads only dreaming status", async () => {
+    const { state, request } = createState();
+    state.dreamDiaryContent = "keep existing diary";
+    request.mockImplementation(async (method: string) => {
+      if (method === "doctor.memory.run") {
+        return {
+          action: "run",
+          runSummary: {
+            at: "2026-04-05T04:30:00.000Z",
+            workspaces: 1,
+            candidates: 4,
+            applied: 2,
+            failed: 0,
+            narrativeWritten: 1,
+            narrativeSkipped: 0,
+          },
+        };
+      }
+      if (method === "doctor.memory.status") {
+        return {
+          dreaming: {
+            enabled: true,
+            shortTermCount: 1,
+            recallSignalCount: 0,
+            dailySignalCount: 0,
+            groundedSignalCount: 0,
+            totalSignalCount: 1,
+            phaseSignalCount: 0,
+            lightPhaseHitCount: 0,
+            remPhaseHitCount: 0,
+            promotedTotal: 2,
+            promotedToday: 2,
+            shortTermEntries: [],
+            signalEntries: [],
+            promotedEntries: [],
+            lastRun: {
+              at: "2026-04-05T04:30:00.000Z",
+              workspaces: 1,
+              candidates: 4,
+              applied: 2,
+              failed: 0,
+              narrativeWritten: 1,
+              narrativeSkipped: 0,
+            },
+            phases: {
+              light: { enabled: false, cron: "", managedCronPresent: false, lookbackDays: 0, limit: 0 },
+              deep: {
+                enabled: false,
+                cron: "",
+                managedCronPresent: false,
+                limit: 0,
+                minScore: 0,
+                minRecallCount: 0,
+                minUniqueQueries: 0,
+                recencyHalfLifeDays: 0,
+              },
+              rem: {
+                enabled: false,
+                cron: "",
+                managedCronPresent: false,
+                lookbackDays: 0,
+                limit: 0,
+                minPatternStrength: 0,
+              },
+            },
+          },
+        };
+      }
+      return {};
+    });
+
+    const ok = await runDreamingNow(state);
+
+    expect(ok).toBe(true);
+    expect(request).toHaveBeenCalledWith("doctor.memory.run", {});
+    expect(request).toHaveBeenCalledWith("doctor.memory.status", {});
+    expect(request).not.toHaveBeenCalledWith("doctor.memory.dreamDiary", {});
+    expect(state.dreamDiaryContent).toBe("keep existing diary");
+    expect(state.dreamingStatus?.lastRun).toMatchObject({ applied: 2, candidates: 4 });
+    expect(state.dreamDiaryActionMessage).toMatchObject({
+      kind: "success",
+      text: expect.stringContaining(
+        "Manual Run now only performs background consolidation; it does not create a visible session.",
+      ),
+    });
   });
 
   it("clears grounded staged entries and reloads only dreaming status", async () => {

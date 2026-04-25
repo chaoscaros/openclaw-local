@@ -137,6 +137,7 @@ function buildRequestScopedFallbackNarrative(data: NarrativePhaseData): string {
 
 async function startNarrativeRunOrFallback(params: {
   subagent: SubagentSurface;
+  idempotencyKey: string;
   sessionKey: string;
   message: string;
   data: NarrativePhaseData;
@@ -147,7 +148,7 @@ async function startNarrativeRunOrFallback(params: {
 }): Promise<string | null> {
   try {
     const run = await params.subagent.run({
-      idempotencyKey: params.sessionKey,
+      idempotencyKey: params.idempotencyKey,
       sessionKey: params.sessionKey,
       message: params.message,
       extraSystemPrompt: NARRATIVE_SYSTEM_PROMPT,
@@ -180,10 +181,13 @@ async function startNarrativeRunOrFallback(params: {
 function buildNarrativeSessionKey(params: {
   workspaceDir: string;
   phase: NarrativePhaseData["phase"];
-  nowMs: number;
 }): string {
   const workspaceHash = createHash("sha1").update(params.workspaceDir).digest("hex").slice(0, 12);
-  return `dreaming-narrative-${params.phase}-${workspaceHash}-${params.nowMs}`;
+  return `dreaming-narrative-${params.phase}-${workspaceHash}`;
+}
+
+function buildNarrativeIdempotencyKey(sessionKey: string, nowMs: number): string {
+  return `${sessionKey}:${nowMs}`;
 }
 
 // ── Prompt building ────────────────────────────────────────────────────
@@ -848,8 +852,8 @@ export async function generateAndAppendDreamNarrative(params: {
   const sessionKey = buildNarrativeSessionKey({
     workspaceDir: params.workspaceDir,
     phase: params.data.phase,
-    nowMs,
   });
+  const idempotencyKey = buildNarrativeIdempotencyKey(sessionKey, nowMs);
   const message = buildNarrativePrompt(params.data);
   let runId: string | null = null;
   let waitStatus: string | null = null;
@@ -857,6 +861,7 @@ export async function generateAndAppendDreamNarrative(params: {
   try {
     runId = await startNarrativeRunOrFallback({
       subagent: params.subagent,
+      idempotencyKey,
       sessionKey,
       message,
       data: params.data,

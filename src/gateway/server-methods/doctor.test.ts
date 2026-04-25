@@ -17,6 +17,8 @@ const resolveMemorySearchConfig = vi.hoisted(() =>
 const getMemorySearchManager = vi.hoisted(() => vi.fn());
 const previewGroundedRemMarkdown = vi.hoisted(() => vi.fn());
 const dedupeDreamDiaryEntries = vi.hoisted(() => vi.fn());
+const resolveShortTermPromotionDreamingConfig = vi.hoisted(() => vi.fn());
+const runShortTermDreamingPromotionNow = vi.hoisted(() => vi.fn());
 const writeBackfillDiaryEntries = vi.hoisted(() => vi.fn());
 const removeBackfillDiaryEntries = vi.hoisted(() => vi.fn());
 const removeGroundedShortTermCandidates = vi.hoisted(() => vi.fn());
@@ -42,6 +44,8 @@ vi.mock("../../plugins/memory-runtime.js", () => ({
 vi.mock("./doctor.memory-core-runtime.js", () => ({
   dedupeDreamDiaryEntries,
   previewGroundedRemMarkdown,
+  resolveShortTermPromotionDreamingConfig,
+  runShortTermDreamingPromotionNow,
   writeBackfillDiaryEntries,
   removeBackfillDiaryEntries,
   removeGroundedShortTermCandidates,
@@ -139,6 +143,17 @@ const invokeDoctorMemoryDedupeDreamDiary = async (respond: ReturnType<typeof vi.
   });
 };
 
+const invokeDoctorMemoryRun = async (respond: ReturnType<typeof vi.fn>) => {
+  await doctorHandlers["doctor.memory.run"]({
+    req: {} as never,
+    params: {} as never,
+    respond: respond as never,
+    context: {} as never,
+    client: null,
+    isWebchatConnect: () => false,
+  });
+};
+
 const expectEmbeddingErrorResponse = (respond: ReturnType<typeof vi.fn>, error: string) => {
   expect(respond).toHaveBeenCalledWith(
     true,
@@ -162,6 +177,8 @@ describe("doctor.memory.status", () => {
     getMemorySearchManager.mockReset();
     previewGroundedRemMarkdown.mockReset();
     dedupeDreamDiaryEntries.mockReset();
+    resolveShortTermPromotionDreamingConfig.mockReset();
+    runShortTermDreamingPromotionNow.mockReset();
     writeBackfillDiaryEntries.mockReset();
     removeBackfillDiaryEntries.mockReset();
     removeGroundedShortTermCandidates.mockReset();
@@ -1016,6 +1033,48 @@ describe("doctor.memory.dreamDiary", () => {
         }),
         undefined,
       );
+    } finally {
+      await fs.rm(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("runs dreaming on demand and persists the latest summary", async () => {
+    const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "doctor-dream-run-"));
+    resolveAgentWorkspaceDir.mockReturnValue(workspaceDir);
+    resolveShortTermPromotionDreamingConfig.mockReturnValue({ enabled: true });
+    runShortTermDreamingPromotionNow.mockResolvedValue({
+      handled: true,
+      reason: "memory-core: short-term dreaming processed",
+      workspaces: 1,
+      candidates: 4,
+      applied: 2,
+      failed: 0,
+      narrativeWritten: 1,
+      narrativeSkipped: 0,
+    });
+    const respond = vi.fn();
+
+    try {
+      await invokeDoctorMemoryRun(respond);
+      expect(runShortTermDreamingPromotionNow).toHaveBeenCalled();
+      expect(respond).toHaveBeenCalledWith(
+        true,
+        expect.objectContaining({
+          agentId: "main",
+          action: "run",
+          runSummary: expect.objectContaining({
+            workspaces: 1,
+            candidates: 4,
+            applied: 2,
+            narrativeWritten: 1,
+          }),
+        }),
+        undefined,
+      );
+      const persisted = JSON.parse(
+        await fs.readFile(path.join(workspaceDir, "memory", ".dreams", "last-run.json"), "utf-8"),
+      );
+      expect(persisted).toMatchObject({ applied: 2, candidates: 4, narrativeWritten: 1 });
     } finally {
       await fs.rm(workspaceDir, { recursive: true, force: true });
     }
