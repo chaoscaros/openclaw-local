@@ -1,7 +1,15 @@
 import { html, nothing, type TemplateResult } from "lit";
 import { t } from "../../i18n/index.ts";
 import { formatRelativeTimestamp } from "../format.ts";
-import type { TaskItem, TaskRuntimeHealth, TaskStatus } from "../controllers/tasks.ts";
+import {
+  resolveSessionTask,
+  type TaskItem,
+  type TaskRuntimeHealth,
+  type TaskStatus,
+  type TaskTodoItem,
+  type TaskTodoPriority,
+  type TaskTodoStatus,
+} from "../controllers/tasks.ts";
 import type { GatewaySessionRow } from "../types.ts";
 
 export type TasksViewProps = {
@@ -32,6 +40,14 @@ export type TasksViewProps = {
   onRestore: (taskId: string) => void;
   onDelete: (taskId: string) => void;
   onSyncProgress?: (taskId: string) => void;
+  onCreateTodo: (taskId: string, input: { content: string; priority?: TaskTodoPriority; note?: string; verification?: string }) => Promise<unknown>;
+  onUpdateTodo: (
+    taskId: string,
+    todoId: string,
+    patch: { content?: string; priority?: TaskTodoPriority; note?: string | null; verification?: string | null },
+  ) => Promise<unknown>;
+  onSetTodoStatus: (taskId: string, todoId: string, status: TaskTodoStatus) => Promise<unknown>;
+  onDeleteTodo: (taskId: string, todoId: string) => Promise<unknown>;
   onEditTask: (task: TaskItem) => void;
 };
 
@@ -52,6 +68,9 @@ type FullRecordDrawerState =
   | { kind: "runtime-trajectory"; runtimeTaskId: string }
   | { kind: "runtime-text"; runtimeTaskId: string; field: "progressSummary" | "terminalSummary" | "error" };
 
+type TaskListSort = "recommended" | "updated_desc" | "created_desc" | "title_asc";
+type TaskTodoSort = "manual" | "updated_desc" | "priority";
+
 const hubUiState = {
   taskQuery: "",
   taskFilter: "all" as "all" | "active" | "completed" | "reference",
@@ -61,6 +80,13 @@ const hubUiState = {
   selectedArchiveIds: new Set<string>(),
   selectedRuntimeTaskId: null as string | null,
   fullRecordDrawer: { kind: null } as FullRecordDrawerState,
+  taskSort: "recommended" as TaskListSort,
+  todoDraftTaskId: null as string | null,
+  todoDraftContent: "",
+  todoEditTaskId: null as string | null,
+  todoEditId: null as string | null,
+  todoEditContent: "",
+  todoSort: "manual" as TaskTodoSort,
 };
 
 type TaskSection = {
@@ -776,15 +802,41 @@ function scoreTaskForHub(task: TaskItem, currentTaskId: string | null) {
   return score;
 }
 
-function sortTasks(items: TaskItem[], currentTaskId: string | null | undefined) {
+function compareTaskUpdatedDesc(left: TaskItem, right: TaskItem) {
+  const leftTime = left.archivedAt ?? left.updatedAt ?? left.createdAt;
+  const rightTime = right.archivedAt ?? right.updatedAt ?? right.createdAt;
+  return rightTime - leftTime || left.title.localeCompare(right.title, "zh-Hans-CN");
+}
+
+function compareTaskCreatedDesc(left: TaskItem, right: TaskItem) {
+  return right.createdAt - left.createdAt || compareTaskUpdatedDesc(left, right);
+}
+
+function compareTaskTitleAsc(left: TaskItem, right: TaskItem) {
+  return left.title.localeCompare(right.title, "zh-Hans-CN") || compareTaskUpdatedDesc(left, right);
+}
+
+function compareTaskRecommended(left: TaskItem, right: TaskItem, currentTaskId: string | null) {
+  const scoreDelta = scoreTaskForHub(right, currentTaskId) - scoreTaskForHub(left, currentTaskId);
+  if (scoreDelta !== 0) {
+    return scoreDelta;
+  }
+  return compareTaskUpdatedDesc(left, right);
+}
+
+function sortTasks(items: TaskItem[], currentTaskId: string | null | undefined, sort: TaskListSort) {
+  const normalizedCurrentTaskId = currentTaskId ?? null;
   return [...items].toSorted((left, right) => {
-    const scoreDelta = scoreTaskForHub(right, currentTaskId ?? null) - scoreTaskForHub(left, currentTaskId ?? null);
-    if (scoreDelta !== 0) {
-      return scoreDelta;
+    if (sort === "updated_desc") {
+      return compareTaskUpdatedDesc(left, right);
     }
-    const leftTime = left.archivedAt ?? left.updatedAt ?? left.createdAt;
-    const rightTime = right.archivedAt ?? right.updatedAt ?? right.createdAt;
-    return rightTime - leftTime;
+    if (sort === "created_desc") {
+      return compareTaskCreatedDesc(left, right);
+    }
+    if (sort === "title_asc") {
+      return compareTaskTitleAsc(left, right);
+    }
+    return compareTaskRecommended(left, right, normalizedCurrentTaskId);
   });
 }
 
@@ -810,21 +862,22 @@ function taskIsActive(task: TaskItem) {
   return status === "active" || status === "paused" || status === "interrupted";
 }
 
-function taskSectionItems(items: TaskItem[], currentTaskId: string | null) {
-  const sorted = sortTasks(items, currentTaskId);
-  const currentTask = currentTaskId ? sorted.find((task) => task.taskId === currentTaskId) ?? null : null;
-  const active = sorted.filter((task) => taskIsActive(task) && task.taskId !== currentTaskId);
-  const completedReference = sorted.filter((task) => taskIsReferenceComplete(task) && task.taskId !== currentTaskId);
+function taskSectionItems(items: TaskItem[], currentTask: TaskItem | null, currentTaskId: string | null, sort: TaskListSort) {
+  const sorted = sortTasks(items, currentTaskId, sort);
+  const resolvedCurrentTask = currentTask ? sorted.find((task) => task.taskId === currentTask.taskId) ?? currentTask : null;
+  const active = sorted.filter((task) => taskIsActive(task) && task.taskId !== resolvedCurrentTask?.taskId);
+  const completedReference = sorted.filter((task) => taskIsReferenceComplete(task) && task.taskId !== resolvedCurrentTask?.taskId);
   const recent = sorted
-    .filter((task) => task.taskId !== currentTaskId && !active.includes(task) && !completedReference.includes(task))
+    .filter((task) => task.taskId !== resolvedCurrentTask?.taskId && !active.includes(task) && !completedReference.includes(task))
     .slice(0, 6);
-  return { currentTask, active, completedReference, recent };
+  return { currentTask: resolvedCurrentTask, active, completedReference, recent };
 }
 
-function selectedTask(items: TaskItem[], currentTaskId: string | null) {
+function selectedTask(items: TaskItem[], currentTaskId: string | null, currentTask: TaskItem | null) {
   const selectedId = hubUiState.selectedTaskId;
   const selected = (selectedId ? items.find((task) => task.taskId === selectedId) : null) ?? null;
-  const current = currentTaskId ? items.find((task) => task.taskId === currentTaskId) ?? null : null;
+  const resolvedCurrent = currentTask ? items.find((task) => task.taskId === currentTask.taskId) ?? currentTask : null;
+  const current = resolvedCurrent ?? (currentTaskId ? items.find((task) => task.taskId === currentTaskId) ?? null : null);
   return selected ?? current ?? items[0] ?? null;
 }
 
@@ -936,6 +989,235 @@ function renderTaskSection(section: TaskSection, props: TasksViewProps) {
   `;
 }
 
+function todoPriorityWeight(priority: TaskTodoPriority): number {
+  if (priority === "high") {
+    return 0;
+  }
+  if (priority === "normal") {
+    return 1;
+  }
+  return 2;
+}
+
+function compareTodoManual(left: TaskTodoItem, right: TaskTodoItem) {
+  return left.order - right.order || left.createdAt - right.createdAt;
+}
+
+function compareTodoUpdatedDesc(left: TaskTodoItem, right: TaskTodoItem) {
+  return right.updatedAt - left.updatedAt || compareTodoManual(left, right);
+}
+
+function compareTodoPriority(left: TaskTodoItem, right: TaskTodoItem) {
+  return (
+    todoPriorityWeight(left.priority) - todoPriorityWeight(right.priority) ||
+    compareTodoUpdatedDesc(left, right)
+  );
+}
+
+function sortTodoItems(items: TaskTodoItem[], sort: TaskTodoSort) {
+  const comparator =
+    sort === "updated_desc"
+      ? compareTodoUpdatedDesc
+      : sort === "priority"
+        ? compareTodoPriority
+        : compareTodoManual;
+  return [...items].toSorted(comparator);
+}
+
+function groupTaskTodos(task: TaskItem | null | undefined, sort: TaskTodoSort) {
+  const items = sortTodoItems(task?.todoItems ?? [], sort);
+  return {
+    inProgress: items.filter((item) => item.status === "in_progress"),
+    pending: items.filter((item) => item.status === "pending"),
+    completed: items.filter((item) => item.status === "completed"),
+    cancelled: items.filter((item) => item.status === "cancelled"),
+  };
+}
+
+function todoStatusLabel(status: TaskTodoStatus): string {
+  if (status === "in_progress") {
+    return "进行中";
+  }
+  if (status === "completed") {
+    return "已完成";
+  }
+  if (status === "cancelled") {
+    return "已取消";
+  }
+  return "待做";
+}
+
+function todoPriorityLabel(priority: TaskTodoPriority): string {
+  if (priority === "high") {
+    return "高优先级";
+  }
+  if (priority === "low") {
+    return "低优先级";
+  }
+  return "普通";
+}
+
+function todoSourceLabel(source: TaskTodoItem["source"]): string {
+  if (source === "agent") {
+    return "Agent";
+  }
+  if (source === "system") {
+    return "System";
+  }
+  return "User";
+}
+
+function renderTodoRow(task: TaskItem, todo: TaskTodoItem, props: TasksViewProps) {
+  const editing = hubUiState.todoEditTaskId === task.taskId && hubUiState.todoEditId === todo.id;
+  return html`<div class="task-todo-row task-todo-row--${todo.status}">
+    <div class="task-todo-row__main">
+      <div class="task-todo-row__top">
+        <span class="task-todo-row__status">${todoStatusLabel(todo.status)}</span>
+        <span class="task-todo-row__priority">${todoPriorityLabel(todo.priority)}</span>
+        <span class="task-todo-row__source">${todoSourceLabel(todo.source)}</span>
+        <span class="task-todo-row__time">${formatRelativeTimestamp(todo.updatedAt)}</span>
+      </div>
+      ${editing
+        ? html`<div class="task-todo-row__editor">
+            <input
+              .value=${hubUiState.todoEditContent}
+              @input=${(event: Event) => {
+                hubUiState.todoEditContent = (event.target as HTMLInputElement).value;
+                requestTaskViewUpdate(props);
+              }}
+            />
+            <div class="task-todo-row__actions">
+              <button
+                type="button"
+                class="btn btn--ghost"
+                @click=${() => {
+                  hubUiState.todoEditTaskId = null;
+                  hubUiState.todoEditId = null;
+                  hubUiState.todoEditContent = "";
+                  requestTaskViewUpdate(props);
+                }}
+              >取消</button>
+              <button
+                type="button"
+                class="btn"
+                ?disabled=${!hubUiState.todoEditContent.trim()}
+                @click=${async () => {
+                  await props.onUpdateTodo(task.taskId, todo.id, { content: hubUiState.todoEditContent.trim() });
+                  hubUiState.todoEditTaskId = null;
+                  hubUiState.todoEditId = null;
+                  hubUiState.todoEditContent = "";
+                  requestTaskViewUpdate(props);
+                }}
+              >保存</button>
+            </div>
+          </div>`
+        : html`<div class="task-todo-row__content">${todo.content}</div>`}
+      ${todo.note ? html`<div class="task-todo-row__meta">说明：${todo.note}</div>` : nothing}
+      ${todo.verification ? html`<div class="task-todo-row__meta">验收：${todo.verification}</div>` : nothing}
+    </div>
+    <div class="task-todo-row__actions">
+      ${todo.status !== "in_progress"
+        ? html`<button type="button" class="btn btn--ghost" @click=${() => props.onSetTodoStatus(task.taskId, todo.id, "in_progress")}>进行中</button>`
+        : nothing}
+      ${todo.status !== "completed"
+        ? html`<button type="button" class="btn btn--ghost" @click=${() => props.onSetTodoStatus(task.taskId, todo.id, "completed")}>完成</button>`
+        : nothing}
+      ${todo.status !== "cancelled"
+        ? html`<button type="button" class="btn btn--ghost" @click=${() => props.onSetTodoStatus(task.taskId, todo.id, "cancelled")}>取消</button>`
+        : nothing}
+      <button
+        type="button"
+        class="btn btn--ghost"
+        @click=${() => {
+          hubUiState.todoEditTaskId = task.taskId;
+          hubUiState.todoEditId = todo.id;
+          hubUiState.todoEditContent = todo.content;
+          requestTaskViewUpdate(props);
+        }}
+      >编辑</button>
+      <button type="button" class="btn btn--ghost" @click=${() => props.onDeleteTodo(task.taskId, todo.id)}>删除</button>
+    </div>
+  </div>`;
+}
+
+function renderTodoSection(title: string, items: TaskTodoItem[], task: TaskItem, props: TasksViewProps, empty: string) {
+  return html`<div class="task-preview-pane__detail-list task-preview-pane__detail-list--todos">
+    <div class="task-preview-pane__block-title"><span>${title}</span><span class="task-preview-pane__meta-inline">${items.length}</span></div>
+    ${items.length ? items.map((item) => renderTodoRow(task, item, props)) : html`<div class="task-empty-inline">${empty}</div>`}
+  </div>`;
+}
+
+function renderTaskTodoBlock(task: TaskItem, props: TasksViewProps) {
+  const todos = groupTaskTodos(task, hubUiState.todoSort);
+  const hasTodos = Object.values(todos).some((items) => items.length > 0);
+  const showDraft = hubUiState.todoDraftTaskId === task.taskId;
+  const recentCompleted = sortTodoItems(todos.completed, "updated_desc").slice(0, 3);
+  return html`<div class="task-preview-pane__block">
+    ${renderBlockTitle("执行清单", props)}
+    <div class="task-preview-pane__detail-list">
+      <div><strong>当前进行中：</strong>${todos.inProgress[0]?.content ?? "暂无进行中的执行项"}</div>
+      <div><strong>下一步：</strong>${task.nextStep ?? "暂无下一步，建议补充执行清单"}</div>
+      ${recentCompleted.length
+        ? html`<div><strong>最近完成：</strong>${recentCompleted.map((item) => item.content).join(" · ")}</div>`
+        : nothing}
+    </div>
+    <div class="task-todo-toolbar">
+      <label class="task-field">
+        <span class="task-field__label">清单排序</span>
+        <select
+          .value=${hubUiState.todoSort}
+          @change=${(event: Event) => {
+            hubUiState.todoSort = (event.target as HTMLSelectElement).value as TaskTodoSort;
+            requestTaskViewUpdate(props);
+          }}
+        >
+          <option value="manual">默认顺序</option>
+          <option value="updated_desc">最近更新</option>
+          <option value="priority">优先级</option>
+        </select>
+      </label>
+      <button
+        type="button"
+        class="btn btn--ghost"
+        @click=${() => {
+          hubUiState.todoDraftTaskId = showDraft ? null : task.taskId;
+          hubUiState.todoDraftContent = showDraft ? "" : hubUiState.todoDraftContent;
+          requestTaskViewUpdate(props);
+        }}
+      >${showDraft ? "收起新增" : "添加清单项"}</button>
+    </div>
+    ${showDraft
+      ? html`<div class="task-todo-draft">
+          <input
+            placeholder="添加当前任务的下一步或执行项"
+            .value=${hubUiState.todoDraftContent}
+            @input=${(event: Event) => {
+              hubUiState.todoDraftContent = (event.target as HTMLInputElement).value;
+              requestTaskViewUpdate(props);
+            }}
+          />
+          <button
+            type="button"
+            class="btn"
+            ?disabled=${!hubUiState.todoDraftContent.trim()}
+            @click=${async () => {
+              await props.onCreateTodo(task.taskId, { content: hubUiState.todoDraftContent.trim() });
+              hubUiState.todoDraftContent = "";
+              hubUiState.todoDraftTaskId = null;
+              requestTaskViewUpdate(props);
+            }}
+          >添加</button>
+        </div>`
+      : nothing}
+    ${hasTodos
+      ? html`${renderTodoSection("进行中", todos.inProgress, task, props, "暂无进行中的执行项")}
+          ${renderTodoSection("待做", todos.pending, task, props, "暂无待做项")}
+          ${renderTodoSection("已完成", todos.completed, task, props, "暂无已完成项")}
+          ${renderTodoSection("已取消", todos.cancelled, task, props, "暂无已取消项")}`
+      : html`<div class="task-empty-inline">暂无执行清单，建议先补一条 next step。</div>`}
+  </div>`;
+}
+
 function renderTaskPreview(task: TaskItem | null, props: TasksViewProps, archiveMode = false) {
   if (!task) {
     return html`
@@ -1036,6 +1318,8 @@ function renderTaskPreview(task: TaskItem | null, props: TasksViewProps, archive
       </div>
 
       ${renderRuntimeTaskLinks(task, props)}
+
+      ${!archiveMode ? renderTaskTodoBlock(task, props) : nothing}
 
       <div class="task-preview-pane__block">
         ${renderBlockTitle(
@@ -1176,6 +1460,13 @@ function renderEditDrawer(props: TasksViewProps) {
 
 function renderTaskHub(props: TasksViewProps) {
   const currentTaskId = props.currentSession?.taskId ?? null;
+  const resolvedCurrentTask = resolveSessionTask(
+    props.currentSession?.key ?? "",
+    currentTaskId,
+    props.items,
+    [],
+    { mode: props.currentSession?.mode ?? "normal" },
+  ).displayTask;
   const query = hubUiState.taskQuery.trim();
   const filtered = props.items.filter((task) => matchesTaskQuery(task, query));
   const filteredByMode = filtered.filter((task) => {
@@ -1190,7 +1481,7 @@ function renderTaskHub(props: TasksViewProps) {
     }
     return taskIsReferenceComplete(task);
   });
-  const sectionsSource = taskSectionItems(filteredByMode, currentTaskId);
+  const sectionsSource = taskSectionItems(filteredByMode, resolvedCurrentTask, currentTaskId, hubUiState.taskSort);
   const sections: TaskSection[] = [
     {
       id: "current",
@@ -1221,7 +1512,7 @@ function renderTaskHub(props: TasksViewProps) {
       emptyLabel: "当前筛选下没有最近活跃任务。",
     },
   ];
-  const previewTask = selectedTask(filteredByMode, currentTaskId);
+  const previewTask = selectedTask(filteredByMode, currentTaskId, resolvedCurrentTask);
   return html`
     <section class="task-page task-page--hub">
       <div class="task-page__header task-page__header--hero">
@@ -1254,6 +1545,21 @@ function renderTaskHub(props: TasksViewProps) {
             placeholder="按任务标题、描述或下一步搜索"
             autocomplete="off"
           />
+        </label>
+        <label class="task-field">
+          <span class="task-field__label">主列表排序</span>
+          <select
+            .value=${hubUiState.taskSort}
+            @change=${(event: Event) => {
+              hubUiState.taskSort = (event.target as HTMLSelectElement).value as TaskListSort;
+              requestTaskViewUpdate(props);
+            }}
+          >
+            <option value="recommended">推荐顺序</option>
+            <option value="updated_desc">最近更新</option>
+            <option value="created_desc">最近创建</option>
+            <option value="title_asc">标题 A-Z</option>
+          </select>
         </label>
         <div class="task-filter-chips" role="tablist" aria-label="任务筛选">
           ${[
@@ -1351,8 +1657,8 @@ function renderArchivePage(props: TasksViewProps) {
     }
     return Boolean(task.archivedAt && Date.now() - task.archivedAt >= 1000 * 60 * 60 * 24 * 30);
   });
-  const sorted = sortTasks(filteredByMode, props.currentSession?.taskId ?? null);
-  const previewTask = selectedTask(sorted, props.currentSession?.taskId ?? null);
+  const sorted = sortTasks(filteredByMode, props.currentSession?.taskId ?? null, hubUiState.taskSort);
+  const previewTask = selectedTask(sorted, props.currentSession?.taskId ?? null, null);
   const selectedItems = sorted.filter((task) => hubUiState.selectedArchiveIds.has(task.taskId));
   return html`
     <section class="task-page task-page--archive">
@@ -1444,6 +1750,24 @@ function renderArchivePage(props: TasksViewProps) {
       ${renderFullRecordDrawer(previewTask, props)}
     </section>
   `;
+}
+
+export function resetTaskViewStateForTests() {
+  hubUiState.taskQuery = "";
+  hubUiState.taskFilter = "all";
+  hubUiState.archiveQuery = "";
+  hubUiState.archiveFilter = "all";
+  hubUiState.selectedTaskId = null;
+  hubUiState.selectedArchiveIds.clear();
+  hubUiState.selectedRuntimeTaskId = null;
+  hubUiState.fullRecordDrawer = { kind: null };
+  hubUiState.taskSort = "recommended";
+  hubUiState.todoDraftTaskId = null;
+  hubUiState.todoDraftContent = "";
+  hubUiState.todoEditTaskId = null;
+  hubUiState.todoEditId = null;
+  hubUiState.todoEditContent = "";
+  hubUiState.todoSort = "manual";
 }
 
 export function renderTasks(props: TasksViewProps) {

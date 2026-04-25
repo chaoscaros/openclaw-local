@@ -1,9 +1,9 @@
 /* @vitest-environment jsdom */
 
 import { render } from "lit";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "../../i18n/index.ts";
-import { renderTasks, type TasksViewProps } from "./tasks.ts";
+import { renderTasks, resetTaskViewStateForTests, type TasksViewProps } from "./tasks.ts";
 
 function buildProps(overrides: Partial<TasksViewProps> = {}): TasksViewProps {
   return {
@@ -16,6 +16,41 @@ function buildProps(overrides: Partial<TasksViewProps> = {}): TasksViewProps {
         progressSummary: "已完成任务进度自动同步链路，补齐 session history 聚合，并把任务详情默认展示改成摘要优先。",
         completedSummary: "补齐了历史同步、按钮入口和 runtime 详情预览。",
         nextStep: "继续验证真实 UI 场景，并确认抽屉里的完整记录与当前任务保持一致。",
+        todoItems: [
+          {
+            id: "todo-1",
+            taskId: "task-1",
+            content: "定位聊天任务切换器当前任务显示问题",
+            status: "in_progress",
+            priority: "high",
+            source: "user",
+            createdAt: Date.now() - 3000,
+            updatedAt: Date.now() - 2000,
+            order: 0,
+          },
+          {
+            id: "todo-2",
+            taskId: "task-1",
+            content: "补齐任务详情里的执行清单交互",
+            status: "pending",
+            priority: "normal",
+            source: "agent",
+            createdAt: Date.now() - 2000,
+            updatedAt: Date.now() - 1000,
+            order: 1,
+          },
+          {
+            id: "todo-3",
+            taskId: "task-1",
+            content: "补充聊天任务抽屉的最近完成展示",
+            status: "completed",
+            priority: "normal",
+            source: "agent",
+            createdAt: Date.now() - 1500,
+            updatedAt: Date.now() - 500,
+            order: 2,
+          },
+        ],
         resourceContext: [
           "ui/src/ui/app-gateway.ts",
           "ui/src/ui/views/tasks.ts",
@@ -93,6 +128,10 @@ function buildProps(overrides: Partial<TasksViewProps> = {}): TasksViewProps {
     onRestore: () => undefined,
     onDelete: () => undefined,
     onSyncProgress: () => undefined,
+    onCreateTodo: async () => null,
+    onUpdateTodo: async () => null,
+    onSetTodoStatus: async () => null,
+    onDeleteTodo: async () => null,
     onEditTask: () => undefined,
     ...overrides,
   };
@@ -100,6 +139,10 @@ function buildProps(overrides: Partial<TasksViewProps> = {}): TasksViewProps {
 
 beforeAll(async () => {
   await i18n.setLocale("en");
+});
+
+beforeEach(() => {
+  resetTaskViewStateForTests();
 });
 
 describe("renderTasks", () => {
@@ -146,6 +189,11 @@ describe("renderTasks", () => {
     expect(text).toContain("goods_spu_id");
     expect(text).not.toContain("per_page");
     expect(text).toContain("同步历史进度");
+    expect(text).toContain("执行清单");
+    expect(text).toContain("定位聊天任务切换器当前任务显示问题");
+    expect(text).toContain("补齐任务详情里的执行清单交互");
+    expect(text).toContain("补充聊天任务抽屉的最近完成展示");
+    expect(text).toContain("添加清单项");
     expect(text).toContain("执行层健康");
     expect(text).toContain("执行正常");
     expect(text).toContain("最近 Run");
@@ -286,6 +334,199 @@ describe("renderTasks", () => {
     expect(text).toContain("Delete");
   });
 
+  it("supports sorting execution checklist items by priority and recent update", async () => {
+    const container = document.createElement("div");
+    const baseNow = Date.now();
+    const props = buildProps({
+      currentSession: { key: "main", kind: "direct", updatedAt: baseNow, mode: "task", taskId: "task-sort" },
+      items: [
+        {
+          taskId: "task-sort",
+          title: "Task sort",
+          description: "Verify todo sorting",
+          status: "active",
+          effectiveStatus: "active",
+          archived: false,
+          createdAt: 1,
+          updatedAt: baseNow,
+          todoItems: [
+            {
+              id: "todo-low-new",
+              taskId: "task-sort",
+              content: "低优先级但最近更新",
+              status: "pending",
+              priority: "low",
+              source: "agent",
+              createdAt: 1,
+              updatedAt: baseNow,
+              order: 0,
+            },
+            {
+              id: "todo-high-old",
+              taskId: "task-sort",
+              content: "高优先级但较早更新",
+              status: "pending",
+              priority: "high",
+              source: "user",
+              createdAt: 2,
+              updatedAt: baseNow - 10_000,
+              order: 1,
+            },
+            {
+              id: "todo-normal-mid",
+              taskId: "task-sort",
+              content: "普通优先级",
+              status: "pending",
+              priority: "normal",
+              source: "system",
+              createdAt: 3,
+              updatedAt: baseNow - 5_000,
+              order: 2,
+            },
+          ],
+        },
+      ],
+      onRequestUpdate: () => {
+        render(renderTasks(props), container);
+      },
+    });
+    render(renderTasks(props), container);
+    await Promise.resolve();
+
+    const sortSelect = container.querySelector('.task-todo-toolbar select') as HTMLSelectElement | null;
+    expect(sortSelect).toBeTruthy();
+    expect(container.textContent ?? '').toContain('清单排序');
+
+    const pendingOrder = () =>
+      Array.from(container.querySelectorAll('.task-preview-pane__detail-list--todos'))
+        .find((section) => (section.textContent ?? '').includes('待做'))
+        ?.querySelectorAll('.task-todo-row__content');
+
+    const pendingTexts = () => Array.from(pendingOrder() ?? []).map((node) => node.textContent?.trim() ?? '');
+
+    expect(pendingTexts()).toEqual(['低优先级但最近更新', '高优先级但较早更新', '普通优先级']);
+
+    sortSelect!.value = 'priority';
+    sortSelect!.dispatchEvent(new Event('change'));
+    await Promise.resolve();
+    expect(pendingTexts()).toEqual(['高优先级但较早更新', '普通优先级', '低优先级但最近更新']);
+
+    sortSelect!.value = 'updated_desc';
+    sortSelect!.dispatchEvent(new Event('change'));
+    await Promise.resolve();
+    expect(pendingTexts()).toEqual(['低优先级但最近更新', '普通优先级', '高优先级但较早更新']);
+  });
+
+  it("shows the linked titled task in the current-task section when the bound task title is empty", async () => {
+    const container = document.createElement("div");
+    const baseNow = Date.now();
+    render(
+      renderTasks(
+        buildProps({
+          currentSession: { key: "main", kind: "direct", updatedAt: baseNow, mode: "task", taskId: "task-empty" },
+          items: [
+            {
+              taskId: "task-empty",
+              title: "",
+              description: "好了，现在又改成：storage_storehouse_area_id",
+              status: "active",
+              effectiveStatus: "active",
+              archived: false,
+              createdAt: 1,
+              updatedAt: baseNow - 1000,
+              lastSessionKey: "main",
+            },
+            {
+              taskId: "task-real",
+              title: "supply_vue项目新增获取商品规格库区列表和获取商品规格库存明细列表接口",
+              description: "真实任务标题",
+              status: "active",
+              effectiveStatus: "active",
+              archived: false,
+              createdAt: 2,
+              updatedAt: baseNow,
+              lastSessionKey: "main",
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+    const text = container.textContent ?? "";
+    expect(text).toContain("当前会话任务");
+    expect(text).toContain("supply_vue项目新增获取商品规格库区列表和获取商品规格库存明细列表接口");
+  });
+
+  it("supports sorting the main task list by recency and title", async () => {
+    const container = document.createElement("div");
+    const baseNow = Date.now();
+    const props = buildProps({
+      currentSession: { key: "main", kind: "direct", updatedAt: baseNow, mode: "task" },
+      items: [
+        {
+          taskId: "task-zeta",
+          title: "Zeta task",
+          description: "newest update",
+          status: "active",
+          effectiveStatus: "active",
+          archived: false,
+          createdAt: 10,
+          updatedAt: baseNow,
+        },
+        {
+          taskId: "task-alpha",
+          title: "Alpha task",
+          description: "middle update",
+          status: "active",
+          effectiveStatus: "active",
+          archived: false,
+          createdAt: 20,
+          updatedAt: baseNow - 10_000,
+        },
+        {
+          taskId: "task-middle",
+          title: "Middle task",
+          description: "older update",
+          status: "active",
+          effectiveStatus: "active",
+          archived: false,
+          createdAt: 30,
+          updatedAt: baseNow - 30_000,
+        },
+      ],
+      onRequestUpdate: () => {
+        render(renderTasks(props), container);
+      },
+    });
+    render(renderTasks(props), container);
+    await Promise.resolve();
+
+    const mainSort = Array.from(container.querySelectorAll('.task-toolbar select'))
+      .find((node) => (node.parentElement?.textContent ?? '').includes('主列表排序')) as HTMLSelectElement | null;
+    expect(mainSort).toBeTruthy();
+    expect(container.textContent ?? '').toContain('主列表排序');
+
+    const activeTitles = () =>
+      Array.from(container.querySelectorAll('.task-section-card'))
+        .find((section) => (section.textContent ?? '').includes('仍需继续推进的任务。'))
+        ?.querySelectorAll('.task-list-item__title');
+
+    const activeTexts = () => Array.from(activeTitles() ?? []).map((node) => node.textContent?.trim() ?? '');
+
+    expect(activeTexts()).toEqual(['Zeta task', 'Alpha task', 'Middle task']);
+
+    mainSort!.value = 'title_asc';
+    mainSort!.dispatchEvent(new Event('change'));
+    await Promise.resolve();
+    expect(activeTexts()).toEqual(['Alpha task', 'Middle task', 'Zeta task']);
+
+    mainSort!.value = 'created_desc';
+    mainSort!.dispatchEvent(new Event('change'));
+    await Promise.resolve();
+    expect(activeTexts()).toEqual(['Middle task', 'Alpha task', 'Zeta task']);
+  });
+
   it("shows create drawer when task creation is open", async () => {
     const container = document.createElement("div");
     render(renderTasks(buildProps({ createOpen: true, createTitle: "New task" })), container);
@@ -320,9 +561,12 @@ describe("renderTasks", () => {
       container,
     );
     await Promise.resolve();
-    const select = container.querySelector("select") as HTMLSelectElement;
-    select.value = "completed";
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    const select = Array.from(container.querySelectorAll("select")).find(
+      (node) => (node.parentElement?.textContent ?? "").includes("Status"),
+    );
+    expect(select).toBeTruthy();
+    select!.value = "completed";
+    select!.dispatchEvent(new Event("change", { bubbles: true }));
     const buttons = Array.from(container.querySelectorAll("button"));
     buttons.find((button) => button.textContent?.includes("Set current"))?.click();
     buttons.find((button) => button.textContent?.includes("同步历史进度"))?.click();

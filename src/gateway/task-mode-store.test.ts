@@ -4,9 +4,12 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createTaskModeTask,
+  createTaskModeTodo,
   deleteTaskModeTask,
+  deleteTaskModeTodo,
   listTaskModeTasks,
   restoreTaskModeTask,
+  setTaskModeTodoStatus,
   syncTaskModeTaskProgress,
   updateTaskModeTask,
 } from "./task-mode-store.js";
@@ -87,6 +90,77 @@ describe("task-mode-store", () => {
     expect(item['description']).toBe('compact desc');
     expect(typeof item['createdAt']).toBe('number');
     expect(typeof item['updatedAt']).toBe('number');
+  });
+
+  it("backfills empty raw task titles from flow goals on load", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const created = await createTaskModeTask({ id: "task-backfill", title: "Original title", description: "orig desc" });
+    const flow = getTaskFlowById(created.flowId!);
+    expect(flow).toBeTruthy();
+    updateFlowRecordByIdExpectedRevision({
+      flowId: flow!.flowId,
+      expectedRevision: flow!.revision,
+      patch: { goal: 'Recovered title from flow' },
+    });
+    const storePath = path.join(process.env.OPENCLAW_STATE_DIR, 'control-ui', 'task-mode-store.json');
+    const payload = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+    payload.tasks[0].title = '';
+    fs.writeFileSync(storePath, JSON.stringify(payload, null, 2));
+
+    const listed = await listTaskModeTasks();
+    const task = listed.tasks.find((item) => item.id === 'task-backfill');
+    expect(task?.title).toBe('Recovered title from flow');
+
+    const repaired = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+    expect(repaired.tasks[0].title).toBe('Recovered title from flow');
+  });
+
+  it("does not overwrite existing raw titles during flow backfill", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const created = await createTaskModeTask({ id: "task-no-overwrite", title: "Keep raw title" });
+    const flow = getTaskFlowById(created.flowId!);
+    expect(flow).toBeTruthy();
+    updateFlowRecordByIdExpectedRevision({
+      flowId: flow!.flowId,
+      expectedRevision: flow!.revision,
+      patch: { goal: 'Flow title should not overwrite raw title' },
+    });
+    const listed = await listTaskModeTasks();
+    const task = listed.tasks.find((item) => item.id === 'task-no-overwrite');
+    expect(task?.title).toBe('Flow title should not overwrite raw title');
+
+    const storePath = path.join(process.env.OPENCLAW_STATE_DIR, 'control-ui', 'task-mode-store.json');
+    const repaired = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+    expect(repaired.tasks[0].title).toBe('Keep raw title');
+  });
+
+  it("creates todos and derives next step from the first pending item", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    await createTaskModeTask({ id: "task-todo", title: "Todo task" });
+    const updated = await createTaskModeTodo({ taskId: "task-todo", todoId: "todo-1", content: "补执行清单" });
+    expect(updated?.todoItems?.[0]?.content).toBe("补执行清单");
+    const listed = await listTaskModeTasks();
+    const task = listed.tasks.find((item) => item.id === "task-todo");
+    expect(task?.nextStep).toBe("补执行清单");
+  });
+
+  it("ensures only one todo stays in progress", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    await createTaskModeTask({ id: "task-todo-progress", title: "Todo progress task" });
+    await createTaskModeTodo({ taskId: "task-todo-progress", todoId: "todo-1", content: "旧进行中" });
+    await createTaskModeTodo({ taskId: "task-todo-progress", todoId: "todo-2", content: "新进行中" });
+    await setTaskModeTodoStatus({ taskId: "task-todo-progress", todoId: "todo-1", status: "in_progress" });
+    const updated = await setTaskModeTodoStatus({ taskId: "task-todo-progress", todoId: "todo-2", status: "in_progress" });
+    expect(updated?.todoItems?.filter((item) => item.status === 'in_progress')).toHaveLength(1);
+    expect(updated?.nextStep).toBe("新进行中");
+  });
+
+  it("deletes todos and falls back when no todo remains", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    await createTaskModeTask({ id: "task-todo-delete", title: "Todo delete task", description: "fallback desc" });
+    await createTaskModeTodo({ taskId: "task-todo-delete", todoId: "todo-1", content: "临时步骤" });
+    const updated = await deleteTaskModeTodo({ taskId: "task-todo-delete", todoId: "todo-1" });
+    expect(updated?.todoItems).toBeUndefined();
   });
 
   it("keeps timestamps aligned with flow metadata while retaining persisted fallbacks", async () => {

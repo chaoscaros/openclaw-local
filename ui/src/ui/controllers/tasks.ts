@@ -4,6 +4,22 @@ import { loadSessions, patchSession, type SessionsState } from "./sessions.ts";
 export type TaskStatus = "active" | "paused" | "interrupted" | "completed" | "ended";
 
 export type TaskRuntimeHealth = "healthy" | "stale" | "lost" | "recovering";
+export type TaskTodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
+export type TaskTodoPriority = "low" | "normal" | "high";
+export type TaskTodoSource = "user" | "agent" | "system";
+export type TaskTodoItem = {
+  id: string;
+  taskId: string;
+  content: string;
+  status: TaskTodoStatus;
+  priority: TaskTodoPriority;
+  source: TaskTodoSource;
+  note?: string;
+  verification?: string;
+  createdAt: number;
+  updatedAt: number;
+  order: number;
+};
 export type RuntimeTaskSummary = {
   taskId: string;
   runtime: "subagent" | "acp" | "cli" | "cron";
@@ -24,6 +40,7 @@ export type TaskItem = {
   progressSummary?: string;
   completedSummary?: string;
   nextStep?: string;
+  todoItems?: TaskTodoItem[];
   resourceContext?: string[];
   timeline?: Array<{ at: number; label: string; detail: string }>;
   lastSyncedAt?: number;
@@ -54,6 +71,13 @@ export type TaskCheckpoint = {
   next?: string;
 };
 
+export type ResolvedSessionTask = {
+  boundTask: TaskItem | null;
+  displayTask: TaskItem | null;
+  unresolvedBoundTaskId: string | null;
+  derivedFromSessionLink: boolean;
+};
+
 export type TasksState = SessionsState & {
   sessionKey: string;
   tasksLoading: boolean;
@@ -64,8 +88,110 @@ export type TasksState = SessionsState & {
   tasksBusy: boolean;
 };
 
-function mapTask(raw: Record<string, unknown>): TaskItem {
+function normalizeTaskTodoItems(raw: unknown): TaskTodoItem[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return undefined;
+  }
+  const items = raw
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+      const record = entry as Record<string, unknown>;
+      const id = typeof record.id === "string" ? record.id.trim() : "";
+      const taskId = typeof record.taskId === "string" ? record.taskId.trim() : "";
+      const content = typeof record.content === "string" ? record.content.trim() : "";
+      const status = record.status;
+      const priority = record.priority;
+      const source = record.source;
+      if (
+        !id ||
+        !taskId ||
+        !content ||
+        (status !== "pending" && status !== "in_progress" && status !== "completed" && status !== "cancelled") ||
+        (priority !== "low" && priority !== "normal" && priority !== "high") ||
+        (source !== "user" && source !== "agent" && source !== "system")
+      ) {
+        return null;
+      }
+      return {
+        id,
+        taskId,
+        content,
+        status,
+        priority,
+        source,
+        ...(typeof record.note === "string" && record.note.trim() ? { note: record.note.trim() } : {}),
+        ...(typeof record.verification === "string" && record.verification.trim() ? { verification: record.verification.trim() } : {}),
+        createdAt: Number.isFinite(record.createdAt) ? Number(record.createdAt) : Date.now(),
+        updatedAt: Number.isFinite(record.updatedAt) ? Number(record.updatedAt) : Date.now(),
+        order: Number.isFinite(record.order) ? Number(record.order) : 0,
+      } satisfies TaskTodoItem;
+    })
+    .filter((entry): entry is TaskTodoItem => Boolean(entry))
+    .toSorted((left, right) => left.order - right.order || left.createdAt - right.createdAt)
+    .map((entry, index) => ({ ...entry, order: index }));
+  return items.length ? items : undefined;
+}
+
+function deriveTaskNextStep(task: { todoItems?: TaskTodoItem[]; nextStep?: string }): string | undefined {
+  const items = task.todoItems ?? [];
+  const inProgress = items.find((item) => item.status === "in_progress");
+  if (inProgress) {
+    return inProgress.content;
+  }
+  const pending = items.find((item) => item.status === "pending");
+  if (pending) {
+    return pending.content;
+  }
+  return typeof task.nextStep === "string" && task.nextStep.trim() ? task.nextStep.trim() : undefined;
+}
+
+function hasMeaningfulTaskTitle(task: Pick<TaskItem, "title"> | null | undefined): boolean {
+  return typeof task?.title === "string" && task.title.trim().length > 0;
+}
+
+function compareSessionLinkedTaskCandidates(left: TaskItem, right: TaskItem) {
+  const titleDelta = Number(hasMeaningfulTaskTitle(right)) - Number(hasMeaningfulTaskTitle(left));
+  if (titleDelta !== 0) {
+    return titleDelta;
+  }
+  return (right.updatedAt ?? right.createdAt) - (left.updatedAt ?? left.createdAt);
+}
+
+export function resolveSessionTask(
+  sessionKey: string,
+  sessionTaskId: string | null | undefined,
+  taskItems: TaskItem[],
+  archivedTaskItems: TaskItem[] = [],
+  opts?: { mode?: "normal" | "task" | null },
+): ResolvedSessionTask {
+  const normalizedTaskId = typeof sessionTaskId === "string" && sessionTaskId.trim() ? sessionTaskId.trim() : null;
+  const boundTask = normalizedTaskId
+    ? taskItems.find((task) => task.taskId === normalizedTaskId) ??
+      archivedTaskItems.find((task) => task.taskId === normalizedTaskId) ??
+      null
+    : null;
+  const sessionLinkedCandidates = taskItems
+    .filter((task) => task.lastSessionKey === sessionKey)
+    .toSorted(compareSessionLinkedTaskCandidates);
+  const preferredSessionLinkedTask = sessionLinkedCandidates.find((task) => hasMeaningfulTaskTitle(task)) ?? sessionLinkedCandidates[0] ?? null;
+  const canUseSessionLinkedFallback =
+    Boolean(preferredSessionLinkedTask) &&
+    (!normalizedTaskId || !boundTask || !hasMeaningfulTaskTitle(boundTask)) &&
+    (opts?.mode === "task" || normalizedTaskId !== null);
+  const displayTask = canUseSessionLinkedFallback ? preferredSessionLinkedTask : boundTask;
   return {
+    boundTask,
+    displayTask,
+    unresolvedBoundTaskId: normalizedTaskId && !displayTask ? normalizedTaskId : null,
+    derivedFromSessionLink: canUseSessionLinkedFallback && Boolean(displayTask),
+  };
+}
+
+function mapTask(raw: Record<string, unknown>): TaskItem {
+  const todoItems = normalizeTaskTodoItems(raw.todoItems);
+  const mapped: TaskItem = {
     taskId: typeof raw.id === "string" ? raw.id.trim() : "",
     title: typeof raw.title === "string" ? raw.title.trim() : "",
     ...(typeof raw.description === "string" && raw.description.trim()
@@ -78,6 +204,7 @@ function mapTask(raw: Record<string, unknown>): TaskItem {
     ...(typeof raw.completedSummary === "string" && raw.completedSummary.trim()
       ? { completedSummary: raw.completedSummary.trim() }
       : {}),
+    ...(todoItems ? { todoItems } : {}),
     ...(typeof raw.nextStep === "string" && raw.nextStep.trim() ? { nextStep: raw.nextStep.trim() } : {}),
     ...(Array.isArray(raw.resourceContext)
       ? {
@@ -191,6 +318,11 @@ function mapTask(raw: Record<string, unknown>): TaskItem {
             : {}),
         }
       : {}),
+  };
+  const derivedNextStep = deriveTaskNextStep(mapped);
+  return {
+    ...mapped,
+    ...(derivedNextStep ? { nextStep: derivedNextStep } : {}),
   };
 }
 
@@ -399,6 +531,70 @@ export async function updateTaskModeTask(
   } finally {
     state.tasksBusy = false;
   }
+}
+
+async function mutateTaskTodo(
+  state: TasksState,
+  method: "taskmode.todo.create" | "taskmode.todo.update" | "taskmode.todo.setStatus" | "taskmode.todo.delete",
+  params: Record<string, unknown>,
+) {
+  if (!state.client || !state.connected) {
+    return null;
+  }
+  state.tasksBusy = true;
+  try {
+    const result = await state.client.request<{ ok: true; task?: Record<string, unknown> }>(method, params);
+    const task = result.task ? mapTask(result.task) : null;
+    if (task) {
+      applyTaskIntoStateCollections(state, task);
+    }
+    return task;
+  } catch (err) {
+    state.tasksError = String(err);
+    return null;
+  } finally {
+    state.tasksBusy = false;
+  }
+}
+
+export async function createTaskTodo(
+  state: TasksState,
+  taskId: string,
+  input: { content: string; priority?: TaskTodoPriority; note?: string; verification?: string },
+) {
+  return mutateTaskTodo(state, "taskmode.todo.create", {
+    taskId,
+    content: input.content,
+    ...(input.priority ? { priority: input.priority } : {}),
+    ...(input.note !== undefined ? { note: input.note } : {}),
+    ...(input.verification !== undefined ? { verification: input.verification } : {}),
+  });
+}
+
+export async function updateTaskTodo(
+  state: TasksState,
+  taskId: string,
+  todoId: string,
+  patch: { content?: string; priority?: TaskTodoPriority; note?: string | null; verification?: string | null },
+) {
+  return mutateTaskTodo(state, "taskmode.todo.update", {
+    taskId,
+    todoId,
+    ...patch,
+  });
+}
+
+export async function setTaskTodoStatus(
+  state: TasksState,
+  taskId: string,
+  todoId: string,
+  status: TaskTodoStatus,
+) {
+  return mutateTaskTodo(state, "taskmode.todo.setStatus", { taskId, todoId, status });
+}
+
+export async function deleteTaskTodo(state: TasksState, taskId: string, todoId: string) {
+  return mutateTaskTodo(state, "taskmode.todo.delete", { taskId, todoId });
 }
 
 export async function archiveTaskForSession(state: TasksState, taskId: string) {

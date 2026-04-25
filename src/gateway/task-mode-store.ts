@@ -38,6 +38,24 @@ export type TaskModeRuntimeTaskSummary = {
   terminalSummary?: string;
 };
 
+export type TaskModeTodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
+export type TaskModeTodoPriority = "low" | "normal" | "high";
+export type TaskModeTodoSource = "user" | "agent" | "system";
+
+export type TaskModeTodoItem = {
+  id: string;
+  taskId: string;
+  content: string;
+  status: TaskModeTodoStatus;
+  priority: TaskModeTodoPriority;
+  source: TaskModeTodoSource;
+  note?: string;
+  verification?: string;
+  createdAt: number;
+  updatedAt: number;
+  order: number;
+};
+
 export type TaskModeRecord = {
   id: string;
   title: string;
@@ -45,6 +63,7 @@ export type TaskModeRecord = {
   progressSummary?: string;
   completedSummary?: string;
   nextStep?: string;
+  todoItems?: TaskModeTodoItem[];
   resourceContext?: string[];
   timeline?: Array<{ at: number; label: string; detail: string }>;
   lastSyncedAt?: number;
@@ -89,11 +108,82 @@ function resolveTaskModeStorePath(): string {
   return path.join(resolveStateDir(), "control-ui", "task-mode-store.json");
 }
 
+function normalizeTaskTodoItem(raw: TaskModeTodoItem, fallbackTaskId: string, fallbackOrder: number): TaskModeTodoItem | null {
+  const id = typeof raw.id === "string" ? raw.id.trim() : "";
+  const taskId = typeof raw.taskId === "string" && raw.taskId.trim() ? raw.taskId.trim() : fallbackTaskId;
+  const content = typeof raw.content === "string" ? raw.content.trim() : "";
+  if (!id || !taskId || !content) {
+    return null;
+  }
+  const status =
+    raw.status === "pending" || raw.status === "in_progress" || raw.status === "completed" || raw.status === "cancelled"
+      ? raw.status
+      : "pending";
+  const priority = raw.priority === "low" || raw.priority === "normal" || raw.priority === "high" ? raw.priority : "normal";
+  const source = raw.source === "user" || raw.source === "agent" || raw.source === "system" ? raw.source : "user";
+  return {
+    id,
+    taskId,
+    content,
+    status,
+    priority,
+    source,
+    ...(typeof raw.note === "string" && raw.note.trim() ? { note: raw.note.trim() } : {}),
+    ...(typeof raw.verification === "string" && raw.verification.trim() ? { verification: raw.verification.trim() } : {}),
+    createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : Date.now(),
+    updatedAt: Number.isFinite(raw.updatedAt) ? raw.updatedAt : Date.now(),
+    order: Number.isFinite(raw.order) ? raw.order : fallbackOrder,
+  };
+}
+
+function normalizeTaskTodoItems(items: TaskModeTodoItem[] | undefined, taskId: string): TaskModeTodoItem[] | undefined {
+  if (!Array.isArray(items) || items.length === 0) {
+    return undefined;
+  }
+  const normalized = items
+    .map((item, index) => normalizeTaskTodoItem(item, taskId, index))
+    .filter((item): item is TaskModeTodoItem => Boolean(item))
+    .toSorted((left, right) => left.order - right.order || left.createdAt - right.createdAt)
+    .map((item, index) => ({ ...item, order: index }));
+  if (normalized.length === 0) {
+    return undefined;
+  }
+  const inProgress = normalized.filter((item) => item.status === "in_progress");
+  if (inProgress.length > 1) {
+    let seen = false;
+    for (const item of normalized) {
+      if (item.status !== "in_progress") {
+        continue;
+      }
+      if (!seen) {
+        seen = true;
+        continue;
+      }
+      item.status = "pending";
+    }
+  }
+  return normalized;
+}
+
+function deriveTaskNextStepFromTodos(todoItems: TaskModeTodoItem[] | undefined, fallbackNextStep?: string): string | undefined {
+  const items = todoItems ?? [];
+  const inProgress = items.find((item) => item.status === "in_progress");
+  if (inProgress) {
+    return inProgress.content;
+  }
+  const pending = items.find((item) => item.status === "pending");
+  if (pending) {
+    return pending.content;
+  }
+  return fallbackNextStep && fallbackNextStep.trim() ? fallbackNextStep.trim() : undefined;
+}
+
 function normalizeTaskRecord(raw: TaskModeRecord): TaskModeRecord {
+  const normalizedTaskId = typeof raw.id === "string" ? raw.id.trim() : "";
   const flowId = typeof raw.flowId === "string" && raw.flowId.trim() ? raw.flowId.trim() : undefined;
   const flow = flowId ? getTaskFlowById(flowId) : undefined;
   return {
-    id: raw.id.trim(),
+    id: normalizedTaskId,
     title: raw.title.trim(),
     ...(typeof raw.description === "string" && raw.description.trim()
       ? { description: raw.description.trim() }
@@ -105,6 +195,7 @@ function normalizeTaskRecord(raw: TaskModeRecord): TaskModeRecord {
       ? { completedSummary: raw.completedSummary.trim() }
       : {}),
     ...(typeof raw.nextStep === "string" && raw.nextStep.trim() ? { nextStep: raw.nextStep.trim() } : {}),
+    ...(normalizeTaskTodoItems(raw.todoItems, normalizedTaskId) ? { todoItems: normalizeTaskTodoItems(raw.todoItems, normalizedTaskId) } : {}),
     ...(Array.isArray(raw.resourceContext)
       ? {
           resourceContext: Array.from(
@@ -228,15 +319,39 @@ function normalizeTaskRecord(raw: TaskModeRecord): TaskModeRecord {
   };
 }
 
+function backfillTaskTitleFromFlow(task: TaskModeRecord): { task: TaskModeRecord; changed: boolean } {
+  if (typeof task.title === "string" && task.title.trim()) {
+    return { task, changed: false };
+  }
+  if (!task.flowId) {
+    return { task, changed: false };
+  }
+  const flow = getTaskFlowById(task.flowId);
+  const flowGoal = typeof flow?.goal === "string" ? flow.goal.trim() : "";
+  if (!flowGoal) {
+    return { task, changed: false };
+  }
+  return { task: { ...task, title: flowGoal }, changed: true };
+}
+
 async function loadTaskModeStore(): Promise<TaskModeStore> {
   const parsed = await readJsonFile<Partial<TaskModeStore>>(resolveTaskModeStorePath());
-  return {
-    tasks: Array.isArray(parsed?.tasks)
-      ? parsed.tasks
-          .filter((task): task is TaskModeRecord => task !== null && typeof task === "object")
-          .map((task) => normalizeTaskRecord(task))
-      : [],
-  };
+  const tasks = Array.isArray(parsed?.tasks)
+    ? parsed.tasks
+        .filter((task): task is TaskModeRecord => task !== null && typeof task === "object")
+        .map((task) => normalizeTaskRecord(task))
+    : [];
+  let changed = false;
+  const backfilled = tasks.map((task) => {
+    const result = backfillTaskTitleFromFlow(task);
+    changed ||= result.changed;
+    return result.task;
+  });
+  const store = { tasks: backfilled };
+  if (changed) {
+    await saveTaskModeStore(store);
+  }
+  return store;
 }
 
 function compactTaskModeRecordForPersistence(task: TaskModeRecord): Record<string, object | string | number | boolean | null> {
@@ -266,6 +381,9 @@ function compactTaskModeRecordForPersistence(task: TaskModeRecord): Record<strin
   }
   if (task.nextStep) {
     base.nextStep = task.nextStep;
+  }
+  if (task.todoItems?.length) {
+    base.todoItems = task.todoItems;
   }
   if (task.resourceContext?.length) {
     base.resourceContext = task.resourceContext;
@@ -424,6 +542,7 @@ function toTaskModeView(task: TaskModeRecord): TaskModeView {
   const flow = task.flowId ? getTaskFlowById(task.flowId) : undefined;
   const runtimeTasks = resolveTaskModeRuntimeTasks(task);
   const latestRuntimeTask = runtimeTasks[0];
+  const derivedNextStep = deriveTaskNextStepFromTodos(task.todoItems, task.nextStep);
   return {
     ...task,
     effectiveStatus: mapFlowStatusToEffectiveTaskStatus({
@@ -437,7 +556,8 @@ function toTaskModeView(task: TaskModeRecord): TaskModeView {
     ...(typeof flow?.updatedAt === 'number' ? { updatedAt: flow.updatedAt } : {}),
     ...(task.progressSummary ? { progressSummary: task.progressSummary } : {}),
     ...(task.completedSummary ? { completedSummary: task.completedSummary } : {}),
-    ...(task.nextStep ? { nextStep: task.nextStep } : {}),
+    ...(derivedNextStep ? { nextStep: derivedNextStep } : {}),
+    ...(task.todoItems?.length ? { todoItems: task.todoItems.map((entry) => ({ ...entry })) } : {}),
     ...(task.resourceContext?.length ? { resourceContext: [...task.resourceContext] } : {}),
     ...(task.timeline?.length ? { timeline: task.timeline.map((entry) => ({ ...entry })) } : {}),
     ...(task.lastSyncedAt ? { lastSyncedAt: task.lastSyncedAt } : {}),
@@ -890,6 +1010,133 @@ export async function updateTaskModeTask(params: {
     if (store.tasks[index]?.archived || store.tasks[index]?.status === "ended") {
       await clearSessionTaskBindings(store.tasks[index].id);
     }
+    return store.tasks[index] ?? null;
+  });
+}
+
+export async function createTaskModeTodo(params: {
+  taskId: string;
+  todoId: string;
+  content: string;
+  priority?: TaskModeTodoPriority;
+  source?: TaskModeTodoSource;
+  note?: string;
+  verification?: string;
+}): Promise<TaskModeRecord | null> {
+  return withTaskModeStoreLock(async () => {
+    const store = await loadTaskModeStore();
+    const index = store.tasks.findIndex((task) => task.id === params.taskId.trim());
+    if (index < 0) {
+      return null;
+    }
+    const current = store.tasks[index];
+    const now = Date.now();
+    const nextTodo: TaskModeTodoItem = {
+      id: params.todoId.trim(),
+      taskId: current.id,
+      content: params.content.trim(),
+      status: "pending",
+      priority: params.priority ?? "normal",
+      source: params.source ?? "user",
+      ...(params.note?.trim() ? { note: params.note.trim() } : {}),
+      ...(params.verification?.trim() ? { verification: params.verification.trim() } : {}),
+      createdAt: now,
+      updatedAt: now,
+      order: current.todoItems?.length ?? 0,
+    };
+    const todoItems = normalizeTaskTodoItems([...(current.todoItems ?? []), nextTodo], current.id);
+    const next = normalizeTaskRecord({ ...current, todoItems, updatedAt: now, nextStep: deriveTaskNextStepFromTodos(todoItems, current.nextStep) });
+    store.tasks[index] = syncTaskModeRuntimeLinks(syncTaskModeToFlow(next));
+    await saveTaskModeStore(store);
+    return store.tasks[index] ?? null;
+  });
+}
+
+export async function updateTaskModeTodo(params: {
+  taskId: string;
+  todoId: string;
+  content?: string;
+  priority?: TaskModeTodoPriority;
+  note?: string | null;
+  verification?: string | null;
+}): Promise<TaskModeRecord | null> {
+  return withTaskModeStoreLock(async () => {
+    const store = await loadTaskModeStore();
+    const index = store.tasks.findIndex((task) => task.id === params.taskId.trim());
+    if (index < 0) {
+      return null;
+    }
+    const current = store.tasks[index];
+    const now = Date.now();
+    const todoItems = (current.todoItems ?? []).map((item) => {
+      if (item.id !== params.todoId.trim()) {
+        return item;
+      }
+      return normalizeTaskTodoItem(
+        {
+          ...item,
+          ...(params.content !== undefined ? { content: params.content } : {}),
+          ...(params.priority !== undefined ? { priority: params.priority } : {}),
+          ...(params.note !== undefined ? { note: params.note ?? undefined } : {}),
+          ...(params.verification !== undefined ? { verification: params.verification ?? undefined } : {}),
+          updatedAt: now,
+        },
+        current.id,
+        item.order,
+      );
+    }).filter((item): item is TaskModeTodoItem => Boolean(item));
+    const normalizedTodos = normalizeTaskTodoItems(todoItems, current.id);
+    const next = normalizeTaskRecord({ ...current, todoItems: normalizedTodos, updatedAt: now, nextStep: deriveTaskNextStepFromTodos(normalizedTodos, current.nextStep) });
+    store.tasks[index] = syncTaskModeRuntimeLinks(syncTaskModeToFlow(next));
+    await saveTaskModeStore(store);
+    return store.tasks[index] ?? null;
+  });
+}
+
+export async function setTaskModeTodoStatus(params: {
+  taskId: string;
+  todoId: string;
+  status: TaskModeTodoStatus;
+}): Promise<TaskModeRecord | null> {
+  return withTaskModeStoreLock(async () => {
+    const store = await loadTaskModeStore();
+    const index = store.tasks.findIndex((task) => task.id === params.taskId.trim());
+    if (index < 0) {
+      return null;
+    }
+    const current = store.tasks[index];
+    const now = Date.now();
+    const targetId = params.todoId.trim();
+    const todoItems = (current.todoItems ?? []).map((item) => {
+      if (params.status === "in_progress" && item.status === "in_progress" && item.id !== targetId) {
+        return { ...item, status: "pending" as const, updatedAt: now };
+      }
+      if (item.id !== targetId) {
+        return item;
+      }
+      return { ...item, status: params.status, updatedAt: now };
+    });
+    const normalizedTodos = normalizeTaskTodoItems(todoItems, current.id);
+    const next = normalizeTaskRecord({ ...current, todoItems: normalizedTodos, updatedAt: now, nextStep: deriveTaskNextStepFromTodos(normalizedTodos, current.nextStep) });
+    store.tasks[index] = syncTaskModeRuntimeLinks(syncTaskModeToFlow(next));
+    await saveTaskModeStore(store);
+    return store.tasks[index] ?? null;
+  });
+}
+
+export async function deleteTaskModeTodo(params: { taskId: string; todoId: string }): Promise<TaskModeRecord | null> {
+  return withTaskModeStoreLock(async () => {
+    const store = await loadTaskModeStore();
+    const index = store.tasks.findIndex((task) => task.id === params.taskId.trim());
+    if (index < 0) {
+      return null;
+    }
+    const current = store.tasks[index];
+    const remaining = (current.todoItems ?? []).filter((item) => item.id !== params.todoId.trim());
+    const normalizedTodos = normalizeTaskTodoItems(remaining, current.id);
+    const next = normalizeTaskRecord({ ...current, todoItems: normalizedTodos, updatedAt: Date.now(), nextStep: deriveTaskNextStepFromTodos(normalizedTodos, current.nextStep) });
+    store.tasks[index] = syncTaskModeRuntimeLinks(syncTaskModeToFlow(next));
+    await saveTaskModeStore(store);
     return store.tasks[index] ?? null;
   });
 }

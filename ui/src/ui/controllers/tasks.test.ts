@@ -21,7 +21,15 @@ vi.mock("./sessions.ts", async () => {
   };
 });
 
-import { loadTaskModeData, setCurrentTaskForSession, syncTaskModeTaskProgress, type TasksState } from "./tasks.ts";
+import {
+  createTaskTodo,
+  loadTaskModeData,
+  resolveSessionTask,
+  setCurrentTaskForSession,
+  setTaskTodoStatus,
+  syncTaskModeTaskProgress,
+  type TasksState,
+} from "./tasks.ts";
 
 function createDeferred() {
   let resolve!: () => void;
@@ -95,6 +103,45 @@ describe("setCurrentTaskForSession", () => {
   });
 });
 
+describe("resolveSessionTask", () => {
+  it("prefers a session-linked titled task when the bound task has an empty title", () => {
+    const result = resolveSessionTask(
+      "agent:solo:main",
+      "task-empty",
+      [
+        {
+          taskId: "task-empty",
+          title: "",
+          description: "好了，现在又改成",
+          status: "active",
+          effectiveStatus: "active",
+          archived: false,
+          createdAt: 1,
+          updatedAt: 2,
+          lastSessionKey: "agent:solo:main",
+        },
+        {
+          taskId: "task-real",
+          title: "supply_vue项目新增获取商品规格库区列表和获取商品规格库存明细列表接口",
+          description: "真实任务标题",
+          status: "active",
+          effectiveStatus: "active",
+          archived: false,
+          createdAt: 1,
+          updatedAt: 3,
+          lastSessionKey: "agent:solo:main",
+        },
+      ],
+      [],
+      { mode: "task" },
+    );
+
+    expect(result.boundTask?.taskId).toBe("task-empty");
+    expect(result.displayTask?.taskId).toBe("task-real");
+    expect(result.derivedFromSessionLink).toBe(true);
+  });
+});
+
 describe("loadTaskModeData", () => {
   it("self-heals by reloading the full session list when the current session row is missing", async () => {
     const request = vi.fn(async (method: string) => {
@@ -125,6 +172,153 @@ describe("loadTaskModeData", () => {
       includeUnknown: true,
     });
     expect(request).toHaveBeenCalledWith("taskmode.list", {});
+  });
+});
+
+describe("task todos", () => {
+  it("creates a todo and updates derived next step", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "taskmode.todo.create") {
+        return {
+          ok: true,
+          task: {
+            id: "task-1",
+            title: "Task 1",
+            status: "active",
+            effectiveStatus: "active",
+            archived: false,
+            createdAt: 1,
+            updatedAt: 2,
+            todoItems: [
+              {
+                id: "todo-1",
+                taskId: "task-1",
+                content: "补一条 next step",
+                status: "pending",
+                priority: "normal",
+                source: "user",
+                createdAt: 1,
+                updatedAt: 2,
+                order: 0,
+              },
+            ],
+          },
+        };
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    const state = buildTasksState({
+      client: { request } as unknown as TasksState["client"],
+      connected: true,
+      tasksItems: [
+        {
+          taskId: "task-1",
+          title: "Task 1",
+          status: "active",
+          effectiveStatus: "active",
+          archived: false,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    });
+
+    await createTaskTodo(state, "task-1", { content: "补一条 next step" });
+
+    expect(request).toHaveBeenCalledWith("taskmode.todo.create", {
+      taskId: "task-1",
+      content: "补一条 next step",
+    });
+    expect(state.tasksItems[0]?.todoItems?.[0]?.content).toBe("补一条 next step");
+    expect(state.tasksItems[0]?.nextStep).toBe("补一条 next step");
+  });
+
+  it("keeps only one in_progress todo and derives next step from it", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "taskmode.todo.setStatus") {
+        return {
+          ok: true,
+          task: {
+            id: "task-1",
+            title: "Task 1",
+            status: "active",
+            effectiveStatus: "active",
+            archived: false,
+            createdAt: 1,
+            updatedAt: 2,
+            todoItems: [
+              {
+                id: "todo-1",
+                taskId: "task-1",
+                content: "旧的进行中",
+                status: "pending",
+                priority: "normal",
+                source: "user",
+                createdAt: 1,
+                updatedAt: 2,
+                order: 0,
+              },
+              {
+                id: "todo-2",
+                taskId: "task-1",
+                content: "新的进行中",
+                status: "in_progress",
+                priority: "high",
+                source: "agent",
+                createdAt: 1,
+                updatedAt: 3,
+                order: 1,
+              },
+            ],
+          },
+        };
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    const state = buildTasksState({
+      client: { request } as unknown as TasksState["client"],
+      connected: true,
+      tasksItems: [
+        {
+          taskId: "task-1",
+          title: "Task 1",
+          status: "active",
+          effectiveStatus: "active",
+          archived: false,
+          createdAt: 1,
+          updatedAt: 1,
+          todoItems: [
+            {
+              id: "todo-1",
+              taskId: "task-1",
+              content: "旧的进行中",
+              status: "in_progress",
+              priority: "normal",
+              source: "user",
+              createdAt: 1,
+              updatedAt: 1,
+              order: 0,
+            },
+            {
+              id: "todo-2",
+              taskId: "task-1",
+              content: "新的进行中",
+              status: "pending",
+              priority: "high",
+              source: "agent",
+              createdAt: 1,
+              updatedAt: 1,
+              order: 1,
+            },
+          ],
+        },
+      ],
+    });
+
+    await setTaskTodoStatus(state, "task-1", "todo-2", "in_progress");
+
+    expect(state.tasksItems[0]?.todoItems?.filter((item) => item.status === "in_progress")).toHaveLength(1);
+    expect(state.tasksItems[0]?.nextStep).toBe("新的进行中");
   });
 });
 
