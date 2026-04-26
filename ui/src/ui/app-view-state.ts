@@ -415,6 +415,7 @@ export type AppViewState = {
     overviewLogCursor: number;
     client: GatewayBrowserClient | null;
     refreshSessionsAfterChat: Set<string>;
+  taskCarryoverAfterChatByRun: Map<string, { taskId: string; sourceSessionKey: string }>;
     connect: () => void;
     setTab: (tab: Tab) => void;
     setTheme: (theme: ThemeName, context?: ThemeTransitionContext) => void;

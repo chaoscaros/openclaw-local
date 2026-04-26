@@ -178,13 +178,203 @@ function deriveTaskNextStepFromTodos(todoItems: TaskModeTodoItem[] | undefined, 
   return fallbackNextStep && fallbackNextStep.trim() ? fallbackNextStep.trim() : undefined;
 }
 
+function clampBootstrapTodoContent(value: string): string {
+  return value.length <= 220 ? value : `${value.slice(0, 219).trim()}…`;
+}
+
+function normalizeBootstrapTodoSegment(value: string | undefined): string | undefined {
+  const normalized = value
+    ?.replace(/^\s*(?:先|再|然后|接着|最后)\s*/u, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) {
+    return undefined;
+  }
+  return clampBootstrapTodoContent(normalized);
+}
+
+function splitBootstrapTodoCandidates(value: string): string[] {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return [];
+  }
+  const numberedMatches = Array.from(trimmed.matchAll(/(?:^|\s)(?:\d+[.)]|[-*•])\s*([^\n]+?)(?=(?:\s+(?:\d+[.)]|[-*•])\s*)|$)/g))
+    .map((match) => normalizeBootstrapTodoSegment(match[1]))
+    .filter((item): item is string => Boolean(item));
+  if (numberedMatches.length >= 2) {
+    return numberedMatches;
+  }
+  const ordered = [
+    ...trimmed.matchAll(/先\s*([^，。；;]+?)(?=再|然后|接着|最后|$)/g),
+    ...trimmed.matchAll(/再\s*([^，。；;]+?)(?=然后|接着|最后|$)/g),
+    ...trimmed.matchAll(/然后\s*([^，。；;]+?)(?=接着|最后|$)/g),
+    ...trimmed.matchAll(/接着\s*([^，。；;]+?)(?=最后|$)/g),
+    ...trimmed.matchAll(/最后\s*([^，。；;]+?)(?=$)/g),
+  ]
+    .map((match) => normalizeBootstrapTodoSegment(match[1]))
+    .filter((item): item is string => Boolean(item));
+  if (ordered.length >= 2) {
+    return ordered;
+  }
+  const semicolonSplit = trimmed
+    .split(/[；;]+/)
+    .map((item) => normalizeBootstrapTodoSegment(item))
+    .filter((item): item is string => Boolean(item));
+  if (semicolonSplit.length >= 2) {
+    return semicolonSplit;
+  }
+  return [];
+}
+
+function inferBootstrapTodoContentsFromSources(sources: Array<string | undefined>): string[] {
+  const normalizedSources = sources
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean);
+  if (normalizedSources.length === 0) {
+    return [];
+  }
+  const multiStep = normalizedSources
+    .flatMap((value) => splitBootstrapTodoCandidates(value))
+    .map((value) => normalizeBootstrapTodoSegment(value))
+    .filter((item): item is string => Boolean(item));
+  const dedupedMultiStep = Array.from(new Set(multiStep));
+  if (dedupedMultiStep.length >= 2) {
+    return dedupedMultiStep.slice(0, 3);
+  }
+  const fallback = normalizeBootstrapTodoSegment(normalizedSources[0]);
+  return fallback ? [fallback] : [];
+}
+
+function inferBootstrapTodoContents(task: Pick<TaskModeRecord, 'nextStep' | 'description' | 'progressSummary'>): string[] {
+  return inferBootstrapTodoContentsFromSources([task.nextStep, task.description, task.progressSummary]);
+}
+
+function isManagedTodoSource(source: TaskModeTodoSource | undefined): boolean {
+  return source === 'system' || source === 'agent';
+}
+
+function isCompletionLikeText(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  return /(已完成|完成了|已补上|已修复|已同步|已处理|已验证|已对齐|done|fixed|verified)/iu.test(value);
+}
+
+function reconcileDynamicTodoItems(params: {
+  task: TaskModeRecord;
+  latestUserText?: string;
+  latestAssistantText?: string;
+  progressSummary?: string;
+  nextStep?: string;
+}): { task: TaskModeRecord; changed: boolean } {
+  const currentTodos = params.task.todoItems ?? [];
+  if (currentTodos.length === 0) {
+    return ensureBootstrapTodoItems(params.task);
+  }
+  if (currentTodos.some((item) => item.source === 'user')) {
+    return { task: params.task, changed: false };
+  }
+  const managedTodos = currentTodos.filter((item) => isManagedTodoSource(item.source));
+  if (managedTodos.length === 0) {
+    return { task: params.task, changed: false };
+  }
+  const candidateSteps = inferBootstrapTodoContentsFromSources([
+    params.latestUserText,
+    params.latestAssistantText,
+    params.nextStep,
+    params.progressSummary,
+  ]);
+  const completedManaged = managedTodos.filter((item) => item.status === 'completed' || item.status === 'cancelled');
+  const openManaged = managedTodos.filter((item) => item.status !== 'completed' && item.status !== 'cancelled');
+  const currentInProgress = openManaged.find((item) => item.status === 'in_progress');
+  const shouldAdvanceCurrent =
+    Boolean(currentInProgress) &&
+    candidateSteps.length >= 2 &&
+    isCompletionLikeText(params.latestAssistantText) &&
+    !candidateSteps.some((content) => content === normalizeBootstrapTodoSegment(currentInProgress?.content));
+  const inferredOpenContent = Array.from(
+    new Set(
+      [
+        ...(shouldAdvanceCurrent ? [] : openManaged.map((item) => normalizeBootstrapTodoSegment(item.content))),
+        ...candidateSteps,
+      ].filter((item): item is string => Boolean(item)),
+    ),
+  ).slice(0, 3);
+  if (inferredOpenContent.length === 0) {
+    return { task: params.task, changed: false };
+  }
+  const now = Date.now();
+  const advancedCompleted =
+    shouldAdvanceCurrent && currentInProgress
+      ? [...completedManaged, { ...currentInProgress, status: 'completed' as const, updatedAt: now }]
+      : completedManaged;
+  const nextOpenManaged = inferredOpenContent.map((content, index) => {
+    const existing = openManaged.find((item) => normalizeBootstrapTodoSegment(item.content) === content);
+    return {
+      id: existing?.id ?? `${params.task.id}:auto-dynamic:${index}`,
+      taskId: params.task.id,
+      content,
+      status: index === 0 ? 'in_progress' : 'pending',
+      priority: existing?.priority ?? 'normal',
+      source: existing?.source ?? 'system',
+      ...(existing?.note ? { note: existing.note } : {}),
+      ...(existing?.verification ? { verification: existing.verification } : {}),
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      order: index,
+    } satisfies TaskModeTodoItem;
+  });
+  const normalizedTodos = normalizeTaskTodoItems([...nextOpenManaged, ...advancedCompleted], params.task.id);
+  const nextTask = normalizeTaskRecord({
+    ...params.task,
+    todoItems: normalizedTodos,
+    updatedAt: now,
+    nextStep: deriveTaskNextStepFromTodos(normalizedTodos, params.nextStep ?? params.task.nextStep),
+  });
+  const changed = JSON.stringify(currentTodos) !== JSON.stringify(nextTask.todoItems ?? []);
+  return { task: nextTask, changed };
+}
+
+function ensureBootstrapTodoItems(task: TaskModeRecord): { task: TaskModeRecord; changed: boolean } {
+  if (task.todoItems?.length) {
+    return { task, changed: false };
+  }
+  const contents = inferBootstrapTodoContents(task);
+  if (contents.length === 0) {
+    return { task, changed: false };
+  }
+  const now = Date.now();
+  const todoItems = normalizeTaskTodoItems(
+    contents.map((content, index) => ({
+      id: `${task.id}:auto-bootstrap:${index}`,
+      taskId: task.id,
+      content,
+      status: index === 0 ? 'in_progress' : 'pending',
+      priority: 'normal',
+      source: 'system',
+      createdAt: now,
+      updatedAt: now,
+      order: index,
+    })),
+    task.id,
+  );
+  if (!todoItems?.length) {
+    return { task, changed: false };
+  }
+  return {
+    task: normalizeTaskRecord({ ...task, todoItems, nextStep: deriveTaskNextStepFromTodos(todoItems, task.nextStep) }),
+    changed: true,
+  };
+}
+
 function normalizeTaskRecord(raw: TaskModeRecord): TaskModeRecord {
   const normalizedTaskId = typeof raw.id === "string" ? raw.id.trim() : "";
   const flowId = typeof raw.flowId === "string" && raw.flowId.trim() ? raw.flowId.trim() : undefined;
   const flow = flowId ? getTaskFlowById(flowId) : undefined;
+  const normalizedTitle = typeof raw.title === "string" ? raw.title.trim() : "";
   return {
     id: normalizedTaskId,
-    title: raw.title.trim(),
+    title: normalizedTitle,
     ...(typeof raw.description === "string" && raw.description.trim()
       ? { description: raw.description.trim() }
       : {}),
@@ -343,9 +533,10 @@ async function loadTaskModeStore(): Promise<TaskModeStore> {
     : [];
   let changed = false;
   const backfilled = tasks.map((task) => {
-    const result = backfillTaskTitleFromFlow(task);
-    changed ||= result.changed;
-    return result.task;
+    const titleResult = backfillTaskTitleFromFlow(task);
+    const todoResult = ensureBootstrapTodoItems(titleResult.task);
+    changed ||= titleResult.changed || todoResult.changed;
+    return todoResult.task;
   });
   const store = { tasks: backfilled };
   if (changed) {
@@ -720,6 +911,8 @@ function buildTaskProgressSyncSnapshot(messages: unknown[], task: TaskModeRecord
     nextStep,
     resourceContext,
     timeline,
+    latestUserText: latestUser?.text,
+    latestAssistantText: latestAssistant?.text,
   };
 }
 
@@ -852,7 +1045,8 @@ export async function createTaskModeTask(input: {
       archivedAt: null,
       lastSessionKey: input.sessionKey,
     });
-    const syncedTask = syncTaskModeRuntimeLinks(syncTaskModeToFlow(task, input.sessionKey));
+    const bootstrappedTask = ensureBootstrapTodoItems(task).task;
+    const syncedTask = syncTaskModeRuntimeLinks(syncTaskModeToFlow(bootstrappedTask, input.sessionKey));
     store.tasks = [syncedTask, ...store.tasks.filter((item) => item.id !== syncedTask.id)];
     await saveTaskModeStore(store);
     return syncedTask;
@@ -918,24 +1112,31 @@ export async function syncTaskModeTaskProgress(params: {
     }
     const lastLinkedSession = linkedSessions.at(-1)?.sessionKey ?? directLoaded.canonicalKey ?? targetSessionKey;
     const now = Date.now();
-    const next = syncTaskModeRuntimeLinks(
-      normalizeTaskRecord({
-        ...current,
-        progressSummary: snapshot.progressSummary,
-        completedSummary: snapshot.completedSummary,
-        nextStep: snapshot.nextStep,
-        resourceContext: snapshot.resourceContext,
-        timeline: snapshot.timeline,
-        lastSessionKey: lastLinkedSession,
-        lastSyncedAt: now,
-        updatedAt: Math.max(current.updatedAt, now),
-      }),
-    );
+    const normalizedNext = normalizeTaskRecord({
+      ...current,
+      progressSummary: snapshot.progressSummary,
+      completedSummary: snapshot.completedSummary,
+      nextStep: snapshot.nextStep,
+      resourceContext: snapshot.resourceContext,
+      timeline: snapshot.timeline,
+      lastSessionKey: lastLinkedSession,
+      lastSyncedAt: now,
+      updatedAt: Math.max(current.updatedAt, now),
+    });
+    const reconciledNext = reconcileDynamicTodoItems({
+      task: normalizedNext,
+      latestUserText: snapshot.latestUserText,
+      latestAssistantText: snapshot.latestAssistantText,
+      progressSummary: snapshot.progressSummary,
+      nextStep: snapshot.nextStep,
+    }).task;
+    const next = syncTaskModeRuntimeLinks(reconciledNext);
     const changed =
       JSON.stringify({
         progressSummary: current.progressSummary ?? null,
         completedSummary: current.completedSummary ?? null,
         nextStep: current.nextStep ?? null,
+        todoItems: current.todoItems ?? [],
         resourceContext: current.resourceContext ?? [],
         timeline: current.timeline ?? [],
         lastSessionKey: current.lastSessionKey ?? null,
@@ -947,6 +1148,7 @@ export async function syncTaskModeTaskProgress(params: {
         progressSummary: next.progressSummary ?? null,
         completedSummary: next.completedSummary ?? null,
         nextStep: next.nextStep ?? null,
+        todoItems: next.todoItems ?? [],
         resourceContext: next.resourceContext ?? [],
         timeline: next.timeline ?? [],
         lastSessionKey: next.lastSessionKey ?? null,

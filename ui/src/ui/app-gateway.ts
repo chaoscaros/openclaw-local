@@ -42,7 +42,7 @@ import {
 } from "./controllers/exec-approval.ts";
 import { loadHealthState, type HealthState } from "./controllers/health.ts";
 import { loadNodes, type NodesState } from "./controllers/nodes.ts";
-import { loadSessions, subscribeSessions, type SessionsState } from "./controllers/sessions.ts";
+import { loadSessions, patchSession, subscribeSessions, type SessionsState } from "./controllers/sessions.ts";
 import { loadTaskModeData, type TasksState } from "./controllers/tasks.ts";
 import {
   resolveGatewayErrorDetailCode,
@@ -56,6 +56,7 @@ import type {
   AgentsListResult,
   PresenceEntry,
   HealthSummary,
+  SessionsListResult,
   StatusSummary,
   UpdateAvailable,
 } from "./types.ts";
@@ -92,8 +93,10 @@ type GatewayHost = {
   assistantAgentId: string | null;
   serverVersion: string | null;
   sessionKey: string;
+  sessionsResult?: SessionsListResult | null;
   chatRunId: string | null;
   refreshSessionsAfterChat: Set<string>;
+  taskCarryoverAfterChatByRun: Map<string, { taskId: string; sourceSessionKey: string }>;
   execApprovalQueue: ExecApprovalRequest[];
   execApprovalError: string | null;
   updateAvailable: UpdateAvailable | null;
@@ -357,6 +360,37 @@ export function handleGatewayEvent(host: GatewayHost, evt: GatewayEventFrame) {
   }
 }
 
+export async function continueTaskBindingAfterSessionRefresh(
+  host: GatewayHost,
+  runId: string,
+  eventSessionKey: string | undefined,
+) {
+  const carry = host.taskCarryoverAfterChatByRun.get(runId);
+  if (!carry) {
+    return;
+  }
+  const normalizedEventSessionKey = eventSessionKey?.trim() || "";
+  const targetSessionKey = normalizedEventSessionKey && normalizedEventSessionKey !== carry.sourceSessionKey
+    ? normalizedEventSessionKey
+    : "";
+  if (!targetSessionKey) {
+    host.taskCarryoverAfterChatByRun.delete(runId);
+    return;
+  }
+  const targetSession = host.sessionsResult?.sessions.find((row: { key: string }) => row.key === targetSessionKey) ?? null;
+  if (!targetSession) {
+    return;
+  }
+  if (targetSession.mode === "task" && targetSession.taskId === carry.taskId) {
+    host.taskCarryoverAfterChatByRun.delete(runId);
+    void loadTaskModeData(host as unknown as TasksState);
+    return;
+  }
+  await patchSession(host as unknown as SessionsState, targetSessionKey, { mode: "task", taskId: carry.taskId });
+  host.taskCarryoverAfterChatByRun.delete(runId);
+  void loadTaskModeData(host as unknown as TasksState);
+}
+
 function handleTerminalChatEvent(
   host: GatewayHost,
   payload: ChatEventPayload | undefined,
@@ -380,7 +414,9 @@ function handleTerminalChatEvent(
     if (state === "final") {
       void loadSessions(host as unknown as SessionsState, {
         activeMinutes: CHAT_SESSIONS_ACTIVE_MINUTES,
-      });
+      }).then(() => continueTaskBindingAfterSessionRefresh(host, runId, payload?.sessionKey));
+    } else {
+      host.taskCarryoverAfterChatByRun.delete(runId);
     }
   }
   if (payload?.sessionKey === host.sessionKey) {

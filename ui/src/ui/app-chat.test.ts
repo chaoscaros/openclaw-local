@@ -35,6 +35,26 @@ function requestUrl(input: string | URL | Request): string {
 
 function makeHost(overrides?: Partial<ChatHost>): ChatHost {
   return {
+    settings: {
+      gatewayUrl: '',
+      token: '',
+      locale: 'en',
+      sessionKey: 'agent:main',
+      lastActiveSessionKey: 'agent:main',
+      theme: 'claw',
+      themeMode: 'dark',
+      splitRatio: 0.6,
+      navWidth: 280,
+      navCollapsed: false,
+      navGroupsCollapsed: {},
+      borderRadius: 50,
+      chatFocusMode: false,
+      chatShowThinking: false,
+      chatShowToolCalls: true,
+    },
+    applySettings(next) {
+      this.settings = next;
+    },
     client: null,
     chatMessages: [],
     chatStream: null,
@@ -55,6 +75,7 @@ function makeHost(overrides?: Partial<ChatHost>): ChatHost {
     chatModelsLoading: false,
     chatModelCatalog: [],
     refreshSessionsAfterChat: new Set<string>(),
+    taskCarryoverAfterChatByRun: new Map<string, { taskId: string; sourceSessionKey: string }>(),
     updateComplete: Promise.resolve(),
     toolStreamById: new Map(),
     toolStreamOrder: [],

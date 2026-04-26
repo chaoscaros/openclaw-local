@@ -156,7 +156,10 @@ describe("renderTasks", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("当前会话任务");
     expect(text).toContain("进行中");
-    expect(text).toContain("已完成 · 保留参考");
+    expect(text).toContain("已完成");
+    expect(text).not.toContain("已完成 · 保留参考");
+    expect(text).not.toContain("最近活跃");
+    expect(text).not.toContain("保留参考");
     expect(text).toContain("任务预览");
     expect(text).toContain("当前进展");
     expect(text).toContain("已完成任务进度自动同步链路");
@@ -194,9 +197,8 @@ describe("renderTasks", () => {
     expect(text).toContain("补齐任务详情里的执行清单交互");
     expect(text).toContain("补充聊天任务抽屉的最近完成展示");
     expect(text).toContain("添加清单项");
-    expect(text).toContain("执行层健康");
-    expect(text).toContain("执行正常");
-    expect(text).toContain("最近 Run");
+    expect(text).not.toContain("执行层健康");
+    expect(text).not.toContain("最近 Run");
     expect(text).toContain("run-1");
     expect(text).toContain("关联 runtime tasks");
     expect(text).toContain("runtime-task-1 · latest");

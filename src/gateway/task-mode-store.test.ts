@@ -115,6 +115,29 @@ describe("task-mode-store", () => {
     expect(repaired.tasks[0].title).toBe('Recovered title from flow');
   });
 
+  it("backfills missing raw task titles from flow goals on load", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const created = await createTaskModeTask({ id: "task-backfill-missing", title: "Original title", description: "orig desc" });
+    const flow = getTaskFlowById(created.flowId!);
+    expect(flow).toBeTruthy();
+    updateFlowRecordByIdExpectedRevision({
+      flowId: flow!.flowId,
+      expectedRevision: flow!.revision,
+      patch: { goal: 'Recovered missing title from flow' },
+    });
+    const storePath = path.join(process.env.OPENCLAW_STATE_DIR, 'control-ui', 'task-mode-store.json');
+    const payload = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+    delete payload.tasks[0].title;
+    fs.writeFileSync(storePath, JSON.stringify(payload, null, 2));
+
+    const listed = await listTaskModeTasks();
+    const task = listed.tasks.find((item) => item.id === 'task-backfill-missing');
+    expect(task?.title).toBe('Recovered missing title from flow');
+
+    const repaired = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+    expect(repaired.tasks[0].title).toBe('Recovered missing title from flow');
+  });
+
   it("does not overwrite existing raw titles during flow backfill", async () => {
     process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
     const created = await createTaskModeTask({ id: "task-no-overwrite", title: "Keep raw title" });
@@ -134,11 +157,90 @@ describe("task-mode-store", () => {
     expect(repaired.tasks[0].title).toBe('Keep raw title');
   });
 
+  it("bootstraps an initial in-progress todo from next step when a task has no checklist", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const created = await createTaskModeTask({ id: "task-bootstrap", title: "Bootstrap task", description: "补执行清单" });
+    expect(created.todoItems?.[0]?.content).toBe("补执行清单");
+    expect(created.todoItems?.[0]?.status).toBe("in_progress");
+    expect(created.todoItems?.[0]?.source).toBe("system");
+    expect(created.todoItems).toHaveLength(1);
+    expect(created.nextStep).toBe("补执行清单");
+    const listed = await listTaskModeTasks();
+    const task = listed.tasks.find((item) => item.id === "task-bootstrap");
+    expect(task?.todoItems?.[0]?.content).toBe("补执行清单");
+    expect(task?.nextStep).toBe("补执行清单");
+  });
+
+  it("bootstraps up to three deduped todos from a numbered multi-step description", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const created = await createTaskModeTask({
+      id: "task-bootstrap-multi",
+      title: "Bootstrap multi task",
+      description: "1. 对齐 task-mode-store 行为 2. 补 task-mode-store 测试 3. 回归 pnpm check 4. 记录结果",
+    });
+    expect(created.todoItems?.map((item) => item.content)).toEqual([
+      "对齐 task-mode-store 行为",
+      "补 task-mode-store 测试",
+      "回归 pnpm check",
+    ]);
+    expect(created.todoItems?.map((item) => item.status)).toEqual(["in_progress", "pending", "pending"]);
+    expect(created.nextStep).toBe("对齐 task-mode-store 行为");
+  });
+
+  it("falls back to a single bootstrap todo when step parsing is not reliable", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const created = await createTaskModeTask({
+      id: "task-bootstrap-fallback",
+      title: "Bootstrap fallback task",
+      description: "继续联调 taskflow 当前任务与执行清单展示",
+    });
+    expect(created.todoItems?.map((item) => item.content)).toEqual(["继续联调 taskflow 当前任务与执行清单展示"]);
+    expect(created.todoItems?.map((item) => item.status)).toEqual(["in_progress"]);
+  });
+
+  it("bootstraps deduped todos from synced semicolon-separated progress when no checklist exists", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const now = Date.now();
+    const sessionId = 'session-bootstrap-multistep-sync';
+    const storePath = resolveDefaultSessionStorePath();
+    fs.mkdirSync(path.dirname(storePath), { recursive: true });
+    fs.writeFileSync(
+      storePath,
+      JSON.stringify({
+        main: {
+          sessionId,
+          updatedAt: now,
+          taskId: 'task-sync-multistep-bootstrap',
+        },
+      }),
+    );
+    const transcriptPath = resolveSessionTranscriptPath(sessionId);
+    fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+    fs.writeFileSync(
+      transcriptPath,
+      [
+        JSON.stringify({ message: { role: 'user', timestamp: now - 2_000, content: [{ type: 'text', text: '同步任务进度' }] } }),
+        JSON.stringify({ message: { role: 'assistant', timestamp: now - 1_000, content: [{ type: 'text', text: '先核对 task 页面；再补 UI 测试；最后跑 pnpm check；最后跑 pnpm check。' }] } }),
+      ].join('\n'),
+    );
+    await createTaskModeTask({ id: 'task-sync-multistep-bootstrap', title: 'Sync multistep bootstrap task', sessionKey: 'main' });
+
+    const result = await syncTaskModeTaskProgress({ id: 'task-sync-multistep-bootstrap', sessionKey: 'main' });
+
+    expect(result.task?.todoItems?.map((item) => item.content)).toEqual([
+      '核对 task 页面',
+      '补 UI 测试',
+      '跑 pnpm check',
+    ]);
+    expect(result.task?.todoItems?.map((item) => item.status)).toEqual(['in_progress', 'pending', 'pending']);
+    expect(result.task?.nextStep).toBe('核对 task 页面');
+  });
+
   it("creates todos and derives next step from the first pending item", async () => {
     process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
     await createTaskModeTask({ id: "task-todo", title: "Todo task" });
     const updated = await createTaskModeTodo({ taskId: "task-todo", todoId: "todo-1", content: "补执行清单" });
-    expect(updated?.todoItems?.[0]?.content).toBe("补执行清单");
+    expect(updated?.todoItems?.some((item) => item.content === "补执行清单")).toBe(true);
     const listed = await listTaskModeTasks();
     const task = listed.tasks.find((item) => item.id === "task-todo");
     expect(task?.nextStep).toBe("补执行清单");
@@ -155,12 +257,14 @@ describe("task-mode-store", () => {
     expect(updated?.nextStep).toBe("新进行中");
   });
 
-  it("deletes todos and falls back when no todo remains", async () => {
+  it("deletes todos and falls back to an auto-bootstrap todo when no todo remains", async () => {
     process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
     await createTaskModeTask({ id: "task-todo-delete", title: "Todo delete task", description: "fallback desc" });
     await createTaskModeTodo({ taskId: "task-todo-delete", todoId: "todo-1", content: "临时步骤" });
     const updated = await deleteTaskModeTodo({ taskId: "task-todo-delete", todoId: "todo-1" });
-    expect(updated?.todoItems).toBeUndefined();
+    expect(updated?.todoItems?.[0]?.content).toBe("fallback desc");
+    expect(updated?.todoItems?.[0]?.source).toBe("system");
+    expect(updated?.nextStep).toBe("fallback desc");
   });
 
   it("keeps timestamps aligned with flow metadata while retaining persisted fallbacks", async () => {
@@ -277,6 +381,38 @@ describe("task-mode-store", () => {
     expect(task?.runtimeHealth).toBe("lost");
   });
 
+  it("bootstraps a checklist from synced task progress when no todo exists", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const now = Date.now();
+    const sessionId = 'session-bootstrap-sync';
+    const storePath = resolveDefaultSessionStorePath();
+    fs.mkdirSync(path.dirname(storePath), { recursive: true });
+    fs.writeFileSync(
+      storePath,
+      JSON.stringify({
+        main: {
+          sessionId,
+          updatedAt: now,
+          taskId: 'task-sync-bootstrap',
+        },
+      }),
+    );
+    const transcriptPath = resolveSessionTranscriptPath(sessionId);
+    fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+    fs.writeFileSync(
+      transcriptPath,
+      [
+        JSON.stringify({ message: { role: 'user', timestamp: now - 2_000, content: [{ type: 'text', text: '继续补商品规格库区列表接口' }] } }),
+        JSON.stringify({ message: { role: 'assistant', timestamp: now - 1_000, content: [{ type: 'text', text: '已经同步接口参数与返回字段。' }] } }),
+      ].join('\n'),
+    );
+    await createTaskModeTask({ id: 'task-sync-bootstrap', title: 'Sync bootstrap task', sessionKey: 'main' });
+    const result = await syncTaskModeTaskProgress({ id: 'task-sync-bootstrap', sessionKey: 'main' });
+    expect(result.task?.todoItems?.[0]?.content).toBe('继续补商品规格库区列表接口');
+    expect(result.task?.todoItems?.[0]?.status).toBe('in_progress');
+    expect(result.task?.nextStep).toBe('继续补商品规格库区列表接口');
+  });
+
   it("syncs task progress from linked local session history", async () => {
     process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
     const now = Date.now();
@@ -311,6 +447,79 @@ describe("task-mode-store", () => {
     expect(synced.task?.nextStep).toContain("继续完成 src/gateway/server-chat.ts 并验证");
     expect(synced.task?.resourceContext).toContain("src/gateway/server-chat.ts");
     expect(synced.task?.timeline?.some((entry) => entry.label === "最近进展")).toBe(true);
+  });
+
+  it("dynamically expands system todos after later sync reveals a multi-step plan", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const now = Date.now();
+    const sessionId = "session-dynamic-expand";
+    const storePath = resolveDefaultSessionStorePath();
+    fs.mkdirSync(path.dirname(storePath), { recursive: true });
+    fs.writeFileSync(
+      storePath,
+      JSON.stringify({
+        main: {
+          sessionId,
+          updatedAt: now,
+          taskId: 'task-dynamic-expand',
+        },
+      }),
+    );
+    const transcriptPath = resolveSessionTranscriptPath(sessionId);
+    fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+    fs.writeFileSync(
+      transcriptPath,
+      [
+        JSON.stringify({ message: { role: "user", timestamp: now - 3000, content: [{ type: "text", text: "先核对 Tasks 页；再验证自动生成 todo；最后确认 /new 后续接" }] } }),
+        JSON.stringify({ message: { role: "assistant", timestamp: now - 1000, content: [{ type: "text", text: "已完成任务背景梳理，接下来按这三步继续推进。" }] } }),
+      ].join("\n"),
+    );
+    const created = await createTaskModeTask({ id: "task-dynamic-expand", title: "动态整理任务", description: "先做任务背景梳理", sessionKey: "main" });
+    expect(created.todoItems?.map((item) => item.content)).toEqual(["做任务背景梳理"]);
+
+    const synced = await syncTaskModeTaskProgress({ id: "task-dynamic-expand", sessionKey: "main" });
+
+    expect(synced.task?.todoItems?.map((item) => item.content)).toEqual([
+      "做任务背景梳理",
+      "核对 Tasks 页",
+      "验证自动生成 todo",
+      "确认 /new 后续接",
+    ]);
+    expect(synced.task?.todoItems?.map((item) => item.status)).toEqual(["completed", "in_progress", "pending", "pending"]);
+  });
+
+  it("does not overwrite user-managed todos during dynamic reorganization", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const now = Date.now();
+    const sessionId = "session-dynamic-user-owned";
+    const storePath = resolveDefaultSessionStorePath();
+    fs.mkdirSync(path.dirname(storePath), { recursive: true });
+    fs.writeFileSync(
+      storePath,
+      JSON.stringify({
+        main: {
+          sessionId,
+          updatedAt: now,
+          taskId: 'task-dynamic-user-owned',
+        },
+      }),
+    );
+    const transcriptPath = resolveSessionTranscriptPath(sessionId);
+    fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+    fs.writeFileSync(
+      transcriptPath,
+      [
+        JSON.stringify({ message: { role: "user", timestamp: now - 2000, content: [{ type: "text", text: "先核对 Tasks 页；再验证自动生成 todo；最后确认 /new 后续接" }] } }),
+        JSON.stringify({ message: { role: "assistant", timestamp: now - 1000, content: [{ type: "text", text: "已补充后续步骤建议。" }] } }),
+      ].join("\n"),
+    );
+    await createTaskModeTask({ id: "task-dynamic-user-owned", title: "用户接管任务", description: "模糊任务", sessionKey: "main" });
+    await createTaskModeTodo({ taskId: "task-dynamic-user-owned", todoId: "todo-user-1", content: "用户自己定义的步骤", source: "user" });
+
+    const synced = await syncTaskModeTaskProgress({ id: "task-dynamic-user-owned", sessionKey: "main" });
+
+    expect(synced.task?.todoItems?.some((item) => item.content === "用户自己定义的步骤" && item.source === "user")).toBe(true);
+    expect(synced.task?.todoItems?.some((item) => item.content === "验证自动生成 todo")).toBe(false);
   });
 
   it("aggregates progress across multiple sessions linked to the same task", async () => {

@@ -852,7 +852,7 @@ function matchesTaskQuery(task: TaskItem, query: string) {
     .every((part) => haystack.includes(part));
 }
 
-function taskIsReferenceComplete(task: TaskItem) {
+function taskIsCompleted(task: TaskItem) {
   const status = task.effectiveStatus ?? task.status;
   return status === "completed" && !task.archived;
 }
@@ -866,11 +866,8 @@ function taskSectionItems(items: TaskItem[], currentTask: TaskItem | null, curre
   const sorted = sortTasks(items, currentTaskId, sort);
   const resolvedCurrentTask = currentTask ? sorted.find((task) => task.taskId === currentTask.taskId) ?? currentTask : null;
   const active = sorted.filter((task) => taskIsActive(task) && task.taskId !== resolvedCurrentTask?.taskId);
-  const completedReference = sorted.filter((task) => taskIsReferenceComplete(task) && task.taskId !== resolvedCurrentTask?.taskId);
-  const recent = sorted
-    .filter((task) => task.taskId !== resolvedCurrentTask?.taskId && !active.includes(task) && !completedReference.includes(task))
-    .slice(0, 6);
-  return { currentTask: resolvedCurrentTask, active, completedReference, recent };
+  const completed = sorted.filter((task) => taskIsCompleted(task) && task.taskId !== resolvedCurrentTask?.taskId);
+  return { currentTask: resolvedCurrentTask, active, completed };
 }
 
 function selectedTask(items: TaskItem[], currentTaskId: string | null, currentTask: TaskItem | null) {
@@ -889,13 +886,16 @@ function renderStatusMenu(task: TaskItem, props: TasksViewProps) {
   if (props.archiveMode) {
     return nothing;
   }
+  const effectiveStatus = task.effectiveStatus ?? task.status;
   return html`<label class="task-field">
     <span class="task-field__label">${t("taskModeUi.labels.status")}</span>
     <select
-      .value=${task.status}
+      .value=${effectiveStatus}
       @change=${(event: Event) => props.onChangeStatus(task.taskId, (event.target as HTMLSelectElement).value as TaskStatus)}
     >
-      ${ACTIVE_STATUSES.map((status) => html`<option value=${status}>${statusLabel(status)}</option>`)}
+      ${ACTIVE_STATUSES.map(
+        (status) => html`<option value=${status} ?selected=${effectiveStatus === status}>${statusLabel(status)}</option>`,
+      )}
     </select>
   </label>`;
 }
@@ -1261,14 +1261,6 @@ function renderTaskPreview(task: TaskItem | null, props: TasksViewProps, archive
           <div class="task-preview-pane__label">下一步</div>
           <div class="task-preview-pane__value">${highlights.nextStep}</div>
         </article>
-        <article class="task-preview-pane__card">
-          <div class="task-preview-pane__label">执行层健康</div>
-          <div class="task-preview-pane__value">${task.runtimeHealth ? runtimeHealthLabel(task.runtimeHealth) : "未关联"}</div>
-        </article>
-        <article class="task-preview-pane__card">
-          <div class="task-preview-pane__label">最近 Run</div>
-          <div class="task-preview-pane__value">${task.latestRunId ?? task.latestRuntimeTaskId ?? "未记录"}</div>
-        </article>
         <article class="task-preview-pane__card task-preview-pane__card--wide">
           <div class="task-preview-pane__label">本轮完成</div>
           <div class="task-preview-pane__value">${highlights.completedSummary}</div>
@@ -1476,10 +1468,7 @@ function renderTaskHub(props: TasksViewProps) {
     if (hubUiState.taskFilter === "active") {
       return taskIsActive(task);
     }
-    if (hubUiState.taskFilter === "completed") {
-      return (task.effectiveStatus ?? task.status) === "completed";
-    }
-    return taskIsReferenceComplete(task);
+    return taskIsCompleted(task);
   });
   const sectionsSource = taskSectionItems(filteredByMode, resolvedCurrentTask, currentTaskId, hubUiState.taskSort);
   const sections: TaskSection[] = [
@@ -1498,18 +1487,11 @@ function renderTaskHub(props: TasksViewProps) {
       emptyLabel: "当前筛选下没有进行中的任务。",
     },
     {
-      id: "reference",
-      title: "已完成 · 保留参考",
-      description: "已经完成，但仍值得继续保留在任务中心的任务。",
-      items: sectionsSource.completedReference,
-      emptyLabel: "当前筛选下没有需要保留参考的已完成任务。",
-    },
-    {
-      id: "recent",
-      title: "最近活跃",
-      description: "最近更新过、方便快速找回上下文的任务。",
-      items: sectionsSource.recent,
-      emptyLabel: "当前筛选下没有最近活跃任务。",
+      id: "completed",
+      title: "已完成",
+      description: "已经完成的任务。",
+      items: sectionsSource.completed,
+      emptyLabel: "当前筛选下没有已完成任务。",
     },
   ];
   const previewTask = selectedTask(filteredByMode, currentTaskId, resolvedCurrentTask);
@@ -1518,11 +1500,11 @@ function renderTaskHub(props: TasksViewProps) {
       <div class="task-page__header task-page__header--hero">
         <div class="task-page__intro">
           <div class="task-page__eyebrow">任务中心</div>
-          <p class="task-page__sub">任务中心保留重要任务、进行中任务，以及仍有参考价值的已完成任务。</p>
+          <p class="task-page__sub">任务中心聚合当前会话任务、进行中任务与已完成任务，方便快速继续当前主线。</p>
           <div class="task-page__stats">
             <span class="task-page__stat"><strong>${sectionsSource.currentTask ? 1 : 0}</strong><span>当前会话</span></span>
             <span class="task-page__stat"><strong>${sectionsSource.active.length}</strong><span>进行中</span></span>
-            <span class="task-page__stat"><strong>${sectionsSource.completedReference.length}</strong><span>保留参考</span></span>
+            <span class="task-page__stat"><strong>${sectionsSource.completed.length}</strong><span>已完成</span></span>
           </div>
         </div>
         <div class="task-page__actions">
@@ -1566,7 +1548,6 @@ function renderTaskHub(props: TasksViewProps) {
             ["all", "全部"],
             ["active", "进行中"],
             ["completed", "已完成"],
-            ["reference", "保留参考"],
           ].map(
             ([id, label]) => html`
               <button

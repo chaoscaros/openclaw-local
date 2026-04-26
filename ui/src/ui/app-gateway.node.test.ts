@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GATEWAY_EVENT_UPDATE_AVAILABLE } from "../../../src/gateway/events.js";
 import { ConnectErrorDetailCodes } from "../../../src/gateway/protocol/connect-error-details.js";
-import { connectGateway, resolveControlUiClientVersion } from "./app-gateway.ts";
+import { connectGateway, continueTaskBindingAfterSessionRefresh, resolveControlUiClientVersion } from "./app-gateway.ts";
 import type { GatewayHelloOk } from "./gateway.ts";
 
-const { loadChatHistoryMock, loadTaskModeDataMock, loadSessionsMock } = vi.hoisted(() => ({
+const { loadChatHistoryMock, loadTaskModeDataMock, loadSessionsMock, patchSessionMock } = vi.hoisted(() => ({
   loadChatHistoryMock: vi.fn(async () => undefined),
   loadTaskModeDataMock: vi.fn(async () => undefined),
   loadSessionsMock: vi.fn(async () => undefined),
+  patchSessionMock: vi.fn(async () => undefined),
 }));
 
 type GatewayClientMock = {
@@ -111,6 +112,7 @@ vi.mock("./controllers/sessions.ts", async (importOriginal) => {
   return {
     ...actual,
     loadSessions: loadSessionsMock,
+    patchSession: patchSessionMock,
   };
 });
 
@@ -163,6 +165,15 @@ function createHost(): TestGatewayHost {
     assistantAgentId: null,
     localMediaPreviewRoots: [],
     serverVersion: null,
+    sessionsLoading: false,
+    sessionsError: null,
+    sessionsResult: {
+      ts: 1,
+      path: '',
+      count: 1,
+      defaults: { modelProvider: null, model: null, contextTokens: null },
+      sessions: [{ key: 'main', kind: 'direct', updatedAt: Date.now(), mode: 'task', taskId: 'task-current' }],
+    },
     sessionKey: "main",
     chatMessages: [],
     chatQueue: [],
@@ -177,6 +188,7 @@ function createHost(): TestGatewayHost {
     toolStreamOrder: [],
     toolStreamSyncTimer: null,
     refreshSessionsAfterChat: new Set<string>(),
+    taskCarryoverAfterChatByRun: new Map<string, { taskId: string; sourceSessionKey: string }>(),
     chatSideResultTerminalRuns: new Set<string>(),
     execApprovalQueue: [],
     execApprovalError: null,
@@ -217,6 +229,7 @@ describe("connectGateway", () => {
     loadChatHistoryMock.mockClear();
     loadTaskModeDataMock.mockClear();
     loadSessionsMock.mockClear();
+    patchSessionMock.mockClear();
   });
 
   it("ignores stale client onGap callbacks after reconnect", () => {
@@ -237,6 +250,30 @@ describe("connectGateway", () => {
     expect(gatewayClientInstances).toHaveLength(3);
     expect(secondClient.stop).toHaveBeenCalledTimes(1);
     expect(host.lastError).toBeNull();
+  });
+
+  it("rebinds the current task onto a new session after /new completes", async () => {
+    const host = createHost();
+    host.taskCarryoverAfterChatByRun.set('run-new', { taskId: 'task-current', sourceSessionKey: 'main' });
+    host.sessionsResult = {
+      ts: 2,
+      path: '',
+      count: 2,
+      defaults: { modelProvider: null, model: null, contextTokens: null },
+      sessions: [
+        { key: 'main', kind: 'direct', updatedAt: Date.now(), mode: 'task', taskId: 'task-current' },
+        { key: 'agent:solo:main:new', kind: 'direct', updatedAt: Date.now(), mode: 'normal' },
+      ],
+    } as never;
+
+    await continueTaskBindingAfterSessionRefresh(host, 'run-new', 'agent:solo:main:new');
+
+    expect(patchSessionMock).toHaveBeenCalledWith(host, 'agent:solo:main:new', {
+      mode: 'task',
+      taskId: 'task-current',
+    });
+    expect(loadTaskModeDataMock).toHaveBeenCalled();
+    expect(host.taskCarryoverAfterChatByRun.has('run-new')).toBe(false);
   });
 
   it("ignores stale client onEvent callbacks after reconnect", () => {

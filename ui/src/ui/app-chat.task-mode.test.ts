@@ -4,6 +4,26 @@ import type { SessionsListResult } from "./types.ts";
 
 function buildHost(): ChatHost & { sessionsResult: SessionsListResult } {
   return {
+    settings: {
+      gatewayUrl: '',
+      token: '',
+      locale: 'en',
+      sessionKey: 'main',
+      lastActiveSessionKey: 'main',
+      theme: 'claw',
+      themeMode: 'dark',
+      splitRatio: 0.6,
+      navWidth: 280,
+      navCollapsed: false,
+      navGroupsCollapsed: {},
+      borderRadius: 50,
+      chatFocusMode: false,
+      chatShowThinking: false,
+      chatShowToolCalls: true,
+    },
+    applySettings(next: import('./storage.ts').UiSettings) {
+      (this as { settings: import('./storage.ts').UiSettings }).settings = next;
+    },
     client: {} as never,
     chatMessages: [],
     chatStream: null,
@@ -21,6 +41,10 @@ function buildHost(): ChatHost & { sessionsResult: SessionsListResult } {
     chatModelOverrides: {},
     chatModelsLoading: false,
     chatModelCatalog: [],
+    toolStreamById: new Map(),
+    toolStreamOrder: [],
+    chatToolMessages: [],
+    chatStreamSegments: [],
     tasksBusy: false,
     sessionsResult: {
       ts: 1,
@@ -31,10 +55,36 @@ function buildHost(): ChatHost & { sessionsResult: SessionsListResult } {
     },
     updateComplete: Promise.resolve(),
     refreshSessionsAfterChat: new Set<string>(),
-  };
+    taskCarryoverAfterChatByRun: new Map<string, { taskId: string; sourceSessionKey: string }>(),
+  } as unknown as ChatHost & { sessionsResult: SessionsListResult };
 }
 
 describe("handleSendChat task mode guard", () => {
+  it("records current task carryover when /new is sent from task mode", async () => {
+    const request = async (method: string) => {
+      if (method === 'chat.send') {
+        return {};
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    };
+    const host = buildHost();
+    host.client = { request } as never;
+    host.chatMessage = '/new';
+    host.sessionsResult.sessions[0] = {
+      ...host.sessionsResult.sessions[0],
+      taskId: 'task-current',
+    };
+
+    await handleSendChat(host as never);
+
+    expect(host.refreshSessionsAfterChat.size).toBe(1);
+    const [runId] = Array.from(host.refreshSessionsAfterChat);
+    expect(host.taskCarryoverAfterChatByRun.get(runId)).toEqual({
+      taskId: 'task-current',
+      sourceSessionKey: 'main',
+    });
+  });
+
   it("blocks send when task mode has no current task", async () => {
     const host = buildHost();
     await handleSendChat(host as never);

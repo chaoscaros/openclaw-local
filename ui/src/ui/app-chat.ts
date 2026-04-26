@@ -18,12 +18,15 @@ import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import { normalizeBasePath } from "./navigation.ts";
 import { parseAgentSessionKey } from "./session-key.ts";
 import { normalizeLowercaseStringOrEmpty } from "./string-coerce.ts";
+import type { UiSettings } from "./storage.ts";
 import type { ChatModelOverride, ModelCatalogEntry } from "./types.ts";
 import type { SessionsListResult } from "./types.ts";
 import type { ChatAttachment, ChatQueueItem } from "./ui-types.ts";
 import { generateUUID } from "./uuid.ts";
 
 export type ChatHost = {
+  settings: UiSettings;
+  applySettings: (next: UiSettings) => void;
   client: GatewayBrowserClient | null;
   chatMessages: unknown[];
   chatStream: string | null;
@@ -52,6 +55,7 @@ export type ChatHost = {
   tasksBusy?: boolean;
   updateComplete?: Promise<unknown>;
   refreshSessionsAfterChat: Set<string>;
+  taskCarryoverAfterChatByRun: Map<string, { taskId: string; sourceSessionKey: string }>;
   /** Callback for slash-command side effects that need app-level access. */
   onSlashAction?: (action: string) => void;
 };
@@ -191,6 +195,13 @@ async function sendChatMessageNow(
   }
   if (ok && opts?.refreshSessions && runId) {
     host.refreshSessionsAfterChat.add(runId);
+    const currentSession = host.sessionsResult?.sessions.find((row) => row.key === host.sessionKey);
+    const currentTaskId = currentSession?.mode === "task" ? currentSession.taskId?.trim() ?? "" : "";
+    if (currentTaskId) {
+      const map = host.taskCarryoverAfterChatByRun ?? new Map<string, { taskId: string; sourceSessionKey: string }>();
+      map.set(runId, { taskId: currentTaskId, sourceSessionKey: host.sessionKey });
+      host.taskCarryoverAfterChatByRun = map;
+    }
   }
   return ok;
 }

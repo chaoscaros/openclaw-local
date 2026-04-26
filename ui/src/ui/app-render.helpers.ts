@@ -377,6 +377,7 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
         <button
           type="button"
           class="chat-task-context-bar__task-chip ${currentTask ? "" : "chat-task-context-bar__task-chip--empty"}"
+          aria-label=${`${t("taskModeUi.banner.currentTask")}：${quickSwitcherLabel}`}
           @click=${() => {
             chatTaskHeaderUi.switcherOpen = !chatTaskHeaderUi.switcherOpen;
             if (!chatTaskHeaderUi.switcherOpen) {
@@ -385,9 +386,9 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
             requestViewUpdate(state);
           }}
         >
-          <span class="chat-task-context-bar__task-chip-label">${t("taskModeUi.banner.currentTask")}</span>
           <span class="chat-task-context-bar__task-chip-main">
             <span class="chat-task-context-bar__task-chip-title-row">
+              <span class="chat-task-context-bar__task-chip-kicker">${t("taskModeUi.banner.currentTask")}</span>
               <span class="chat-task-context-bar__task-chip-title">${quickSwitcherLabel}</span>
               <span class="chat-task-context-bar__task-chip-badge">${currentTaskChipBadge}</span>
             </span>
