@@ -216,6 +216,13 @@ function splitBootstrapTodoCandidates(value: string): string[] {
   if (ordered.length >= 2) {
     return ordered;
   }
+  const newlineSplit = trimmed
+    .split(/\n+/)
+    .map((item) => normalizeBootstrapTodoSegment(item))
+    .filter((item): item is string => Boolean(item));
+  if (newlineSplit.length >= 2) {
+    return newlineSplit;
+  }
   const semicolonSplit = trimmed
     .split(/[；;]+/)
     .map((item) => normalizeBootstrapTodoSegment(item))
@@ -269,7 +276,13 @@ function reconcileDynamicTodoItems(params: {
 }): { task: TaskModeRecord; changed: boolean } {
   const currentTodos = params.task.todoItems ?? [];
   if (currentTodos.length === 0) {
-    return ensureBootstrapTodoItems(params.task);
+    return ensureBootstrapTodoItemsFromSources(params.task, [
+      params.latestUserText,
+      params.latestAssistantText,
+      params.nextStep,
+      params.progressSummary,
+      params.task.description,
+    ]);
   }
   if (currentTodos.some((item) => item.source === 'user')) {
     return { task: params.task, changed: false };
@@ -335,11 +348,14 @@ function reconcileDynamicTodoItems(params: {
   return { task: nextTask, changed };
 }
 
-function ensureBootstrapTodoItems(task: TaskModeRecord): { task: TaskModeRecord; changed: boolean } {
+function ensureBootstrapTodoItemsFromSources(
+  task: TaskModeRecord,
+  sources?: Array<string | undefined>,
+): { task: TaskModeRecord; changed: boolean } {
   if (task.todoItems?.length) {
     return { task, changed: false };
   }
-  const contents = inferBootstrapTodoContents(task);
+  const contents = sources?.length ? inferBootstrapTodoContentsFromSources(sources) : inferBootstrapTodoContents(task);
   if (contents.length === 0) {
     return { task, changed: false };
   }
@@ -365,6 +381,10 @@ function ensureBootstrapTodoItems(task: TaskModeRecord): { task: TaskModeRecord;
     task: normalizeTaskRecord({ ...task, todoItems, nextStep: deriveTaskNextStepFromTodos(todoItems, task.nextStep) }),
     changed: true,
   };
+}
+
+function ensureBootstrapTodoItems(task: TaskModeRecord): { task: TaskModeRecord; changed: boolean } {
+  return ensureBootstrapTodoItemsFromSources(task);
 }
 
 function normalizeTaskRecord(raw: TaskModeRecord): TaskModeRecord {
@@ -781,6 +801,13 @@ type SyncMessageEntry = {
   at?: number;
 };
 
+function selectLatestActionableSyncText(entries: SyncMessageEntry[]): SyncMessageEntry | undefined {
+  const latestMultiStep = [...entries]
+    .reverse()
+    .find((entry) => inferBootstrapTodoContentsFromSources([entry.text]).length >= 2);
+  return latestMultiStep ?? entries.at(-1);
+}
+
 function extractTaskSyncText(message: unknown, role: "user" | "assistant"): string | undefined {
   if (!message || typeof message !== "object") {
     return undefined;
@@ -872,6 +899,8 @@ function buildTaskProgressSyncSnapshot(messages: unknown[], task: TaskModeRecord
   const assistants = parsed.filter((entry) => entry.role === "assistant");
   const latestUser = users.at(-1);
   const latestAssistant = assistants.at(-1);
+  const preferredUser = selectLatestActionableSyncText(users);
+  const preferredAssistant = selectLatestActionableSyncText(assistants);
   const previousAssistant = assistants.length > 1 ? assistants.at(-2) : undefined;
   const progressSummary =
     trimSyncText(latestAssistant?.text, 220) ??
@@ -911,8 +940,8 @@ function buildTaskProgressSyncSnapshot(messages: unknown[], task: TaskModeRecord
     nextStep,
     resourceContext,
     timeline,
-    latestUserText: latestUser?.text,
-    latestAssistantText: latestAssistant?.text,
+    latestUserText: preferredUser?.text ?? latestUser?.text,
+    latestAssistantText: preferredAssistant?.text ?? latestAssistant?.text,
   };
 }
 

@@ -52,6 +52,19 @@ export type DreamingEntry = {
   lastRecalledAt?: string;
 };
 
+type DreamingLearningSummary = {
+  summary: string;
+  recommendation: string;
+  assistanceStrategy: string;
+  durableSignals: string[];
+  temporaryFocus: string[];
+  sources: Array<{
+    kind: "task" | "chat" | "memory";
+    label: string;
+    detail: string;
+  }>;
+};
+
 export type DreamingStatus = {
   enabled: boolean;
   timezone?: string;
@@ -83,6 +96,8 @@ export type DreamingStatus = {
     failed: number;
     narrativeWritten: number;
     narrativeSkipped: number;
+    zeroAppliedReason?: string;
+    learningSummary?: DreamingLearningSummary;
   };
   phases?: {
     light: LightDreamingStatus;
@@ -297,11 +312,24 @@ function buildDreamDiaryActionSuccessMessage(
       return `Cleared ${typeof payload?.removedShortTermEntries === "number" ? payload.removedShortTermEntries : 0} replayed short-term entries.`;
     case "doctor.memory.run": {
       const run = asRecord(payload?.runSummary);
+      const learningSummary = asRecord(run?.learningSummary);
       return [
         `Dreaming run finished: ${normalizeFiniteInt(run?.applied, 0)} ${t("dreaming.status.promotedSuffix")}, ${normalizeFiniteInt(run?.candidates, 0)} ${t("dreaming.scene.candidatesSuffix")}, ${normalizeFiniteInt(run?.narrativeWritten, 0)} ${t("dreaming.scene.diaryEntriesSuffix")}.`,
         `${normalizeFiniteInt(run?.workspaces, 0)} ${t("dreaming.scene.workspacesSuffix")} · ${normalizeFiniteInt(run?.failed, 0)} ${t("dreaming.scene.failedSuffix")} · ${normalizeFiniteInt(run?.narrativeSkipped, 0)} ${t("dreaming.scene.narrativeSkippedSuffix")}.`,
+        normalizeTrimmedString(run?.zeroAppliedReason)
+          ? `Why 0 ${t("dreaming.status.promotedSuffix")}: ${normalizeTrimmedString(run?.zeroAppliedReason)}.`
+          : null,
+        normalizeTrimmedString(learningSummary?.summary)
+          ? `学习摘要：${normalizeTrimmedString(learningSummary?.summary)}。`
+          : null,
+        normalizeTrimmedString(learningSummary?.recommendation)
+          ? `改进建议：${normalizeTrimmedString(learningSummary?.recommendation)}。`
+          : null,
+        normalizeTrimmedString(learningSummary?.assistanceStrategy)
+          ? `协助策略：${normalizeTrimmedString(learningSummary?.assistanceStrategy)}。`
+          : null,
         t("dreaming.scene.manualRunNote"),
-      ].join(" ");
+      ].filter(Boolean).join(" ");
     }
   }
   return "Dream diary action complete.";
@@ -724,6 +752,45 @@ function normalizeDreamingStatus(raw: unknown): DreamingStatus | null {
             failed: normalizeFiniteInt(asRecord(record.lastRun)?.failed, 0),
             narrativeWritten: normalizeFiniteInt(asRecord(record.lastRun)?.narrativeWritten, 0),
             narrativeSkipped: normalizeFiniteInt(asRecord(record.lastRun)?.narrativeSkipped, 0),
+            ...(normalizeTrimmedString(asRecord(record.lastRun)?.zeroAppliedReason)
+              ? { zeroAppliedReason: normalizeTrimmedString(asRecord(record.lastRun)?.zeroAppliedReason) }
+              : {}),
+            ...(asRecord(asRecord(record.lastRun)?.learningSummary) && normalizeTrimmedString(asRecord(asRecord(record.lastRun)?.learningSummary)?.summary)
+              ? {
+                  learningSummary: {
+                    summary: normalizeTrimmedString(asRecord(asRecord(record.lastRun)?.learningSummary)?.summary) ?? "",
+                    recommendation: normalizeTrimmedString(asRecord(asRecord(record.lastRun)?.learningSummary)?.recommendation) ?? "",
+                    assistanceStrategy: normalizeTrimmedString(asRecord(asRecord(record.lastRun)?.learningSummary)?.assistanceStrategy) ?? "",
+                    durableSignals: Array.isArray(asRecord(asRecord(record.lastRun)?.learningSummary)?.durableSignals)
+                      ? asRecord(asRecord(record.lastRun)?.learningSummary)?.durableSignals
+                          .map((item: unknown) => normalizeTrimmedString(item))
+                          .filter((item: string | undefined): item is string => Boolean(item))
+                          .slice(0, 3)
+                      : [],
+                    temporaryFocus: Array.isArray(asRecord(asRecord(record.lastRun)?.learningSummary)?.temporaryFocus)
+                      ? asRecord(asRecord(record.lastRun)?.learningSummary)?.temporaryFocus
+                          .map((item: unknown) => normalizeTrimmedString(item))
+                          .filter((item: string | undefined): item is string => Boolean(item))
+                          .slice(0, 3)
+                      : [],
+                    sources: Array.isArray(asRecord(asRecord(record.lastRun)?.learningSummary)?.sources)
+                      ? asRecord(asRecord(record.lastRun)?.learningSummary)?.sources
+                          .map((entry: unknown) => {
+                            const source = asRecord(entry);
+                            const kind = source?.kind;
+                            const label = normalizeTrimmedString(source?.label);
+                            const detail = normalizeTrimmedString(source?.detail);
+                            if ((kind !== "task" && kind !== "chat" && kind !== "memory") || !label || !detail) {
+                              return null;
+                            }
+                            return { kind, label, detail };
+                          })
+                          .filter((entry: { kind: "task" | "chat" | "memory"; label: string; detail: string } | null): entry is { kind: "task" | "chat" | "memory"; label: string; detail: string } => Boolean(entry))
+                          .slice(0, 3)
+                      : [],
+                  },
+                }
+              : {}),
           },
         }
       : {}),

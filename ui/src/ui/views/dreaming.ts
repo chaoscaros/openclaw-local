@@ -113,6 +113,19 @@ export type DreamingProps = {
     failed: number;
     narrativeWritten: number;
     narrativeSkipped: number;
+    zeroAppliedReason?: string;
+    learningSummary?: {
+      summary: string;
+      recommendation: string;
+      assistanceStrategy: string;
+      durableSignals: string[];
+      temporaryFocus: string[];
+      sources: Array<{
+        kind: "task" | "chat" | "memory";
+        label: string;
+        detail: string;
+      }>;
+    };
   } | null;
   dreamingOf: string | null;
   nextCycle: string | null;
@@ -127,6 +140,7 @@ export type DreamingProps = {
   dreamDiaryError: string | null;
   dreamDiaryPath: string | null;
   dreamDiaryContent: string | null;
+  dreamingAssistEnabled: boolean;
   memoryWikiEnabled: boolean;
   wikiImportInsightsLoading: boolean;
   wikiImportInsightsError: string | null;
@@ -137,6 +151,7 @@ export type DreamingProps = {
   onRefresh: () => void;
   onRefreshDiary: () => void;
   onRefreshImports: () => void;
+  onToggleDreamingAssist: () => void;
   onRefreshMemoryPalace: () => void;
   onOpenConfig: () => void;
   onRunNow: () => void;
@@ -392,6 +407,43 @@ function renderLatestRunSummary(latestRun: NonNullable<DreamingProps["latestRun"
         >${latestRun.workspaces} ${t("dreaming.scene.workspacesSuffix")} · ${latestRun.failed} ${t("dreaming.scene.failedSuffix")} · ${latestRun.narrativeSkipped} ${t("dreaming.scene.narrativeSkippedSuffix")}</span
       >
     </div>
+    ${latestRun.zeroAppliedReason
+      ? html`
+          <div class="row wrap items-center gap-2">
+            <span class="dreams__phase-next">Why 0 ${t("dreaming.status.promotedSuffix")}: ${latestRun.zeroAppliedReason}</span>
+          </div>
+        `
+      : nothing}
+    ${latestRun.learningSummary
+      ? html`
+          <div class="row wrap items-center gap-2">
+            <span class="dreams__phase-next">学习摘要：${latestRun.learningSummary.summary}</span>
+          </div>
+          <div class="row wrap items-center gap-2">
+            <span class="dreams__phase-next">改进建议：${latestRun.learningSummary.recommendation}</span>
+          </div>
+          <div class="row wrap items-center gap-2">
+            <span class="dreams__phase-next">协助策略：${latestRun.learningSummary.assistanceStrategy}</span>
+          </div>
+          ${latestRun.learningSummary.temporaryFocus.length
+            ? html`<div class="row wrap items-center gap-2">
+                <span class="dreams__phase-next">当前聚焦：${latestRun.learningSummary.temporaryFocus.join(" · ")}</span>
+              </div>`
+            : nothing}
+          ${latestRun.learningSummary.durableSignals.length
+            ? html`<div class="row wrap items-center gap-2">
+                <span class="dreams__phase-next">长期信号：${latestRun.learningSummary.durableSignals.join(" · ")}</span>
+              </div>`
+            : nothing}
+          ${latestRun.learningSummary.sources.length
+            ? html`<div class="row wrap items-center gap-2">
+                <span class="dreams__phase-next">来源：${latestRun.learningSummary.sources
+                  .map((source) => `${source.kind}:${source.label}`)
+                  .join(" · ")}</span>
+              </div>`
+            : nothing}
+        `
+      : nothing}
     <div class="row wrap items-center gap-2">
       <span class="dreams__phase-next">${t("dreaming.scene.manualRunNote")}</span>
     </div>
@@ -489,6 +541,12 @@ function renderScene(props: DreamingProps, idle: boolean, dreamText: string) {
             @click=${() => props.onRunNow()}
           >
             ${props.dreamDiaryActionLoading ? t("dreaming.scene.working") : t("dreaming.scene.runNow")}
+          </button>
+          <button
+            class="btn btn--subtle btn--sm"
+            @click=${() => props.onToggleDreamingAssist()}
+          >
+            ${props.dreamingAssistEnabled ? "协助策略：开启" : "协助策略：关闭"}
           </button>
         </div>
         ${props.latestRun ? renderLatestRunSummary(props.latestRun) : nothing}

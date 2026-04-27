@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
 import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
-import { resolveSessionAgentId } from "../../agents/agent-scope.js";
+import { resolveAgentWorkspaceDir, resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { resolveThinkingDefault } from "../../agents/model-selection.js";
 import { rewriteTranscriptEntriesInSessionFile } from "../../agents/pi-embedded-runner/transcript-rewrite.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
@@ -1379,6 +1379,70 @@ function normalizeOptionalText(value?: string | null): string | undefined {
   return trimmed || undefined;
 }
 
+const DREAMING_ASSISTANCE_STRATEGY_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+type DreamingAssistReason = "disabled" | "no_strategy" | "scope_mismatch" | "expired";
+
+type DreamingAssistanceResolution = {
+  strategy?: string;
+  reason?: DreamingAssistReason;
+};
+
+function resolveDreamingAssistance(params: {
+  cfg: ReturnType<typeof loadConfig>;
+  agentId: string;
+  sessionKey: string;
+  taskId?: string;
+  applyDreamingAssist?: boolean;
+}): DreamingAssistanceResolution {
+  if (params.applyDreamingAssist === false) {
+    return { reason: "disabled" };
+  }
+  try {
+    const workspaceDir = resolveAgentWorkspaceDir(params.cfg, params.agentId);
+    const filePath = path.join(workspaceDir, "memory", ".dreams", "last-run.json");
+    if (!fs.existsSync(filePath)) {
+      return { reason: "no_strategy" };
+    }
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
+      at?: unknown;
+      learningSummary?: { assistanceStrategy?: unknown; sessionKey?: unknown; taskId?: unknown };
+    };
+    const strategy = typeof raw.learningSummary?.assistanceStrategy === "string"
+      ? raw.learningSummary.assistanceStrategy.trim()
+      : "";
+    if (!strategy) {
+      return { reason: "no_strategy" };
+    }
+    const runAtMs = typeof raw.at === "string" ? Date.parse(raw.at) : Number.NaN;
+    if (!Number.isFinite(runAtMs) || Date.now() - runAtMs > DREAMING_ASSISTANCE_STRATEGY_MAX_AGE_MS) {
+      return { reason: "expired" };
+    }
+    const scopedSessionKey = typeof raw.learningSummary?.sessionKey === "string"
+      ? raw.learningSummary.sessionKey.trim()
+      : "";
+    const scopedTaskId = typeof raw.learningSummary?.taskId === "string"
+      ? raw.learningSummary.taskId.trim()
+      : "";
+    const matchesSession = !scopedSessionKey || scopedSessionKey === params.sessionKey;
+    const matchesTask = !scopedTaskId || (params.taskId?.trim() ?? "") === scopedTaskId;
+    if (!matchesSession || !matchesTask) {
+      return { reason: "scope_mismatch" };
+    }
+    return { strategy };
+  } catch {
+    return { reason: "no_strategy" };
+  }
+}
+
+function injectDreamingAssistanceStrategy(message: string, strategy?: string): string {
+  const normalizedStrategy = normalizeOptionalText(strategy);
+  const normalizedMessage = message.trim();
+  if (!normalizedStrategy || !normalizedMessage || normalizedMessage.startsWith("/")) {
+    return message;
+  }
+  return `${message}\n\n[Dreaming协助策略参考，仅作本轮回复方式约束：${normalizedStrategy}]`;
+}
+
 function normalizeExplicitChatSendOrigin(
   params: ChatSendExplicitOrigin,
 ): { ok: true; value?: ChatSendExplicitOrigin } | { ok: false; error: string } {
@@ -1765,6 +1829,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       message: string;
       thinking?: string;
       deliver?: boolean;
+      applyDreamingAssist?: boolean;
       originatingChannel?: string;
       originatingTo?: string;
       originatingAccountId?: string;
@@ -1941,9 +2006,19 @@ export const chatHandlers: GatewayRequestHandlers = {
         ownerConnId: normalizeOptionalText(client?.connId),
         ownerDeviceId: normalizeOptionalText(client?.connect?.device?.id),
       });
+      const dreamingAssist = resolveDreamingAssistance({
+        cfg,
+        agentId,
+        sessionKey,
+        taskId: entry?.taskId,
+        applyDreamingAssist: p.applyDreamingAssist,
+      });
+      const dreamingAssistStrategy = dreamingAssist.strategy;
       const ackPayload = {
         runId: clientRunId,
         status: "started" as const,
+        dreamingAssistApplied: Boolean(dreamingAssistStrategy),
+        ...(dreamingAssist.reason ? { dreamingAssistReason: dreamingAssist.reason } : {}),
       };
       respond(true, ackPayload, undefined, { runId: clientRunId });
       const persistedImagesPromise = persistChatSendImages({
@@ -1959,9 +2034,12 @@ export const chatHandlers: GatewayRequestHandlers = {
         p.thinking && trimmedMessage && !trimmedMessage.startsWith("/"),
       );
       const commandBody = injectThinking ? `/think ${p.thinking} ${parsedMessage}` : parsedMessage;
-      const messageForAgent = systemProvenanceReceipt
+      const baseMessageForAgent = systemProvenanceReceipt
         ? [systemProvenanceReceipt, parsedMessage].filter(Boolean).join("\n\n")
         : parsedMessage;
+      const messageForAgent = p.applyDreamingAssist === false
+        ? baseMessageForAgent
+        : injectDreamingAssistanceStrategy(baseMessageForAgent, dreamingAssistStrategy);
       const clientInfo = client?.connect?.client;
       const {
         originatingChannel,

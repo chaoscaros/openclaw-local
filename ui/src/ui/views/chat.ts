@@ -49,10 +49,29 @@ import { agentLogoUrl, resolveAgentAvatarUrl } from "./agents-utils.ts";
 import { renderMarkdownSidebar } from "./markdown-sidebar.ts";
 import "../components/resizable-divider.ts";
 
+type DreamingAssistReason = "disabled" | "no_strategy" | "scope_mismatch" | "expired";
+
+function renderDreamingAssistReason(reason?: DreamingAssistReason | null): string {
+  switch (reason) {
+    case "disabled":
+      return "未应用原因：协助策略已关闭";
+    case "no_strategy":
+      return "未应用原因：当前没有可用的 dreaming 协助策略";
+    case "scope_mismatch":
+      return "未应用原因：当前会话或任务与策略作用域不匹配";
+    case "expired":
+      return "未应用原因：dreaming 协助策略已过期";
+    default:
+      return "";
+  }
+}
+
 export type ChatProps = {
   sessionKey: string;
   onSessionKeyChange: (next: string) => void;
   thinkingLevel: string | null;
+  dreamingAssistApplied?: boolean | null;
+  dreamingAssistReason?: DreamingAssistReason | null;
   showThinking: boolean;
   showToolCalls: boolean;
   loading: boolean;
@@ -1555,6 +1574,14 @@ export function renderChat(props: ChatProps) {
             </div>
           `
         : nothing}
+      ${props.dreamingAssistApplied === null || props.dreamingAssistApplied === undefined
+        ? nothing
+        : html`<div class="callout ${props.dreamingAssistApplied ? "success" : "muted"}" role="status">
+            <div>${props.dreamingAssistApplied ? "本轮已应用 dreaming 协助策略" : "本轮未应用 dreaming 协助策略"}</div>
+            ${!props.dreamingAssistApplied && props.dreamingAssistReason
+              ? html`<div>${renderDreamingAssistReason(props.dreamingAssistReason)}</div>`
+              : nothing}
+          </div>`}
       ${renderSideResult(props.sideResult, props.onDismissSideResult)}
       ${renderFallbackIndicator(props.fallbackStatus)}
       ${renderCompactionIndicator(props.compactionStatus)}

@@ -52,6 +52,7 @@ export type UiSettings = {
   chatFocusMode: boolean;
   chatShowThinking: boolean;
   chatShowToolCalls: boolean;
+  dreamingAssistEnabled: boolean;
   splitRatio: number; // Sidebar split ratio (0.4 to 0.7, default 0.6)
   navCollapsed: boolean; // Collapsible sidebar state
   navWidth: number; // Sidebar width when expanded (240–400px)
@@ -190,6 +191,7 @@ export function loadSettings(): UiSettings {
     chatFocusMode: false,
     chatShowThinking: true,
     chatShowToolCalls: true,
+    dreamingAssistEnabled: true,
     splitRatio: 0.6,
     navCollapsed: false,
     navWidth: 220,
@@ -233,6 +235,10 @@ export function loadSettings(): UiSettings {
         typeof parsed.chatShowToolCalls === "boolean"
           ? parsed.chatShowToolCalls
           : defaults.chatShowToolCalls,
+      dreamingAssistEnabled:
+        typeof (parsed as { dreamingAssistEnabled?: unknown }).dreamingAssistEnabled === "boolean"
+          ? Boolean((parsed as { dreamingAssistEnabled?: unknown }).dreamingAssistEnabled)
+          : defaults.dreamingAssistEnabled,
       splitRatio:
         typeof parsed.splitRatio === "number" &&
         parsed.splitRatio >= 0.4 &&
@@ -310,6 +316,7 @@ function persistSettings(next: UiSettings) {
     chatFocusMode: next.chatFocusMode,
     chatShowThinking: next.chatShowThinking,
     chatShowToolCalls: next.chatShowToolCalls,
+    dreamingAssistEnabled: next.dreamingAssistEnabled,
     splitRatio: next.splitRatio,
     navCollapsed: next.navCollapsed,
     navWidth: next.navWidth,

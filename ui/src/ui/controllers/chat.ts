@@ -135,10 +135,15 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+type DreamingAssistReason = "disabled" | "no_strategy" | "scope_mismatch" | "expired";
+
 export type ChatState = {
   client: GatewayBrowserClient | null;
   connected: boolean;
   sessionKey: string;
+  dreamingAssistEnabled?: boolean;
+  dreamingAssistApplied?: boolean | null;
+  dreamingAssistReason?: DreamingAssistReason | null;
   chatLoading: boolean;
   chatMessages: unknown[];
   chatThinkingLevel: string | null;
@@ -270,11 +275,12 @@ function buildApiAttachments(attachments?: ChatAttachment[]) {
 async function requestChatSend(
   state: ChatState,
   params: { message: string; attachments?: ChatAttachment[]; runId: string },
-) {
-  await state.client!.request("chat.send", {
+): Promise<{ dreamingAssistApplied?: boolean; dreamingAssistReason?: DreamingAssistReason } | null> {
+  return await state.client!.request("chat.send", {
     sessionKey: state.sessionKey,
     message: params.message,
     deliver: false,
+    applyDreamingAssist: state.dreamingAssistEnabled !== false,
     idempotencyKey: params.runId,
     attachments: buildApiAttachments(params.attachments),
   });
@@ -377,9 +383,13 @@ export async function sendChatMessage(
   state.chatRunId = runId;
   state.chatStream = "";
   state.chatStreamStartedAt = now;
+  state.dreamingAssistApplied = null;
+  state.dreamingAssistReason = null;
 
   try {
-    await requestChatSend(state, { message: msg, attachments, runId });
+    const response = await requestChatSend(state, { message: msg, attachments, runId });
+    state.dreamingAssistApplied = response?.dreamingAssistApplied === true;
+    state.dreamingAssistReason = response?.dreamingAssistApplied === true ? null : (response?.dreamingAssistReason ?? null);
     return runId;
   } catch (err) {
     const error = formatConnectError(err);

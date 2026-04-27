@@ -236,6 +236,46 @@ describe("task-mode-store", () => {
     expect(result.task?.nextStep).toBe('核对 task 页面');
   });
 
+  it("keeps using the latest actionable multi-step instruction even after later short follow-up turns", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const now = Date.now();
+    const sessionId = 'session-sync-followup-tail';
+    const storePath = resolveDefaultSessionStorePath();
+    fs.mkdirSync(path.dirname(storePath), { recursive: true });
+    fs.writeFileSync(
+      storePath,
+      JSON.stringify({
+        main: {
+          sessionId,
+          updatedAt: now,
+          taskId: 'task-sync-followup-tail',
+        },
+      }),
+    );
+    const transcriptPath = resolveSessionTranscriptPath(sessionId);
+    fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+    fs.writeFileSync(
+      transcriptPath,
+      [
+        JSON.stringify({ message: { role: 'user', timestamp: now - 4_000, content: [{ type: 'text', text: '先核对 Tasks 页\n再验证自动生成 todo\n最后确认 /new 后续接续' }] } }),
+        JSON.stringify({ message: { role: 'assistant', timestamp: now - 3_000, content: [{ type: 'text', text: '收到，我先按这三步排查。' }] } }),
+        JSON.stringify({ message: { role: 'user', timestamp: now - 2_000, content: [{ type: 'text', text: '继续' }] } }),
+        JSON.stringify({ message: { role: 'assistant', timestamp: now - 1_000, content: [{ type: 'text', text: '我继续确认这个问题。' }] } }),
+      ].join('\n'),
+    );
+    await createTaskModeTask({ id: 'task-sync-followup-tail', title: 'Sync follow-up tail task', sessionKey: 'main' });
+
+    const result = await syncTaskModeTaskProgress({ id: 'task-sync-followup-tail', sessionKey: 'main' });
+
+    expect(result.task?.todoItems?.map((item) => item.content)).toEqual([
+      '核对 Tasks 页',
+      '验证自动生成 todo',
+      '确认 /new 后续接续',
+    ]);
+    expect(result.task?.todoItems?.map((item) => item.status)).toEqual(['in_progress', 'pending', 'pending']);
+    expect(result.task?.nextStep).toBe('核对 Tasks 页');
+  });
+
   it("creates todos and derives next step from the first pending item", async () => {
     process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
     await createTaskModeTask({ id: "task-todo", title: "Todo task" });

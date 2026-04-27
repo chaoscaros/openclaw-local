@@ -666,6 +666,43 @@ describe("loadChatHistory", () => {
 });
 
 describe("sendChatMessage", () => {
+  it("stores whether dreaming assistance was applied from chat.send ack", async () => {
+    const request = vi.fn().mockResolvedValue({ dreamingAssistApplied: true });
+    const state = createState({
+      connected: true,
+      client: { request } as unknown as ChatState["client"],
+      dreamingAssistEnabled: true,
+    });
+
+    const result = await sendChatMessage(state, "hello");
+
+    expect(result).not.toBeNull();
+    expect(state.dreamingAssistApplied).toBe(true);
+    expect(state.dreamingAssistReason).toBeNull();
+    expect(request).toHaveBeenCalledWith(
+      "chat.send",
+      expect.objectContaining({ applyDreamingAssist: true }),
+    );
+  });
+
+  it("stores the dreaming assist reason when chat.send reports that no strategy was applied", async () => {
+    const request = vi.fn().mockResolvedValue({
+      dreamingAssistApplied: false,
+      dreamingAssistReason: "no_strategy",
+    });
+    const state = createState({
+      connected: true,
+      client: { request } as unknown as ChatState["client"],
+      dreamingAssistEnabled: true,
+    });
+
+    const result = await sendChatMessage(state, "hello");
+
+    expect(result).not.toBeNull();
+    expect(state.dreamingAssistApplied).toBe(false);
+    expect(state.dreamingAssistReason).toBe("no_strategy");
+  });
+
   it("formats structured non-auth connect failures for chat send", async () => {
     const request = vi.fn().mockRejectedValue(
       new GatewayRequestError({

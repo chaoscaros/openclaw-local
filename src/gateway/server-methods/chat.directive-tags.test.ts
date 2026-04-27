@@ -16,6 +16,7 @@ import type { GatewayRequestContext } from "./types.js";
 
 const mockState = vi.hoisted(() => ({
   config: {} as Record<string, unknown>,
+  workspaceDir: "",
   transcriptPath: "",
   sessionId: "sess-1",
   mainSessionKey: "main",
@@ -83,6 +84,15 @@ vi.mock("../session-utils.js", async () => {
           ? mockState.sessionEntry.canonicalKey
           : rawKey || "main",
     }),
+  };
+});
+
+vi.mock("../../agents/agent-scope.js", async () => {
+  const original =
+    await vi.importActual<typeof import("../../agents/agent-scope.js")>("../../agents/agent-scope.js");
+  return {
+    ...original,
+    resolveAgentWorkspaceDir: vi.fn(() => mockState.workspaceDir || os.tmpdir()),
   };
 });
 
@@ -228,6 +238,25 @@ function createTranscriptFixture(prefix: string) {
     "utf-8",
   );
   mockState.transcriptPath = transcriptPath;
+}
+
+function createDreamingWorkspaceFixture(prefix: string, payload?: Record<string, unknown>) {
+  const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  mockState.workspaceDir = workspaceDir;
+  const dreamsDir = path.join(workspaceDir, "memory", ".dreams");
+  fs.mkdirSync(dreamsDir, { recursive: true });
+  if (payload) {
+    fs.writeFileSync(path.join(dreamsDir, "last-run.json"), JSON.stringify(payload), "utf-8");
+  }
+  return workspaceDir;
+}
+
+function expectStartedAck(
+  respond: ReturnType<typeof vi.fn>,
+): { dreamingAssistApplied?: boolean; dreamingAssistReason?: string } {
+  const started = respond.mock.calls.find((call) => call[0] === true && call[1]?.status === "started");
+  expect(started?.[1]).toBeDefined();
+  return started?.[1] as { dreamingAssistApplied?: boolean; dreamingAssistReason?: string };
 }
 
 function extractFirstTextBlock(payload: unknown): string | undefined {
@@ -398,6 +427,7 @@ async function runNonStreamingChatSend(params: {
 describe("chat directive tag stripping for non-streaming final payloads", () => {
   afterEach(() => {
     mockState.config = {};
+    mockState.workspaceDir = "";
     mockState.finalText = "[[reply_to_current]]";
     mockState.finalPayload = null;
     mockState.dispatchedReplies = [];
@@ -417,6 +447,133 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     mockState.saveMediaWait = null;
     mockState.activeSaveMediaCalls = 0;
     mockState.maxActiveSaveMediaCalls = 0;
+  });
+
+  it("returns disabled as the dreaming assist reason when the UI switch is off", async () => {
+    createTranscriptFixture("openclaw-chat-send-dreaming-disabled-");
+    createDreamingWorkspaceFixture("openclaw-chat-send-dreaming-disabled-workspace-");
+    mockState.finalText = "ok";
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-dreaming-disabled",
+      requestParams: { applyDreamingAssist: false },
+      expectBroadcast: false,
+    });
+
+    expect(expectStartedAck(respond)).toMatchObject({
+      dreamingAssistApplied: false,
+      dreamingAssistReason: "disabled",
+    });
+  });
+
+  it("returns no_strategy when no dreaming strategy is available", async () => {
+    createTranscriptFixture("openclaw-chat-send-dreaming-no-strategy-");
+    createDreamingWorkspaceFixture("openclaw-chat-send-dreaming-no-strategy-workspace-");
+    mockState.finalText = "ok";
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-dreaming-no-strategy",
+      expectBroadcast: false,
+    });
+
+    expect(expectStartedAck(respond)).toMatchObject({
+      dreamingAssistApplied: false,
+      dreamingAssistReason: "no_strategy",
+    });
+  });
+
+  it("returns scope_mismatch when a fresh dreaming strategy belongs to another task or session", async () => {
+    createTranscriptFixture("openclaw-chat-send-dreaming-scope-mismatch-");
+    createDreamingWorkspaceFixture("openclaw-chat-send-dreaming-scope-mismatch-workspace-", {
+      at: new Date().toISOString(),
+      learningSummary: {
+        assistanceStrategy: "保持中文优先",
+        sessionKey: "other-session",
+        taskId: "task-9",
+      },
+    });
+    mockState.finalText = "ok";
+    mockState.sessionEntry = { taskId: "task-1" };
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-dreaming-scope-mismatch",
+      sessionKey: "main",
+      expectBroadcast: false,
+    });
+
+    expect(expectStartedAck(respond)).toMatchObject({
+      dreamingAssistApplied: false,
+      dreamingAssistReason: "scope_mismatch",
+    });
+  });
+
+  it("returns expired when the last dreaming strategy is too old", async () => {
+    createTranscriptFixture("openclaw-chat-send-dreaming-expired-");
+    createDreamingWorkspaceFixture("openclaw-chat-send-dreaming-expired-workspace-", {
+      at: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+      learningSummary: {
+        assistanceStrategy: "先拆清单再验证",
+        sessionKey: "main",
+      },
+    });
+    mockState.finalText = "ok";
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-dreaming-expired",
+      expectBroadcast: false,
+    });
+
+    expect(expectStartedAck(respond)).toMatchObject({
+      dreamingAssistApplied: false,
+      dreamingAssistReason: "expired",
+    });
+  });
+
+  it("keeps the dreaming assist reason empty when a fresh scoped strategy is applied", async () => {
+    createTranscriptFixture("openclaw-chat-send-dreaming-applied-");
+    createDreamingWorkspaceFixture("openclaw-chat-send-dreaming-applied-workspace-", {
+      at: new Date().toISOString(),
+      learningSummary: {
+        assistanceStrategy: "先拆清单再验证",
+        sessionKey: "main",
+        taskId: "task-1",
+      },
+    });
+    mockState.finalText = "ok";
+    mockState.sessionEntry = { taskId: "task-1" };
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-dreaming-applied",
+      sessionKey: "main",
+      expectBroadcast: false,
+    });
+
+    expect(expectStartedAck(respond)).toMatchObject({
+      dreamingAssistApplied: true,
+    });
+    expect(expectStartedAck(respond).dreamingAssistReason).toBeUndefined();
+    expect(mockState.lastDispatchCtx?.Body).toContain("Dreaming协助策略参考，仅作本轮回复方式约束：先拆清单再验证");
+    expect(mockState.lastDispatchCtx?.RawBody).toBe("hello");
   });
 
   it("registers tool-event recipients for clients advertising tool-events capability", async () => {
@@ -584,6 +741,204 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
       }),
     );
     expect(extractFirstTextBlock(payload)).toBe("");
+  });
+
+  it("injects the latest dreaming assistance strategy into BodyForAgent without mutating the raw user message", async () => {
+    createTranscriptFixture("openclaw-chat-send-dreaming-strategy-");
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-chat-send-dreaming-workspace-"));
+    mockState.workspaceDir = workspaceDir;
+    mockState.sessionEntry = { taskId: "task-1" };
+    fs.mkdirSync(path.join(workspaceDir, "memory", ".dreams"), { recursive: true });
+    fs.writeFileSync(
+      path.join(workspaceDir, "memory", ".dreams", "last-run.json"),
+      `${JSON.stringify({
+        at: new Date().toISOString(),
+        workspaces: 1,
+        candidates: 1,
+        applied: 1,
+        failed: 0,
+        narrativeWritten: 0,
+        narrativeSkipped: 0,
+        learningSummary: {
+          summary: "当前聚焦：核对 Tasks 页",
+          recommendation: "下次协助时，保持中文优先。",
+          assistanceStrategy: "先给清单，再逐步验证。",
+          sessionKey: "main",
+          taskId: "task-1",
+          durableSignals: ["中文优先"],
+          temporaryFocus: ["核对 Tasks 页"],
+          sources: [{ kind: "memory", label: "2026-04-05.md", detail: "中文优先" }],
+        },
+      }, null, 2)}\n`,
+      "utf-8",
+    );
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    try {
+      await runNonStreamingChatSend({
+        context,
+        respond,
+        idempotencyKey: "idem-dreaming-strategy",
+        message: "请继续处理当前问题",
+      });
+      expect(mockState.lastDispatchCtx?.RawBody).toBe("请继续处理当前问题");
+      expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("Dreaming协助策略参考");
+      expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("先给清单，再逐步验证。");
+      expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("请继续处理当前问题");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+      mockState.workspaceDir = "";
+      mockState.sessionEntry = {};
+    }
+  });
+
+  it("does not inject dreaming assistance strategy when the operator disables it for the current chat", async () => {
+    createTranscriptFixture("openclaw-chat-send-dreaming-strategy-disabled-");
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-chat-send-dreaming-disabled-"));
+    mockState.workspaceDir = workspaceDir;
+    mockState.sessionEntry = { taskId: "task-1" };
+    fs.mkdirSync(path.join(workspaceDir, "memory", ".dreams"), { recursive: true });
+    fs.writeFileSync(
+      path.join(workspaceDir, "memory", ".dreams", "last-run.json"),
+      `${JSON.stringify({
+        at: new Date().toISOString(),
+        workspaces: 1,
+        candidates: 1,
+        applied: 1,
+        failed: 0,
+        narrativeWritten: 0,
+        narrativeSkipped: 0,
+        learningSummary: {
+          summary: "当前聚焦：核对 Tasks 页",
+          recommendation: "下次协助时，保持中文优先。",
+          assistanceStrategy: "先给清单，再逐步验证。",
+          sessionKey: "main",
+          taskId: "task-1",
+          durableSignals: ["中文优先"],
+          temporaryFocus: ["核对 Tasks 页"],
+          sources: [{ kind: "memory", label: "2026-04-05.md", detail: "中文优先" }],
+        },
+      }, null, 2)}\n`,
+      "utf-8",
+    );
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    try {
+      await runNonStreamingChatSend({
+        context,
+        respond,
+        idempotencyKey: "idem-dreaming-strategy-disabled",
+        message: "请继续处理当前问题",
+        requestParams: { applyDreamingAssist: false },
+      });
+      expect(mockState.lastDispatchCtx?.RawBody).toBe("请继续处理当前问题");
+      expect(mockState.lastDispatchCtx?.BodyForAgent).not.toContain("Dreaming协助策略参考");
+      expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("请继续处理当前问题");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+      mockState.workspaceDir = "";
+      mockState.sessionEntry = {};
+    }
+  });
+
+  it("does not inject dreaming assistance strategy when the latest strategy belongs to another task or session", async () => {
+    createTranscriptFixture("openclaw-chat-send-dreaming-strategy-scope-");
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-chat-send-dreaming-scope-"));
+    mockState.workspaceDir = workspaceDir;
+    mockState.sessionEntry = { taskId: "task-local" };
+    fs.mkdirSync(path.join(workspaceDir, "memory", ".dreams"), { recursive: true });
+    fs.writeFileSync(
+      path.join(workspaceDir, "memory", ".dreams", "last-run.json"),
+      `${JSON.stringify({
+        at: new Date().toISOString(),
+        workspaces: 1,
+        candidates: 1,
+        applied: 1,
+        failed: 0,
+        narrativeWritten: 0,
+        narrativeSkipped: 0,
+        learningSummary: {
+          summary: "当前聚焦：别的任务",
+          recommendation: "下次协助时，先做别的任务。",
+          assistanceStrategy: "别注入到当前会话。",
+          sessionKey: "other-session",
+          taskId: "task-other",
+          durableSignals: ["中文优先"],
+          temporaryFocus: ["别的任务"],
+          sources: [{ kind: "memory", label: "2026-04-05.md", detail: "中文优先" }],
+        },
+      }, null, 2)}\n`,
+      "utf-8",
+    );
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    try {
+      await runNonStreamingChatSend({
+        context,
+        respond,
+        idempotencyKey: "idem-dreaming-strategy-scope",
+        message: "请继续处理当前问题",
+      });
+      expect(mockState.lastDispatchCtx?.RawBody).toBe("请继续处理当前问题");
+      expect(mockState.lastDispatchCtx?.BodyForAgent).not.toContain("Dreaming协助策略参考");
+      expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("请继续处理当前问题");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+      mockState.workspaceDir = "";
+      mockState.sessionEntry = {};
+    }
+  });
+
+  it("does not inject dreaming assistance strategy when the latest strategy is too old", async () => {
+    createTranscriptFixture("openclaw-chat-send-dreaming-strategy-expired-");
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-chat-send-dreaming-expired-"));
+    mockState.workspaceDir = workspaceDir;
+    mockState.sessionEntry = { taskId: "task-1" };
+    fs.mkdirSync(path.join(workspaceDir, "memory", ".dreams"), { recursive: true });
+    fs.writeFileSync(
+      path.join(workspaceDir, "memory", ".dreams", "last-run.json"),
+      `${JSON.stringify({
+        at: new Date(0).toISOString(),
+        workspaces: 1,
+        candidates: 1,
+        applied: 1,
+        failed: 0,
+        narrativeWritten: 0,
+        narrativeSkipped: 0,
+        learningSummary: {
+          summary: "当前聚焦：核对 Tasks 页",
+          recommendation: "下次协助时，保持中文优先。",
+          assistanceStrategy: "这条策略太旧，不应继续生效。",
+          sessionKey: "main",
+          taskId: "task-1",
+          durableSignals: ["中文优先"],
+          temporaryFocus: ["核对 Tasks 页"],
+          sources: [{ kind: "memory", label: "2026-04-05.md", detail: "中文优先" }],
+        },
+      }, null, 2)}\n`,
+      "utf-8",
+    );
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    try {
+      await runNonStreamingChatSend({
+        context,
+        respond,
+        idempotencyKey: "idem-dreaming-strategy-expired",
+        message: "请继续处理当前问题",
+      });
+      expect(mockState.lastDispatchCtx?.RawBody).toBe("请继续处理当前问题");
+      expect(mockState.lastDispatchCtx?.BodyForAgent).not.toContain("Dreaming协助策略参考");
+      expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("请继续处理当前问题");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+      mockState.workspaceDir = "";
+      mockState.sessionEntry = {};
+    }
   });
 
   it("rejects oversized chat.send session keys before dispatch", async () => {

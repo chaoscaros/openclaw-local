@@ -769,6 +769,17 @@ describe("dreaming controller", () => {
             failed: 0,
             narrativeWritten: 1,
             narrativeSkipped: 0,
+            learningSummary: {
+              summary: "当前聚焦：核对 Tasks 页 · 持续保留：用户偏好中文优先 · 主要来源：Recent chat",
+              recommendation: "下次协助时，保持“用户偏好中文优先”，同时优先推进“核对 Tasks 页”。",
+              assistanceStrategy: "先按“核对 Tasks 页”拆成清单执行，过程中持续遵守“用户偏好中文优先”。",
+              durableSignals: ["用户偏好中文优先"],
+              temporaryFocus: ["核对 Tasks 页", "验证自动生成 todo"],
+              sources: [
+                { kind: "chat", label: "Recent chat", detail: "user: 先核对 Tasks 页" },
+                { kind: "task", label: "Task A", detail: "Task A · next: 核对 Tasks 页" },
+              ],
+            },
           },
         };
       }
@@ -797,6 +808,17 @@ describe("dreaming controller", () => {
               failed: 0,
               narrativeWritten: 1,
               narrativeSkipped: 0,
+              learningSummary: {
+                summary: "当前聚焦：核对 Tasks 页 · 持续保留：用户偏好中文优先 · 主要来源：Recent chat",
+                recommendation: "下次协助时，保持“用户偏好中文优先”，同时优先推进“核对 Tasks 页”。",
+                assistanceStrategy: "先按“核对 Tasks 页”拆成清单执行，过程中持续遵守“用户偏好中文优先”。",
+                durableSignals: ["用户偏好中文优先"],
+                temporaryFocus: ["核对 Tasks 页", "验证自动生成 todo"],
+                sources: [
+                  { kind: "chat", label: "Recent chat", detail: "user: 先核对 Tasks 页" },
+                  { kind: "task", label: "Task A", detail: "Task A · next: 核对 Tasks 页" },
+                ],
+              },
             },
             phases: {
               light: { enabled: false, cron: "", managedCronPresent: false, lookbackDays: 0, limit: 0 },
@@ -839,6 +861,98 @@ describe("dreaming controller", () => {
         "Manual Run now only performs background consolidation; it does not create a visible session.",
       ),
     });
+    expect(state.dreamDiaryActionMessage?.text).toContain("学习摘要：");
+    expect(state.dreamDiaryActionMessage?.text).toContain("改进建议：");
+    expect(state.dreamDiaryActionMessage?.text).toContain("协助策略：");
+    expect(state.dreamingStatus?.lastRun?.learningSummary?.summary).toContain("当前聚焦：");
+    expect(state.dreamingStatus?.lastRun?.learningSummary?.recommendation).toContain("下次协助时");
+    expect(state.dreamingStatus?.lastRun?.learningSummary?.assistanceStrategy).toContain("先按");
+  });
+
+  it("explains why dreaming run stayed at zero promoted", async () => {
+    const { state, request } = createState();
+    request.mockImplementation(async (method: string) => {
+      if (method === "doctor.memory.run") {
+        return {
+          action: "run",
+          runSummary: {
+            at: "2026-04-05T04:30:00.000Z",
+            workspaces: 1,
+            candidates: 3,
+            applied: 0,
+            failed: 0,
+            narrativeWritten: 0,
+            narrativeSkipped: 1,
+            zeroAppliedReason:
+              "Candidates were found, but none met the promotion threshold; diary narrative was skipped because evidence stayed weak.",
+          },
+        };
+      }
+      if (method === "doctor.memory.status") {
+        return {
+          dreaming: {
+            enabled: true,
+            shortTermCount: 1,
+            recallSignalCount: 0,
+            dailySignalCount: 0,
+            groundedSignalCount: 0,
+            totalSignalCount: 1,
+            phaseSignalCount: 0,
+            lightPhaseHitCount: 0,
+            remPhaseHitCount: 0,
+            promotedTotal: 0,
+            promotedToday: 0,
+            shortTermEntries: [],
+            signalEntries: [],
+            promotedEntries: [],
+            lastRun: {
+              at: "2026-04-05T04:30:00.000Z",
+              workspaces: 1,
+              candidates: 3,
+              applied: 0,
+              failed: 0,
+              narrativeWritten: 0,
+              narrativeSkipped: 1,
+              zeroAppliedReason:
+                "Candidates were found, but none met the promotion threshold; diary narrative was skipped because evidence stayed weak.",
+            },
+            phases: {
+              light: { enabled: false, cron: "", managedCronPresent: false, lookbackDays: 0, limit: 0 },
+              deep: {
+                enabled: false,
+                cron: "",
+                managedCronPresent: false,
+                limit: 0,
+                minScore: 0,
+                minRecallCount: 0,
+                minUniqueQueries: 0,
+                recencyHalfLifeDays: 0,
+              },
+              rem: {
+                enabled: false,
+                cron: "",
+                managedCronPresent: false,
+                lookbackDays: 0,
+                limit: 0,
+                minPatternStrength: 0,
+              },
+            },
+          },
+        };
+      }
+      return {};
+    });
+
+    const ok = await runDreamingNow(state);
+
+    expect(ok).toBe(true);
+    expect(state.dreamingStatus?.lastRun).toMatchObject({
+      applied: 0,
+      zeroAppliedReason:
+        "Candidates were found, but none met the promotion threshold; diary narrative was skipped because evidence stayed weak.",
+    });
+    expect(state.dreamDiaryActionMessage?.text).toContain("Why 0 promoted:");
+    expect(state.dreamDiaryActionMessage?.text).toContain("none met the promotion threshold");
   });
 
   it("clears grounded staged entries and reloads only dreaming status", async () => {

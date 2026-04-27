@@ -78,6 +78,7 @@ function buildProps(overrides?: Partial<DreamingProps>): DreamingProps {
     dreamDiaryPath: "DREAMS.md",
     dreamDiaryContent:
       "# Dream Diary\n\n<!-- openclaw:dreaming:diary:start -->\n\n---\n\n*April 5, 2026, 3:00 AM*\n\nThe repository whispered of forgotten endpoints tonight.\n\n<!-- openclaw:dreaming:diary:end -->",
+    dreamingAssistEnabled: true,
     memoryWikiEnabled: true,
     wikiImportInsightsLoading: false,
     wikiImportInsightsError: null,
@@ -187,6 +188,7 @@ function buildProps(overrides?: Partial<DreamingProps>): DreamingProps {
     onRefresh: () => {},
     onRefreshDiary: () => {},
     onRefreshImports: () => {},
+    onToggleDreamingAssist: () => {},
     onRefreshMemoryPalace: () => {},
     onOpenConfig: () => {},
     onRunNow: () => {},
@@ -279,6 +281,74 @@ describe("dreaming view", () => {
     expect(container.textContent).toContain(
       "Manual Run now only performs background consolidation; it does not create a visible session.",
     );
+  });
+
+  it("renders and toggles the dreaming assistance switch", () => {
+    const onToggleDreamingAssist = vi.fn();
+    const container = renderInto(buildProps({ onToggleDreamingAssist, dreamingAssistEnabled: true }));
+    const button = Array.from(container.querySelectorAll("button")).find((node) =>
+      node.textContent?.includes("协助策略：开启"),
+    );
+    expect(button).toBeTruthy();
+    button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onToggleDreamingAssist).toHaveBeenCalledOnce();
+  });
+
+  it("shows a zero-promoted explanation when latest run produced no promotions", () => {
+    const container = renderInto(
+      buildProps({
+        latestRun: {
+          at: "2026-04-05T04:30:00.000Z",
+          workspaces: 1,
+          candidates: 3,
+          applied: 0,
+          failed: 0,
+          narrativeWritten: 0,
+          narrativeSkipped: 1,
+          zeroAppliedReason:
+            "Candidates were found, but none met the promotion threshold; diary narrative was skipped because evidence stayed weak.",
+        },
+      }),
+    );
+    expect(container.textContent).toContain("Why 0 promoted:");
+    expect(container.textContent).toContain("none met the promotion threshold");
+  });
+
+  it("shows learning summary details from task chat and memory sources", () => {
+    const container = renderInto(
+      buildProps({
+        latestRun: {
+          at: "2026-04-05T04:30:00.000Z",
+          workspaces: 1,
+          candidates: 4,
+          applied: 1,
+          failed: 0,
+          narrativeWritten: 1,
+          narrativeSkipped: 0,
+          learningSummary: {
+            summary: "当前聚焦：核对 Tasks 页 · 持续保留：用户偏好中文优先 · 主要来源：Recent chat",
+            recommendation: "下次协助时，保持“用户偏好中文优先”，同时优先推进“核对 Tasks 页”。",
+            assistanceStrategy: "先按“核对 Tasks 页”拆成清单执行，过程中持续遵守“用户偏好中文优先”。",
+            durableSignals: ["用户偏好中文优先"],
+            temporaryFocus: ["核对 Tasks 页", "验证自动生成 todo"],
+            sources: [
+              { kind: "task", label: "当前任务", detail: "当前任务 · next: 核对 Tasks 页" },
+              { kind: "chat", label: "Recent chat", detail: "user: 先核对 Tasks 页" },
+              { kind: "memory", label: "2026-04-05.md", detail: "Always use Happy Together calendar" },
+            ],
+          },
+        },
+      }),
+    );
+    expect(container.textContent).toContain("学习摘要：");
+    expect(container.textContent).toContain("改进建议：");
+    expect(container.textContent).toContain("协助策略：");
+    expect(container.textContent).toContain("当前聚焦：");
+    expect(container.textContent).toContain("长期信号：");
+    expect(container.textContent).toContain("来源：");
+    expect(container.textContent).toContain("task:当前任务");
+    expect(container.textContent).toContain("chat:Recent chat");
+    expect(container.textContent).toContain("memory:2026-04-05.md");
   });
 
   it("hides dream bubble when idle", () => {

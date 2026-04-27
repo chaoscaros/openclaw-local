@@ -1038,8 +1038,11 @@ describe("doctor.memory.dreamDiary", () => {
     }
   });
 
-  it("runs dreaming on demand and persists the latest summary", async () => {
+  it("runs dreaming on demand, builds a cross-source learning summary, and persists the latest summary", async () => {
     const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "doctor-dream-run-"));
+    const previousStateDir = process.env.OPENCLAW_STATE_DIR;
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "doctor-dream-state-"));
+    process.env.OPENCLAW_STATE_DIR = stateDir;
     resolveAgentWorkspaceDir.mockReturnValue(workspaceDir);
     resolveShortTermPromotionDreamingConfig.mockReturnValue({ enabled: true });
     runShortTermDreamingPromotionNow.mockResolvedValue({
@@ -1055,6 +1058,51 @@ describe("doctor.memory.dreamDiary", () => {
     const respond = vi.fn();
 
     try {
+      await fs.mkdir(path.join(workspaceDir, "memory"), { recursive: true });
+      await fs.writeFile(path.join(workspaceDir, "memory", "2026-04-05.md"), "- 用户偏好中文优先\n", "utf-8");
+      await fs.mkdir(path.join(stateDir, "control-ui"), { recursive: true });
+      await fs.writeFile(
+        path.join(stateDir, "control-ui", "task-mode-store.json"),
+        `${JSON.stringify({
+          tasks: [
+            {
+              id: "task-1",
+              title: "推进 dreaming 学习能力",
+              description: "先核对 Tasks 页\n再验证自动生成 todo",
+              nextStep: "先核对 Tasks 页\n再验证自动生成 todo",
+              status: "active",
+              archived: false,
+              createdAt: 1,
+              updatedAt: 2,
+              archivedAt: null,
+              lastSessionKey: "main",
+            },
+          ],
+        }, null, 2)}\n`,
+        "utf-8",
+      );
+      await fs.mkdir(path.join(stateDir, "sessions"), { recursive: true });
+      await fs.writeFile(
+        path.join(stateDir, "sessions", "index.json"),
+        `${JSON.stringify({
+          main: {
+            sessionId: "session-main",
+            updatedAt: Date.now(),
+            taskId: "task-1",
+          },
+        }, null, 2)}\n`,
+        "utf-8",
+      );
+      await fs.mkdir(path.join(stateDir, "sessions", "transcripts"), { recursive: true });
+      await fs.writeFile(
+        path.join(stateDir, "sessions", "transcripts", "session-main.jsonl"),
+        [
+          JSON.stringify({ message: { role: "user", timestamp: Date.now() - 2000, content: [{ type: "text", text: "先核对 Tasks 页\n再验证自动生成 todo" }] } }),
+          JSON.stringify({ message: { role: "assistant", timestamp: Date.now() - 1000, content: [{ type: "text", text: "收到，后续请继续保持中文优先。" }] } }),
+        ].join("\n"),
+        "utf-8",
+      );
+
       await invokeDoctorMemoryRun(respond);
       expect(runShortTermDreamingPromotionNow).toHaveBeenCalled();
       expect(respond).toHaveBeenCalledWith(
@@ -1067,6 +1115,12 @@ describe("doctor.memory.dreamDiary", () => {
             candidates: 4,
             applied: 2,
             narrativeWritten: 1,
+            learningSummary: expect.objectContaining({
+              summary: expect.stringContaining("当前聚焦："),
+              recommendation: expect.stringContaining("下次协助时"),
+              assistanceStrategy: expect.stringContaining("先按"),
+              durableSignals: expect.arrayContaining([expect.stringContaining("中文优先")]),
+            }),
           }),
         }),
         undefined,
@@ -1074,9 +1128,24 @@ describe("doctor.memory.dreamDiary", () => {
       const persisted = JSON.parse(
         await fs.readFile(path.join(workspaceDir, "memory", ".dreams", "last-run.json"), "utf-8"),
       );
-      expect(persisted).toMatchObject({ applied: 2, candidates: 4, narrativeWritten: 1 });
+      expect(persisted).toMatchObject({
+        applied: 2,
+        candidates: 4,
+        narrativeWritten: 1,
+        learningSummary: expect.objectContaining({
+          summary: expect.stringContaining("当前聚焦："),
+          recommendation: expect.stringContaining("下次协助时"),
+          assistanceStrategy: expect.stringContaining("先按"),
+        }),
+      });
     } finally {
+      if (previousStateDir === undefined) {
+        delete process.env.OPENCLAW_STATE_DIR;
+      } else {
+        process.env.OPENCLAW_STATE_DIR = previousStateDir;
+      }
       await fs.rm(workspaceDir, { recursive: true, force: true });
+      await fs.rm(stateDir, { recursive: true, force: true });
     }
   });
 });

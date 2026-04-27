@@ -340,6 +340,25 @@ function totalSignalCountForEntry(entry: {
   );
 }
 
+function calculateHabitEvidenceQueries(params: {
+  groundedCount: number;
+  dailyCount: number;
+  recallDays: string[];
+}): number {
+  const groundedEvidence = params.groundedCount > 0 ? params.groundedCount : 0;
+  const dailyEvidence = params.dailyCount > 0 ? params.dailyCount : 0;
+  return Math.max(groundedEvidence, dailyEvidence, params.recallDays.length);
+}
+
+function calculateHabitEvidenceBoost(params: {
+  groundedCount: number;
+  dailyCount: number;
+}): number {
+  const groundedBoost = clampScore(params.groundedCount / 4) * 0.05;
+  const dailyBoost = clampScore(params.dailyCount / 4) * 0.04;
+  return Math.max(groundedBoost, dailyBoost);
+}
+
 function calculateConsolidationComponent(recallDays: string[]): number {
   if (recallDays.length === 0) {
     return 0;
@@ -1153,7 +1172,13 @@ export async function rankShortTermPromotionCandidates(
     const avgScore = clampScore(entry.totalScore / Math.max(1, signalCount));
     const frequency = clampScore(Math.log1p(signalCount) / Math.log1p(10));
     const uniqueQueries = entry.queryHashes?.length ?? 0;
-    const contextDiversity = Math.max(uniqueQueries, entry.recallDays?.length ?? 0);
+    const recallDays = entry.recallDays ?? [];
+    const habitEvidenceQueries = calculateHabitEvidenceQueries({
+      groundedCount,
+      dailyCount,
+      recallDays,
+    });
+    const contextDiversity = Math.max(uniqueQueries, habitEvidenceQueries);
     if (contextDiversity < minUniqueQueries) {
       continue;
     }
@@ -1166,7 +1191,6 @@ export async function rankShortTermPromotionCandidates(
       continue;
     }
     const recency = clampScore(calculateRecencyComponent(ageDays, halfLifeDays));
-    const recallDays = entry.recallDays ?? [];
     const conceptTags = entry.conceptTags ?? [];
     const consolidation = Math.max(
       calculateConsolidationComponent(recallDays),
@@ -1175,6 +1199,7 @@ export async function rankShortTermPromotionCandidates(
     const conceptual = calculateConceptualComponent(conceptTags);
 
     const phaseBoost = calculatePhaseSignalBoost(phaseSignals.entries[entry.key], nowMs);
+    const habitEvidenceBoost = calculateHabitEvidenceBoost({ groundedCount, dailyCount });
     const score =
       weights.frequency * frequency +
       weights.relevance * avgScore +
@@ -1182,7 +1207,8 @@ export async function rankShortTermPromotionCandidates(
       weights.recency * recency +
       weights.consolidation * consolidation +
       weights.conceptual * conceptual +
-      phaseBoost;
+      phaseBoost +
+      habitEvidenceBoost;
 
     if (score < minScore) {
       continue;

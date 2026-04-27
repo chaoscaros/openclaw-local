@@ -26,6 +26,10 @@ import {
 } from "./doctor.memory-core-runtime.js";
 import { asRecord, normalizeTrimmedString } from "./record-shared.js";
 import type { GatewayRequestHandlers } from "./types.js";
+import { listTaskModeTasks } from "../task-mode-store.js";
+import { loadSessionStore, resolveDefaultSessionStorePath } from "../../config/sessions.js";
+import { readSessionMessages } from "../session-utils.js";
+import { extractAssistantVisibleText, extractFirstTextBlock } from "../../shared/chat-message-content.js";
 
 const SHORT_TERM_STORE_RELATIVE_PATH = path.join("memory", ".dreams", "short-term-recall.json");
 const SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH = path.join("memory", ".dreams", "phase-signals.json");
@@ -86,6 +90,23 @@ type DoctorMemoryDreamingEntryPayload = {
   lastRecalledAt?: string;
 };
 
+type DreamingLearningSourcePayload = {
+  kind: "task" | "chat" | "memory";
+  label: string;
+  detail: string;
+};
+
+type DreamingLearningSummaryPayload = {
+  summary: string;
+  recommendation: string;
+  assistanceStrategy: string;
+  sessionKey?: string;
+  taskId?: string;
+  durableSignals: string[];
+  temporaryFocus: string[];
+  sources: DreamingLearningSourcePayload[];
+};
+
 type DoctorMemoryDreamingPayload = {
   enabled: boolean;
   timezone?: string;
@@ -118,6 +139,8 @@ type DoctorMemoryDreamingPayload = {
     failed: number;
     narrativeWritten: number;
     narrativeSkipped: number;
+    zeroAppliedReason?: string;
+    learningSummary?: DreamingLearningSummaryPayload;
   };
   phases: {
     light: DoctorMemoryLightDreamingPayload;
@@ -176,8 +199,51 @@ export type DoctorMemoryDreamActionPayload = {
     failed: number;
     narrativeWritten: number;
     narrativeSkipped: number;
+    zeroAppliedReason?: string;
+    learningSummary?: DreamingLearningSummaryPayload;
   };
 };
+
+function normalizeDreamingLearningSummary(value: unknown): DreamingLearningSummaryPayload | undefined {
+  const record = asRecord(value);
+  const summary = normalizeTrimmedString(record?.summary);
+  const recommendation = normalizeTrimmedString(record?.recommendation);
+  const assistanceStrategy = normalizeTrimmedString(record?.assistanceStrategy);
+  if (!summary || !recommendation || !assistanceStrategy) {
+    return undefined;
+  }
+  const durableSignals = Array.isArray(record?.durableSignals)
+    ? record.durableSignals.map((item) => normalizeTrimmedString(item)).filter((item): item is string => Boolean(item)).slice(0, 3)
+    : [];
+  const temporaryFocus = Array.isArray(record?.temporaryFocus)
+    ? record.temporaryFocus.map((item) => normalizeTrimmedString(item)).filter((item): item is string => Boolean(item)).slice(0, 3)
+    : [];
+  const sources = Array.isArray(record?.sources)
+    ? record.sources
+        .map((entry) => {
+          const source = asRecord(entry);
+          const kind = source?.kind;
+          const label = normalizeTrimmedString(source?.label);
+          const detail = normalizeTrimmedString(source?.detail);
+          if ((kind !== "task" && kind !== "chat" && kind !== "memory") || !label || !detail) {
+            return null;
+          }
+          return { kind, label, detail } satisfies DreamingLearningSourcePayload;
+        })
+        .filter((entry): entry is DreamingLearningSourcePayload => Boolean(entry))
+        .slice(0, 3)
+    : [];
+  return {
+    summary,
+    recommendation,
+    assistanceStrategy,
+    ...(normalizeTrimmedString(record?.sessionKey) ? { sessionKey: normalizeTrimmedString(record?.sessionKey) } : {}),
+    ...(normalizeTrimmedString(record?.taskId) ? { taskId: normalizeTrimmedString(record?.taskId) } : {}),
+    durableSignals,
+    temporaryFocus,
+    sources,
+  };
+}
 
 async function readDreamingLastRun(workspaceDir: string): Promise<DreamingLastRunPayload | undefined> {
   const filePath = path.join(workspaceDir, DREAMING_LAST_RUN_RELATIVE_PATH);
@@ -203,6 +269,219 @@ async function readDreamingLastRun(workspaceDir: string): Promise<DreamingLastRu
     failed: toNonNegativeInt(record?.failed),
     narrativeWritten: toNonNegativeInt(record?.narrativeWritten),
     narrativeSkipped: toNonNegativeInt(record?.narrativeSkipped),
+    ...(normalizeTrimmedString(record?.zeroAppliedReason)
+      ? { zeroAppliedReason: normalizeTrimmedString(record?.zeroAppliedReason) }
+      : {}),
+    ...(normalizeDreamingLearningSummary(record?.learningSummary)
+      ? { learningSummary: normalizeDreamingLearningSummary(record?.learningSummary) }
+      : {}),
+  };
+}
+
+function deriveDreamingZeroAppliedReason(summary: {
+  workspaces: number;
+  candidates: number;
+  applied: number;
+  failed: number;
+  narrativeWritten: number;
+  narrativeSkipped: number;
+}): string | undefined {
+  if (summary.applied > 0) {
+    return undefined;
+  }
+  if (summary.workspaces <= 0) {
+    return "No dreaming workspace was available for this run.";
+  }
+  if (summary.failed > 0 && summary.candidates <= 0) {
+    return "Dreaming run encountered workspace failures before any candidate could be promoted.";
+  }
+  if (summary.candidates <= 0) {
+    return "No candidate memories were strong enough to enter the promotion set.";
+  }
+  if (summary.narrativeSkipped > 0 && summary.narrativeWritten <= 0) {
+    return "Candidates were found, but none met the promotion threshold; diary narrative was skipped because evidence stayed weak.";
+  }
+  return "Candidates were found, but none met the current promotion threshold.";
+}
+
+function normalizeDreamingSourceDetail(value: string | undefined, maxLen = 140): string | undefined {
+  const normalized = normalizeTrimmedString(value)?.replace(/\s+/g, " ");
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized.length <= maxLen ? normalized : `${normalized.slice(0, maxLen - 1).trim()}…`;
+}
+
+function splitDreamingActionItems(value: string | undefined): string[] {
+  const normalized = normalizeTrimmedString(value);
+  if (!normalized) {
+    return [];
+  }
+  const numbered = Array.from(normalized.matchAll(/(?:^|\s)(?:\d+[.)]|[-*•])\s*([^\n]+?)(?=(?:\s+(?:\d+[.)]|[-*•])\s*)|$)/g))
+    .map((match) => normalizeDreamingSourceDetail(match[1], 80))
+    .filter((item): item is string => Boolean(item));
+  if (numbered.length >= 2) {
+    return numbered.slice(0, 3);
+  }
+  const ordered = normalized
+    .split(/\n+|[；;]+|(?=先)|(?=再)|(?=然后)|(?=接着)|(?=最后)/)
+    .map((item) => item.replace(/^\s*(?:先|再|然后|接着|最后)\s*/u, ""))
+    .map((item) => normalizeDreamingSourceDetail(item, 80))
+    .filter((item): item is string => Boolean(item));
+  return Array.from(new Set(ordered)).slice(0, 3);
+}
+
+function looksDurableLearningSignal(value: string | undefined): boolean {
+  return /(偏好|喜欢|习惯|总是|优先|请用|避免|不要|always|prefer|usually|habit)/iu.test(value ?? "");
+}
+
+function looksTemporaryLearningSignal(value: string | undefined): boolean {
+  return /(核对|验证|确认|继续|修复|排查|联调|测试|回归|实现|补|check|verify|continue|fix|test)/iu.test(value ?? "");
+}
+
+function buildDreamingRecommendation(params: { durableSignals: string[]; temporaryFocus: string[]; }): string {
+  const durable = params.durableSignals[0];
+  const focus = params.temporaryFocus[0];
+  if (durable && focus) {
+    return `下次协助时，保持“${durable}”，同时优先推进“${focus}”。`;
+  }
+  if (durable) {
+    return `下次协助时，继续保持“${durable}”。`;
+  }
+  if (focus) {
+    return `下次协助时，优先继续推进“${focus}”。`;
+  }
+  return "下次协助时，先综合任务、聊天和本地记忆再行动。";
+}
+
+function buildDreamingAssistanceStrategy(params: { durableSignals: string[]; temporaryFocus: string[]; }): string {
+  const durable = params.durableSignals[0];
+  const focus = params.temporaryFocus[0];
+  if (durable && focus) {
+    return `先按“${focus}”拆成清单执行，过程中持续遵守“${durable}”。`;
+  }
+  if (focus) {
+    return `先围绕“${focus}”给出更明确的分步清单和验证顺序。`;
+  }
+  if (durable) {
+    return `后续回复继续遵守“${durable}”，减少偏离。`;
+  }
+  return "后续优先给出更明确的下一步和验证方式。";
+}
+
+function extractChatMessageText(message: unknown, role: "user" | "assistant"): string | undefined {
+  if (!message || typeof message !== "object") {
+    return undefined;
+  }
+  const actualRole = typeof (message as { role?: unknown }).role === "string" ? (message as { role?: string }).role : "";
+  if (actualRole !== role) {
+    return undefined;
+  }
+  const text = role === "assistant" ? extractAssistantVisibleText(message) : extractFirstTextBlock(message);
+  return normalizeDreamingSourceDetail(typeof text === "string" ? text : undefined, 180);
+}
+
+async function buildDreamingLearningSummary(workspaceDir: string): Promise<DreamingLearningSummaryPayload | undefined> {
+  const sources: DreamingLearningSourcePayload[] = [];
+  const durableSignals: string[] = [];
+  const temporaryFocus: string[] = [];
+
+  const { tasks } = await listTaskModeTasks();
+  const currentTask = tasks[0] ?? null;
+  if (currentTask) {
+    const taskDetail = normalizeDreamingSourceDetail(
+      [currentTask.title, currentTask.nextStep ? `next: ${currentTask.nextStep}` : null, currentTask.progressSummary].filter(Boolean).join(" · "),
+    );
+    if (taskDetail) {
+      sources.push({ kind: "task", label: currentTask.title || "Current task", detail: taskDetail });
+    }
+    const taskSteps = splitDreamingActionItems(currentTask.nextStep ?? currentTask.description ?? currentTask.progressSummary);
+    temporaryFocus.push(...taskSteps);
+
+    const sessionKey = normalizeTrimmedString(currentTask.lastSessionKey);
+    if (sessionKey) {
+      const store = loadSessionStore(resolveDefaultSessionStorePath());
+      const sessionEntry = store[sessionKey];
+      if (sessionEntry?.sessionId) {
+        const messages = readSessionMessages(sessionEntry.sessionId, resolveDefaultSessionStorePath(), sessionEntry.sessionFile);
+        const userMessages = messages.map((message) => extractChatMessageText(message, "user")).filter((item): item is string => Boolean(item));
+        const assistantMessages = messages.map((message) => extractChatMessageText(message, "assistant")).filter((item): item is string => Boolean(item));
+        const latestUser = userMessages.at(-1);
+        const latestAssistant = assistantMessages.at(-1);
+        const chatDetail = normalizeDreamingSourceDetail([latestUser ? `user: ${latestUser}` : null, latestAssistant ? `assistant: ${latestAssistant}` : null].filter(Boolean).join(" · "), 180);
+        if (chatDetail) {
+          sources.push({ kind: "chat", label: "Recent chat", detail: chatDetail });
+        }
+        const userActionItems = splitDreamingActionItems(latestUser);
+        if (userActionItems.length > 0) {
+          temporaryFocus.push(...userActionItems);
+        }
+        for (const candidate of [latestUser, latestAssistant]) {
+          const normalized = normalizeDreamingSourceDetail(candidate, 90);
+          if (!normalized) {
+            continue;
+          }
+          if (looksDurableLearningSignal(normalized) && !looksTemporaryLearningSignal(normalized)) {
+            durableSignals.push(normalized);
+          }
+        }
+      }
+    }
+  }
+
+  const dailyFiles = await listWorkspaceDailyFiles(path.join(workspaceDir, "memory"));
+  const latestDailyFile = dailyFiles.at(-1);
+  if (latestDailyFile) {
+    try {
+      const raw = await fs.readFile(latestDailyFile, "utf-8");
+      const memoryLine = raw
+        .split("\n")
+        .map((line) => line.replace(/^[-*]\s*/, "").trim())
+        .find((line) => line.length > 0 && !line.startsWith("#"));
+      const memoryDetail = normalizeDreamingSourceDetail(memoryLine, 140);
+      if (memoryDetail) {
+        sources.push({ kind: "memory", label: path.basename(latestDailyFile), detail: memoryDetail });
+        if (looksDurableLearningSignal(memoryDetail) && !looksTemporaryLearningSignal(memoryDetail)) {
+          durableSignals.push(memoryDetail);
+        }
+      }
+    } catch {
+      // ignore local memory read failures for learning summary
+    }
+  }
+
+  const normalizedDurable = Array.from(
+    new Set(
+      durableSignals
+        .map((item) => normalizeDreamingSourceDetail(item, 90))
+        .filter((item): item is string => Boolean(item)),
+    ),
+  ).slice(0, 3);
+  const normalizedFocus = Array.from(
+    new Set(
+      temporaryFocus
+        .map((item) => normalizeDreamingSourceDetail(item, 80))
+        .filter((item): item is string => Boolean(item))
+        .filter((item) => !looksDurableLearningSignal(item)),
+    ),
+  ).slice(0, 3);
+  if (sources.length === 0 && normalizedDurable.length === 0 && normalizedFocus.length === 0) {
+    return undefined;
+  }
+  const summaryParts = [
+    normalizedFocus[0] ? `当前聚焦：${normalizedFocus[0]}` : null,
+    normalizedDurable[0] ? `持续保留：${normalizedDurable[0]}` : null,
+    sources[0] ? `主要来源：${sources[0].label}` : null,
+  ].filter((item): item is string => Boolean(item));
+  return {
+    summary: summaryParts.join(" · ") || "本轮 dreaming 已整理一份跨任务、聊天和本地记忆的学习摘要。",
+    recommendation: buildDreamingRecommendation({ durableSignals: normalizedDurable, temporaryFocus: normalizedFocus }),
+    assistanceStrategy: buildDreamingAssistanceStrategy({ durableSignals: normalizedDurable, temporaryFocus: normalizedFocus }),
+    ...(currentTask?.lastSessionKey ? { sessionKey: currentTask.lastSessionKey } : {}),
+    ...(currentTask?.id ? { taskId: currentTask.id } : {}),
+    durableSignals: normalizedDurable,
+    temporaryFocus: normalizedFocus,
+    sources: sources.slice(0, 3),
   };
 }
 
@@ -1089,6 +1368,7 @@ export const doctorHandlers: GatewayRequestHandlers = {
       }),
       logger: DREAMING_RUN_LOGGER,
     });
+    const learningSummary = await buildDreamingLearningSummary(workspaceDir);
     const runSummary = await writeDreamingLastRun({
       workspaceDir,
       summary: {
@@ -1098,6 +1378,10 @@ export const doctorHandlers: GatewayRequestHandlers = {
         failed: summary.failed,
         narrativeWritten: summary.narrativeWritten,
         narrativeSkipped: summary.narrativeSkipped,
+        ...(deriveDreamingZeroAppliedReason(summary)
+          ? { zeroAppliedReason: deriveDreamingZeroAppliedReason(summary) }
+          : {}),
+        ...(learningSummary ? { learningSummary } : {}),
       },
     });
     const payload: DoctorMemoryDreamActionPayload = {

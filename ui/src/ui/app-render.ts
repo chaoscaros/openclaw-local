@@ -1965,6 +1965,8 @@ export function renderApp(state: AppViewState) {
                 switchChatSession(state, next);
               },
               thinkingLevel: state.chatThinkingLevel,
+              dreamingAssistApplied: state.dreamingAssistApplied,
+              dreamingAssistReason: state.dreamingAssistReason,
               showThinking,
               showToolCalls,
               loading: state.chatLoading,
@@ -2149,6 +2151,7 @@ export function renderApp(state: AppViewState) {
               dreamDiaryError: state.dreamDiaryError,
               dreamDiaryPath: state.dreamDiaryPath,
               dreamDiaryContent: state.dreamDiaryContent,
+              dreamingAssistEnabled: state.settings.dreamingAssistEnabled,
               memoryWikiEnabled: isPluginEnabledInConfigSnapshot(
                 state.configSnapshot,
                 "memory-wiki",
@@ -2167,6 +2170,12 @@ export function renderApp(state: AppViewState) {
                   await loadConfig(state);
                   await loadWikiImportInsights(state);
                 })();
+              },
+              onToggleDreamingAssist: () => {
+                state.applySettings({
+                  ...state.settings,
+                  dreamingAssistEnabled: !state.settings.dreamingAssistEnabled,
+                });
               },
               onRefreshMemoryPalace: () => {
                 void (async () => {
