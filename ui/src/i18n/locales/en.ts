@@ -63,6 +63,113 @@ export const en: TranslationMap = {
     waitForScan: "Wait for scan",
     logout: "Logout",
   },
+  configPage: {
+    root: "Config",
+    categories: {
+      core: "Core",
+      other: "Other",
+    },
+    sections: {
+      env: "Environment",
+      auth: "Authentication",
+      update: "Updates",
+      meta: "Meta",
+      logging: "Logging",
+      diagnostics: "Diagnostics",
+      cli: "CLI",
+      secrets: "Secrets",
+    },
+    ui: {
+      searchPlaceholder: "Search settings...",
+      searchAria: "Search settings",
+      clearSearch: "Clear search",
+      invalidConfig: "Your configuration is invalid. Some settings may not work as expected.",
+      dismissInvalid: "Don't remind again",
+      pendingChanges: "View {count} pending change{suffix}",
+      hideEnv: "Hide env values",
+      revealEnv: "Reveal env values",
+      peek: "Peek",
+      loadingSchema: "Loading schema…",
+      add: "Add",
+      addEntry: "Add Entry",
+      noItems: "No items yet. Click \"Add\" to create one.",
+      noCustomEntries: "No custom entries.",
+      removeItem: "Remove item",
+      unsupportedArraySchema: "Unsupported array schema. Use Raw mode.",
+      itemsCount: "{count} item{suffix}",
+    },
+    meta: {
+      env: {
+        label: "Environment Variables",
+        description: "Environment variables passed to the gateway process",
+      },
+      auth: {
+        label: "Authentication",
+        description: "API keys and authentication profiles",
+      },
+      update: {
+        label: "Updates",
+        description: "Auto-update settings and release channel",
+      },
+      meta: {
+        label: "Metadata",
+        description: "Gateway metadata and version information",
+      },
+      logging: {
+        label: "Logging",
+        description: "Log levels and output configuration",
+      },
+      diagnostics: {
+        label: "Diagnostics",
+        description: "Instrumentation, OpenTelemetry, and cache-trace settings",
+      },
+      cli: {
+        label: "CLI",
+        description: "CLI banner and startup behavior",
+      },
+      secrets: {
+        label: "Secrets",
+        description: "Secret provider configuration",
+      },
+    },
+  },
+  automationPage: {
+    root: "Automation",
+    sections: {
+      commands: "Commands",
+      hooks: "Hooks",
+      bindings: "Bindings",
+      cron: "Cron",
+      approvals: "Approvals",
+      plugins: "Plugins",
+    },
+    meta: {
+      commands: {
+        label: "Commands",
+        description: "Custom slash commands",
+      },
+      hooks: {
+        label: "Hooks",
+        description: "Webhooks and event hooks",
+      },
+      bindings: {
+        label: "Bindings",
+        description: "Key bindings and shortcuts",
+      },
+      cron: {
+        label: "Cron",
+        description: "Scheduled tasks and automation",
+      },
+      approvals: {
+        label: "Approvals",
+        description: "Approval rules and pending decisions",
+      },
+      plugins: {
+        label: "Plugins",
+        description: "Plugin management and extensions",
+      },
+    },
+  },
   channels: {
     health: {
       title: "Channel health",

@@ -1,4 +1,5 @@
 import { html, nothing } from "lit";
+import { t } from "../../i18n/index.ts";
 import { icons } from "../icons.ts";
 import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
 import type { ConfigUiHints } from "../types.ts";
@@ -276,53 +277,92 @@ const sectionIcons = {
 };
 
 // Section metadata
-export const SECTION_META: Record<string, { label: string; description: string }> = {
-  env: {
-    label: "Environment Variables",
-    description: "Environment variables passed to the gateway process",
-  },
-  update: { label: "Updates", description: "Auto-update settings and release channel" },
-  agents: { label: "Agents", description: "Agent configurations, models, and identities" },
-  auth: { label: "Authentication", description: "API keys and authentication profiles" },
-  channels: {
-    label: "Channels",
-    description: "Messaging channels (Telegram, Discord, Slack, etc.)",
-  },
-  messages: { label: "Messages", description: "Message handling and routing settings" },
-  commands: { label: "Commands", description: "Custom slash commands" },
-  hooks: { label: "Hooks", description: "Webhooks and event hooks" },
-  skills: { label: "Skills", description: "Skill packs and capabilities" },
-  tools: { label: "Tools", description: "Tool configurations (browser, search, etc.)" },
-  gateway: { label: "Gateway", description: "Gateway server settings (port, auth, binding)" },
-  wizard: { label: "Setup Wizard", description: "Setup wizard state and history" },
-  // Additional sections
-  meta: { label: "Metadata", description: "Gateway metadata and version information" },
-  logging: { label: "Logging", description: "Log levels and output configuration" },
-  browser: { label: "Browser", description: "Browser automation settings" },
-  ui: { label: "UI", description: "User interface preferences" },
-  models: { label: "Models", description: "AI model configurations and providers" },
-  bindings: { label: "Bindings", description: "Key bindings and shortcuts" },
-  broadcast: { label: "Broadcast", description: "Broadcast and notification settings" },
-  audio: { label: "Audio", description: "Audio input/output settings" },
-  session: { label: "Session", description: "Session management and persistence" },
-  cron: { label: "Cron", description: "Scheduled tasks and automation" },
-  web: { label: "Web", description: "Web server and API settings" },
-  discovery: { label: "Discovery", description: "Service discovery and networking" },
-  canvasHost: { label: "Canvas Host", description: "Canvas rendering and display" },
-  talk: { label: "Talk", description: "Voice and speech settings" },
-  plugins: { label: "Plugins", description: "Plugin management and extensions" },
-  diagnostics: {
-    label: "Diagnostics",
-    description: "Instrumentation, OpenTelemetry, and cache-trace settings",
-  },
-  cli: { label: "CLI", description: "CLI banner and startup behavior" },
-  secrets: { label: "Secrets", description: "Secret provider configuration" },
-  acp: {
-    label: "ACP",
-    description: "Agent Communication Protocol runtime and streaming settings",
-  },
-  mcp: { label: "MCP", description: "Model Context Protocol server definitions" },
-};
+export function getSectionMetaMap(): Record<string, { label: string; description: string }> {
+  return {
+    env: {
+      label: t("configPage.meta.env.label"),
+      description: t("configPage.meta.env.description"),
+    },
+    update: {
+      label: t("configPage.meta.update.label"),
+      description: t("configPage.meta.update.description"),
+    },
+    agents: { label: "Agents", description: "Agent configurations, models, and identities" },
+    auth: {
+      label: t("configPage.meta.auth.label"),
+      description: t("configPage.meta.auth.description"),
+    },
+    channels: {
+      label: "Channels",
+      description: "Messaging channels (Telegram, Discord, Slack, etc.)",
+    },
+    messages: { label: "Messages", description: "Message handling and routing settings" },
+    commands: {
+      label: t("automationPage.meta.commands.label"),
+      description: t("automationPage.meta.commands.description"),
+    },
+    hooks: {
+      label: t("automationPage.meta.hooks.label"),
+      description: t("automationPage.meta.hooks.description"),
+    },
+    skills: { label: "Skills", description: "Skill packs and capabilities" },
+    tools: { label: "Tools", description: "Tool configurations (browser, search, etc.)" },
+    gateway: { label: "Gateway", description: "Gateway server settings (port, auth, binding)" },
+    wizard: { label: "Setup Wizard", description: "Setup wizard state and history" },
+    // Additional sections
+    meta: {
+      label: t("configPage.meta.meta.label"),
+      description: t("configPage.meta.meta.description"),
+    },
+    logging: {
+      label: t("configPage.meta.logging.label"),
+      description: t("configPage.meta.logging.description"),
+    },
+    browser: { label: "Browser", description: "Browser automation settings" },
+    ui: { label: "UI", description: "User interface preferences" },
+    models: { label: "Models", description: "AI model configurations and providers" },
+    bindings: {
+      label: t("automationPage.meta.bindings.label"),
+      description: t("automationPage.meta.bindings.description"),
+    },
+    broadcast: { label: "Broadcast", description: "Broadcast and notification settings" },
+    audio: { label: "Audio", description: "Audio input/output settings" },
+    session: { label: "Session", description: "Session management and persistence" },
+    cron: {
+      label: t("automationPage.meta.cron.label"),
+      description: t("automationPage.meta.cron.description"),
+    },
+    web: { label: "Web", description: "Web server and API settings" },
+    discovery: { label: "Discovery", description: "Service discovery and networking" },
+    canvasHost: { label: "Canvas Host", description: "Canvas rendering and display" },
+    talk: { label: "Talk", description: "Voice and speech settings" },
+    plugins: {
+      label: t("automationPage.meta.plugins.label"),
+      description: t("automationPage.meta.plugins.description"),
+    },
+    approvals: {
+      label: t("automationPage.meta.approvals.label"),
+      description: t("automationPage.meta.approvals.description"),
+    },
+    diagnostics: {
+      label: t("configPage.meta.diagnostics.label"),
+      description: t("configPage.meta.diagnostics.description"),
+    },
+    cli: {
+      label: t("configPage.meta.cli.label"),
+      description: t("configPage.meta.cli.description"),
+    },
+    secrets: {
+      label: t("configPage.meta.secrets.label"),
+      description: t("configPage.meta.secrets.description"),
+    },
+    acp: {
+      label: "ACP",
+      description: "Agent Communication Protocol runtime and streaming settings",
+    },
+    mcp: { label: "MCP", description: "Model Context Protocol server definitions" },
+  };
+}
 
 function getSectionIcon(key: string) {
   return sectionIcons[key as keyof typeof sectionIcons] ?? sectionIcons.default;
@@ -340,7 +380,7 @@ function matchesSearch(params: {
   }
   const criteria = parseConfigSearchQuery(params.query);
   const q = criteria.text;
-  const meta = SECTION_META[params.key];
+  const meta = getSectionMetaMap()[params.key];
   const sectionMetaMatches =
     q &&
     (normalizeLowercaseStringOrEmpty(params.key).includes(q) ||
@@ -496,7 +536,7 @@ export function renderConfigForm(props: ConfigFormProps) {
             });
           })()
         : filteredEntries.map(([key, node]) => {
-            const meta = SECTION_META[key] ?? {
+            const meta = getSectionMetaMap()[key] ?? {
               label: key.charAt(0).toUpperCase() + key.slice(1),
               description: node.description ?? "",
             };

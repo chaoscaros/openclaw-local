@@ -64,6 +64,113 @@ export const zh_CN: TranslationMap = {
     waitForScan: "等待扫描",
     logout: "退出登录",
   },
+  configPage: {
+    root: "配置",
+    categories: {
+      core: "核心",
+      other: "其他",
+    },
+    sections: {
+      env: "环境",
+      auth: "认证",
+      update: "更新",
+      meta: "元信息",
+      logging: "日志",
+      diagnostics: "诊断",
+      cli: "命令行",
+      secrets: "机密",
+    },
+    ui: {
+      searchPlaceholder: "搜索设置...",
+      searchAria: "搜索设置",
+      clearSearch: "清空搜索",
+      invalidConfig: "当前配置无效，部分设置可能无法按预期工作。",
+      dismissInvalid: "不再提醒",
+      pendingChanges: "查看 {count} 条待应用更改{suffix}",
+      hideEnv: "隐藏环境变量值",
+      revealEnv: "显示环境变量值",
+      peek: "查看",
+      loadingSchema: "正在加载 schema…",
+      add: "添加",
+      addEntry: "添加条目",
+      noItems: "暂无条目，点击“添加”创建。",
+      noCustomEntries: "暂无自定义条目。",
+      removeItem: "移除条目",
+      unsupportedArraySchema: "暂不支持这种数组 schema，请使用 Raw 模式。",
+      itemsCount: "{count} 条{suffix}",
+    },
+    meta: {
+      env: {
+        label: "环境变量",
+        description: "传递给 Gateway 进程的环境变量",
+      },
+      auth: {
+        label: "认证",
+        description: "API 密钥与认证配置文件",
+      },
+      update: {
+        label: "更新",
+        description: "自动更新设置与发布通道",
+      },
+      meta: {
+        label: "元数据",
+        description: "Gateway 元数据与版本信息",
+      },
+      logging: {
+        label: "日志",
+        description: "日志级别与输出配置",
+      },
+      diagnostics: {
+        label: "诊断",
+        description: "诊断埋点、OpenTelemetry 与缓存跟踪设置",
+      },
+      cli: {
+        label: "命令行",
+        description: "CLI 横幅与启动行为",
+      },
+      secrets: {
+        label: "机密",
+        description: "Secret provider 配置",
+      },
+    },
+  },
+  automationPage: {
+    root: "自动化",
+    sections: {
+      commands: "命令",
+      hooks: "钩子",
+      bindings: "绑定",
+      cron: "定时任务",
+      approvals: "审批",
+      plugins: "插件",
+    },
+    meta: {
+      commands: {
+        label: "命令",
+        description: "自定义斜杠命令",
+      },
+      hooks: {
+        label: "钩子",
+        description: "Webhook 与事件钩子",
+      },
+      bindings: {
+        label: "绑定",
+        description: "按键绑定与快捷方式",
+      },
+      cron: {
+        label: "定时任务",
+        description: "计划任务与自动化",
+      },
+      approvals: {
+        label: "审批",
+        description: "审批规则与待处理决定",
+      },
+      plugins: {
+        label: "插件",
+        description: "插件管理与扩展",
+      },
+    },
+  },
   channels: {
     health: {
       title: "频道健康状态",

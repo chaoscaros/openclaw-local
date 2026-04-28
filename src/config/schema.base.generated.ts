@@ -18703,9 +18703,9 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
             properties: {
               enabled: {
                 type: "boolean",
-                title: "Forward Exec Approvals",
+                title: "启用执行审批转发",
                 description:
-                  "Enables forwarding of exec approval requests to configured delivery destinations (default: false). Keep disabled in low-risk setups and enable only when human approval responders need channel-visible prompts.",
+                  "启用后，会把执行审批请求转发到已配置的投递目标（默认 false）。低风险场景建议关闭，只有需要让人工审批人直接在频道里看到审批提示时再开启。",
               },
               mode: {
                 anyOf: [
@@ -18722,27 +18722,27 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                     const: "both",
                   },
                 ],
-                title: "Approval Forwarding Mode",
+                title: "审批转发模式",
                 description:
-                  'Controls where approval prompts are sent: "session" uses origin chat, "targets" uses configured targets, and "both" sends to both paths. Use "session" as baseline and expand only when operational workflow requires redundancy.',
+                  '控制审批提示发往哪里："session" 表示只发回原始会话，"targets" 表示只发到已配置目标，"both" 表示两边都发。建议先用 "session"，只有在确实需要冗余时再扩大。',
               },
               agentFilter: {
                 type: "array",
                 items: {
                   type: "string",
                 },
-                title: "Approval Agent Filter",
+                title: "审批代理过滤器",
                 description:
-                  'Optional allowlist of agent IDs eligible for forwarded approvals, for example `["primary", "ops-agent"]`. Use this to limit forwarding blast radius and avoid notifying channels for unrelated agents.',
+                  '可选的代理 ID 允许列表，只有命中的代理才会触发审批转发，例如 `["primary", "ops-agent"]`。用于缩小转发范围，避免无关代理把审批消息发到共享渠道。',
               },
               sessionFilter: {
                 type: "array",
                 items: {
                   type: "string",
                 },
-                title: "Approval Session Filter",
+                title: "审批会话过滤器",
                 description:
-                  'Optional session-key filters matched as substring or regex-style patterns, for example `["discord:", "^agent:ops:"]`. Use narrow patterns so only intended approval contexts are forwarded to shared destinations.',
+                  '可选的会话 key 过滤器，支持子串或类正则模式，例如 `["discord:", "^agent:ops:"]`。建议保持模式足够精确，确保只有预期的审批上下文会被转发。',
               },
               targets: {
                 type: "array",
@@ -18752,22 +18752,22 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                     channel: {
                       type: "string",
                       minLength: 1,
-                      title: "Approval Target Channel",
+                      title: "审批目标渠道",
                       description:
-                        "Channel/provider ID used for forwarded approval delivery, such as discord, slack, or a plugin channel id. Use valid channel IDs only so approvals do not silently fail due to unknown routes.",
+                        "审批转发使用的渠道或 provider ID，例如 discord、slack，或某个插件渠道 ID。请只填写真实可用的渠道 ID，避免因为路由不存在而静默失败。",
                     },
                     to: {
                       type: "string",
                       minLength: 1,
-                      title: "Approval Target Destination",
+                      title: "审批目标地址",
                       description:
-                        "Destination identifier inside the target channel (channel ID, user ID, or thread root depending on provider). Verify semantics per provider because destination format differs across channel integrations.",
+                        "目标渠道内部的地址标识（例如频道 ID、用户 ID，或按 provider 约定的线程根 ID）。不同渠道的语义不同，配置前请先确认对应集成的格式。",
                     },
                     accountId: {
                       type: "string",
-                      title: "Approval Target Account ID",
+                      title: "审批目标账号 ID",
                       description:
-                        "Optional account selector for multi-account channel setups when approvals must route through a specific account context. Use this only when the target channel has multiple configured identities.",
+                        "可选的账号选择器，适用于多账号渠道场景，需要把审批固定走某个账号上下文时再填写。若目标渠道只有单一身份，一般无需设置。",
                     },
                     threadId: {
                       anyOf: [
@@ -18778,32 +18778,32 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                           type: "number",
                         },
                       ],
-                      title: "Approval Target Thread ID",
+                      title: "审批目标线程 ID",
                       description:
-                        "Optional thread/topic target for channels that support threaded delivery of forwarded approvals. Use this to keep approval traffic contained in operational threads instead of main channels.",
+                        "可选的线程或话题 ID，适用于支持线程投递的渠道。可用来把审批流量收敛到运维线程中，而不是直接发到主频道。",
                     },
                   },
                   required: ["channel", "to"],
                   additionalProperties: false,
                 },
-                title: "Approval Forwarding Targets",
+                title: "审批转发目标",
                 description:
-                  "Explicit delivery targets used when forwarding mode includes targets, each with channel and destination details. Keep target lists least-privilege and validate each destination before enabling broad forwarding.",
+                  "当转发模式包含 targets 时，这里定义明确的投递目标列表，每项包含渠道和目标地址。请遵循最小权限原则，并在启用前确认每个目标都有效。",
               },
             },
             additionalProperties: false,
-            title: "Exec Approval Forwarding",
+            title: "执行审批转发",
             description:
-              "Groups exec-approval forwarding behavior including enablement, routing mode, filters, and explicit targets. Configure here when approval prompts must reach operational channels instead of only the origin thread.",
+              "集中配置执行审批转发行为，包括是否启用、转发模式、过滤条件和明确目标。当审批提示需要发到运维渠道，而不只是停留在原会话时，在这里设置。",
           },
           plugin: {
             type: "object",
             properties: {
               enabled: {
                 type: "boolean",
-                title: "Forward Plugin Approvals",
+                title: "启用插件审批转发",
                 description:
-                  "Enables forwarding of plugin approval requests to configured delivery destinations (default: false). Independent of approvals.exec.enabled.",
+                  "启用后，会把插件审批请求转发到已配置的投递目标（默认 false）。该开关独立于 approvals.exec.enabled。",
               },
               mode: {
                 anyOf: [
@@ -18820,27 +18820,27 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                     const: "both",
                   },
                 ],
-                title: "Plugin Approval Forwarding Mode",
+                title: "插件审批转发模式",
                 description:
-                  'Controls where plugin approval prompts are sent: "session" uses origin chat, "targets" uses configured targets, and "both" sends to both paths.',
+                  '控制插件审批提示发往哪里："session" 表示只发回原始会话，"targets" 表示只发到已配置目标，"both" 表示两边都发。',
               },
               agentFilter: {
                 type: "array",
                 items: {
                   type: "string",
                 },
-                title: "Plugin Approval Agent Filter",
+                title: "插件审批代理过滤器",
                 description:
-                  'Optional allowlist of agent IDs eligible for forwarded plugin approvals, for example `["primary", "ops-agent"]`. Use this to limit forwarding blast radius.',
+                  '可选的代理 ID 允许列表，只有命中的代理才会触发插件审批转发，例如 `["primary", "ops-agent"]`。用于限制转发范围。',
               },
               sessionFilter: {
                 type: "array",
                 items: {
                   type: "string",
                 },
-                title: "Plugin Approval Session Filter",
+                title: "插件审批会话过滤器",
                 description:
-                  'Optional session-key filters matched as substring or regex-style patterns, for example `["discord:", "^agent:ops:"]`. Use narrow patterns so only intended approval contexts are forwarded.',
+                  '可选的会话 key 过滤器，支持子串或类正则模式，例如 `["discord:", "^agent:ops:"]`。建议尽量精确，只转发预期的插件审批上下文。',
               },
               targets: {
                 type: "array",
@@ -18850,22 +18850,22 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                     channel: {
                       type: "string",
                       minLength: 1,
-                      title: "Plugin Approval Target Channel",
+                      title: "插件审批目标渠道",
                       description:
-                        "Channel/provider ID used for forwarded plugin approval delivery, such as discord, slack, or a plugin channel id.",
+                        "插件审批转发使用的渠道或 provider ID，例如 discord、slack，或某个插件渠道 ID。",
                     },
                     to: {
                       type: "string",
                       minLength: 1,
-                      title: "Plugin Approval Target Destination",
+                      title: "插件审批目标地址",
                       description:
-                        "Destination identifier inside the target channel (channel ID, user ID, or thread root depending on provider).",
+                        "目标渠道内部的地址标识（例如频道 ID、用户 ID，或按 provider 约定的线程根 ID）。",
                     },
                     accountId: {
                       type: "string",
-                      title: "Plugin Approval Target Account ID",
+                      title: "插件审批目标账号 ID",
                       description:
-                        "Optional account selector for multi-account channel setups when plugin approvals must route through a specific account context.",
+                        "可选的账号选择器，适用于多账号渠道场景，需要把插件审批固定走某个账号上下文时再填写。",
                     },
                     threadId: {
                       anyOf: [
@@ -18876,29 +18876,29 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                           type: "number",
                         },
                       ],
-                      title: "Plugin Approval Target Thread ID",
+                      title: "插件审批目标线程 ID",
                       description:
-                        "Optional thread/topic target for channels that support threaded delivery of forwarded plugin approvals.",
+                        "可选的线程或话题 ID，适用于支持线程投递的渠道，可用于把插件审批流量限制在特定线程中。",
                     },
                   },
                   required: ["channel", "to"],
                   additionalProperties: false,
                 },
-                title: "Plugin Approval Forwarding Targets",
+                title: "插件审批转发目标",
                 description:
-                  "Explicit delivery targets used when plugin approval forwarding mode includes targets, each with channel and destination details.",
+                  "当插件审批转发模式包含 targets 时，这里定义明确的投递目标列表，每项包含渠道和目标地址。",
               },
             },
             additionalProperties: false,
-            title: "Plugin Approval Forwarding",
+            title: "插件审批转发",
             description:
-              "Groups plugin-approval forwarding behavior including enablement, routing mode, filters, and explicit targets. Independent of exec approval forwarding. Configure here when plugin approval prompts must reach operational channels.",
+              "集中配置插件审批转发行为，包括是否启用、转发模式、过滤条件和明确目标。它与执行审批转发相互独立，用于把插件审批提示发到运维渠道。",
           },
         },
         additionalProperties: false,
-        title: "Approvals",
+        title: "审批",
         description:
-          "Approval routing controls for forwarding exec and plugin approval requests to chat destinations outside the originating session. Keep these disabled unless operators need explicit out-of-band approval visibility.",
+          "用于控制执行审批和插件审批是否转发到发起会话之外的聊天目标。除非值班人员确实需要在外部渠道处理审批，否则建议保持关闭。",
       },
       session: {
         type: "object",
@@ -23900,108 +23900,108 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       tags: ["storage", "tools"],
     },
     approvals: {
-      label: "Approvals",
-      help: "Approval routing controls for forwarding exec and plugin approval requests to chat destinations outside the originating session. Keep these disabled unless operators need explicit out-of-band approval visibility.",
+      label: "审批",
+      help: "用于控制执行审批和插件审批是否转发到发起会话之外的聊天目标。除非值班人员确实需要在外部渠道处理审批，否则建议保持关闭。",
       tags: ["advanced"],
     },
     "approvals.exec": {
-      label: "Exec Approval Forwarding",
-      help: "Groups exec-approval forwarding behavior including enablement, routing mode, filters, and explicit targets. Configure here when approval prompts must reach operational channels instead of only the origin thread.",
+      label: "执行审批转发",
+      help: "集中配置执行审批转发行为，包括是否启用、转发模式、过滤条件和明确目标。当审批提示需要发到运维渠道，而不只是停留在原会话时，在这里设置。",
       tags: ["advanced"],
     },
     "approvals.exec.enabled": {
-      label: "Forward Exec Approvals",
-      help: "Enables forwarding of exec approval requests to configured delivery destinations (default: false). Keep disabled in low-risk setups and enable only when human approval responders need channel-visible prompts.",
+      label: "启用执行审批转发",
+      help: "启用后，会把执行审批请求转发到已配置的投递目标（默认 false）。低风险场景建议关闭，只有需要让人工审批人直接在频道里看到审批提示时再开启。",
       tags: ["advanced"],
     },
     "approvals.exec.mode": {
-      label: "Approval Forwarding Mode",
-      help: 'Controls where approval prompts are sent: "session" uses origin chat, "targets" uses configured targets, and "both" sends to both paths. Use "session" as baseline and expand only when operational workflow requires redundancy.',
+      label: "审批转发模式",
+      help: '控制审批提示发往哪里："session" 表示只发回原始会话，"targets" 表示只发到已配置目标，"both" 表示两边都发。建议先用 "session"，只有在确实需要冗余时再扩大。',
       tags: ["advanced"],
     },
     "approvals.exec.agentFilter": {
-      label: "Approval Agent Filter",
-      help: 'Optional allowlist of agent IDs eligible for forwarded approvals, for example `["primary", "ops-agent"]`. Use this to limit forwarding blast radius and avoid notifying channels for unrelated agents.',
+      label: "审批代理过滤器",
+      help: '可选的代理 ID 允许列表，只有命中的代理才会触发审批转发，例如 `["primary", "ops-agent"]`。用于缩小转发范围，避免无关代理把审批消息发到共享渠道。',
       tags: ["advanced"],
     },
     "approvals.exec.sessionFilter": {
-      label: "Approval Session Filter",
-      help: 'Optional session-key filters matched as substring or regex-style patterns, for example `["discord:", "^agent:ops:"]`. Use narrow patterns so only intended approval contexts are forwarded to shared destinations.',
+      label: "审批会话过滤器",
+      help: '可选的会话 key 过滤器，支持子串或类正则模式，例如 `["discord:", "^agent:ops:"]`。建议保持模式足够精确，确保只有预期的审批上下文会被转发。',
       tags: ["storage"],
     },
     "approvals.exec.targets": {
-      label: "Approval Forwarding Targets",
-      help: "Explicit delivery targets used when forwarding mode includes targets, each with channel and destination details. Keep target lists least-privilege and validate each destination before enabling broad forwarding.",
+      label: "审批转发目标",
+      help: "当转发模式包含 targets 时，这里定义明确的投递目标列表，每项包含渠道和目标地址。请遵循最小权限原则，并在启用前确认每个目标都有效。",
       tags: ["advanced"],
     },
     "approvals.exec.targets[].channel": {
-      label: "Approval Target Channel",
-      help: "Channel/provider ID used for forwarded approval delivery, such as discord, slack, or a plugin channel id. Use valid channel IDs only so approvals do not silently fail due to unknown routes.",
+      label: "审批目标渠道",
+      help: "审批转发使用的渠道或 provider ID，例如 discord、slack，或某个插件渠道 ID。请只填写真实可用的渠道 ID，避免因为路由不存在而静默失败。",
       tags: ["advanced"],
     },
     "approvals.exec.targets[].to": {
-      label: "Approval Target Destination",
-      help: "Destination identifier inside the target channel (channel ID, user ID, or thread root depending on provider). Verify semantics per provider because destination format differs across channel integrations.",
+      label: "审批目标地址",
+      help: "目标渠道内部的地址标识（例如频道 ID、用户 ID，或按 provider 约定的线程根 ID）。不同渠道的语义不同，配置前请先确认对应集成的格式。",
       tags: ["advanced"],
     },
     "approvals.exec.targets[].accountId": {
-      label: "Approval Target Account ID",
-      help: "Optional account selector for multi-account channel setups when approvals must route through a specific account context. Use this only when the target channel has multiple configured identities.",
+      label: "审批目标账号 ID",
+      help: "可选的账号选择器，适用于多账号渠道场景，需要把审批固定走某个账号上下文时再填写。若目标渠道只有单一身份，一般无需设置。",
       tags: ["advanced"],
     },
     "approvals.exec.targets[].threadId": {
-      label: "Approval Target Thread ID",
-      help: "Optional thread/topic target for channels that support threaded delivery of forwarded approvals. Use this to keep approval traffic contained in operational threads instead of main channels.",
+      label: "审批目标线程 ID",
+      help: "可选的线程或话题 ID，适用于支持线程投递的渠道。可用来把审批流量收敛到运维线程中，而不是直接发到主频道。",
       tags: ["advanced"],
     },
     "approvals.plugin": {
-      label: "Plugin Approval Forwarding",
-      help: "Groups plugin-approval forwarding behavior including enablement, routing mode, filters, and explicit targets. Independent of exec approval forwarding. Configure here when plugin approval prompts must reach operational channels.",
+      label: "插件审批转发",
+      help: "集中配置插件审批转发行为，包括是否启用、转发模式、过滤条件和明确目标。它与执行审批转发相互独立，用于把插件审批提示发到运维渠道。",
       tags: ["advanced"],
     },
     "approvals.plugin.enabled": {
-      label: "Forward Plugin Approvals",
-      help: "Enables forwarding of plugin approval requests to configured delivery destinations (default: false). Independent of approvals.exec.enabled.",
+      label: "启用插件审批转发",
+      help: "启用后，会把插件审批请求转发到已配置的投递目标（默认 false）。该开关独立于 approvals.exec.enabled。",
       tags: ["advanced"],
     },
     "approvals.plugin.mode": {
-      label: "Plugin Approval Forwarding Mode",
-      help: 'Controls where plugin approval prompts are sent: "session" uses origin chat, "targets" uses configured targets, and "both" sends to both paths.',
+      label: "插件审批转发模式",
+      help: '控制插件审批提示发往哪里："session" 表示只发回原始会话，"targets" 表示只发到已配置目标，"both" 表示两边都发。',
       tags: ["advanced"],
     },
     "approvals.plugin.agentFilter": {
-      label: "Plugin Approval Agent Filter",
-      help: 'Optional allowlist of agent IDs eligible for forwarded plugin approvals, for example `["primary", "ops-agent"]`. Use this to limit forwarding blast radius.',
+      label: "插件审批代理过滤器",
+      help: '可选的代理 ID 允许列表，只有命中的代理才会触发插件审批转发，例如 `["primary", "ops-agent"]`。用于限制转发范围。',
       tags: ["advanced"],
     },
     "approvals.plugin.sessionFilter": {
-      label: "Plugin Approval Session Filter",
-      help: 'Optional session-key filters matched as substring or regex-style patterns, for example `["discord:", "^agent:ops:"]`. Use narrow patterns so only intended approval contexts are forwarded.',
+      label: "插件审批会话过滤器",
+      help: '可选的会话 key 过滤器，支持子串或类正则模式，例如 `["discord:", "^agent:ops:"]`。建议尽量精确，只转发预期的插件审批上下文。',
       tags: ["storage"],
     },
     "approvals.plugin.targets": {
-      label: "Plugin Approval Forwarding Targets",
-      help: "Explicit delivery targets used when plugin approval forwarding mode includes targets, each with channel and destination details.",
+      label: "插件审批转发目标",
+      help: "当插件审批转发模式包含 targets 时，这里定义明确的投递目标列表，每项包含渠道和目标地址。",
       tags: ["advanced"],
     },
     "approvals.plugin.targets[].channel": {
-      label: "Plugin Approval Target Channel",
-      help: "Channel/provider ID used for forwarded plugin approval delivery, such as discord, slack, or a plugin channel id.",
+      label: "插件审批目标渠道",
+      help: "插件审批转发使用的渠道或 provider ID，例如 discord、slack，或某个插件渠道 ID。",
       tags: ["advanced"],
     },
     "approvals.plugin.targets[].to": {
-      label: "Plugin Approval Target Destination",
-      help: "Destination identifier inside the target channel (channel ID, user ID, or thread root depending on provider).",
+      label: "插件审批目标地址",
+      help: "目标渠道内部的地址标识（例如频道 ID、用户 ID，或按 provider 约定的线程根 ID）。",
       tags: ["advanced"],
     },
     "approvals.plugin.targets[].accountId": {
-      label: "Plugin Approval Target Account ID",
-      help: "Optional account selector for multi-account channel setups when plugin approvals must route through a specific account context.",
+      label: "插件审批目标账号 ID",
+      help: "可选的账号选择器，适用于多账号渠道场景，需要把插件审批固定走某个账号上下文时再填写。",
       tags: ["advanced"],
     },
     "approvals.plugin.targets[].threadId": {
-      label: "Plugin Approval Target Thread ID",
-      help: "Optional thread/topic target for channels that support threaded delivery of forwarded plugin approvals.",
+      label: "插件审批目标线程 ID",
+      help: "可选的线程或话题 ID，适用于支持线程投递的渠道，可用于把插件审批流量限制在特定线程中。",
       tags: ["advanced"],
     },
     "tools.message.allowCrossContextSend": {

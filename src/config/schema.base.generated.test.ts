@@ -92,4 +92,16 @@ describe("generated base config schema", () => {
       `Default: ${DEFAULT_LLM_IDLE_TIMEOUT_SECONDS} seconds.`,
     );
   });
+
+  it("localizes first-round automation approval labels and help to Chinese", () => {
+    const uiHints = GENERATED_BASE_CONFIG_SCHEMA.uiHints as Record<string, { label?: string; help?: string }>;
+
+    expect(uiHints["approvals"]?.label).toBe("审批");
+    expect(uiHints["approvals.exec"]?.label).toBe("执行审批转发");
+    expect(uiHints["approvals.exec.agentFilter"]?.label).toBe("审批代理过滤器");
+    expect(uiHints["approvals.exec.sessionFilter"]?.label).toBe("审批会话过滤器");
+    expect(uiHints["approvals.exec.targets"]?.label).toBe("审批转发目标");
+    expect(uiHints["approvals.exec"]?.help).toContain("执行审批转发行为");
+    expect(uiHints["approvals.exec.mode"]?.help).toContain("控制审批提示发往哪里");
+  });
 });

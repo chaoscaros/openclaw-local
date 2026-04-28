@@ -1,5 +1,6 @@
 import { render } from "lit";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { i18n } from "../../i18n/index.ts";
 import type { ThemeMode, ThemeName } from "../theme.ts";
 import { renderConfig, type ConfigProps } from "./config.ts";
 
@@ -99,7 +100,39 @@ describe("config view", () => {
   }
 
   beforeEach(() => {
+    void i18n.setLocale("en");
     resetRawRevealState();
+  });
+
+  it("renders settings core tabs in Chinese after locale switch", async () => {
+    await i18n.setLocale("zh-CN");
+    const { container } = renderConfigView({
+      navRootLabel: "配置",
+      schema: {
+        type: "object",
+        properties: {
+          env: { type: "object", properties: {} },
+          auth: { type: "object", properties: {} },
+          update: { type: "object", properties: {} },
+          meta: { type: "object", properties: {} },
+          logging: { type: "object", properties: {} },
+          diagnostics: { type: "object", properties: {} },
+          cli: { type: "object", properties: {} },
+          secrets: { type: "object", properties: {} },
+        },
+      },
+    });
+
+    const text = normalizedText(container);
+    expect(text).toContain("配置");
+    expect(text).toContain("环境");
+    expect(text).toContain("认证");
+    expect(text).toContain("更新");
+    expect(text).toContain("元信息");
+    expect(text).toContain("日志");
+    expect(text).toContain("诊断");
+    expect(text).toContain("命令行");
+    expect(text).toContain("机密");
   });
 
   it("allows save when form is unsafe", () => {
@@ -320,7 +353,7 @@ describe("config view", () => {
     const tabs = Array.from(container.querySelectorAll(".config-top-tabs__tab")).map((tab) =>
       tab.textContent?.trim(),
     );
-    expect(tabs).toContain("Settings");
+    expect(tabs).toContain("Config");
     expect(tabs).toContain("Agents");
     expect(tabs).toContain("Gateway");
   });

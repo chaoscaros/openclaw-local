@@ -1,4 +1,5 @@
 import { html, nothing, type TemplateResult } from "lit";
+import { t } from "../../i18n/index.ts";
 import { formatUnknownText } from "../format.ts";
 import { icons as sharedIcons } from "../icons.ts";
 import {
@@ -1091,7 +1092,7 @@ function renderArray(params: {
     return html`
       <div class="cfg-field cfg-field--error">
         <div class="cfg-field__label">${label}</div>
-        <div class="cfg-field__error">Unsupported array schema. Use Raw mode.</div>
+        <div class="cfg-field__error">${t("configPage.ui.unsupportedArraySchema")}</div>
       </div>
     `;
   }
@@ -1105,7 +1106,9 @@ function renderArray(params: {
           ${showLabel ? html`<span class="cfg-array__label">${label}</span>` : nothing}
           ${renderTags(tags)}
         </div>
-        <span class="cfg-array__count">${arr.length} item${arr.length !== 1 ? "s" : ""}</span>
+        <span class="cfg-array__count"
+          >${t("configPage.ui.itemsCount", { count: arr.length, suffix: arr.length !== 1 ? "s" : "" })}</span
+        >
         <button
           type="button"
           class="cfg-array__add"
@@ -1116,12 +1119,12 @@ function renderArray(params: {
           }}
         >
           <span class="cfg-array__add-icon">${icons.plus}</span>
-          Add
+          ${t("configPage.ui.add")}
         </button>
       </div>
       ${help ? html`<div class="cfg-array__help">${help}</div>` : nothing}
       ${arr.length === 0
-        ? html` <div class="cfg-array__empty">No items yet. Click "Add" to create one.</div> `
+        ? html` <div class="cfg-array__empty">${t("configPage.ui.noItems")}</div> `
         : html`
             <div class="cfg-array__items">
               ${arr.map(
@@ -1132,7 +1135,7 @@ function renderArray(params: {
                       <button
                         type="button"
                         class="cfg-array__item-remove"
-                        title="Remove item"
+                        title=${t("configPage.ui.removeItem")}
                         ?disabled=${disabled}
                         @click=${() => {
                           const next = [...arr];
@@ -1235,12 +1238,12 @@ function renderMapField(params: {
           }}
         >
           <span class="cfg-map__add-icon">${icons.plus}</span>
-          Add Entry
+          ${t("configPage.ui.addEntry")}
         </button>
       </div>
 
       ${visibleEntries.length === 0
-        ? html` <div class="cfg-map__empty">No custom entries.</div> `
+        ? html` <div class="cfg-map__empty">${t("configPage.ui.noCustomEntries")}</div> `
         : html`
             <div class="cfg-map__items">
               ${visibleEntries.map(([key, entryValue]) => {

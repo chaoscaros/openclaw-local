@@ -758,7 +758,7 @@ export function renderApp(state: AppViewState) {
             state.automationActiveSubsection = null;
           },
           onSubsectionChange: (section) => (state.automationActiveSubsection = section),
-          navRootLabel: "Automation",
+          navRootLabel: t("automationPage.root"),
           includeSections: [...AUTOMATION_SECTION_KEYS],
         });
       case "infrastructure":
