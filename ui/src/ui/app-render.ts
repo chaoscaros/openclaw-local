@@ -172,13 +172,14 @@ const lazyNodes = createLazy(() => import("./views/nodes.ts"));
 const lazySessions = createLazy(() => import("./views/sessions.ts"));
 const lazySkills = createLazy(() => import("./views/skills.ts"));
 
-function formatDreamNextCycle(nextRunAtMs: number | undefined): string | null {
-  if (typeof nextRunAtMs !== "number" || !Number.isFinite(nextRunAtMs)) {
+function formatDreamNextCycle(nextRunAtMs?: number): string | null {
+  if (!nextRunAtMs) {
     return null;
   }
-  return new Date(nextRunAtMs).toLocaleTimeString([], {
+  return new Date(nextRunAtMs).toLocaleTimeString("zh-CN", {
     hour: "numeric",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -1967,6 +1968,7 @@ export function renderApp(state: AppViewState) {
               thinkingLevel: state.chatThinkingLevel,
               dreamingAssistApplied: state.dreamingAssistApplied,
               dreamingAssistReason: state.dreamingAssistReason,
+              dreamingAssistEnabled: state.settings.dreamingAssistEnabled,
               showThinking,
               showToolCalls,
               loading: state.chatLoading,
@@ -2017,6 +2019,12 @@ export function renderApp(state: AppViewState) {
                 state.applySettings({
                   ...state.settings,
                   chatFocusMode: !state.settings.chatFocusMode,
+                });
+              },
+              onToggleDreamingAssist: () => {
+                state.applySettings({
+                  ...state.settings,
+                  dreamingAssistEnabled: !state.settings.dreamingAssistEnabled,
                 });
               },
               onChatScroll: (event) => state.handleChatScroll(event),

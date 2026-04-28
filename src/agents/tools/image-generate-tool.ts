@@ -75,7 +75,10 @@ const ImageGenerateToolSchema = Type.Object({
     }),
   ),
   model: Type.Optional(
-    Type.String({ description: "Optional provider/model override, e.g. openai/gpt-image-1." }),
+    Type.String({
+      description:
+        "Optional provider/model override, e.g. openai/gpt-image-2; use openai/gpt-image-1.5 for transparent OpenAI backgrounds.",
+    }),
   ),
   filename: Type.Optional(
     Type.String({
@@ -112,6 +115,19 @@ const ImageGenerateToolSchema = Type.Object({
 
 function getImageGenerationProviderAuthEnvVars(providerId: string): string[] {
   return getProviderEnvVars(providerId);
+}
+
+function formatImageGenerationAuthHint(provider: {
+  id: string;
+  authEnvVars: readonly string[];
+}): string | undefined {
+  if (provider.id === "openai") {
+    return "set OPENAI_API_KEY or configure OpenAI Codex OAuth for openai/gpt-image-2";
+  }
+  if (provider.authEnvVars.length === 0) {
+    return undefined;
+  }
+  return `set ${provider.authEnvVars.join(" / ")} to use ${provider.id}/*`;
 }
 
 export function resolveImageGenerationModelConfigForTool(params: {
@@ -389,7 +405,7 @@ export function createImageGenerateTool(options?: {
     label: "Image Generation",
     name: "image_generate",
     description:
-      'Generate new images or edit reference images with the configured or inferred image-generation model. Set agents.defaults.imageGenerationModel.primary to pick a provider/model. Providers declare their own auth/readiness; use action="list" to inspect registered providers, models, readiness, and auth hints. Generated images are delivered automatically from the tool result as MEDIA paths.',
+      'Generate new images or edit reference images with the configured or inferred image-generation model. The default OpenAI image path uses openai/gpt-image-2 and can authenticate with either OPENAI_API_KEY or OpenAI Codex OAuth. Set agents.defaults.imageGenerationModel.primary to pick a provider/model. Providers declare their own auth/readiness; use action="list" to inspect registered providers, models, readiness, and auth hints. Generated images are delivered automatically from the tool result as MEDIA paths.',
     parameters: ImageGenerateToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
@@ -435,8 +451,8 @@ export function createImageGenerateTool(options?: {
             `${provider.id}${provider.defaultModel ? ` (default ${provider.defaultModel})` : ""}`,
             `  ${modelLine}`,
             `  configured: ${provider.configured ? "yes" : "no"}`,
-            ...(provider.authEnvVars.length > 0
-              ? [`  auth: set ${provider.authEnvVars.join(" / ")} to use ${provider.id}/*`]
+            ...(formatImageGenerationAuthHint(provider)
+              ? [`  auth: ${formatImageGenerationAuthHint(provider)}`]
               : []),
             ...(caps.length > 0 ? [`  capabilities: ${caps.join("; ")}`] : []),
           ];

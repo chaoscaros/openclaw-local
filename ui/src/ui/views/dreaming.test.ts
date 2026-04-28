@@ -238,9 +238,9 @@ describe("dreaming view", () => {
     const phases = [...container.querySelectorAll(".dreams__phase-name")].map((node) =>
       node.textContent?.trim(),
     );
-    expect(phases).toEqual(["Light", "Deep", "Rem"]);
+    expect(phases).toEqual(["浅层", "深层", "快速眼动"]);
     expect(container.querySelectorAll(".dreams__phase").length).toBe(3);
-    expect(container.querySelector(".dreams__phase--off")?.textContent).toContain("off");
+    expect(container.querySelector(".dreams__phase--off")?.textContent).toContain("关闭");
   });
 
   it("shows unknown phase status when phase data is unavailable", () => {
@@ -257,9 +257,9 @@ describe("dreaming view", () => {
     const buttons = [...container.querySelectorAll("button")].map((node) =>
       node.textContent?.trim(),
     );
-    expect(buttons).not.toContain("Backfill");
-    expect(buttons).not.toContain("Reset");
-    expect(buttons).not.toContain("Clear Replayed");
+    expect(buttons).not.toContain("回填日记");
+    expect(buttons).not.toContain("重置");
+    expect(buttons).not.toContain("清除回放项");
   });
 
   it("shows dream bubble when active", () => {
@@ -271,16 +271,16 @@ describe("dreaming view", () => {
     const onRunNow = vi.fn();
     const container = renderInto(buildProps({ onRunNow }));
     const button = Array.from(container.querySelectorAll("button")).find((node) =>
-      node.textContent?.includes("Run now"),
+      node.textContent?.includes("立即运行"),
     );
     expect(button).toBeTruthy();
     button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onRunNow).toHaveBeenCalledOnce();
-    expect(container.textContent).toContain("Last run:");
-    expect(container.textContent).toContain("1 workspaces · 0 failed · 0 diary skipped");
-    expect(container.textContent).toContain(
-      "Manual Run now only performs background consolidation; it does not create a visible session.",
-    );
+    expect(container.textContent).toContain("上次运行：");
+    expect(container.textContent).toContain("已提升 2 条");
+    expect(container.textContent).toContain("候选 4 条 · 日记 1 条 · 工作区 1 个");
+    expect(container.textContent).toContain("失败 0 个 · 跳过叙事 0 次");
+    expect(container.textContent).toContain("说明：手动运行只会做后台整理，不会创建可见会话。");
   });
 
   it("renders and toggles the dreaming assistance switch", () => {
@@ -305,13 +305,12 @@ describe("dreaming view", () => {
           failed: 0,
           narrativeWritten: 0,
           narrativeSkipped: 1,
-          zeroAppliedReason:
-            "Candidates were found, but none met the promotion threshold; diary narrative was skipped because evidence stayed weak.",
+          zeroAppliedReason: "发现了候选记忆，但都没达到 promotion 阈值；由于证据偏弱，这次 diary narrative 也被跳过。",
         },
       }),
     );
-    expect(container.textContent).toContain("Why 0 promoted:");
-    expect(container.textContent).toContain("none met the promotion threshold");
+    expect(container.textContent).toContain("未提升原因：");
+    expect(container.textContent).toContain("没达到 promotion 阈值");
   });
 
   it("shows learning summary details from task chat and memory sources", () => {
@@ -365,13 +364,13 @@ describe("dreaming view", () => {
   it("shows active status label when active", () => {
     const container = renderInto(buildProps({ active: true }));
     const label = container.querySelector(".dreams__status-label");
-    expect(label?.textContent).toBe("Dreaming Active");
+    expect(label?.textContent).toBe("梦境运行中");
   });
 
   it("shows idle status label when inactive", () => {
     const container = renderInto(buildProps({ active: false }));
     const label = container.querySelector(".dreams__status-label");
-    expect(label?.textContent).toBe("Dreaming Idle");
+    expect(label?.textContent).toBe("梦境空闲中");
   });
 
   it("applies idle class when not active", () => {
@@ -380,9 +379,9 @@ describe("dreaming view", () => {
   });
 
   it("shows next cycle info when provided", () => {
-    const container = renderInto(buildProps({ nextCycle: "4:00 AM" }));
+    const container = renderInto(buildProps({ nextCycle: "03:00" }));
     const detail = container.querySelector(".dreams__status-detail span");
-    expect(detail?.textContent).toContain("4:00 AM");
+    expect(detail?.textContent).toContain("03:00");
   });
 
   it("renders control error when present", () => {
@@ -396,9 +395,9 @@ describe("dreaming view", () => {
     const container = renderInto(buildProps());
     const tabs = container.querySelectorAll(".dreams__tab");
     expect(tabs.length).toBe(3);
-    expect(tabs[0]?.textContent).toContain("Scene");
-    expect(tabs[1]?.textContent).toContain("Diary");
-    expect(tabs[2]?.textContent).toContain("Advanced");
+    expect(tabs[0]?.textContent).toContain("场景");
+    expect(tabs[1]?.textContent).toContain("梦境日记");
+    expect(tabs[2]?.textContent).toContain("进阶");
   });
 
   it("renders imported memory topics inside the diary tab", () => {
@@ -414,7 +413,7 @@ describe("dreaming view", () => {
       "Use the BA request-a-receipt flow first.",
     );
     expect(container.querySelector(".dreams-diary__explainer")?.textContent).toContain(
-      "imported insights clustered from external history",
+      "这里是从外部历史聚合出来的导入洞察",
     );
     setDreamDiarySubTab("dreams");
     setDreamSubTab("scene");
@@ -464,7 +463,7 @@ describe("dreaming view", () => {
     await Promise.resolve();
 
     expect(container.querySelector(".dreams-diary__preview-hint")?.textContent).toContain(
-      "6001 total lines",
+      "共 6001 行",
     );
 
     container
@@ -482,9 +481,9 @@ describe("dreaming view", () => {
     expect(container.querySelector(".dreams-diary__insight-card")?.textContent).toContain(
       "Travel system",
     );
-    expect(container.querySelector(".dreams-diary__insight-card")?.textContent).toContain("Claims");
+    expect(container.querySelector(".dreams-diary__insight-card")?.textContent).toContain("结论");
     expect(container.querySelector(".dreams-diary__explainer")?.textContent).toContain(
-      "compiled memory wiki surface",
+      "记忆 Wiki 汇总面",
     );
     setDreamDiarySubTab("dreams");
     setDreamSubTab("scene");
@@ -500,7 +499,7 @@ describe("dreaming view", () => {
         onOpenConfig,
       }),
     );
-    expect(container.textContent).toContain("Memory Wiki is not enabled");
+    expect(container.textContent).toContain("记忆 Wiki 尚未启用");
     expect(container.textContent).toContain("plugins.entries.memory-wiki.enabled = true");
 
     container
@@ -516,7 +515,7 @@ describe("dreaming view", () => {
     setDreamDiarySubTab("dreams");
     const container = renderInto(buildProps());
     const title = container.querySelector(".dreams-diary__title");
-    expect(title?.textContent).toContain("Dream Diary");
+    expect(title?.textContent).toContain("梦境日记");
 
     const entry = container.querySelector(".dreams-diary__entry");
     expect(entry).not.toBeNull();
@@ -617,7 +616,7 @@ describe("dreaming view", () => {
     const container = renderInto(buildProps({ dreamDiaryContent: null }));
     expect(container.querySelector(".dreams-diary__empty")).not.toBeNull();
     expect(container.querySelector(".dreams-diary__empty-text")?.textContent).toContain(
-      "No dreams yet",
+      "还没有梦境记录",
     );
     setDreamSubTab("scene");
   });
@@ -644,26 +643,26 @@ describe("dreaming view", () => {
     setDreamAdvancedWaitingSort("recent");
     const container = renderInto(buildProps());
     expect(container.querySelector(".dreams-advanced__title")?.textContent).toContain(
-      "Daily Log Review",
+      "每日日志回顾",
     );
     const buttons = [...container.querySelectorAll("button")].map((node) =>
       node.textContent?.trim(),
     );
-    expect(buttons).toContain("Backfill");
-    expect(buttons).toContain("Reset");
-    expect(buttons).toContain("Clear Replayed");
-    expect(buttons).toContain("Most recent");
-    expect(buttons).toContain("Strongest support");
+    expect(buttons).toContain("回填日记");
+    expect(buttons).toContain("重置");
+    expect(buttons).toContain("清除回放项");
+    expect(buttons).toContain("最近优先");
+    expect(buttons).toContain("支持最强");
     const sectionTitles = [...container.querySelectorAll(".dreams-advanced__section-title")].map(
       (node) => node.textContent?.trim(),
     );
     expect(sectionTitles).toEqual([
-      "From the Daily Log",
-      "Waiting for Promotion",
-      "Recent Promotions",
+      "来自每日日志",
+      "等待提升",
+      "最近提升",
     ]);
     expect(container.querySelector(".dreams-advanced__summary")?.textContent).toContain(
-      "1 from daily log",
+      "1 来自每日日志",
     );
     expect(container.querySelector(".dreams-advanced__item")?.textContent).toContain(
       "Emma prefers shorter",

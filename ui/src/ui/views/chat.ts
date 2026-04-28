@@ -54,13 +54,13 @@ type DreamingAssistReason = "disabled" | "no_strategy" | "scope_mismatch" | "exp
 function renderDreamingAssistReason(reason?: DreamingAssistReason | null): string {
   switch (reason) {
     case "disabled":
-      return "未应用原因：协助策略已关闭";
+      return "未应用：协助策略已关闭";
     case "no_strategy":
-      return "未应用原因：当前没有可用的 dreaming 协助策略";
+      return "未应用：当前没有可用策略";
     case "scope_mismatch":
-      return "未应用原因：当前会话或任务与策略作用域不匹配";
+      return "未应用：当前会话或任务与策略作用域不匹配";
     case "expired":
-      return "未应用原因：dreaming 协助策略已过期";
+      return "未应用：协助策略已过期";
     default:
       return "";
   }
@@ -72,6 +72,7 @@ export type ChatProps = {
   thinkingLevel: string | null;
   dreamingAssistApplied?: boolean | null;
   dreamingAssistReason?: DreamingAssistReason | null;
+  dreamingAssistEnabled?: boolean;
   showThinking: boolean;
   showToolCalls: boolean;
   loading: boolean;
@@ -124,6 +125,7 @@ export type ChatProps = {
   onScrollToBottom?: () => void;
   onRefresh: () => void;
   onToggleFocusMode: () => void;
+  onToggleDreamingAssist?: () => void;
   getDraft?: () => string;
   onDraftChange: (next: string) => void;
   onRequestUpdate?: () => void;
@@ -1574,14 +1576,25 @@ export function renderChat(props: ChatProps) {
             </div>
           `
         : nothing}
-      ${props.dreamingAssistApplied === null || props.dreamingAssistApplied === undefined
-        ? nothing
-        : html`<div class="callout ${props.dreamingAssistApplied ? "success" : "muted"}" role="status">
-            <div>${props.dreamingAssistApplied ? "本轮已应用 dreaming 协助策略" : "本轮未应用 dreaming 协助策略"}</div>
-            ${!props.dreamingAssistApplied && props.dreamingAssistReason
+      ${(props.pendingRunId && props.dreamingAssistApplied !== null && props.dreamingAssistApplied !== undefined) || props.onToggleDreamingAssist
+        ? html`<div class="callout ${props.dreamingAssistApplied ? "success" : "muted"}" role="status">
+            <div class="row wrap items-center gap-2">
+              <span>${props.pendingRunId && props.dreamingAssistApplied !== null && props.dreamingAssistApplied !== undefined
+                ? props.dreamingAssistApplied
+                  ? "本轮已应用协助策略"
+                  : "本轮未应用协助策略"
+                : "协助策略"}</span>
+              ${props.onToggleDreamingAssist
+                ? html`<button class="btn btn--subtle btn--sm" @click=${() => props.onToggleDreamingAssist?.()}>
+                    ${props.dreamingAssistEnabled === false ? "协助策略：关" : "协助策略：开"}
+                  </button>`
+                : nothing}
+            </div>
+            ${props.pendingRunId && !props.dreamingAssistApplied && props.dreamingAssistReason
               ? html`<div>${renderDreamingAssistReason(props.dreamingAssistReason)}</div>`
               : nothing}
-          </div>`}
+          </div>`
+        : nothing}
       ${renderSideResult(props.sideResult, props.onDismissSideResult)}
       ${renderFallbackIndicator(props.fallbackStatus)}
       ${renderCompactionIndicator(props.compactionStatus)}

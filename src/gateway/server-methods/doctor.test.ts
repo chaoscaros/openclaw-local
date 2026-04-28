@@ -1148,4 +1148,45 @@ describe("doctor.memory.dreamDiary", () => {
       await fs.rm(stateDir, { recursive: true, force: true });
     }
   });
+
+  it("persists a chinese zero-promoted explanation when no promotion is applied", async () => {
+    const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "doctor-dream-zero-"));
+    resolveAgentWorkspaceDir.mockReturnValue(workspaceDir);
+    resolveShortTermPromotionDreamingConfig.mockReturnValue({ enabled: true });
+    runShortTermDreamingPromotionNow.mockResolvedValue({
+      handled: true,
+      reason: "memory-core: short-term dreaming processed",
+      workspaces: 1,
+      candidates: 3,
+      applied: 0,
+      failed: 0,
+      narrativeWritten: 0,
+      narrativeSkipped: 1,
+    });
+    const respond = vi.fn();
+
+    try {
+      await fs.mkdir(path.join(workspaceDir, "memory"), { recursive: true });
+      await invokeDoctorMemoryRun(respond);
+      expect(respond).toHaveBeenCalledWith(
+        true,
+        expect.objectContaining({
+          runSummary: expect.objectContaining({
+            applied: 0,
+            zeroAppliedReason: "发现了候选记忆，但都没达到提升阈值；由于证据偏弱，这次叙事也被跳过。",
+          }),
+        }),
+        undefined,
+      );
+      const persisted = JSON.parse(
+        await fs.readFile(path.join(workspaceDir, "memory", ".dreams", "last-run.json"), "utf-8"),
+      );
+      expect(persisted).toMatchObject({
+        applied: 0,
+        zeroAppliedReason: "发现了候选记忆，但都没达到提升阈值；由于证据偏弱，这次叙事也被跳过。",
+      });
+    } finally {
+      await fs.rm(workspaceDir, { recursive: true, force: true });
+    }
+  });
 });

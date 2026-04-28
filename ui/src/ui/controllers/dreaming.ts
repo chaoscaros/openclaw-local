@@ -314,10 +314,11 @@ function buildDreamDiaryActionSuccessMessage(
       const run = asRecord(payload?.runSummary);
       const learningSummary = asRecord(run?.learningSummary);
       return [
-        `Dreaming run finished: ${normalizeFiniteInt(run?.applied, 0)} ${t("dreaming.status.promotedSuffix")}, ${normalizeFiniteInt(run?.candidates, 0)} ${t("dreaming.scene.candidatesSuffix")}, ${normalizeFiniteInt(run?.narrativeWritten, 0)} ${t("dreaming.scene.diaryEntriesSuffix")}.`,
-        `${normalizeFiniteInt(run?.workspaces, 0)} ${t("dreaming.scene.workspacesSuffix")} · ${normalizeFiniteInt(run?.failed, 0)} ${t("dreaming.scene.failedSuffix")} · ${normalizeFiniteInt(run?.narrativeSkipped, 0)} ${t("dreaming.scene.narrativeSkippedSuffix")}.`,
+        "本次梦境整理已完成。",
+        `结果：已提升 ${normalizeFiniteInt(run?.applied, 0)} 条，候选 ${normalizeFiniteInt(run?.candidates, 0)} 条，写入日记 ${normalizeFiniteInt(run?.narrativeWritten, 0)} 条。`,
+        `执行：工作区 ${normalizeFiniteInt(run?.workspaces, 0)} 个，失败 ${normalizeFiniteInt(run?.failed, 0)} 个，跳过叙事 ${normalizeFiniteInt(run?.narrativeSkipped, 0)} 次。`,
         normalizeTrimmedString(run?.zeroAppliedReason)
-          ? `Why 0 ${t("dreaming.status.promotedSuffix")}: ${normalizeTrimmedString(run?.zeroAppliedReason)}.`
+          ? `未提升原因：${normalizeTrimmedString(run?.zeroAppliedReason)}。`
           : null,
         normalizeTrimmedString(learningSummary?.summary)
           ? `学习摘要：${normalizeTrimmedString(learningSummary?.summary)}。`
@@ -328,7 +329,7 @@ function buildDreamDiaryActionSuccessMessage(
         normalizeTrimmedString(learningSummary?.assistanceStrategy)
           ? `协助策略：${normalizeTrimmedString(learningSummary?.assistanceStrategy)}。`
           : null,
-        t("dreaming.scene.manualRunNote"),
+        "说明：手动运行只会做后台整理，不会创建可见会话。",
       ].filter(Boolean).join(" ");
     }
   }
@@ -981,7 +982,7 @@ export async function copyDreamingArchivePath(state: DreamingState): Promise<boo
   if (!globalThis.navigator?.clipboard?.writeText) {
     state.dreamDiaryActionMessage = {
       kind: "error",
-      text: "Could not copy archive path.",
+      text: "无法复制归档路径。",
     };
     return false;
   }
@@ -989,13 +990,13 @@ export async function copyDreamingArchivePath(state: DreamingState): Promise<boo
     await globalThis.navigator.clipboard.writeText(path);
     state.dreamDiaryActionMessage = {
       kind: "success",
-      text: "Archive path copied.",
+      text: "已复制归档路径。",
     };
     return true;
   } catch {
     state.dreamDiaryActionMessage = {
       kind: "error",
-      text: "Could not copy archive path.",
+      text: "无法复制归档路径。",
     };
     return false;
   }

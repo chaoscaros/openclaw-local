@@ -857,9 +857,7 @@ describe("dreaming controller", () => {
     expect(state.dreamingStatus?.lastRun).toMatchObject({ applied: 2, candidates: 4 });
     expect(state.dreamDiaryActionMessage).toMatchObject({
       kind: "success",
-      text: expect.stringContaining(
-        "Manual Run now only performs background consolidation; it does not create a visible session.",
-      ),
+      text: expect.stringContaining("说明：手动运行只会做后台整理，不会创建可见会话。"),
     });
     expect(state.dreamDiaryActionMessage?.text).toContain("学习摘要：");
     expect(state.dreamDiaryActionMessage?.text).toContain("改进建议：");
@@ -883,8 +881,7 @@ describe("dreaming controller", () => {
             failed: 0,
             narrativeWritten: 0,
             narrativeSkipped: 1,
-            zeroAppliedReason:
-              "Candidates were found, but none met the promotion threshold; diary narrative was skipped because evidence stayed weak.",
+            zeroAppliedReason: "发现了候选记忆，但都没达到 promotion 阈值；由于证据偏弱，这次 diary narrative 也被跳过。",
           },
         };
       }
@@ -913,8 +910,7 @@ describe("dreaming controller", () => {
               failed: 0,
               narrativeWritten: 0,
               narrativeSkipped: 1,
-              zeroAppliedReason:
-                "Candidates were found, but none met the promotion threshold; diary narrative was skipped because evidence stayed weak.",
+              zeroAppliedReason: "发现了候选记忆，但都没达到 promotion 阈值；由于证据偏弱，这次 diary narrative 也被跳过。",
             },
             phases: {
               light: { enabled: false, cron: "", managedCronPresent: false, lookbackDays: 0, limit: 0 },
@@ -948,11 +944,10 @@ describe("dreaming controller", () => {
     expect(ok).toBe(true);
     expect(state.dreamingStatus?.lastRun).toMatchObject({
       applied: 0,
-      zeroAppliedReason:
-        "Candidates were found, but none met the promotion threshold; diary narrative was skipped because evidence stayed weak.",
+      zeroAppliedReason: "发现了候选记忆，但都没达到 promotion 阈值；由于证据偏弱，这次 diary narrative 也被跳过。",
     });
-    expect(state.dreamDiaryActionMessage?.text).toContain("Why 0 promoted:");
-    expect(state.dreamDiaryActionMessage?.text).toContain("none met the promotion threshold");
+    expect(state.dreamDiaryActionMessage?.text).toContain("未提升原因：");
+    expect(state.dreamDiaryActionMessage?.text).toContain("没达到 promotion 阈值");
   });
 
   it("clears grounded staged entries and reloads only dreaming status", async () => {
@@ -1067,7 +1062,7 @@ describe("dreaming controller", () => {
     );
     expect(state.dreamDiaryActionMessage).toEqual({
       kind: "success",
-      text: "Archive path copied.",
+      text: "已复制归档路径。",
     });
   });
 

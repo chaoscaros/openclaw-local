@@ -165,6 +165,7 @@ function createProps(overrides: Partial<ChatProps> = {}): ChatProps {
     thinkingLevel: null,
     dreamingAssistApplied: null,
     dreamingAssistReason: null,
+    dreamingAssistEnabled: true,
     showThinking: false,
     showToolCalls: true,
     loading: false,
@@ -192,6 +193,7 @@ function createProps(overrides: Partial<ChatProps> = {}): ChatProps {
     localMediaPreviewRoots: [],
     onRefresh: () => undefined,
     onToggleFocusMode: () => undefined,
+    onToggleDreamingAssist: () => undefined,
     onDraftChange: () => undefined,
     onSend: () => undefined,
     onQueueRemove: () => undefined,
@@ -261,9 +263,9 @@ describe("chat view", () => {
   it("shows whether dreaming assistance was applied for the current run", async () => {
     await i18n.setLocale("en");
     const container = document.createElement("div");
-    render(renderChat(createProps({ dreamingAssistApplied: true })), container);
+    render(renderChat(createProps({ pendingRunId: "run-1", dreamingAssistApplied: true })), container);
     await Promise.resolve();
-    expect(container.textContent ?? "").toContain("本轮已应用 dreaming 协助策略");
+    expect(container.textContent ?? "").toContain("本轮已应用协助策略");
     expect(container.textContent ?? "").not.toContain("未应用原因：");
   });
 
@@ -271,31 +273,31 @@ describe("chat view", () => {
     await i18n.setLocale("en");
     const container = document.createElement("div");
     render(
-      renderChat(createProps({ dreamingAssistApplied: false, dreamingAssistReason: "scope_mismatch" })),
+      renderChat(createProps({ pendingRunId: "run-1", dreamingAssistApplied: false, dreamingAssistReason: "scope_mismatch" })),
       container,
     );
     await Promise.resolve();
     const text = container.textContent ?? "";
-    expect(text).toContain("本轮未应用 dreaming 协助策略");
-    expect(text).toContain("未应用原因：当前会话或任务与策略作用域不匹配");
+    expect(text).toContain("本轮未应用协助策略");
+    expect(text).toContain("未应用：当前会话或任务与策略作用域不匹配");
   });
 
   it("renders all supported dreaming assist reason messages", async () => {
     await i18n.setLocale("en");
     const disabled = document.createElement("div");
-    render(renderChat(createProps({ dreamingAssistApplied: false, dreamingAssistReason: "disabled" })), disabled);
+    render(renderChat(createProps({ pendingRunId: "run-1", dreamingAssistApplied: false, dreamingAssistReason: "disabled" })), disabled);
     await Promise.resolve();
-    expect(disabled.textContent ?? "").toContain("未应用原因：协助策略已关闭");
+    expect(disabled.textContent ?? "").toContain("未应用：协助策略已关闭");
 
     const noStrategy = document.createElement("div");
-    render(renderChat(createProps({ dreamingAssistApplied: false, dreamingAssistReason: "no_strategy" })), noStrategy);
+    render(renderChat(createProps({ pendingRunId: "run-1", dreamingAssistApplied: false, dreamingAssistReason: "no_strategy" })), noStrategy);
     await Promise.resolve();
-    expect(noStrategy.textContent ?? "").toContain("未应用原因：当前没有可用的 dreaming 协助策略");
+    expect(noStrategy.textContent ?? "").toContain("未应用：当前没有可用策略");
 
     const expired = document.createElement("div");
-    render(renderChat(createProps({ dreamingAssistApplied: false, dreamingAssistReason: "expired" })), expired);
+    render(renderChat(createProps({ pendingRunId: "run-1", dreamingAssistApplied: false, dreamingAssistReason: "expired" })), expired);
     await Promise.resolve();
-    expect(expired.textContent ?? "").toContain("未应用原因：dreaming 协助策略已过期");
+    expect(expired.textContent ?? "").toContain("未应用：协助策略已过期");
   });
 
   it("keeps task controls out of the chat message surface", async () => {
@@ -632,6 +634,72 @@ describe("chat view", () => {
     );
     expect(logoImage).not.toBeNull();
     expect(logoImage?.getAttribute("src")).toBe("/openclaw/favicon.svg");
+  });
+
+  it("renders dreaming assistance status callouts only for the active run", () => {
+    const applied = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          messages: [{ role: "assistant", content: [{ type: "text", text: "hello" }] }],
+          pendingRunId: "run-1",
+          dreamingAssistApplied: true,
+        }),
+      ),
+      applied,
+    );
+    expect(applied.textContent).toContain("本轮已应用协助策略");
+
+    const disabled = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          messages: [{ role: "assistant", content: [{ type: "text", text: "hello" }] }],
+          pendingRunId: "run-1",
+          dreamingAssistApplied: false,
+          dreamingAssistReason: "disabled",
+        }),
+      ),
+      disabled,
+    );
+    expect(disabled.textContent).toContain("本轮未应用协助策略");
+    expect(disabled.textContent).toContain("未应用：协助策略已关闭");
+
+    const stale = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          messages: [{ role: "assistant", content: [{ type: "text", text: "hello" }] }],
+          pendingRunId: null,
+          dreamingAssistApplied: false,
+          dreamingAssistReason: "expired",
+        }),
+      ),
+      stale,
+    );
+    expect(stale.textContent).not.toContain("本轮未应用协助策略");
+    expect(stale.textContent).not.toContain("未应用：协助策略已过期");
+  });
+
+  it("renders and toggles the chat-level dreaming assist switch", () => {
+    const onToggleDreamingAssist = vi.fn();
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          messages: [{ role: "assistant", content: [{ type: "text", text: "hello" }] }],
+          dreamingAssistEnabled: true,
+          onToggleDreamingAssist,
+        }),
+      ),
+      container,
+    );
+    const button = Array.from(container.querySelectorAll("button")).find((node) =>
+      node.textContent?.includes("协助策略：开"),
+    );
+    expect(button).toBeTruthy();
+    button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onToggleDreamingAssist).toHaveBeenCalledOnce();
   });
 
   it("keeps grouped assistant avatar fallbacks under the mounted base path", () => {

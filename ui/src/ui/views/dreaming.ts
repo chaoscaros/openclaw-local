@@ -392,25 +392,30 @@ function formatPhaseNextRun(nextRunAtMs?: number): string {
     return "—";
   }
   const d = new Date(nextRunAtMs);
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return d.toLocaleTimeString("zh-CN", { hour: "numeric", minute: "2-digit", hour12: false });
 }
 
 function renderLatestRunSummary(latestRun: NonNullable<DreamingProps["latestRun"]>) {
+  const resultSummary =
+    latestRun.applied > 0
+      ? `已提升 ${latestRun.applied} 条`
+      : latestRun.zeroAppliedReason
+        ? "本次未提升任何条目"
+        : `已提升 ${latestRun.applied} 条`;
   return html`
     <div class="row wrap items-center gap-2">
-      <span class="dreams__phase-next"
-        >${t("dreaming.scene.lastRunPrefix")} ${latestRun.applied} ${t("dreaming.status.promotedSuffix")} · ${latestRun.candidates} ${t("dreaming.scene.candidatesSuffix")} · ${latestRun.narrativeWritten} ${t("dreaming.scene.diaryEntriesSuffix")} · ${formatCompactDateTime(latestRun.at)}</span
-      >
+      <span class="dreams__phase-next">${t("dreaming.scene.lastRunPrefix")} ${formatCompactDateTime(latestRun.at)} · ${resultSummary}</span>
     </div>
     <div class="row wrap items-center gap-2">
-      <span class="dreams__phase-next"
-        >${latestRun.workspaces} ${t("dreaming.scene.workspacesSuffix")} · ${latestRun.failed} ${t("dreaming.scene.failedSuffix")} · ${latestRun.narrativeSkipped} ${t("dreaming.scene.narrativeSkippedSuffix")}</span
-      >
+      <span class="dreams__phase-next">候选 ${latestRun.candidates} 条 · 日记 ${latestRun.narrativeWritten} 条 · 工作区 ${latestRun.workspaces} 个</span>
+    </div>
+    <div class="row wrap items-center gap-2">
+      <span class="dreams__phase-next">失败 ${latestRun.failed} 个 · 跳过叙事 ${latestRun.narrativeSkipped} 次</span>
     </div>
     ${latestRun.zeroAppliedReason
       ? html`
           <div class="row wrap items-center gap-2">
-            <span class="dreams__phase-next">Why 0 ${t("dreaming.status.promotedSuffix")}: ${latestRun.zeroAppliedReason}</span>
+            <span class="dreams__phase-next">未提升原因：${latestRun.zeroAppliedReason}</span>
           </div>
         `
       : nothing}
@@ -419,17 +424,17 @@ function renderLatestRunSummary(latestRun: NonNullable<DreamingProps["latestRun"
           <div class="row wrap items-center gap-2">
             <span class="dreams__phase-next">学习摘要：${latestRun.learningSummary.summary}</span>
           </div>
+          ${latestRun.learningSummary.temporaryFocus.length
+            ? html`<div class="row wrap items-center gap-2">
+                <span class="dreams__phase-next">当前聚焦：${latestRun.learningSummary.temporaryFocus.join(" · ")}</span>
+              </div>`
+            : nothing}
           <div class="row wrap items-center gap-2">
             <span class="dreams__phase-next">改进建议：${latestRun.learningSummary.recommendation}</span>
           </div>
           <div class="row wrap items-center gap-2">
             <span class="dreams__phase-next">协助策略：${latestRun.learningSummary.assistanceStrategy}</span>
           </div>
-          ${latestRun.learningSummary.temporaryFocus.length
-            ? html`<div class="row wrap items-center gap-2">
-                <span class="dreams__phase-next">当前聚焦：${latestRun.learningSummary.temporaryFocus.join(" · ")}</span>
-              </div>`
-            : nothing}
           ${latestRun.learningSummary.durableSignals.length
             ? html`<div class="row wrap items-center gap-2">
                 <span class="dreams__phase-next">长期信号：${latestRun.learningSummary.durableSignals.join(" · ")}</span>
@@ -445,7 +450,7 @@ function renderLatestRunSummary(latestRun: NonNullable<DreamingProps["latestRun"
         `
       : nothing}
     <div class="row wrap items-center gap-2">
-      <span class="dreams__phase-next">${t("dreaming.scene.manualRunNote")}</span>
+      <span class="dreams__phase-next">说明：手动运行只会做后台整理，不会创建可见会话。</span>
     </div>
   `;
 }
@@ -468,7 +473,7 @@ function renderActionCallout(props: DreamingProps) {
                 ?disabled=${props.dreamDiaryActionLoading}
                 @click=${() => props.onCopyDreamingArchivePath()}
               >
-                Copy archive path
+                复制归档路径
               </button>
             `
           : nothing}
@@ -590,11 +595,12 @@ function formatCompactDateTime(value: string): string {
   if (!Number.isFinite(parsed)) {
     return value;
   }
-  return new Date(parsed).toLocaleString([], {
-    month: "short",
+  return new Date(parsed).toLocaleString("zh-CN", {
+    month: "numeric",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -606,37 +612,37 @@ function basename(value: string): string {
 function formatKindLabel(kind: "entity" | "concept" | "source" | "synthesis" | "report"): string {
   switch (kind) {
     case "entity":
-      return "entity";
+      return "实体";
     case "concept":
-      return "concept";
+      return "概念";
     case "source":
-      return "source";
+      return "来源";
     case "synthesis":
-      return "synthesis";
+      return "综合";
     case "report":
-      return "report";
+      return "报告";
   }
-  return kind;
 }
+
 
 function formatImportBadge(item: {
   digestStatus: "available" | "withheld";
   riskLevel: "low" | "medium" | "high" | "unknown";
 }): string {
   if (item.digestStatus === "withheld") {
-    return "needs review";
+    return "待复核";
   }
   switch (item.riskLevel) {
     case "low":
-      return "low risk";
+      return "低风险";
     case "medium":
-      return "medium risk";
+      return "中风险";
     case "high":
-      return "high risk";
+      return "高风险";
     case "unknown":
-      return "unknown risk";
+      return "风险未知";
   }
-  return "unknown risk";
+  return "风险未知";
 }
 
 function toggleExpandedCard(bucket: Set<string>, key: string, requestUpdate?: () => void): void {
@@ -704,7 +710,7 @@ function renderWikiPreviewOverlay(props: DreamingProps) {
       <div class="dreams-diary__preview-panel" @click=${(event: Event) => event.stopPropagation()}>
         <div class="dreams-diary__preview-header">
           <div>
-            <div class="dreams-diary__preview-title">${_wikiPreviewTitle || "Wiki page"}</div>
+            <div class="dreams-diary__preview-title">${_wikiPreviewTitle || "Wiki 页面"}</div>
             <div class="dreams-diary__preview-meta">
               ${_wikiPreviewPath} ${_wikiPreviewUpdatedAt ? ` · ${_wikiPreviewUpdatedAt}` : ""}
             </div>
@@ -713,22 +719,21 @@ function renderWikiPreviewOverlay(props: DreamingProps) {
             class="btn btn--subtle btn--sm"
             @click=${() => closeWikiPreview(props.onRequestUpdate)}
           >
-            Close
+            关闭
           </button>
         </div>
         <div class="dreams-diary__preview-body">
           ${_wikiPreviewLoading
-            ? html`<div class="dreams-diary__empty-text">Loading wiki page…</div>`
+            ? html`<div class="dreams-diary__empty-text">正在加载 Wiki 页面…</div>`
             : _wikiPreviewError
               ? html`<div class="dreams-diary__error">${_wikiPreviewError}</div>`
               : html`
                   ${_wikiPreviewTruncated
                     ? html`
                         <div class="dreams-diary__preview-hint">
-                          Showing the first chunk of this
-                          page${_wikiPreviewTotalLines !== null
-                            ? ` (${_wikiPreviewTotalLines} total lines)`
-                            : ""}.
+                          当前只显示该页面的首段内容${_wikiPreviewTotalLines !== null
+                            ? `（共 ${_wikiPreviewTotalLines} 行）`
+                            : ""}。
                         </div>
                       `
                     : nothing}
@@ -745,24 +750,19 @@ function renderDiarySubtabExplainer() {
     case "dreams":
       return html`
         <p class="dreams-diary__explainer">
-          This is the raw dream diary the system writes while replaying and consolidating memory;
-          use it to inspect what the memory system is noticing, and where it still looks noisy or
-          thin.
+          这里是系统在回放与整理记忆时写下的原始梦境日记；可用来检查记忆系统正在注意什么，以及哪些地方仍然偏噪或偏薄。
         </p>
       `;
     case "insights":
       return html`
         <p class="dreams-diary__explainer">
-          These are imported insights clustered from external history; use them to review what
-          imports surfaced before any of it graduates into durable memory.
+          这里是从外部历史聚合出来的导入洞察；可用来回看导入阶段先浮现了什么，再决定哪些内容值得进入长期记忆。
         </p>
       `;
     case "palace":
       return html`
         <p class="dreams-diary__explainer">
-          This is the compiled memory wiki surface the system can search and reason over; use it to
-          inspect actual memory pages, claims, open questions, and contradictions rather than raw
-          imported source chats.
+          这里是系统可搜索、可推理的记忆 Wiki 汇总面；相比原始导入对话，更适合检查真实记忆页面、结论、待解问题与矛盾点。
         </p>
       `;
   }
@@ -955,8 +955,8 @@ function renderAdvancedSection(props: DreamingProps) {
             entry.groundedCount > 0
               ? `${entry.groundedCount} ${t("dreaming.stats.grounded").toLowerCase()}`
               : "",
-            entry.recallCount > 0 ? `${entry.recallCount} recall` : "",
-            entry.dailyCount > 0 ? `${entry.dailyCount} daily` : "",
+            entry.recallCount > 0 ? `${entry.recallCount} 次召回` : "",
+            entry.dailyCount > 0 ? `${entry.dailyCount} 次日记` : "",
           ],
         })}
         ${renderAdvancedEntryList({
@@ -993,12 +993,12 @@ function renderAdvancedSection(props: DreamingProps) {
           badge: (entry) => describeWaitingEntryOrigin(entry),
           meta: (entry) => [
             `${entry.totalSignalCount} ${t("dreaming.stats.signals").toLowerCase()}`,
-            entry.recallCount > 0 ? `${entry.recallCount} recall` : "",
-            entry.dailyCount > 0 ? `${entry.dailyCount} daily` : "",
+            entry.recallCount > 0 ? `${entry.recallCount} 次召回` : "",
+            entry.dailyCount > 0 ? `${entry.dailyCount} 次日记` : "",
             entry.groundedCount > 0
               ? `${entry.groundedCount} ${t("dreaming.stats.grounded").toLowerCase()}`
               : "",
-            entry.phaseHitCount > 0 ? `${entry.phaseHitCount} phase hit` : "",
+            entry.phaseHitCount > 0 ? `${entry.phaseHitCount} 次阶段触发` : "",
           ],
         })}
         ${renderAdvancedEntryList({
@@ -1035,7 +1035,7 @@ function renderDiaryImportsSection(props: DreamingProps) {
   if (props.wikiImportInsightsLoading && clusters.length === 0) {
     return html`
       <div class="dreams-diary__empty">
-        <div class="dreams-diary__empty-text">Loading imported insights…</div>
+        <div class="dreams-diary__empty-text">正在加载导入洞察…</div>
       </div>
     `;
   }
@@ -1043,9 +1043,9 @@ function renderDiaryImportsSection(props: DreamingProps) {
   if (clusters.length === 0) {
     return html`
       <div class="dreams-diary__empty">
-        <div class="dreams-diary__empty-text">No imported insights yet</div>
+        <div class="dreams-diary__empty-text">还没有导入洞察</div>
         <div class="dreams-diary__empty-hint">
-          Run a ChatGPT import with apply to surface clustered imported insights here.
+          先运行一次带应用写回的 ChatGPT 导入，聚类后的导入洞察才会出现在这里。
         </div>
       </div>
     `;
@@ -1191,7 +1191,7 @@ function renderDiaryImportsSection(props: DreamingProps) {
                     toggleExpandedCard(_expandedInsightCards, item.pagePath, props.onRequestUpdate);
                   }}
                 >
-                  ${expanded ? "Hide details" : "Details"}
+                  ${expanded ? "收起详情" : "查看详情"}
                 </button>
                 <button
                   class="btn btn--subtle btn--sm"
@@ -1200,7 +1200,7 @@ function renderDiaryImportsSection(props: DreamingProps) {
                     void openWikiPreview(item.pagePath, props);
                   }}
                 >
-                  Open source page
+                  打开来源页面
                 </button>
               </div>
             </article>
@@ -1218,7 +1218,7 @@ function renderMemoryPalaceSection(props: DreamingProps) {
   if (props.wikiMemoryPalaceLoading && clusters.length === 0) {
     return html`
       <div class="dreams-diary__empty">
-        <div class="dreams-diary__empty-text">Loading memory palace…</div>
+        <div class="dreams-diary__empty-text">正在加载记忆宫殿…</div>
       </div>
     `;
   }
@@ -1226,10 +1226,9 @@ function renderMemoryPalaceSection(props: DreamingProps) {
   if (clusters.length === 0) {
     return html`
       <div class="dreams-diary__empty">
-        <div class="dreams-diary__empty-text">Memory palace is not populated yet</div>
+        <div class="dreams-diary__empty-text">记忆宫殿还没有形成内容</div>
         <div class="dreams-diary__empty-hint">
-          Right now the wiki mostly has raw source imports and operational reports. This tab becomes
-          useful once syntheses, entities, or concepts start getting written.
+          目前 wiki 里大多还是原始来源导入和运行报告。等综合页、实体或概念开始写入后，这个页签才会更有用。
         </div>
       </div>
     `;
@@ -1261,17 +1260,18 @@ function renderMemoryPalaceSection(props: DreamingProps) {
     <article class="dreams-diary__entry" key="palace-${cluster.key}">
       <div class="dreams-diary__accent"></div>
       <div class="dreams-diary__date">
-        ${cluster.label} · ${cluster.itemCount} pages
-        ${cluster.claimCount > 0 ? html`· ${cluster.claimCount} claims` : nothing}
-        ${cluster.questionCount > 0 ? html`· ${cluster.questionCount} questions` : nothing}
+        ${cluster.label} · ${cluster.itemCount} 页
+        ${cluster.claimCount > 0 ? html`· ${cluster.claimCount} 条结论` : nothing}
+        ${cluster.questionCount > 0 ? html`· ${cluster.questionCount} 个问题` : nothing}
         ${cluster.contradictionCount > 0
-          ? html`· ${cluster.contradictionCount} contradictions`
+          ? html`· ${cluster.contradictionCount} 处矛盾`
           : nothing}
       </div>
       <div class="dreams-diary__prose">
         <p class="dreams-diary__para">
-          Compiled wiki pages currently grouped under ${cluster.label.toLowerCase()}.
-          ${cluster.updatedAt ? ` Latest update ${formatCompactDateTime(cluster.updatedAt)}.` : ""}
+          当前汇总到 ${cluster.label.toLowerCase()} 分类下的 Wiki 页面。${cluster.updatedAt
+            ? ` 最近更新于 ${formatCompactDateTime(cluster.updatedAt)}。`
+            : ""}
         </p>
       </div>
       <div class="dreams-diary__insights">
@@ -1300,7 +1300,7 @@ function renderMemoryPalaceSection(props: DreamingProps) {
               ${item.claims.length > 0
                 ? html`
                     <div class="dreams-diary__insight-list">
-                      <strong>Claims</strong>
+                      <strong>结论</strong>
                       ${item.claims.map(
                         (claim) => html`<p class="dreams-diary__insight-line">• ${claim}</p>`,
                       )}
@@ -1310,7 +1310,7 @@ function renderMemoryPalaceSection(props: DreamingProps) {
               ${item.questions.length > 0
                 ? html`
                     <div class="dreams-diary__insight-list">
-                      <strong>Open questions</strong>
+                      <strong>待解问题</strong>
                       ${item.questions.map(
                         (question) => html`<p class="dreams-diary__insight-line">• ${question}</p>`,
                       )}
@@ -1320,7 +1320,7 @@ function renderMemoryPalaceSection(props: DreamingProps) {
               ${item.contradictions.length > 0
                 ? html`
                     <div class="dreams-diary__insight-list">
-                      <strong>Contradictions</strong>
+                      <strong>矛盾点</strong>
                       ${item.contradictions.map(
                         (entry) => html`<p class="dreams-diary__insight-line">• ${entry}</p>`,
                       )}
@@ -1330,14 +1330,14 @@ function renderMemoryPalaceSection(props: DreamingProps) {
               ${expanded
                 ? html`
                     <div class="dreams-diary__insight-list">
-                      <strong>Page details</strong>
+                      <strong>页面详情</strong>
                       <p class="dreams-diary__insight-line">
-                        <strong>Wiki page:</strong> ${item.pagePath}
+                        <strong>Wiki 页面：</strong> ${item.pagePath}
                       </p>
                       ${item.id
                         ? html`
                             <p class="dreams-diary__insight-line">
-                              <strong>Id:</strong> ${item.id}
+                              <strong>Id：</strong> ${item.id}
                             </p>
                           `
                         : nothing}
@@ -1352,7 +1352,7 @@ function renderMemoryPalaceSection(props: DreamingProps) {
                     toggleExpandedCard(_expandedPalaceCards, item.pagePath, props.onRequestUpdate);
                   }}
                 >
-                  ${expanded ? "Hide details" : "Details"}
+                  ${expanded ? "收起详情" : "查看详情"}
                 </button>
                 <button
                   class="btn btn--subtle btn--sm"
@@ -1361,7 +1361,7 @@ function renderMemoryPalaceSection(props: DreamingProps) {
                     void openWikiPreview(item.pagePath, props);
                   }}
                 >
-                  Open wiki page
+                  打开 Wiki 页面
                 </button>
               </div>
             </article>
@@ -1473,7 +1473,7 @@ function renderDiarySection(props: DreamingProps) {
                 props.onRequestUpdate?.();
               }}
             >
-              Dreams
+              梦境
             </button>
             <button
               class="dreams-diary__subtab ${_diarySubTab === "insights"
@@ -1486,7 +1486,7 @@ function renderDiarySection(props: DreamingProps) {
                 props.onRequestUpdate?.();
               }}
             >
-              Imported Insights
+              导入洞察
             </button>
             <button
               class="dreams-diary__subtab ${_diarySubTab === "palace"
@@ -1499,7 +1499,7 @@ function renderDiarySection(props: DreamingProps) {
                 props.onRequestUpdate?.();
               }}
             >
-              Memory Palace
+              记忆宫殿
             </button>
           </div>
           <button
@@ -1526,18 +1526,18 @@ function renderDiarySection(props: DreamingProps) {
             }}
           >
             ${memoryWikiUnavailable
-              ? "How to enable"
+              ? "如何启用"
               : _diarySubTab === "dreams"
                 ? props.dreamDiaryLoading
                   ? t("dreaming.diary.reloading")
                   : t("dreaming.diary.reload")
                 : _diarySubTab === "insights"
                   ? props.wikiImportInsightsLoading
-                    ? "Reloading…"
-                    : "Reload"
+                    ? "重新加载中…"
+                    : "重新加载"
                   : props.wikiMemoryPalaceLoading
-                    ? "Reloading…"
-                    : "Reload"}
+                    ? "重新加载中…"
+                    : "重新加载"}
           </button>
         </div>
         ${renderDiarySubtabExplainer()}
@@ -1546,18 +1546,16 @@ function renderDiarySection(props: DreamingProps) {
       ${memoryWikiUnavailable
         ? html`
             <div class="dreams-diary__empty">
-              <div class="dreams-diary__empty-text">Memory Wiki is not enabled</div>
+              <div class="dreams-diary__empty-text">记忆 Wiki 尚未启用</div>
               <div class="dreams-diary__empty-hint">
-                Imported Insights and Memory Palace are provided by the bundled
-                <code>memory-wiki</code> plugin.
+                导入洞察和记忆宫殿由内置的 <code>memory-wiki</code> 插件提供。
               </div>
               <div class="dreams-diary__empty-hint">
-                Enable <code>plugins.entries.memory-wiki.enabled = true</code>, then reload this
-                tab.
+                启用 <code>plugins.entries.memory-wiki.enabled = true</code> 后，再重新加载这个页签。
               </div>
               <div class="dreams-diary__empty-actions">
                 <button class="btn btn--subtle btn--sm" @click=${() => props.onOpenConfig()}>
-                  Open Config
+                  打开配置
                 </button>
               </div>
             </div>

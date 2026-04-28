@@ -40,6 +40,9 @@ import {
 
 const PROVIDER_ID = "openai-codex";
 const OPENAI_CODEX_BASE_URL = "https://chatgpt.com/backend-api";
+const OPENAI_CODEX_GPT_55_MODEL_ID = "gpt-5.5";
+const OPENAI_CODEX_GPT_55_CODEX_CONTEXT_TOKENS = 1_000_000;
+const OPENAI_CODEX_GPT_55_DEFAULT_RUNTIME_CONTEXT_TOKENS = 272_000;
 const OPENAI_CODEX_GPT_54_MODEL_ID = "gpt-5.4";
 const OPENAI_CODEX_GPT_54_LEGACY_MODEL_ID = "gpt-5.4-codex";
 const OPENAI_CODEX_GPT_54_PRO_MODEL_ID = "gpt-5.4-pro";
@@ -83,6 +86,7 @@ const OPENAI_CODEX_GPT_53_SPARK_CONTEXT_TOKENS = 128_000;
 const OPENAI_CODEX_GPT_53_SPARK_MAX_TOKENS = 128_000;
 const OPENAI_CODEX_TEMPLATE_MODEL_IDS = ["gpt-5.2-codex"] as const;
 const OPENAI_CODEX_XHIGH_MODEL_IDS = [
+  OPENAI_CODEX_GPT_55_MODEL_ID,
   OPENAI_CODEX_GPT_54_MODEL_ID,
   OPENAI_CODEX_GPT_54_PRO_MODEL_ID,
   OPENAI_CODEX_GPT_54_MINI_MODEL_ID,
@@ -92,6 +96,7 @@ const OPENAI_CODEX_XHIGH_MODEL_IDS = [
   "gpt-5.1-codex",
 ] as const;
 const OPENAI_CODEX_MODERN_MODEL_IDS = [
+  OPENAI_CODEX_GPT_55_MODEL_ID,
   OPENAI_CODEX_GPT_54_MODEL_ID,
   OPENAI_CODEX_GPT_54_PRO_MODEL_ID,
   OPENAI_CODEX_GPT_54_MINI_MODEL_ID,
@@ -138,6 +143,22 @@ function normalizeCodexTransport(model: ProviderRuntimeModel): ProviderRuntimeMo
 function resolveCodexForwardCompatModel(ctx: ProviderResolveDynamicModelContext) {
   const trimmedModelId = ctx.modelId.trim();
   const lower = normalizeLowercaseStringOrEmpty(trimmedModelId);
+
+  if (lower === OPENAI_CODEX_GPT_55_MODEL_ID) {
+    return normalizeModelCompat({
+      id: trimmedModelId,
+      name: trimmedModelId,
+      api: "openai-codex-responses",
+      provider: PROVIDER_ID,
+      baseUrl: OPENAI_CODEX_BASE_URL,
+      reasoning: true,
+      input: ["text", "image"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: OPENAI_CODEX_GPT_55_CODEX_CONTEXT_TOKENS,
+      contextTokens: OPENAI_CODEX_GPT_55_DEFAULT_RUNTIME_CONTEXT_TOKENS,
+      maxTokens: OPENAI_CODEX_GPT_54_MAX_TOKENS,
+    } as ProviderRuntimeModel);
+  }
 
   let templateIds: readonly string[];
   let patch: Parameters<typeof cloneFirstTemplateModel>[0]["patch"];
@@ -333,7 +354,11 @@ export function buildOpenAICodexProviderPlugin(): ProviderPlugin {
         return false;
       }
       const id = ctx.modelId.trim().toLowerCase();
-      return id === OPENAI_CODEX_GPT_54_MODEL_ID || id === OPENAI_CODEX_GPT_54_PRO_MODEL_ID;
+      return (
+        id === OPENAI_CODEX_GPT_55_MODEL_ID ||
+        id === OPENAI_CODEX_GPT_54_MODEL_ID ||
+        id === OPENAI_CODEX_GPT_54_PRO_MODEL_ID
+      );
     },
     buildReplayPolicy: buildOpenAIReplayPolicy,
     prepareExtraParams: (ctx) => {

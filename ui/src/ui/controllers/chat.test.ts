@@ -22,6 +22,8 @@ function createState(overrides: Partial<ChatState> = {}): ChatState {
     chatThinkingLevel: null,
     client: null,
     connected: true,
+    dreamingAssistApplied: null,
+    dreamingAssistReason: null,
     lastError: null,
     sessionKey: "main",
     ...overrides,
@@ -268,6 +270,8 @@ describe("handleChatEvent", () => {
       chatRunId: "run-1",
       chatStream: "Reply",
       chatStreamStartedAt: 100,
+      dreamingAssistApplied: false,
+      dreamingAssistReason: "expired",
     });
     const payload: ChatEventPayload = {
       runId: "run-1",
@@ -284,6 +288,8 @@ describe("handleChatEvent", () => {
     expect(state.chatRunId).toBe(null);
     expect(state.chatStream).toBe(null);
     expect(state.chatStreamStartedAt).toBe(null);
+    expect(state.dreamingAssistApplied).toBe(null);
+    expect(state.dreamingAssistReason).toBe(null);
   });
 
   it("processes aborted from own run and keeps partial assistant message", () => {
@@ -315,6 +321,8 @@ describe("handleChatEvent", () => {
     expect(state.chatRunId).toBe(null);
     expect(state.chatStream).toBe(null);
     expect(state.chatStreamStartedAt).toBe(null);
+    expect(state.dreamingAssistApplied).toBe(null);
+    expect(state.dreamingAssistReason).toBe(null);
     expect(state.chatMessages).toEqual([existingMessage, partialMessage]);
   });
 
@@ -374,6 +382,8 @@ describe("handleChatEvent", () => {
     };
 
     expect(handleChatEvent(state, payload)).toBe("aborted");
+    expect(state.dreamingAssistApplied).toBe(null);
+    expect(state.dreamingAssistReason).toBe(null);
     expect(state.chatMessages).toHaveLength(2);
     expect(state.chatMessages[1]).toMatchObject({
       role: "assistant",

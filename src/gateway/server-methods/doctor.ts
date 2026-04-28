@@ -269,8 +269,8 @@ async function readDreamingLastRun(workspaceDir: string): Promise<DreamingLastRu
     failed: toNonNegativeInt(record?.failed),
     narrativeWritten: toNonNegativeInt(record?.narrativeWritten),
     narrativeSkipped: toNonNegativeInt(record?.narrativeSkipped),
-    ...(normalizeTrimmedString(record?.zeroAppliedReason)
-      ? { zeroAppliedReason: normalizeTrimmedString(record?.zeroAppliedReason) }
+    ...(normalizeLegacyDreamingZeroAppliedReason(normalizeTrimmedString(record?.zeroAppliedReason))
+      ? { zeroAppliedReason: normalizeLegacyDreamingZeroAppliedReason(normalizeTrimmedString(record?.zeroAppliedReason)) }
       : {}),
     ...(normalizeDreamingLearningSummary(record?.learningSummary)
       ? { learningSummary: normalizeDreamingLearningSummary(record?.learningSummary) }
@@ -290,18 +290,40 @@ function deriveDreamingZeroAppliedReason(summary: {
     return undefined;
   }
   if (summary.workspaces <= 0) {
-    return "No dreaming workspace was available for this run.";
+    return "本次运行没有可用的记忆整理工作区。";
   }
   if (summary.failed > 0 && summary.candidates <= 0) {
-    return "Dreaming run encountered workspace failures before any candidate could be promoted.";
+    return "本次整理在进入提升前就遇到了工作区失败。";
   }
   if (summary.candidates <= 0) {
-    return "No candidate memories were strong enough to enter the promotion set.";
+    return "没有足够强的候选记忆进入提升集合。";
   }
   if (summary.narrativeSkipped > 0 && summary.narrativeWritten <= 0) {
-    return "Candidates were found, but none met the promotion threshold; diary narrative was skipped because evidence stayed weak.";
+    return "发现了候选记忆，但都没达到提升阈值；由于证据偏弱，这次叙事也被跳过。";
   }
-  return "Candidates were found, but none met the current promotion threshold.";
+  return "发现了候选记忆，但都没达到当前提升阈值。";
+}
+
+function normalizeLegacyDreamingZeroAppliedReason(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (value === "No dreaming workspace was available for this run.") {
+    return "本次运行没有可用的记忆整理工作区。";
+  }
+  if (value === "Dreaming run encountered workspace failures before any candidate could be promoted.") {
+    return "本次整理在进入提升前就遇到了工作区失败。";
+  }
+  if (value === "No candidate memories were strong enough to enter the promotion set.") {
+    return "没有足够强的候选记忆进入提升集合。";
+  }
+  if (value === "Candidates were found, but none met the promotion threshold; diary narrative was skipped because evidence stayed weak.") {
+    return "发现了候选记忆，但都没达到提升阈值；由于证据偏弱，这次叙事也被跳过。";
+  }
+  if (value === "Candidates were found, but none met the current promotion threshold.") {
+    return "发现了候选记忆，但都没达到当前提升阈值。";
+  }
+  return value;
 }
 
 function normalizeDreamingSourceDetail(value: string | undefined, maxLen = 140): string | undefined {

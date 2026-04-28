@@ -227,6 +227,8 @@ export async function loadChatHistory(state: ChatState) {
     maybeResetToolStream(state);
     state.chatStream = null;
     state.chatStreamStartedAt = null;
+    state.dreamingAssistApplied = null;
+    state.dreamingAssistReason = null;
   } catch (err) {
     if (!shouldApplyChatHistoryResult(state, requestVersion, sessionKey)) {
       return;
@@ -496,6 +498,8 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
+    state.dreamingAssistApplied = null;
+    state.dreamingAssistReason = null;
   } else if (payload.state === "aborted") {
     const normalizedMessage = normalizeAbortedAssistantMessage(payload.message);
     if (normalizedMessage && !isAssistantSilentReply(normalizedMessage)) {
@@ -516,10 +520,14 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
+    state.dreamingAssistApplied = null;
+    state.dreamingAssistReason = null;
   } else if (payload.state === "error") {
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
+    state.dreamingAssistApplied = null;
+    state.dreamingAssistReason = null;
     state.lastError = payload.errorMessage ?? "chat error";
   }
   return payload.state;
