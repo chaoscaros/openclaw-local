@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHookRunner } from "./hooks.js";
 import { addStaticTestHooks } from "./hooks.test-helpers.js";
 import { createEmptyPluginRegistry, type PluginRegistry } from "./registry.js";
@@ -45,6 +45,46 @@ describe("phase hooks merger", () => {
     const result = await runPhaseHook(params);
     expect(result).toEqual(expect.objectContaining(params.expected));
   }
+
+  it("before_prompt_build skips timed-out handlers and keeps later contributions", async () => {
+    vi.useFakeTimers();
+    try {
+      const warn = vi.fn();
+      const error = vi.fn();
+      addStaticTestHooks(registry, {
+        hookName: "before_prompt_build",
+        hooks: [
+          {
+            pluginId: "slow",
+            result: { prependContext: "slow" },
+            priority: 10,
+            handler: () => new Promise<PluginHookBeforePromptBuildResult>(() => {}),
+          },
+          {
+            pluginId: "fast",
+            result: { prependContext: "fast", systemPrompt: "system fast" },
+            priority: 1,
+          },
+        ],
+      });
+      const runner = createHookRunner(registry, {
+        logger: { warn, error },
+        modifyingHookTimeoutMsByHook: { before_prompt_build: 5 },
+      });
+
+      const runPromise = runner.runBeforePromptBuild({ prompt: "test", messages: [] }, {});
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(runPromise).resolves.toEqual(
+        expect.objectContaining({ prependContext: "fast", systemPrompt: "system fast" }),
+      );
+      expect(error).toHaveBeenCalledWith(
+        expect.stringContaining("[hooks] before_prompt_build handler from slow failed: Error: timed out after 5ms"),
+      );
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it.each([
     {
