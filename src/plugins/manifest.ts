@@ -200,6 +200,7 @@ export type PluginManifestContracts = {
   musicGenerationProviders?: string[];
   webFetchProviders?: string[];
   webSearchProviders?: string[];
+  migrationProviders?: string[];
   tools?: string[];
 };
 
@@ -293,6 +294,7 @@ function normalizeManifestContracts(value: unknown): PluginManifestContracts | u
   const musicGenerationProviders = normalizeTrimmedStringList(value.musicGenerationProviders);
   const webFetchProviders = normalizeTrimmedStringList(value.webFetchProviders);
   const webSearchProviders = normalizeTrimmedStringList(value.webSearchProviders);
+  const migrationProviders = normalizeTrimmedStringList(value.migrationProviders);
   const tools = normalizeTrimmedStringList(value.tools);
   const contracts = {
     ...(memoryEmbeddingProviders.length > 0 ? { memoryEmbeddingProviders } : {}),
@@ -305,6 +307,7 @@ function normalizeManifestContracts(value: unknown): PluginManifestContracts | u
     ...(musicGenerationProviders.length > 0 ? { musicGenerationProviders } : {}),
     ...(webFetchProviders.length > 0 ? { webFetchProviders } : {}),
     ...(webSearchProviders.length > 0 ? { webSearchProviders } : {}),
+    ...(migrationProviders.length > 0 ? { migrationProviders } : {}),
     ...(tools.length > 0 ? { tools } : {}),
   } satisfies PluginManifestContracts;
 

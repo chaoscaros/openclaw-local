@@ -42,7 +42,7 @@ import type { PluginKind } from "./plugin-kind.types.js";
 import type { PluginOrigin } from "./plugin-origin.types.js";
 import { resolvePluginCacheInputs } from "./roots.js";
 
-type PluginManifestContractListKey =
+export type PluginManifestContractListKey =
   | "speechProviders"
   | "mediaUnderstandingProviders"
   | "realtimeVoiceProviders"
@@ -52,6 +52,7 @@ type PluginManifestContractListKey =
   | "musicGenerationProviders"
   | "memoryEmbeddingProviders"
   | "webFetchProviders"
+  | "migrationProviders"
   | "webSearchProviders";
 
 type SeenIdEntry = {

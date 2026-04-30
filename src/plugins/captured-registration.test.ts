@@ -46,11 +46,44 @@ describe("captured plugin registration", () => {
           description: "Captured command",
           handler: async () => ({ text: "ok" }),
         });
+        api.registerMigrationProvider({
+          id: "captured-migration",
+          label: "Captured Migration",
+          plan: async () => ({
+            providerId: "captured-migration",
+            source: "captured",
+            summary: {
+              total: 0,
+              planned: 0,
+              migrated: 0,
+              skipped: 0,
+              conflicts: 0,
+              errors: 0,
+              sensitive: 0,
+            },
+            items: [],
+          }),
+          apply: async (_ctx, plan) => ({
+            providerId: plan?.providerId ?? "captured-migration",
+            source: plan?.source ?? "captured",
+            summary: plan?.summary ?? {
+              total: 0,
+              planned: 0,
+              migrated: 0,
+              skipped: 0,
+              conflicts: 0,
+              errors: 0,
+              sensitive: 0,
+            },
+            items: plan?.items ?? [],
+          }),
+        });
       },
     });
 
     expect(captured.tools.map((tool) => tool.name)).toEqual(["captured-tool"]);
     expect(captured.providers.map((provider) => provider.id)).toEqual(["captured-provider"]);
+    expect(captured.migrationProviders.map((provider) => provider.id)).toEqual(["captured-migration"]);
     expect(captured.textTransforms).toHaveLength(1);
     expect(captured.textTransforms[0]?.input).toHaveLength(1);
     expect(captured.api.registerMemoryEmbeddingProvider).toBeTypeOf("function");
