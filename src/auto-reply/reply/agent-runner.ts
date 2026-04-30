@@ -922,6 +922,15 @@ export async function runReplyAgent(params: {
   const activeSessionStore = sessionStore;
   let activeIsNewSession = isNewSession;
 
+  let didNotifyAgentRunStart = false;
+  const notifyAgentRunStart = (runId: string) => {
+    if (didNotifyAgentRunStart) {
+      return;
+    }
+    didNotifyAgentRunStart = true;
+    opts?.onAgentRunStart?.(runId);
+  };
+
   const isHeartbeat = opts?.isHeartbeat === true;
   const typingSignals = createTypingSignaler({
     typing,
@@ -1076,6 +1085,10 @@ export async function runReplyAgent(params: {
   let preflightCompactionApplied = false;
 
   try {
+    const earlyRunId = opts?.runId;
+    if (earlyRunId && !isHeartbeat) {
+      notifyAgentRunStart(earlyRunId);
+    }
     await typingSignals.signalRunStart();
 
     activeSessionEntry = await runPreflightCompactionIfNeeded({
@@ -1176,7 +1189,13 @@ export async function runReplyAgent(params: {
       followupRun,
       sessionCtx,
       replyOperation,
-      opts,
+      opts:
+        opts && opts.onAgentRunStart
+          ? {
+              ...opts,
+              onAgentRunStart: (runId) => notifyAgentRunStart(runId),
+            }
+          : opts,
       typingSignals,
       blockReplyPipeline,
       blockStreamingEnabled,

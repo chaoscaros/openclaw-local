@@ -232,6 +232,61 @@ describe("runReplyAgent auto-compaction token update", () => {
     return { typing, sessionCtx, resolvedQueue, followupRun };
   }
 
+  it("notifies onAgentRunStart early for embedded runs before first streamed activity", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-agent-run-start-"));
+    const storePath = path.join(tmp, "sessions.json");
+    const sessionKey = "main";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      totalTokens: 0,
+    };
+
+    await seedSessionStore({ storePath, sessionKey, entry: sessionEntry });
+
+    runEmbeddedPiAgentMock.mockResolvedValue({
+      payloads: [{ text: "ok" }],
+      meta: { agentMeta: {} },
+    });
+
+    const onAgentRunStart = vi.fn();
+    const { typing, sessionCtx, resolvedQueue, followupRun } = createBaseRun({
+      storePath,
+      sessionEntry,
+    });
+
+    await runReplyAgent({
+      commandBody: "hello",
+      followupRun,
+      queueKey: sessionKey,
+      resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      opts: {
+        runId: "run-hello",
+        onAgentRunStart,
+      },
+      typing,
+      sessionEntry: sessionEntry as SessionEntry,
+      sessionStore: await loadSessionStore(storePath),
+      sessionKey,
+      storePath,
+      defaultModel: "claude",
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      sessionCtx,
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    expect(onAgentRunStart).toHaveBeenCalledTimes(1);
+    expect(onAgentRunStart).toHaveBeenCalledWith("run-hello");
+  });
+
   it("updates totalTokens from lastCallUsage even without compaction", async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-usage-last-"));
     const storePath = path.join(tmp, "sessions.json");
