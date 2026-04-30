@@ -1,3 +1,4 @@
+import { formatCliCommand } from "../cli/command-format.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolvePluginMigrationProviders } from "../plugins/migration-provider-runtime.js";
 import type { MigrationProviderPlugin } from "../plugins/types.js";
@@ -17,6 +18,21 @@ function formatMigrationProviderCapabilities(provider: MigrationProviderPlugin):
   ].join(" ");
 }
 
+function collectMigrationProviderHints(provider: MigrationProviderPlugin): string[] {
+  const hints: string[] = [];
+  if (provider.detect) {
+    hints.push("  ready: yes");
+  } else {
+    hints.push("  ready: partial");
+    hints.push("  hint: detect unavailable; run migrate with an explicit source path.");
+  }
+  if (!provider.description) {
+    hints.push("  hint: provider has no description.");
+  }
+  hints.push(`  next: ${formatCliCommand(`openclaw migrate ${provider.id} --plan`)}`);
+  return hints;
+}
+
 export function collectMigrationProviderHealthLines(params: {
   cfg?: OpenClawConfig;
 } = {}): string[] {
@@ -28,6 +44,7 @@ export function collectMigrationProviderHealthLines(params: {
     formatMigrationProviderLabel(provider),
     `  supports: ${formatMigrationProviderCapabilities(provider)}`,
     ...(provider.description ? [`  description: ${provider.description}`] : []),
+    ...collectMigrationProviderHints(provider),
   ]);
 }
 

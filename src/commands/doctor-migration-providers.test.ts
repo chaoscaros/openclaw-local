@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   resolvePluginMigrationProviders: vi.fn(() => []),
   note: vi.fn(),
+  formatCliCommand: vi.fn((command: string) => command),
 }));
 
 vi.mock("../plugins/migration-provider-runtime.js", () => ({
@@ -11,6 +12,10 @@ vi.mock("../plugins/migration-provider-runtime.js", () => ({
 
 vi.mock("../terminal/note.js", () => ({
   note: mocks.note,
+}));
+
+vi.mock("../cli/command-format.js", () => ({
+  formatCliCommand: mocks.formatCliCommand,
 }));
 
 let collectMigrationProviderHealthLines: typeof import("./doctor-migration-providers.js").collectMigrationProviderHealthLines;
@@ -32,7 +37,7 @@ describe("doctor migration providers", () => {
     expect(collectMigrationProviderHealthLines()).toEqual(["No migration providers available."]);
   });
 
-  it("formats migration provider labels capabilities and description", () => {
+  it("formats migration provider labels capabilities description and next step", () => {
     mocks.resolvePluginMigrationProviders.mockReturnValue([
       {
         id: "anthropic-import",
@@ -42,6 +47,19 @@ describe("doctor migration providers", () => {
         plan: vi.fn(),
         apply: vi.fn(),
       },
+    ]);
+
+    expect(collectMigrationProviderHealthLines()).toEqual([
+      "- anthropic-import (Anthropic Import)",
+      "  supports: detect=yes plan=yes apply=yes",
+      "  description: Imports Anthropic settings",
+      "  ready: yes",
+      "  next: openclaw migrate anthropic-import --plan",
+    ]);
+  });
+
+  it("adds partial readiness and hint lines when detect or description is missing", () => {
+    mocks.resolvePluginMigrationProviders.mockReturnValue([
       {
         id: "plain-import",
         label: "plain-import",
@@ -51,11 +69,12 @@ describe("doctor migration providers", () => {
     ]);
 
     expect(collectMigrationProviderHealthLines()).toEqual([
-      "- anthropic-import (Anthropic Import)",
-      "  supports: detect=yes plan=yes apply=yes",
-      "  description: Imports Anthropic settings",
       "- plain-import",
       "  supports: detect=no plan=yes apply=yes",
+      "  ready: partial",
+      "  hint: detect unavailable; run migrate with an explicit source path.",
+      "  hint: provider has no description.",
+      "  next: openclaw migrate plain-import --plan",
     ]);
   });
 
@@ -72,7 +91,14 @@ describe("doctor migration providers", () => {
     await noteMigrationProviderHealth();
 
     expect(mocks.note).toHaveBeenCalledWith(
-      "- demo (Demo)\n  supports: detect=no plan=yes apply=yes",
+      [
+        "- demo (Demo)",
+        "  supports: detect=no plan=yes apply=yes",
+        "  ready: partial",
+        "  hint: detect unavailable; run migrate with an explicit source path.",
+        "  hint: provider has no description.",
+        "  next: openclaw migrate demo --plan",
+      ].join("\n"),
       "Migration providers",
     );
   });
