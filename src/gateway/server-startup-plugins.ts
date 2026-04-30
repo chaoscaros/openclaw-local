@@ -56,30 +56,33 @@ export async function prepareGatewayPluginBootstrap(params: {
         config: params.cfgAtStart,
         env: process.env,
       }).config;
+  const pluginsGloballyDisabled = gatewayPluginConfigAtStart.plugins?.enabled === false;
   const defaultAgentId = resolveDefaultAgentId(gatewayPluginConfigAtStart);
   const defaultWorkspaceDir = resolveAgentWorkspaceDir(gatewayPluginConfigAtStart, defaultAgentId);
-  const deferredConfiguredChannelPluginIds = params.minimalTestGateway
-    ? []
-    : resolveConfiguredDeferredChannelPluginIds({
-        config: gatewayPluginConfigAtStart,
-        workspaceDir: defaultWorkspaceDir,
-        env: process.env,
-      });
-  const startupPluginIds = params.minimalTestGateway
-    ? []
-    : resolveGatewayStartupPluginIds({
-        config: gatewayPluginConfigAtStart,
-        activationSourceConfig: params.cfgAtStart,
-        workspaceDir: defaultWorkspaceDir,
-        env: process.env,
-      });
+  const deferredConfiguredChannelPluginIds =
+    params.minimalTestGateway || pluginsGloballyDisabled
+      ? []
+      : resolveConfiguredDeferredChannelPluginIds({
+          config: gatewayPluginConfigAtStart,
+          workspaceDir: defaultWorkspaceDir,
+          env: process.env,
+        });
+  const startupPluginIds =
+    params.minimalTestGateway || pluginsGloballyDisabled
+      ? []
+      : resolveGatewayStartupPluginIds({
+          config: gatewayPluginConfigAtStart,
+          activationSourceConfig: params.cfgAtStart,
+          workspaceDir: defaultWorkspaceDir,
+          env: process.env,
+        });
 
   const baseMethods = listGatewayMethods();
   const emptyPluginRegistry = createEmptyPluginRegistry();
   let pluginRegistry = emptyPluginRegistry;
   let baseGatewayMethods = baseMethods;
 
-  if (!params.minimalTestGateway) {
+  if (!params.minimalTestGateway && !pluginsGloballyDisabled) {
     ({ pluginRegistry, gatewayMethods: baseGatewayMethods } = loadGatewayStartupPlugins({
       cfg: gatewayPluginConfigAtStart,
       activationSourceConfig: params.cfgAtStart,
