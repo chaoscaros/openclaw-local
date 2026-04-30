@@ -35,6 +35,7 @@ import {
   noteMacLaunchAgentOverrides,
   noteMacLaunchctlGatewayEnvOverrides,
 } from "../commands/doctor-platform-notes.js";
+import { noteMigrationProviderHealth } from "../commands/doctor-migration-providers.js";
 import { maybeRepairLegacyPluginManifestContracts } from "../commands/doctor-plugin-manifests.js";
 import type { DoctorOptions, DoctorPrompter } from "../commands/doctor-prompter.js";
 import { maybeRepairSandboxImages, noteSandboxScopeWarnings } from "../commands/doctor-sandbox.js";
@@ -251,6 +252,10 @@ async function runLegacyPluginManifestHealth(ctx: DoctorHealthFlowContext): Prom
     runtime: ctx.runtime,
     prompter: ctx.prompter,
   });
+}
+
+async function runMigrationProvidersHealth(ctx: DoctorHealthFlowContext): Promise<void> {
+  await noteMigrationProviderHealth({ cfg: ctx.cfg });
 }
 
 async function runBundledPluginRuntimeDepsHealth(ctx: DoctorHealthFlowContext): Promise<void> {
@@ -521,6 +526,11 @@ export function resolveDoctorHealthContributions(): DoctorHealthContribution[] {
       id: "doctor:legacy-plugin-manifests",
       label: "Legacy plugin manifests",
       run: runLegacyPluginManifestHealth,
+    }),
+    createDoctorHealthContribution({
+      id: "doctor:migration-providers",
+      label: "Migration providers",
+      run: runMigrationProvidersHealth,
     }),
     createDoctorHealthContribution({
       id: "doctor:bundled-plugin-runtime-deps",
