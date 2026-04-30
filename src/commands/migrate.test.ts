@@ -48,6 +48,7 @@ describe("migrateCommand", () => {
   it("returns early when detect reports not found in plan mode", async () => {
     const runtime = createNonExitingRuntime();
     const plan = vi.fn();
+    const logSpy = vi.spyOn(runtime, "log").mockImplementation(() => {});
     mocks.resolvePluginMigrationProvider.mockReturnValue({
       id: "demo",
       label: "Demo",
@@ -58,6 +59,24 @@ describe("migrateCommand", () => {
 
     await migrateCommand(runtime, { providerId: "demo" });
     expect(plan).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith("Detection: not found");
+  });
+
+  it("fails when detect reports not found in apply mode", async () => {
+    const runtime = createNonExitingRuntime();
+    const errorSpy = vi.spyOn(runtime, "error").mockImplementation(() => {});
+    const plan = vi.fn();
+    mocks.resolvePluginMigrationProvider.mockReturnValue({
+      id: "demo",
+      label: "Demo",
+      detect: vi.fn(async () => ({ found: false, message: "no source" })),
+      plan,
+      apply: vi.fn(),
+    });
+
+    await expect(migrateCommand(runtime, { providerId: "demo", apply: true })).rejects.toThrow("exit 1");
+    expect(plan).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith("Migration source not found for provider: demo");
   });
 
   it("runs plan only by default", async () => {
@@ -143,7 +162,30 @@ describe("migrateCommand", () => {
     expect(errorSpy).toHaveBeenCalledWith("Cannot use --plan and --apply together.");
   });
 
-  it("writes structured json payload for plan mode", async () => {
+  it("writes one structured json payload for detect-not-found plan mode", async () => {
+    const runtime = createNonExitingRuntime();
+    mocks.resolvePluginMigrationProvider.mockReturnValue({
+      id: "demo",
+      label: "Demo",
+      detect: vi.fn(async () => ({ found: false, confidence: "low" as const, message: "no source" })),
+      plan: vi.fn(),
+      apply: vi.fn(),
+    });
+
+    await migrateCommand(runtime, { providerId: "demo", source: "source-dir", json: true });
+
+    expect(mocks.writeRuntimeJson).toHaveBeenCalledTimes(1);
+    expect(mocks.writeRuntimeJson).toHaveBeenCalledWith(
+      runtime,
+      expect.objectContaining({
+        provider: { id: "demo", label: "Demo" },
+        mode: "plan",
+        detection: expect.objectContaining({ found: false, confidence: "low" }),
+      }),
+    );
+  });
+
+  it("writes one structured json payload for plan mode", async () => {
     const runtime = createNonExitingRuntime();
     const planResult = {
       providerId: "demo",
@@ -169,6 +211,7 @@ describe("migrateCommand", () => {
 
     await migrateCommand(runtime, { providerId: "demo", source: "source-dir", json: true });
 
+    expect(mocks.writeRuntimeJson).toHaveBeenCalledTimes(1);
     expect(mocks.writeRuntimeJson).toHaveBeenLastCalledWith(
       runtime,
       expect.objectContaining({
@@ -180,7 +223,7 @@ describe("migrateCommand", () => {
     );
   });
 
-  it("writes structured json payload for apply mode", async () => {
+  it("writes one structured json payload for apply mode", async () => {
     const runtime = createNonExitingRuntime();
     const planResult = {
       providerId: "demo",
@@ -211,6 +254,7 @@ describe("migrateCommand", () => {
 
     await migrateCommand(runtime, { providerId: "demo", source: "source-dir", apply: true, json: true });
 
+    expect(mocks.writeRuntimeJson).toHaveBeenCalledTimes(1);
     expect(mocks.writeRuntimeJson).toHaveBeenLastCalledWith(
       runtime,
       expect.objectContaining({

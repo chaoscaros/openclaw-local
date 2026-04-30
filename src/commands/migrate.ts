@@ -156,23 +156,25 @@ export async function migrateCommand(runtime: RuntimeEnv, opts: MigrateCommandOp
     reportDir: opts.reportDir,
   };
 
+  const providerPayload = { id: provider.id, label: provider.label };
   const detection = provider.detect ? await provider.detect(context) : undefined;
-  if (opts.json) {
-    writeRuntimeJson(
-      runtime,
-      buildJsonPayload({
-        provider: { id: provider.id, label: provider.label },
-        mode,
-        detection,
-      }),
-    );
-  } else {
+  if (!opts.json) {
     runtime.log(`Provider: ${provider.id}${provider.label ? ` (${provider.label})` : ""}`);
     runtime.log(`Mode: ${mode}`);
     logDetection(runtime, detection);
   }
 
   if (detection && !detection.found) {
+    if (opts.json) {
+      writeRuntimeJson(
+        runtime,
+        buildJsonPayload({
+          provider: providerPayload,
+          mode,
+          detection,
+        }),
+      );
+    }
     if (mode === "apply") {
       runtime.error(`Migration source not found for provider: ${provider.id}`);
       runtime.exit(1);
@@ -182,21 +184,20 @@ export async function migrateCommand(runtime: RuntimeEnv, opts: MigrateCommandOp
   }
 
   const plan = await provider.plan(context);
-  if (opts.json) {
-    writeRuntimeJson(
-      runtime,
-      buildJsonPayload({
-        provider: { id: provider.id, label: provider.label },
-        mode,
-        detection,
-        plan,
-      }),
-    );
-  } else {
-    logPlan(runtime, plan);
-  }
-
   if (mode !== "apply") {
+    if (opts.json) {
+      writeRuntimeJson(
+        runtime,
+        buildJsonPayload({
+          provider: providerPayload,
+          mode,
+          detection,
+          plan,
+        }),
+      );
+      return;
+    }
+    logPlan(runtime, plan);
     return;
   }
 
@@ -205,7 +206,7 @@ export async function migrateCommand(runtime: RuntimeEnv, opts: MigrateCommandOp
     writeRuntimeJson(
       runtime,
       buildJsonPayload({
-        provider: { id: provider.id, label: provider.label },
+        provider: providerPayload,
         mode,
         detection,
         plan,
@@ -214,5 +215,6 @@ export async function migrateCommand(runtime: RuntimeEnv, opts: MigrateCommandOp
     );
     return;
   }
+  logPlan(runtime, plan);
   logApplyResult(runtime, result);
 }
