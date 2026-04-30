@@ -4,6 +4,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ProviderDiscoveryOrder, ProviderPlugin } from "./types.js";
 
 const DISCOVERY_ORDER: readonly ProviderDiscoveryOrder[] = ["simple", "profile", "paired", "late"];
+const DANGEROUS_PROVIDER_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 let providerRuntimePromise: Promise<typeof import("./provider-discovery.runtime.js")> | undefined;
 
 function loadProviderRuntime() {
@@ -15,15 +16,51 @@ function resolveProviderCatalogHook(provider: ProviderPlugin) {
   return provider.catalog ?? provider.discovery;
 }
 
-export async function resolvePluginDiscoveryProviders(params: {
+function resolveProviderCatalogOrderHook(provider: ProviderPlugin): {
+  order?: ProviderDiscoveryOrder;
+  run?: unknown;
+} | null | undefined {
+  return (
+    resolveProviderCatalogHook(provider) ??
+    (provider as ProviderPlugin & {
+      staticCatalog?: {
+        order?: ProviderDiscoveryOrder;
+        run?: unknown;
+      };
+    }).staticCatalog
+  );
+}
+
+function createProviderConfigRecord(): Record<string, ModelProviderConfig> {
+  return Object.create(null) as Record<string, ModelProviderConfig>;
+}
+
+function isSafeProviderConfigKey(value: string): boolean {
+  return value !== "" && !DANGEROUS_PROVIDER_KEYS.has(value);
+}
+
+export type ResolveRuntimePluginDiscoveryProvidersParams = {
   config?: OpenClawConfig;
   workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
   onlyPluginIds?: string[];
-}): Promise<ProviderPlugin[]> {
+  includeUntrustedWorkspacePlugins?: boolean;
+  requireCompleteDiscoveryEntryCoverage?: boolean;
+  discoveryEntriesOnly?: boolean;
+};
+
+export async function resolveRuntimePluginDiscoveryProviders(
+  params: ResolveRuntimePluginDiscoveryProvidersParams,
+): Promise<ProviderPlugin[]> {
   return (await loadProviderRuntime())
     .resolvePluginDiscoveryProvidersRuntime(params)
-    .filter((provider) => resolveProviderCatalogHook(provider));
+    .filter((provider) => resolveProviderCatalogOrderHook(provider));
+}
+
+export async function resolvePluginDiscoveryProviders(
+  params: ResolveRuntimePluginDiscoveryProvidersParams,
+): Promise<ProviderPlugin[]> {
+  return resolveRuntimePluginDiscoveryProviders(params);
 }
 
 export function groupPluginDiscoveryProvidersByOrder(
@@ -37,7 +74,7 @@ export function groupPluginDiscoveryProvidersByOrder(
   } as Record<ProviderDiscoveryOrder, ProviderPlugin[]>;
 
   for (const provider of providers) {
-    const order = resolveProviderCatalogHook(provider)?.order ?? "late";
+    const order = (resolveProviderCatalogOrderHook(provider)?.order ?? "late") as ProviderDiscoveryOrder;
     grouped[order].push(provider);
   }
 
@@ -62,14 +99,14 @@ export function normalizePluginDiscoveryResult(params: {
   }
 
   if ("provider" in result) {
-    const normalized: Record<string, ModelProviderConfig> = {};
+    const normalized = createProviderConfigRecord();
     for (const providerId of [
       params.provider.id,
       ...(params.provider.aliases ?? []),
       ...(params.provider.hookAliases ?? []),
     ]) {
       const normalizedKey = normalizeProviderId(providerId);
-      if (!normalizedKey) {
+      if (!isSafeProviderConfigKey(normalizedKey)) {
         continue;
       }
       normalized[normalizedKey] = result.provider;
@@ -77,10 +114,10 @@ export function normalizePluginDiscoveryResult(params: {
     return normalized;
   }
 
-  const normalized: Record<string, ModelProviderConfig> = {};
+  const normalized = createProviderConfigRecord();
   for (const [key, value] of Object.entries(result.providers)) {
     const normalizedKey = normalizeProviderId(key);
-    if (!normalizedKey || !value) {
+    if (!isSafeProviderConfigKey(normalizedKey) || !value) {
       continue;
     }
     normalized[normalizedKey] = value;
@@ -116,5 +153,39 @@ export function runProviderCatalog(params: {
     env: params.env,
     resolveProviderApiKey: params.resolveProviderApiKey,
     resolveProviderAuth: params.resolveProviderAuth,
+  });
+}
+
+export function runProviderStaticCatalog(params: {
+  provider: ProviderPlugin;
+  config: OpenClawConfig;
+  agentDir?: string;
+  workspaceDir?: string;
+  env: NodeJS.ProcessEnv;
+}) {
+  return (params.provider as ProviderPlugin & {
+    staticCatalog?: {
+      run?: (ctx: {
+        config: Record<string, never>;
+        env: Record<string, never>;
+        resolveProviderApiKey: () => { apiKey: undefined };
+        resolveProviderAuth: () => {
+          apiKey: undefined;
+          mode: "none";
+          source: "none";
+        };
+      }) => unknown;
+    };
+  }).staticCatalog?.run?.({
+    config: {},
+    env: {},
+    resolveProviderApiKey: () => ({
+      apiKey: undefined,
+    }),
+    resolveProviderAuth: () => ({
+      apiKey: undefined,
+      mode: "none",
+      source: "none",
+    }),
   });
 }

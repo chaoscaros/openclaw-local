@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ModelProviderConfig } from "../config/types.js";
 import {
   groupPluginDiscoveryProvidersByOrder,
   normalizePluginDiscoveryResult,
   runProviderCatalog,
+  runProviderStaticCatalog,
 } from "./provider-discovery.js";
 import type { ProviderCatalogResult, ProviderDiscoveryOrder, ProviderPlugin } from "./types.js";
 
@@ -196,6 +197,7 @@ describe("normalizePluginDiscoveryResult", () => {
         providers: {
           " VLLM ": makeModelProviderConfig(),
           "": makeModelProviderConfig({ baseUrl: "http://ignored" }),
+          __proto__: makeModelProviderConfig({ baseUrl: "http://poisoned" }),
         },
       },
       expected: {
@@ -229,6 +231,34 @@ describe("runProviderCatalog", () => {
           baseUrl: "http://catalog.example/v1",
           models: [],
         },
+      },
+    });
+  });
+});
+
+describe("runProviderStaticCatalog", () => {
+  it("runs static catalogs with discovery-safe empty auth context", async () => {
+    const run = vi.fn(async (ctx) => ({
+      provider: makeModelProviderConfig({
+        baseUrl: ctx.resolveProviderApiKey().apiKey ? "http://bad" : "http://static.example/v1",
+      }),
+    }));
+
+    await expect(
+      runProviderStaticCatalog({
+        provider: {
+          id: "demo",
+          label: "Demo",
+          auth: [],
+          staticCatalog: { run },
+        },
+        config: {},
+        env: process.env,
+      }),
+    ).resolves.toEqual({
+      provider: {
+        baseUrl: "http://static.example/v1",
+        models: [],
       },
     });
   });

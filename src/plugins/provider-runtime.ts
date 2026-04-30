@@ -8,12 +8,17 @@ import type { ProviderSystemPromptContribution } from "../agents/system-prompt-c
 import type { ModelProviderConfig } from "../config/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { normalizeOptionalString } from "../shared/string-coerce.js";
-import { normalizePluginIdScope, serializePluginIdScope } from "./plugin-scope.js";
+import { resolvePluginDiscoveryProvidersRuntime } from "./provider-discovery.runtime.js";
+import {
+  __testing as providerHookRuntimeTesting,
+  clearProviderRuntimeHookCache,
+  resolveProviderHookPlugin,
+  resolveProviderPluginsForHooks,
+  resolveProviderRuntimePlugin,
+} from "./provider-hook-runtime.js";
 import { resolveBundledProviderPolicySurface } from "./provider-public-artifacts.js";
 import type { ProviderRuntimeModel } from "./provider-runtime-model.types.js";
 import { resolveCatalogHookProviderPluginIds } from "./providers.js";
-import { isPluginProvidersLoadInFlight, resolvePluginProviders } from "./providers.runtime.js";
-import { resolvePluginCacheInputs } from "./roots.js";
 import { getActivePluginRegistryWorkspaceDirFromState } from "./runtime-state.js";
 import { resolveRuntimeTextTransforms } from "./text-transforms.runtime.js";
 import type {
@@ -78,124 +83,26 @@ function matchesProviderId(provider: ProviderPlugin, providerId: string): boolea
   );
 }
 
-let cachedHookProvidersWithoutConfig = new WeakMap<
-  NodeJS.ProcessEnv,
-  Map<string, ProviderPlugin[]>
->();
-let cachedHookProvidersByConfig = new WeakMap<
-  OpenClawConfig,
-  WeakMap<NodeJS.ProcessEnv, Map<string, ProviderPlugin[]>>
->();
-
-function resolveHookProviderCacheBucket(params: {
-  config?: OpenClawConfig;
-  env: NodeJS.ProcessEnv;
-}) {
-  if (!params.config) {
-    let bucket = cachedHookProvidersWithoutConfig.get(params.env);
-    if (!bucket) {
-      bucket = new Map<string, ProviderPlugin[]>();
-      cachedHookProvidersWithoutConfig.set(params.env, bucket);
-    }
-    return bucket;
+function resolveProviderHookRefs(provider: string, providerConfig?: ModelProviderConfig): string[] {
+  const refs = [provider];
+  const apiRef = normalizeOptionalString(providerConfig?.api);
+  if (apiRef && normalizeProviderId(apiRef) !== normalizeProviderId(provider)) {
+    refs.push(apiRef);
   }
-
-  let envBuckets = cachedHookProvidersByConfig.get(params.config);
-  if (!envBuckets) {
-    envBuckets = new WeakMap<NodeJS.ProcessEnv, Map<string, ProviderPlugin[]>>();
-    cachedHookProvidersByConfig.set(params.config, envBuckets);
-  }
-  let bucket = envBuckets.get(params.env);
-  if (!bucket) {
-    bucket = new Map<string, ProviderPlugin[]>();
-    envBuckets.set(params.env, bucket);
-  }
-  return bucket;
+  return [...new Set(refs)];
 }
 
-function buildHookProviderCacheKey(params: {
-  config?: OpenClawConfig;
-  workspaceDir?: string;
-  onlyPluginIds?: string[];
-  providerRefs?: string[];
-  env?: NodeJS.ProcessEnv;
-}) {
-  const { roots } = resolvePluginCacheInputs({
-    workspaceDir: params.workspaceDir,
-    env: params.env,
-  });
-  const onlyPluginIds = normalizePluginIdScope(params.onlyPluginIds);
-  return `${roots.workspace ?? ""}::${roots.global}::${roots.stock ?? ""}::${JSON.stringify(params.config ?? null)}::${serializePluginIdScope(onlyPluginIds)}::${JSON.stringify(params.providerRefs ?? [])}`;
+function matchesAnyProviderPluginRef(provider: ProviderPlugin, providerRefs: readonly string[]) {
+  return providerRefs.some((providerRef) => matchesProviderId(provider, providerRef));
 }
 
-export function clearProviderRuntimeHookCache(): void {
-  cachedHookProvidersWithoutConfig = new WeakMap<
-    NodeJS.ProcessEnv,
-    Map<string, ProviderPlugin[]>
-  >();
-  cachedHookProvidersByConfig = new WeakMap<
-    OpenClawConfig,
-    WeakMap<NodeJS.ProcessEnv, Map<string, ProviderPlugin[]>>
-  >();
-}
+export { clearProviderRuntimeHookCache, resolveProviderRuntimePlugin };
 
 export function resetProviderRuntimeHookCacheForTest(): void {
   clearProviderRuntimeHookCache();
 }
 
-export const __testing = {
-  buildHookProviderCacheKey,
-} as const;
-
-function resolveProviderPluginsForHooks(params: {
-  config?: OpenClawConfig;
-  workspaceDir?: string;
-  env?: NodeJS.ProcessEnv;
-  onlyPluginIds?: string[];
-  providerRefs?: string[];
-}): ProviderPlugin[] {
-  const env = params.env ?? process.env;
-  const workspaceDir = params.workspaceDir ?? getActivePluginRegistryWorkspaceDirFromState();
-  const cacheBucket = resolveHookProviderCacheBucket({
-    config: params.config,
-    env,
-  });
-  const cacheKey = buildHookProviderCacheKey({
-    config: params.config,
-    workspaceDir,
-    onlyPluginIds: params.onlyPluginIds,
-    providerRefs: params.providerRefs,
-    env,
-  });
-  const cached = cacheBucket.get(cacheKey);
-  if (cached) {
-    return cached;
-  }
-  if (
-    isPluginProvidersLoadInFlight({
-      ...params,
-      workspaceDir,
-      env,
-      activate: false,
-      cache: false,
-      bundledProviderAllowlistCompat: true,
-      bundledProviderVitestCompat: true,
-    })
-  ) {
-    return [];
-  }
-  const resolved = resolvePluginProviders({
-    ...params,
-    workspaceDir,
-    env,
-    activate: false,
-    cache: false,
-    bundledProviderAllowlistCompat: true,
-    bundledProviderVitestCompat: true,
-  });
-  cacheBucket.set(cacheKey, resolved);
-  return resolved;
-}
+export const __testing = providerHookRuntimeTesting;
 
 function resolveProviderPluginsForCatalogHooks(params: {
   config?: OpenClawConfig;
@@ -216,20 +123,6 @@ function resolveProviderPluginsForCatalogHooks(params: {
     workspaceDir,
     onlyPluginIds,
   });
-}
-
-export function resolveProviderRuntimePlugin(params: {
-  provider: string;
-  config?: OpenClawConfig;
-  workspaceDir?: string;
-  env?: NodeJS.ProcessEnv;
-}): ProviderPlugin | undefined {
-  return resolveProviderPluginsForHooks({
-    config: params.config,
-    workspaceDir: params.workspaceDir ?? getActivePluginRegistryWorkspaceDirFromState(),
-    env: params.env,
-    providerRefs: [params.provider],
-  }).find((plugin) => matchesProviderId(plugin, params.provider));
 }
 
 export function runProviderDynamicModel(params: {
@@ -431,22 +324,6 @@ export function applyProviderResolvedTransportWithPlugin(params: {
     api: nextApi as ProviderRuntimeModel["api"],
     baseUrl: nextBaseUrl,
   };
-}
-
-function resolveProviderHookPlugin(params: {
-  provider: string;
-  config?: OpenClawConfig;
-  workspaceDir?: string;
-  env?: NodeJS.ProcessEnv;
-}): ProviderPlugin | undefined {
-  return (
-    resolveProviderRuntimePlugin(params) ??
-    resolveProviderPluginsForHooks({
-      config: params.config,
-      workspaceDir: params.workspaceDir,
-      env: params.env,
-    }).find((candidate) => matchesProviderId(candidate, params.provider))
-  );
 }
 
 export function normalizeProviderModelIdWithPlugin(params: {
@@ -870,7 +747,25 @@ export function resolveProviderSyntheticAuthWithPlugin(params: {
   env?: NodeJS.ProcessEnv;
   context: ProviderResolveSyntheticAuthContext;
 }) {
-  return resolveProviderRuntimePlugin(params)?.resolveSyntheticAuth?.(params.context) ?? undefined;
+  const providerRefs = resolveProviderHookRefs(params.provider, params.context.providerConfig);
+  for (const providerRef of providerRefs) {
+    const runtimeProviderResolved = resolveProviderRuntimePlugin({
+      ...params,
+      provider: providerRef,
+    })?.resolveSyntheticAuth?.(params.context);
+    if (runtimeProviderResolved) {
+      return runtimeProviderResolved;
+    }
+  }
+  return (
+    resolvePluginDiscoveryProvidersRuntime({
+      config: params.config,
+      workspaceDir: params.workspaceDir,
+      env: params.env,
+    })
+      .find((provider) => matchesAnyProviderPluginRef(provider, providerRefs))
+      ?.resolveSyntheticAuth?.(params.context) ?? undefined
+  );
 }
 
 export function resolveExternalAuthProfilesWithPlugins(params: {
