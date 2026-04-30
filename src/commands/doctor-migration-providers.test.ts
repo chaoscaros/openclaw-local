@@ -37,7 +37,7 @@ describe("doctor migration providers", () => {
     expect(collectMigrationProviderHealthLines()).toEqual(["No migration providers available."]);
   });
 
-  it("formats migration provider labels capabilities description and next step", () => {
+  it("formats migration provider labels capabilities purpose and next step", () => {
     mocks.resolvePluginMigrationProviders.mockReturnValue([
       {
         id: "anthropic-import",
@@ -52,13 +52,14 @@ describe("doctor migration providers", () => {
     expect(collectMigrationProviderHealthLines()).toEqual([
       "- anthropic-import (Anthropic Import)",
       "  supports: detect=yes plan=yes apply=yes",
-      "  description: Imports Anthropic settings",
+      "  purpose: Imports Anthropic settings",
       "  ready: yes",
+      "  hint: detection is available; start with a plan run to inspect the source safely.",
       "  next: openclaw migrate anthropic-import --plan",
     ]);
   });
 
-  it("adds partial readiness and hint lines when detect or description is missing", () => {
+  it("adds partial readiness and undocumented-purpose hints when detect or description is missing", () => {
     mocks.resolvePluginMigrationProviders.mockReturnValue([
       {
         id: "plain-import",
@@ -71,9 +72,9 @@ describe("doctor migration providers", () => {
     expect(collectMigrationProviderHealthLines()).toEqual([
       "- plain-import",
       "  supports: detect=no plan=yes apply=yes",
+      "  hint: provider purpose is undocumented; inspect plugin docs before apply.",
       "  ready: partial",
       "  hint: detect unavailable; run migrate with an explicit source path.",
-      "  hint: provider has no description.",
       "  next: openclaw migrate plain-import --plan",
     ]);
   });
@@ -94,9 +95,9 @@ describe("doctor migration providers", () => {
       [
         "- demo (Demo)",
         "  supports: detect=no plan=yes apply=yes",
+        "  hint: provider purpose is undocumented; inspect plugin docs before apply.",
         "  ready: partial",
         "  hint: detect unavailable; run migrate with an explicit source path.",
-        "  hint: provider has no description.",
         "  next: openclaw migrate demo --plan",
       ].join("\n"),
       "Migration providers",

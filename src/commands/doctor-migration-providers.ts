@@ -18,16 +18,21 @@ function formatMigrationProviderCapabilities(provider: MigrationProviderPlugin):
   ].join(" ");
 }
 
+function collectMigrationProviderPurpose(provider: MigrationProviderPlugin): string[] {
+  if (provider.description) {
+    return [`  purpose: ${provider.description}`];
+  }
+  return ["  hint: provider purpose is undocumented; inspect plugin docs before apply."];
+}
+
 function collectMigrationProviderHints(provider: MigrationProviderPlugin): string[] {
   const hints: string[] = [];
   if (provider.detect) {
     hints.push("  ready: yes");
+    hints.push("  hint: detection is available; start with a plan run to inspect the source safely.");
   } else {
     hints.push("  ready: partial");
     hints.push("  hint: detect unavailable; run migrate with an explicit source path.");
-  }
-  if (!provider.description) {
-    hints.push("  hint: provider has no description.");
   }
   hints.push(`  next: ${formatCliCommand(`openclaw migrate ${provider.id} --plan`)}`);
   return hints;
@@ -43,7 +48,7 @@ export function collectMigrationProviderHealthLines(params: {
   return providers.flatMap((provider) => [
     formatMigrationProviderLabel(provider),
     `  supports: ${formatMigrationProviderCapabilities(provider)}`,
-    ...(provider.description ? [`  description: ${provider.description}`] : []),
+    ...collectMigrationProviderPurpose(provider),
     ...collectMigrationProviderHints(provider),
   ]);
 }
