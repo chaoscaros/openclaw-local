@@ -22,6 +22,8 @@ export type MigrateCommandOptions = {
   json?: boolean;
 };
 
+type MigrateCommandMode = "plan" | "apply";
+
 function createMigrationLogger(runtime: RuntimeEnv) {
   return {
     info: (message: string) => runtime.log(message),
@@ -41,6 +43,37 @@ function formatSummary(summary: MigrationPlan["summary"]): string[] {
     `  errors: ${summary.errors}`,
     `  sensitive: ${summary.sensitive}`,
   ];
+}
+
+function resolveMigrateMode(runtime: RuntimeEnv, opts: MigrateCommandOptions): MigrateCommandMode {
+  if (opts.plan && opts.apply) {
+    runtime.error("Cannot use --plan and --apply together.");
+    runtime.exit(1);
+  }
+  return opts.apply ? "apply" : "plan";
+}
+
+function buildProviderPayload(params: { id: string; label?: string }) {
+  return {
+    id: params.id,
+    ...(params.label ? { label: params.label } : {}),
+  };
+}
+
+function buildJsonPayload(params: {
+  provider: { id: string; label?: string };
+  mode: MigrateCommandMode;
+  detection?: MigrationDetection;
+  plan?: MigrationPlan;
+  result?: MigrationApplyResult;
+}) {
+  return {
+    provider: buildProviderPayload(params.provider),
+    mode: params.mode,
+    ...(params.detection ? { detection: params.detection } : {}),
+    ...(params.plan ? { plan: params.plan } : {}),
+    ...(params.result ? { result: params.result } : {}),
+  };
 }
 
 function logDetection(runtime: RuntimeEnv, detection: MigrationDetection | undefined): void {
@@ -100,6 +133,7 @@ function logApplyResult(runtime: RuntimeEnv, result: MigrationApplyResult): void
 }
 
 export async function migrateCommand(runtime: RuntimeEnv, opts: MigrateCommandOptions): Promise<void> {
+  const mode = resolveMigrateMode(runtime, opts);
   const cfg = loadConfig();
   const provider = resolvePluginMigrationProvider({
     providerId: opts.providerId,
@@ -124,17 +158,22 @@ export async function migrateCommand(runtime: RuntimeEnv, opts: MigrateCommandOp
 
   const detection = provider.detect ? await provider.detect(context) : undefined;
   if (opts.json) {
-    writeRuntimeJson(runtime, {
-      provider: { id: provider.id, label: provider.label },
-      detection,
-    });
+    writeRuntimeJson(
+      runtime,
+      buildJsonPayload({
+        provider: { id: provider.id, label: provider.label },
+        mode,
+        detection,
+      }),
+    );
   } else {
     runtime.log(`Provider: ${provider.id}${provider.label ? ` (${provider.label})` : ""}`);
+    runtime.log(`Mode: ${mode}`);
     logDetection(runtime, detection);
   }
 
   if (detection && !detection.found) {
-    if (opts.apply) {
+    if (mode === "apply") {
       runtime.error(`Migration source not found for provider: ${provider.id}`);
       runtime.exit(1);
       return;
@@ -144,27 +183,35 @@ export async function migrateCommand(runtime: RuntimeEnv, opts: MigrateCommandOp
 
   const plan = await provider.plan(context);
   if (opts.json) {
-    writeRuntimeJson(runtime, {
-      provider: { id: provider.id, label: provider.label },
-      detection,
-      plan,
-    });
+    writeRuntimeJson(
+      runtime,
+      buildJsonPayload({
+        provider: { id: provider.id, label: provider.label },
+        mode,
+        detection,
+        plan,
+      }),
+    );
   } else {
     logPlan(runtime, plan);
   }
 
-  if (!opts.apply) {
+  if (mode !== "apply") {
     return;
   }
 
   const result = await provider.apply(context, plan);
   if (opts.json) {
-    writeRuntimeJson(runtime, {
-      provider: { id: provider.id, label: provider.label },
-      detection,
-      plan,
-      result,
-    });
+    writeRuntimeJson(
+      runtime,
+      buildJsonPayload({
+        provider: { id: provider.id, label: provider.label },
+        mode,
+        detection,
+        plan,
+        result,
+      }),
+    );
     return;
   }
   logApplyResult(runtime, result);
