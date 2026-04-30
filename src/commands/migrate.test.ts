@@ -30,6 +30,10 @@ vi.mock("../runtime.js", async () => {
 
 let migrateCommand: typeof import("./migrate.js").migrateCommand;
 
+function collectLogs(spy: ReturnType<typeof vi.spyOn>) {
+  return spy.mock.calls.map(([message]) => String(message));
+}
+
 describe("migrateCommand", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -52,30 +56,64 @@ describe("migrateCommand", () => {
     mocks.resolvePluginMigrationProvider.mockReturnValue({
       id: "demo",
       label: "Demo",
-      detect: vi.fn(async () => ({ found: false, message: "no source" })),
+      detect: vi.fn(async () => ({
+        found: false,
+        label: "Old Agent",
+        source: "/tmp/old",
+        confidence: "low" as const,
+        message: "no source",
+      })),
       plan,
       apply: vi.fn(),
     });
 
     await migrateCommand(runtime, { providerId: "demo" });
+    const logs = collectLogs(logSpy);
+
     expect(plan).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith("Detection: not found");
+    expect(logs).toEqual([
+      "Provider: demo (Demo)",
+      "Mode: plan",
+      "Detection: not found",
+      "  label: Old Agent",
+      "  source: /tmp/old",
+      "  confidence: low",
+      "  message: no source",
+    ]);
   });
 
   it("fails when detect reports not found in apply mode", async () => {
     const runtime = createNonExitingRuntime();
     const errorSpy = vi.spyOn(runtime, "error").mockImplementation(() => {});
+    const logSpy = vi.spyOn(runtime, "log").mockImplementation(() => {});
     const plan = vi.fn();
     mocks.resolvePluginMigrationProvider.mockReturnValue({
       id: "demo",
       label: "Demo",
-      detect: vi.fn(async () => ({ found: false, message: "no source" })),
+      detect: vi.fn(async () => ({
+        found: false,
+        label: "Old Agent",
+        source: "/tmp/old",
+        confidence: "low" as const,
+        message: "no source",
+      })),
       plan,
       apply: vi.fn(),
     });
 
     await expect(migrateCommand(runtime, { providerId: "demo", apply: true })).rejects.toThrow("exit 1");
+    const logs = collectLogs(logSpy);
+
     expect(plan).not.toHaveBeenCalled();
+    expect(logs).toEqual([
+      "Provider: demo (Demo)",
+      "Mode: apply",
+      "Detection: not found",
+      "  label: Old Agent",
+      "  source: /tmp/old",
+      "  confidence: low",
+      "  message: no source",
+    ]);
     expect(errorSpy).toHaveBeenCalledWith("Migration source not found for provider: demo");
   });
 
@@ -108,6 +146,62 @@ describe("migrateCommand", () => {
     await migrateCommand(runtime, { providerId: "demo", source: "source-dir" });
     expect(plan).toHaveBeenCalled();
     expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("logs plan text output in stable order with target warnings and next steps", async () => {
+    const runtime = createNonExitingRuntime();
+    const logSpy = vi.spyOn(runtime, "log").mockImplementation(() => {});
+    const planResult = {
+      providerId: "demo",
+      source: "source-dir",
+      target: "target-dir",
+      summary: {
+        total: 3,
+        planned: 2,
+        migrated: 0,
+        skipped: 1,
+        conflicts: 0,
+        errors: 0,
+        sensitive: 1,
+      },
+      warnings: ["warn a", "warn b"],
+      nextSteps: ["step a", "step b"],
+      items: [],
+    };
+    mocks.resolvePluginMigrationProvider.mockReturnValue({
+      id: "demo",
+      label: "Demo",
+      detect: vi.fn(async () => ({ found: true, confidence: "high" as const })),
+      plan: vi.fn(async () => planResult),
+      apply: vi.fn(),
+    });
+
+    await migrateCommand(runtime, { providerId: "demo", source: "source-dir" });
+    const logs = collectLogs(logSpy);
+
+    expect(logs).toEqual([
+      "Provider: demo (Demo)",
+      "Mode: plan",
+      "Detection: found",
+      "  confidence: high",
+      "Migration provider: demo",
+      "Source: source-dir",
+      "Target: target-dir",
+      "Summary:",
+      "  total: 3",
+      "  planned: 2",
+      "  migrated: 0",
+      "  skipped: 1",
+      "  conflicts: 0",
+      "  errors: 0",
+      "  sensitive: 1",
+      "Warnings:",
+      "  - warn a",
+      "  - warn b",
+      "Next steps:",
+      "  - step a",
+      "  - step b",
+    ]);
   });
 
   it("runs apply when requested", async () => {
@@ -150,6 +244,84 @@ describe("migrateCommand", () => {
       expect.objectContaining({ source: "source-dir", stateDir: "/tmp/openclaw-state" }),
       planResult,
     );
+  });
+
+  it("logs apply text output with plan before result and backup/report fields", async () => {
+    const runtime = createNonExitingRuntime();
+    const logSpy = vi.spyOn(runtime, "log").mockImplementation(() => {});
+    const planResult = {
+      providerId: "demo",
+      source: "source-dir",
+      target: "target-dir",
+      summary: {
+        total: 2,
+        planned: 2,
+        migrated: 0,
+        skipped: 0,
+        conflicts: 0,
+        errors: 0,
+        sensitive: 1,
+      },
+      warnings: ["warn a"],
+      nextSteps: ["step a"],
+      items: [],
+    };
+    const applyResult = {
+      ...planResult,
+      summary: {
+        total: 2,
+        planned: 2,
+        migrated: 2,
+        skipped: 0,
+        conflicts: 0,
+        errors: 0,
+        sensitive: 1,
+      },
+      backupPath: "/tmp/backup.json",
+      reportDir: "/tmp/report",
+    };
+    mocks.resolvePluginMigrationProvider.mockReturnValue({
+      id: "demo",
+      label: "Demo",
+      detect: vi.fn(async () => ({ found: true, source: "source-dir" })),
+      plan: vi.fn(async () => planResult),
+      apply: vi.fn(async () => applyResult),
+    });
+
+    await migrateCommand(runtime, { providerId: "demo", source: "source-dir", apply: true });
+    const logs = collectLogs(logSpy);
+
+    expect(logs).toEqual([
+      "Provider: demo (Demo)",
+      "Mode: apply",
+      "Detection: found",
+      "  source: source-dir",
+      "Migration provider: demo",
+      "Source: source-dir",
+      "Target: target-dir",
+      "Summary:",
+      "  total: 2",
+      "  planned: 2",
+      "  migrated: 0",
+      "  skipped: 0",
+      "  conflicts: 0",
+      "  errors: 0",
+      "  sensitive: 1",
+      "Warnings:",
+      "  - warn a",
+      "Next steps:",
+      "  - step a",
+      "Apply result:",
+      "  total: 2",
+      "  planned: 2",
+      "  migrated: 2",
+      "  skipped: 0",
+      "  conflicts: 0",
+      "  errors: 0",
+      "  sensitive: 1",
+      "Backup: /tmp/backup.json",
+      "Report dir: /tmp/report",
+    ]);
   });
 
   it("fails when --plan and --apply are both set", async () => {
