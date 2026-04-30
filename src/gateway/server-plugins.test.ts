@@ -556,6 +556,26 @@ describe("loadGatewayPlugins", () => {
     });
   });
 
+  test("clears fallback gateway context when the returned disposer runs", async () => {
+    const serverPlugins = serverPluginsModule;
+    const runtime = await createSubagentRuntime(serverPlugins);
+    const disposeFallback = serverPlugins.setFallbackGatewayContext(
+      createTestContext("fallback-dispose-clears-context"),
+    );
+
+    disposeFallback();
+
+    await expect(
+      runtime.run({
+        sessionKey: "s-fallback-disposed",
+        message: "hello",
+        deliver: false,
+      }),
+    ).rejects.toThrow(
+      "Plugin subagent dispatch requires a gateway request scope (method: agent). No scope set and no fallback context available.",
+    );
+  });
+
   test("forwards caller-supplied idempotencyKey on subagent run", async () => {
     const serverPlugins = serverPluginsModule;
     const runtime = await createSubagentRuntime(serverPlugins);

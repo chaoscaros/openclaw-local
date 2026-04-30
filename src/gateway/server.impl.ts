@@ -52,7 +52,7 @@ import { coreGatewayHandlers } from "./server-methods.js";
 import { loadGatewayModelCatalog } from "./server-model-catalog.js";
 import { createGatewayNodeSessionRuntime } from "./server-node-session-runtime.js";
 import { reloadDeferredGatewayPlugins } from "./server-plugin-bootstrap.js";
-import { setFallbackGatewayContextResolver } from "./server-plugins.js";
+import { clearFallbackGatewayContext, setFallbackGatewayContextResolver } from "./server-plugins.js";
 import { startManagedGatewayConfigReloader } from "./server-reload-handlers.js";
 import { createGatewayRequestContext } from "./server-request-context.js";
 import { resolveGatewayRuntimeConfig } from "./server-runtime-config.js";
@@ -510,6 +510,7 @@ export async function startGatewayServer(
       closeMcpServer: async () => await closeMcpLoopbackServer(),
     });
   const closeOnStartupFailure = async () => {
+    clearFallbackGatewayContext();
     await runClosePrelude();
     await createGatewayCloseHandler({
       bonjourStop: runtimeState.bonjourStop,
@@ -690,7 +691,7 @@ export async function startGatewayServer(
       unavailableGatewayMethods,
     });
 
-    setFallbackGatewayContextResolver(() => gatewayRequestContext);
+    const disposeFallbackGatewayContext = setFallbackGatewayContextResolver(() => gatewayRequestContext);
 
     if (!minimalTestGateway) {
       if (deferredConfiguredChannelPluginIds.length > 0) {
@@ -810,7 +811,7 @@ export async function startGatewayServer(
     throw err;
   }
 
-  const close = createGatewayCloseHandler({
+  const baseClose = createGatewayCloseHandler({
     bonjourStop: runtimeState.bonjourStop,
     tailscaleCleanup: runtimeState.tailscaleCleanup,
     canvasHost,
@@ -840,16 +841,17 @@ export async function startGatewayServer(
     httpServers,
   });
 
-  return {
-    close: async (opts) => {
-      // Run gateway_stop plugin hook before shutdown
-      await runGlobalGatewayStopSafely({
-        event: { reason: opts?.reason ?? "gateway stopping" },
-        ctx: { port },
-        onError: (err) => log.warn(`gateway_stop hook failed: ${String(err)}`),
-      });
-      await runClosePrelude();
-      await close(opts);
-    },
+  const close: GatewayServer["close"] = async (opts) => {
+    disposeFallbackGatewayContext();
+    // Run gateway_stop plugin hook before shutdown
+    await runGlobalGatewayStopSafely({
+      event: { reason: opts?.reason ?? "gateway stopping" },
+      ctx: { port },
+      onError: (err) => log.warn(`gateway_stop hook failed: ${String(err)}`),
+    });
+    await runClosePrelude();
+    await baseClose(opts);
   };
+
+  return { close };
 }
