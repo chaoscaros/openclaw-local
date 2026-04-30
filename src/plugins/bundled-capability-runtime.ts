@@ -146,6 +146,7 @@ function createCapabilityPluginRecord(params: {
     musicGenerationProviderIds: [],
     webFetchProviderIds: [],
     webSearchProviderIds: [],
+    migrationProviderIds: [],
     memoryEmbeddingProviderIds: [],
     agentHarnessIds: [],
     gatewayMethods: [],

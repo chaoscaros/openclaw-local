@@ -5,6 +5,7 @@ import { registerMaintenanceCommands } from "./register.maintenance.js";
 const mocks = vi.hoisted(() => ({
   doctorCommand: vi.fn(),
   dashboardCommand: vi.fn(),
+  migrateCommand: vi.fn(),
   resetCommand: vi.fn(),
   uninstallCommand: vi.fn(),
   runtime: {
@@ -14,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-const { doctorCommand, dashboardCommand, resetCommand, uninstallCommand, runtime } = mocks;
+const { doctorCommand, dashboardCommand, migrateCommand, resetCommand, uninstallCommand, runtime } = mocks;
 
 vi.mock("../../commands/doctor.js", () => ({
   doctorCommand: mocks.doctorCommand,
@@ -22,6 +23,10 @@ vi.mock("../../commands/doctor.js", () => ({
 
 vi.mock("../../commands/dashboard.js", () => ({
   dashboardCommand: mocks.dashboardCommand,
+}));
+
+vi.mock("../../commands/migrate.js", () => ({
+  migrateCommand: mocks.migrateCommand,
 }));
 
 vi.mock("../../commands/reset.js", () => ({
@@ -147,6 +152,38 @@ describe("registerMaintenanceCommands doctor action", () => {
         yes: true,
         nonInteractive: true,
         dryRun: true,
+      }),
+    );
+  });
+
+  it("passes migrate options to migrate command", async () => {
+    migrateCommand.mockResolvedValue(undefined);
+
+    await runMaintenanceCli([
+      "migrate",
+      "demo",
+      "./source",
+      "--apply",
+      "--include-secrets",
+      "--overwrite",
+      "--backup-path",
+      "/tmp/backup.json",
+      "--report-dir",
+      "/tmp/report",
+      "--json",
+    ]);
+
+    expect(migrateCommand).toHaveBeenCalledWith(
+      runtime,
+      expect.objectContaining({
+        providerId: "demo",
+        source: "./source",
+        apply: true,
+        includeSecrets: true,
+        overwrite: true,
+        backupPath: "/tmp/backup.json",
+        reportDir: "/tmp/report",
+        json: true,
       }),
     );
   });

@@ -733,6 +733,7 @@ function createPluginRecord(params: {
     musicGenerationProviderIds: [],
     webFetchProviderIds: [],
     webSearchProviderIds: [],
+    migrationProviderIds: [],
     contextEngineIds: [],
     memoryEmbeddingProviderIds: [],
     agentHarnessIds: [],

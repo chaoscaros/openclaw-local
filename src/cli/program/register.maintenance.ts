@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import { dashboardCommand } from "../../commands/dashboard.js";
 import { doctorCommand } from "../../commands/doctor.js";
+import { migrateCommand } from "../../commands/migrate.js";
 import { resetCommand } from "../../commands/reset.js";
 import { uninstallCommand } from "../../commands/uninstall.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -9,6 +10,39 @@ import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils.js";
 
 export function registerMaintenanceCommands(program: Command) {
+  program
+    .command("migrate")
+    .description("Run a plugin-owned migration provider")
+    .argument("<providerId>", "Migration provider id")
+    .argument("[source]", "Optional source path or provider-specific source id")
+    .option("--plan", "Explicitly run plan-only mode", false)
+    .option("--apply", "Apply the generated migration plan", false)
+    .option("--include-secrets", "Allow provider to include secret-bearing data", false)
+    .option("--overwrite", "Allow provider to overwrite existing target state", false)
+    .option("--backup-path <path>", "Backup path to pass to the provider")
+    .option("--report-dir <path>", "Report directory to pass to the provider")
+    .option("--json", "Output JSON instead of text", false)
+    .addHelpText(
+      "after",
+      () =>
+        `\n${theme.muted("Docs:")} ${formatDocsLink("/cli/migrate", "docs.openclaw.ai/cli/migrate")}\n`,
+    )
+    .action(async (providerId: string, source: string | undefined, opts) => {
+      await runCommandWithRuntime(defaultRuntime, async () => {
+        await migrateCommand(defaultRuntime, {
+          providerId,
+          source,
+          plan: Boolean(opts.plan),
+          apply: Boolean(opts.apply),
+          includeSecrets: Boolean(opts.includeSecrets),
+          overwrite: Boolean(opts.overwrite),
+          backupPath: opts.backupPath as string | undefined,
+          reportDir: opts.reportDir as string | undefined,
+          json: Boolean(opts.json),
+        });
+      });
+    });
+
   program
     .command("doctor")
     .description("Health checks + quick fixes for the gateway and channels")
