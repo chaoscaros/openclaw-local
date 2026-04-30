@@ -51,6 +51,11 @@ const coreCliCommandCatalog = defineCommandDescriptorCatalog([
     hasSubcommands: false,
   },
   {
+    name: "migrate",
+    description: "Run a plugin-owned migration provider",
+    hasSubcommands: false,
+  },
+  {
     name: "message",
     description: "Send, read, and manage messages",
     hasSubcommands: true,
