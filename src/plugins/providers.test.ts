@@ -23,6 +23,8 @@ let resolveOwningPluginIdsForProvider: typeof import("./providers.js").resolveOw
 let resolveOwningPluginIdsForModelRef: typeof import("./providers.js").resolveOwningPluginIdsForModelRef;
 let resolveActivatableProviderOwnerPluginIds: typeof import("./providers.js").resolveActivatableProviderOwnerPluginIds;
 let resolveEnabledProviderPluginIds: typeof import("./providers.js").resolveEnabledProviderPluginIds;
+let resolveExternalAuthProfileCompatFallbackPluginIds: typeof import("./providers.js").resolveExternalAuthProfileCompatFallbackPluginIds;
+let resolveExternalAuthProfileProviderPluginIds: typeof import("./providers.js").resolveExternalAuthProfileProviderPluginIds;
 let resolveDiscoveredProviderPluginIds: typeof import("./providers.js").resolveDiscoveredProviderPluginIds;
 let resolveDiscoverableProviderOwnerPluginIds: typeof import("./providers.js").resolveDiscoverableProviderOwnerPluginIds;
 let resolvePluginProviders: typeof import("./providers.runtime.js").resolvePluginProviders;
@@ -37,6 +39,7 @@ function createManifestProviderPlugin(params: {
   modelSupport?: { modelPrefixes?: string[]; modelPatterns?: string[] };
   activation?: PluginManifestRecord["activation"];
   setup?: PluginManifestRecord["setup"];
+  contracts?: PluginManifestRecord["contracts"];
 }): PluginManifestRecord {
   return {
     id: params.id,
@@ -47,6 +50,7 @@ function createManifestProviderPlugin(params: {
     modelSupport: params.modelSupport,
     activation: params.activation,
     setup: params.setup,
+    contracts: params.contracts,
     skills: [],
     hooks: [],
     origin: params.origin ?? "bundled",
@@ -291,6 +295,8 @@ describe("resolvePluginProviders", () => {
       resolveOwningPluginIdsForProvider,
       resolveOwningPluginIdsForModelRef,
       resolveEnabledProviderPluginIds,
+      resolveExternalAuthProfileCompatFallbackPluginIds,
+      resolveExternalAuthProfileProviderPluginIds,
       resolveDiscoveredProviderPluginIds,
       resolveDiscoverableProviderOwnerPluginIds,
     } = await import("./providers.js"));
@@ -303,6 +309,41 @@ describe("resolvePluginProviders", () => {
 
     expectOwningPluginIds("claude-cli", ["anthropic"]);
     expectOwningPluginIds("codex-cli", ["openai"]);
+  });
+
+  it("strips trailing auth profile suffixes when resolving owning provider plugin ids", () => {
+    setOwningProviderManifestPlugins();
+
+    expectModelOwningPluginIds("gpt-5.5@work", ["openai"]);
+  });
+
+  it("resolves external auth provider contracts and compat fallbacks", () => {
+    setManifestPlugins([
+      createManifestProviderPlugin({
+        id: "declared-auth",
+        providerIds: ["declared-auth"],
+        origin: "bundled",
+        contracts: { externalAuthProviders: ["declared-auth"] },
+      }),
+      createManifestProviderPlugin({
+        id: "workspace-auth",
+        providerIds: ["workspace-auth"],
+        origin: "workspace",
+      }),
+    ]);
+
+    expect(resolveExternalAuthProfileProviderPluginIds({})).toEqual(["declared-auth"]);
+    expect(
+      resolveExternalAuthProfileCompatFallbackPluginIds({
+        config: {
+          plugins: {
+            entries: {
+              "workspace-auth": { enabled: true },
+            },
+          },
+        } as OpenClawConfig,
+      }),
+    ).toEqual(["workspace-auth"]);
   });
 
   beforeEach(() => {

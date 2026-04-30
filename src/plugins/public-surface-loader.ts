@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti";
 import { openBoundaryFileSync } from "../infra/boundary-file-read.js";
+import { sameFileIdentity } from "../infra/file-identity.js";
 import { resolveBundledPluginsDir } from "./bundled-dir.js";
 import { resolveBundledPluginPublicSurfacePath } from "./public-surface-runtime.js";
 import {
@@ -188,16 +189,27 @@ export function loadBundledPluginPublicArtifactModuleSync<T extends object>(para
       { cause: opened.error },
     );
   }
+  const validatedPath = opened.path;
+  const validatedStat = opened.stat;
   fs.closeSync(opened.fd);
+
+  const currentStat = fs.statSync(validatedPath);
+  if (!sameFileIdentity(validatedStat, currentStat)) {
+    throw new Error(
+      `Bundled plugin public surface changed after validation: ${params.dirName}/${params.artifactBasename}`,
+    );
+  }
 
   const sentinel = {} as T;
   loadedPublicSurfaceModules.set(location.modulePath, sentinel);
+  loadedPublicSurfaceModules.set(validatedPath, sentinel);
   try {
-    const loaded = loadPublicSurfaceModule(location.modulePath) as T;
+    const loaded = loadPublicSurfaceModule(validatedPath) as T;
     Object.assign(sentinel, loaded);
     return sentinel;
   } catch (error) {
     loadedPublicSurfaceModules.delete(location.modulePath);
+    loadedPublicSurfaceModules.delete(validatedPath);
     throw error;
   }
 }

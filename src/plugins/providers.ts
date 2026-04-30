@@ -1,3 +1,4 @@
+import { splitTrailingAuthProfile } from "../agents/model-ref-profile.js";
 import { normalizeProviderId } from "../agents/provider-id.js";
 import { withBundledPluginVitestCompat } from "./bundled-compat.js";
 import { normalizePluginsConfig, resolveEffectivePluginActivationState } from "./config-state.js";
@@ -69,6 +70,75 @@ export function resolveEnabledProviderPluginIds(params: {
           rootConfig: params.config,
           enabledByDefault: plugin.enabledByDefault,
         }).activated,
+    )
+    .map((plugin) => plugin.id)
+    .toSorted((left, right) => left.localeCompare(right));
+}
+
+export function resolveExternalAuthProfileProviderPluginIds(params: {
+  config?: PluginLoadOptions["config"];
+  workspaceDir?: string;
+  env?: PluginLoadOptions["env"];
+}): string[] {
+  return resolveRegistryManifestContractPluginIds({
+    ...params,
+    contract: "externalAuthProviders",
+  });
+}
+
+function resolveRegistryManifestContractPluginIds(params: {
+  contract: string;
+  config?: PluginLoadOptions["config"];
+  workspaceDir?: string;
+  env?: PluginLoadOptions["env"];
+  origin?: PluginManifestRecord["origin"];
+  onlyPluginIds?: readonly string[];
+}): string[] {
+  const onlyPluginIdSet = createPluginIdScopeSet(params.onlyPluginIds);
+  const registry = loadPluginManifestRegistry({
+    config: params.config,
+    workspaceDir: params.workspaceDir,
+    env: params.env,
+  });
+  return registry.plugins
+    .filter((plugin) => {
+      if (params.origin && plugin.origin != params.origin) {
+        return false;
+      }
+      if (onlyPluginIdSet && !onlyPluginIdSet.has(plugin.id)) {
+        return false;
+      }
+      return ((plugin.contracts?.[params.contract as keyof NonNullable<typeof plugin.contracts>] ?? []).length > 0);
+    })
+    .map((plugin) => plugin.id)
+    .toSorted((left, right) => left.localeCompare(right));
+}
+
+export function resolveExternalAuthProfileCompatFallbackPluginIds(params: {
+  config?: PluginLoadOptions["config"];
+  workspaceDir?: string;
+  env?: PluginLoadOptions["env"];
+  declaredPluginIds?: ReadonlySet<string>;
+}): string[] {
+  const declaredPluginIds =
+    params.declaredPluginIds ?? new Set(resolveExternalAuthProfileProviderPluginIds(params));
+  const registry = loadPluginManifestRegistry({
+    config: params.config,
+    workspaceDir: params.workspaceDir,
+    env: params.env,
+  });
+  const normalizedConfig = normalizePluginsConfig(params.config?.plugins);
+  return registry.plugins
+    .filter(
+      (plugin) =>
+        plugin.origin !== "bundled" &&
+        plugin.providers.length > 0 &&
+        !declaredPluginIds.has(plugin.id) &&
+        isProviderPluginEligibleForRuntimeOwnerActivation({
+          plugin,
+          normalizedConfig,
+          rootConfig: params.config,
+        }),
     )
     .map((plugin) => plugin.id)
     .toSorted((left, right) => left.localeCompare(right));
@@ -244,9 +314,7 @@ function resolveManifestRegistry(params: {
 }
 
 function stripModelProfileSuffix(value: string): string {
-  const trimmed = value.trim();
-  const at = trimmed.indexOf("@");
-  return at <= 0 ? trimmed : trimmed.slice(0, at).trim();
+  return splitTrailingAuthProfile(value).model;
 }
 
 function splitExplicitModelRef(rawModel: string): { provider?: string; modelId: string } | null {

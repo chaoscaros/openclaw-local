@@ -250,6 +250,7 @@ export type PluginHookReplyDispatchEvent = {
   sessionTtsAuto?: TtsAutoMode;
   ttsChannel?: string;
   suppressUserDelivery?: boolean;
+  suppressReplyLifecycle?: boolean;
   shouldRouteToOriginating: boolean;
   originatingChannel?: string;
   originatingTo?: string;
