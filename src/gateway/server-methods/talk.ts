@@ -214,7 +214,24 @@ function stripUnresolvedSecretApiKey(config: TalkProviderConfig): TalkProviderCo
   return stripUnresolvedSecretApiKeyFromRecord(config) as TalkProviderConfig;
 }
 
-function stripUnresolvedSecretApiKeysFromBaseTtsProviders(
+const BASE_TTS_PROVIDER_SECRET_INPUT_KEYS = ["apiKey", "token"] as const;
+
+function stripUnresolvedSecretInputsFromProviderConfig(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  let next: Record<string, unknown> | undefined;
+  for (const key of BASE_TTS_PROVIDER_SECRET_INPUT_KEYS) {
+    const value = config[key];
+    if (value === undefined || typeof value === "string") {
+      continue;
+    }
+    next ??= { ...config };
+    delete next[key];
+  }
+  return next ?? config;
+}
+
+function stripUnresolvedSecretInputsFromBaseTtsProviders(
   config: Record<string, unknown>,
 ): Record<string, unknown> {
   const providers = asRecord(config.providers);
@@ -222,14 +239,14 @@ function stripUnresolvedSecretApiKeysFromBaseTtsProviders(
     return config;
   }
   let changed = false;
-  const nextProviders: Record<string, unknown> = {};
+  const nextProviders: Record<string, unknown> = Object.create(null);
   for (const [providerId, providerValue] of Object.entries(providers)) {
     const providerConfig = asRecord(providerValue);
     if (!providerConfig) {
       nextProviders[providerId] = providerValue;
       continue;
     }
-    const stripped = stripUnresolvedSecretApiKeyFromRecord(providerConfig);
+    const stripped = stripUnresolvedSecretInputsFromProviderConfig(providerConfig);
     nextProviders[providerId] = stripped;
     if (stripped !== providerConfig) {
       changed = true;
@@ -308,7 +325,7 @@ function resolveTalkResponseFromConfig(params: {
   const selectedBaseTts =
     Object.keys(runtimeBaseTts).length > 0
       ? runtimeBaseTts
-      : stripUnresolvedSecretApiKeysFromBaseTtsProviders(sourceBaseTts);
+      : stripUnresolvedSecretInputsFromBaseTtsProviders(sourceBaseTts);
   const sourceProviderConfig = sourceResolved?.config ?? {};
   const runtimeProviderConfig = runtimeResolved?.config ?? {};
   const talkProviderConfig = sourceResolved?.config ?? runtimeResolved?.config ?? {};

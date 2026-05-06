@@ -120,6 +120,39 @@ describe("talk.config handler", () => {
     vi.clearAllMocks();
   });
 
+  async function invokeTalkConfig(params: {
+    sourceConfig: OpenClawConfig;
+    runtimeConfig: OpenClawConfig;
+    resolveTalkConfig: (args: {
+      baseTtsConfig: Record<string, unknown>;
+      talkProviderConfig: Record<string, unknown>;
+      timeoutMs: number;
+    }) => Record<string, unknown>;
+  }) {
+    mocks.readConfigFileSnapshot.mockResolvedValue({
+      path: "/tmp/openclaw.json",
+      hash: "test-hash",
+      valid: true,
+      config: params.sourceConfig,
+    });
+    mocks.getSpeechProvider.mockReturnValue({
+      id: "acme",
+      label: "Acme Strict Speech",
+      resolveTalkConfig: params.resolveTalkConfig,
+    });
+
+    const respond = vi.fn();
+    await talkHandlers["talk.config"]({
+      req: { type: "req", id: "1", method: "talk.config" },
+      params: {},
+      client: { connect: { scopes: ["operator.read"] } } as never,
+      isWebchatConnect: () => false,
+      respond: respond as never,
+      context: { getRuntimeConfig: () => params.runtimeConfig } as never,
+    });
+    return respond;
+  }
+
   it("passes runtime-resolved messages.tts provider secrets to strict provider resolvers", async () => {
     const sourceConfig = {
       talk: {
@@ -157,15 +190,9 @@ describe("talk.config handler", () => {
       },
     } as OpenClawConfig;
 
-    mocks.readConfigFileSnapshot.mockResolvedValue({
-      path: "/tmp/openclaw.json",
-      hash: "test-hash",
-      valid: true,
-      config: sourceConfig,
-    });
-    mocks.getSpeechProvider.mockReturnValue({
-      id: "acme",
-      label: "Acme Strict Speech",
+    const respond = await invokeTalkConfig({
+      sourceConfig,
+      runtimeConfig,
       resolveTalkConfig: ({
         baseTtsConfig,
         talkProviderConfig,
@@ -190,16 +217,6 @@ describe("talk.config handler", () => {
       },
     });
 
-    const respond = vi.fn();
-    await talkHandlers["talk.config"]({
-      req: { type: "req", id: "1", method: "talk.config" },
-      params: {},
-      client: { connect: { scopes: ["operator.read"] } } as never,
-      isWebchatConnect: () => false,
-      respond: respond as never,
-      context: { getRuntimeConfig: () => runtimeConfig } as never,
-    });
-
     expect(respond).toHaveBeenCalledWith(
       true,
       {
@@ -217,5 +234,111 @@ describe("talk.config handler", () => {
       },
       undefined,
     );
+  });
+
+  it("strips unresolved token SecretRefs from source messages.tts provider configs", async () => {
+    const sourceConfig = {
+      talk: {
+        provider: "acme",
+        providers: {
+          acme: {
+            voiceId: "voice-from-talk-config",
+          },
+        },
+      },
+      messages: {
+        tts: {
+          provider: "acme",
+          providers: {
+            acme: {
+              token: { source: "env", provider: "default", id: "ACME_SPEECH_TOKEN" },
+            },
+          },
+        },
+      },
+    } as OpenClawConfig;
+
+    const respond = await invokeTalkConfig({
+      sourceConfig,
+      runtimeConfig: {
+        ...sourceConfig,
+        messages: {
+          tts: {},
+        },
+      } as OpenClawConfig,
+      resolveTalkConfig: ({ baseTtsConfig, talkProviderConfig, timeoutMs }) => {
+        const providers = (baseTtsConfig.providers ?? {}) as Record<string, unknown>;
+        const providerConfig = (providers.acme ?? {}) as Record<string, unknown>;
+        expect(providerConfig.token).toBeUndefined();
+        expect(timeoutMs).toBe(30_000);
+        return { ...talkProviderConfig };
+      },
+    });
+
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      {
+        config: {
+          talk: expect.objectContaining({
+            provider: "acme",
+            resolved: {
+              provider: "acme",
+              config: expect.any(Object),
+            },
+          }),
+        },
+      },
+      undefined,
+    );
+  });
+
+  it("hardens base TTS provider cleanup against __proto__ provider keys", async () => {
+    const providers = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(providers, "__proto__", {
+      value: {
+        token: { source: "env", provider: "default", id: "PROTO_TOKEN" },
+      },
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+    providers.acme = {
+      apiKey: { source: "env", provider: "default", id: "ACME_SPEECH_API_KEY" },
+    };
+
+    const sourceConfig = {
+      talk: {
+        provider: "acme",
+        providers: {
+          acme: {
+            voiceId: "voice-from-talk-config",
+          },
+        },
+      },
+      messages: {
+        tts: {
+          provider: "acme",
+          providers,
+        },
+      },
+    } as OpenClawConfig;
+
+    await invokeTalkConfig({
+      sourceConfig,
+      runtimeConfig: {
+        ...sourceConfig,
+        messages: {
+          tts: {},
+        },
+      } as OpenClawConfig,
+      resolveTalkConfig: ({ baseTtsConfig, talkProviderConfig }) => {
+        const providers = (baseTtsConfig.providers ?? {}) as Record<string, unknown>;
+        expect(Object.getPrototypeOf(providers)).toBeNull();
+        expect(({} as { token?: unknown }).token).toBeUndefined();
+        expect(Object.prototype.hasOwnProperty.call(providers, "__proto__")).toBe(true);
+        expect((providers.__proto__ as Record<string, unknown>).token).toBeUndefined();
+        return { ...talkProviderConfig };
+      },
+    });
   });
 });
