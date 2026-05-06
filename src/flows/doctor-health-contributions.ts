@@ -168,7 +168,11 @@ async function runGatewayAuthHealth(ctx: DoctorHealthFlowContext): Promise<void>
     authConfig: ctx.cfg.gateway?.auth,
     tailscaleMode: ctx.cfg.gateway?.tailscale?.mode ?? "off",
   });
-  const needsToken = auth.mode !== "password" && (auth.mode !== "token" || !auth.token);
+  const needsToken =
+    auth.mode !== "password" &&
+    auth.mode !== "none" &&
+    auth.mode !== "trusted-proxy" &&
+    (auth.mode !== "token" || !auth.token);
   if (!needsToken) {
     return;
   }
