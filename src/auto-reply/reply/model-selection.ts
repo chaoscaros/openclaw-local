@@ -375,7 +375,27 @@ export async function createModelSelectionState(params: {
   // was resolved. Heartbeat runs without heartbeat.model should still inherit
   // the regular session/parent model override behavior.
   const skipStoredOverride = params.hasResolvedHeartbeatModelOverride === true;
-  if (storedOverride?.model && !skipStoredOverride) {
+  const isAutoSessionOverride =
+    storedOverride?.source === "session" && sessionEntry?.modelOverrideSource === "auto";
+  if (isAutoSessionOverride && sessionEntry && sessionStore && sessionKey && !resetModelOverride) {
+    const { updated } = applyModelOverrideToSessionEntry({
+      entry: sessionEntry,
+      selection: { provider: defaultProvider, model: defaultModel, isDefault: true },
+    });
+    if (updated) {
+      sessionStore[sessionKey] = sessionEntry;
+      if (storePath) {
+        await (
+          await loadSessionStoreRuntime()
+        ).updateSessionStore(storePath, (store) => {
+          store[sessionKey] = sessionEntry;
+        });
+      }
+      provider = defaultProvider;
+      model = defaultModel;
+    }
+  }
+  if (storedOverride?.model && !skipStoredOverride && !isAutoSessionOverride) {
     const normalizedStoredOverride = normalizeModelRef(
       storedOverride.provider || defaultProvider,
       storedOverride.model,

@@ -377,6 +377,35 @@ describe("createModelSelectionState respects session model override", () => {
     expect(state.model).toBe(defaultModel);
   });
 
+  it("clears auto failover overrides and retries the configured primary immediately", async () => {
+    const sessionKey = "agent:main:main";
+    const sessionEntry = makeEntry({
+      providerOverride: "openai-codex",
+      modelOverride: "gpt-5.5-mini",
+      modelOverrideSource: "auto",
+    });
+    const sessionStore = { [sessionKey]: sessionEntry };
+
+    const state = await createModelSelectionState({
+      cfg: {} as OpenClawConfig,
+      agentCfg: undefined,
+      sessionEntry,
+      sessionStore,
+      sessionKey,
+      defaultProvider,
+      defaultModel,
+      provider: "openai-codex",
+      model: "gpt-5.5-mini",
+      hasModelDirective: false,
+    });
+
+    expect(state.provider).toBe(defaultProvider);
+    expect(state.model).toBe(defaultModel);
+    expect(state.resetModelOverride).toBe(false);
+    expect(sessionStore[sessionKey]?.modelOverride).toBeUndefined();
+    expect(sessionStore[sessionKey]?.providerOverride).toBeUndefined();
+  });
+
   it("respects modelOverride even when session model field differs", async () => {
     // From issue #14783: stored override should beat last-used fallback model.
     const state = await resolveState(

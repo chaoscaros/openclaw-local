@@ -9,6 +9,7 @@ import { resolveGroupSessionKey } from "../../config/sessions/group.js";
 import { canonicalizeMainSessionAlias } from "../../config/sessions/main-session.js";
 import { deriveSessionMetaPatch } from "../../config/sessions/metadata.js";
 import { resolveSessionTranscriptPath, resolveStorePath } from "../../config/sessions/paths.js";
+import { resolveResetPreservedSelection } from "../../config/sessions/reset-preserved-selection.js";
 import {
   evaluateSessionFreshness,
   resolveChannelResetConfig,
@@ -307,6 +308,7 @@ export async function initSessionState(params: {
   let persistedTtsAuto: TtsAutoMode | undefined;
   let persistedModelOverride: string | undefined;
   let persistedProviderOverride: string | undefined;
+  let persistedModelOverrideSource: SessionEntry["modelOverrideSource"];
   let persistedAuthProfileOverride: string | undefined;
   let persistedAuthProfileOverrideSource: SessionEntry["authProfileOverrideSource"];
   let persistedAuthProfileOverrideCompactionCount: number | undefined;
@@ -462,6 +464,7 @@ export async function initSessionState(params: {
     persistedTtsAuto = entry.ttsAuto;
     persistedModelOverride = entry.modelOverride;
     persistedProviderOverride = entry.providerOverride;
+    persistedModelOverrideSource = entry.modelOverrideSource;
     persistedAuthProfileOverride = entry.authProfileOverride;
     persistedAuthProfileOverrideSource = entry.authProfileOverrideSource;
     persistedAuthProfileOverrideCompactionCount = entry.authProfileOverrideCompactionCount;
@@ -480,11 +483,14 @@ export async function initSessionState(params: {
       persistedTrace = entry.traceLevel;
       persistedReasoning = entry.reasoningLevel;
       persistedTtsAuto = entry.ttsAuto;
-      persistedModelOverride = entry.modelOverride;
-      persistedProviderOverride = entry.providerOverride;
-      persistedAuthProfileOverride = entry.authProfileOverride;
-      persistedAuthProfileOverrideSource = entry.authProfileOverrideSource;
-      persistedAuthProfileOverrideCompactionCount = entry.authProfileOverrideCompactionCount;
+      const preservedSelection = resolveResetPreservedSelection({ entry });
+      persistedModelOverride = preservedSelection.modelOverride;
+      persistedProviderOverride = preservedSelection.providerOverride;
+      persistedModelOverrideSource = preservedSelection.modelOverrideSource;
+      persistedAuthProfileOverride = preservedSelection.authProfileOverride;
+      persistedAuthProfileOverrideSource = preservedSelection.authProfileOverrideSource;
+      persistedAuthProfileOverrideCompactionCount =
+        preservedSelection.authProfileOverrideCompactionCount;
       // Explicit /new and /reset should rotate the underlying CLI conversation too.
       // Keep the model/auth choice, but force the next turn to mint a fresh CLI binding.
       persistedLabel = entry.label;
@@ -580,6 +586,7 @@ export async function initSessionState(params: {
     responseUsage: baseEntry?.responseUsage,
     modelOverride: persistedModelOverride ?? baseEntry?.modelOverride,
     providerOverride: persistedProviderOverride ?? baseEntry?.providerOverride,
+    modelOverrideSource: persistedModelOverrideSource ?? baseEntry?.modelOverrideSource,
     authProfileOverride: persistedAuthProfileOverride ?? baseEntry?.authProfileOverride,
     authProfileOverrideSource:
       persistedAuthProfileOverrideSource ?? baseEntry?.authProfileOverrideSource,

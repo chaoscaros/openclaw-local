@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { resolveGatewayPort } from "../config/paths.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -32,6 +33,7 @@ const STALE_SIGKILL_WAIT_MS = 400;
 const PORT_FREE_POLL_INTERVAL_MS = 50;
 const PORT_FREE_TIMEOUT_MS = 2000;
 const POLL_SPAWN_TIMEOUT_MS = 400;
+const MAX_ANCESTOR_WALK_DEPTH = 32;
 
 const restartLog = createSubsystemLogger("restart");
 let sleepSyncOverride: ((ms: number) => void) | null = null;
@@ -61,9 +63,45 @@ function sleepSync(ms: number): void {
   }
 }
 
+function readParentPidFromProc(pid: number): number | null {
+  try {
+    const status = readFileSync(`/proc/${pid}/status`, "utf8");
+    const match = status.match(/^PPid:\s*(\d+)/m);
+    if (!match) {
+      return null;
+    }
+    const parsed = Number.parseInt(match[1] ?? "", 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function getSelfAndAncestorPidsSync(): Set<number> {
+  const pids = new Set<number>([process.pid]);
+  const immediateParent = process.ppid;
+  if (!Number.isFinite(immediateParent) || immediateParent <= 0) {
+    return pids;
+  }
+  pids.add(immediateParent);
+  if (process.platform !== "linux") {
+    return pids;
+  }
+  let current = immediateParent;
+  for (let depth = 0; depth < MAX_ANCESTOR_WALK_DEPTH; depth++) {
+    const parent = readParentPidFromProc(current);
+    if (parent == null || parent <= 0 || pids.has(parent)) {
+      break;
+    }
+    pids.add(parent);
+    current = parent;
+  }
+  return pids;
+}
+
 /**
  * Parse openclaw gateway PIDs from lsof -Fpc stdout.
- * Pure function — no I/O. Excludes the current process.
+ * Pure function — no I/O. Excludes the current process and its ancestors.
  */
 function parsePidsFromLsofOutput(stdout: string): number[] {
   const pids: number[] = [];
@@ -94,7 +132,8 @@ function parsePidsFromLsofOutput(stdout: string): number[] {
   }
   // Deduplicate: dual-stack listeners (IPv4 + IPv6) cause lsof to emit the
   // same PID twice. Return each PID at most once to avoid double-killing.
-  return [...new Set(pids)].filter((pid) => pid !== process.pid);
+  const excluded = getSelfAndAncestorPidsSync();
+  return [...new Set(pids)].filter((pid) => !excluded.has(pid));
 }
 
 /**
@@ -102,8 +141,9 @@ function parsePidsFromLsofOutput(stdout: string): number[] {
  * gateway process via command-line inspection. Excludes the current process.
  */
 function filterVerifiedWindowsGatewayPids(rawPids: number[]): number[] {
+  const excluded = getSelfAndAncestorPidsSync();
   return Array.from(new Set(rawPids))
-    .filter((pid) => Number.isFinite(pid) && pid > 0 && pid !== process.pid)
+    .filter((pid) => Number.isFinite(pid) && pid > 0 && !excluded.has(pid))
     .filter((pid) => {
       const args = readWindowsProcessArgsSync(pid);
       return args != null && isGatewayArgv(args, { allowGatewayBinary: true });
@@ -114,9 +154,10 @@ function filterVerifiedWindowsGatewayPidsResult(
   rawPids: number[],
   processArgsResult: (pid: number) => WindowsProcessArgsResult,
 ): WindowsListeningPidsResult {
+  const excluded = getSelfAndAncestorPidsSync();
   const verified: number[] = [];
   for (const pid of Array.from(new Set(rawPids))) {
-    if (!Number.isFinite(pid) || pid <= 0 || pid === process.pid) {
+    if (!Number.isFinite(pid) || pid <= 0 || excluded.has(pid)) {
       continue;
     }
     const argsResult = processArgsResult(pid);

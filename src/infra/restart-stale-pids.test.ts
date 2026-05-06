@@ -203,6 +203,31 @@ describe.skipIf(isWindows)("restart-stale-pids", () => {
       expect(pids).not.toContain(process.pid);
     });
 
+    it("excludes the direct parent pid from stale cleanup candidates", () => {
+      const origDescriptor = Object.getOwnPropertyDescriptor(process, "ppid");
+      const parentPid = process.pid + 2001;
+      const stalePid = process.pid + 2002;
+      Object.defineProperty(process, "ppid", { value: parentPid, configurable: true });
+      try {
+        mockSpawnSync.mockReturnValue({
+          error: null,
+          status: 0,
+          stdout: lsofOutput([
+            { pid: parentPid, cmd: "openclaw-gateway" },
+            { pid: stalePid, cmd: "openclaw-gateway" },
+          ]),
+          stderr: "",
+        });
+        const pids = findGatewayPidsOnPortSync(18789);
+        expect(pids).not.toContain(parentPid);
+        expect(pids).toContain(stalePid);
+      } finally {
+        if (origDescriptor) {
+          Object.defineProperty(process, "ppid", origDescriptor);
+        }
+      }
+    });
+
     it("excludes pids whose command does not include 'openclaw'", () => {
       const otherPid = process.pid + 2;
       mockSpawnSync.mockReturnValue({
