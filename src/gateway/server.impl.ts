@@ -509,8 +509,12 @@ export async function startGatewayServer(
       clearSecretsRuntimeSnapshot,
       closeMcpServer: async () => await closeMcpLoopbackServer(),
     });
-  const closeOnStartupFailure = async () => {
+  let disposeFallbackGatewayContext: () => void = () => {
     clearFallbackGatewayContext();
+  };
+
+  const closeOnStartupFailure = async () => {
+    disposeFallbackGatewayContext();
     await runClosePrelude();
     await createGatewayCloseHandler({
       bonjourStop: runtimeState.bonjourStop,
@@ -691,7 +695,7 @@ export async function startGatewayServer(
       unavailableGatewayMethods,
     });
 
-    const disposeFallbackGatewayContext = setFallbackGatewayContextResolver(() => gatewayRequestContext);
+    disposeFallbackGatewayContext = setFallbackGatewayContextResolver(() => gatewayRequestContext);
 
     if (!minimalTestGateway) {
       if (deferredConfiguredChannelPluginIds.length > 0) {
