@@ -148,6 +148,30 @@ describe("image-generation runtime", () => {
         error: "OpenAI API key missing",
       },
     ]);
+    expect(mocks.warn).toHaveBeenCalledWith(
+      expect.stringContaining("image-generation candidate failed: openai/gpt-image-1: OpenAI API key missing"),
+    );
+  });
+
+  it("logs when the requested image provider is missing", async () => {
+    mocks.resolveAgentModelPrimaryValue.mockReturnValue("missing/gpt-image-1");
+
+    await expect(
+      generateImage({
+        cfg: {
+          agents: {
+            defaults: {
+              imageGenerationModel: { primary: "missing/gpt-image-1" },
+            },
+          },
+        } as OpenClawConfig,
+        prompt: "draw a cat",
+      }),
+    ).rejects.toThrow(/No image-generation provider registered/);
+
+    expect(mocks.warn).toHaveBeenCalledWith(
+      expect.stringContaining("image-generation provider missing: missing/gpt-image-1"),
+    );
   });
 
   it("drops unsupported provider geometry overrides and reports them", async () => {

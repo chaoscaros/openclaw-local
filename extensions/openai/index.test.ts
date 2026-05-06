@@ -107,7 +107,7 @@ describe("openai plugin", () => {
     const authStore = { version: 1, profiles: {} };
     const result = await provider.generateImage({
       provider: "openai",
-      model: "gpt-image-1",
+      model: "gpt-image-2",
       prompt: "draw a cat",
       cfg: {},
       authStore,
@@ -123,7 +123,7 @@ describe("openai plugin", () => {
       expect.objectContaining({
         url: "https://api.openai.com/v1/images/generations",
         body: {
-          model: "gpt-image-1",
+          model: "gpt-image-2",
           prompt: "draw a cat",
           n: 1,
           size: "1024x1024",
@@ -144,7 +144,7 @@ describe("openai plugin", () => {
           revisedPrompt: "revised",
         },
       ],
-      model: "gpt-image-1",
+      model: "gpt-image-2",
     });
   });
 
@@ -175,7 +175,7 @@ describe("openai plugin", () => {
 
     const result = await provider.generateImage({
       provider: "openai",
-      model: "gpt-image-1",
+      model: "gpt-image-2",
       prompt: "Edit this image",
       cfg: {},
       authStore,
@@ -195,7 +195,7 @@ describe("openai plugin", () => {
       expect.objectContaining({
         url: "https://api.openai.com/v1/images/edits",
         body: {
-          model: "gpt-image-1",
+          model: "gpt-image-2",
           prompt: "Edit this image",
           n: 1,
           size: "1024x1024",
@@ -218,7 +218,7 @@ describe("openai plugin", () => {
           fileName: "image-1.png",
         },
       ],
-      model: "gpt-image-1",
+      model: "gpt-image-2",
     });
   });
 
@@ -235,7 +235,7 @@ describe("openai plugin", () => {
     await expect(
       provider.generateImage({
         provider: "openai",
-        model: "gpt-image-1",
+        model: "gpt-image-2",
         prompt: "draw a cat",
         cfg: {
           models: {
@@ -398,7 +398,7 @@ describe("openai plugin", () => {
     expect(
       openaiProvider.resolveSystemPromptContribution?.({
         ...contributionContext,
-        modelId: "gpt-image-1",
+        modelId: "gpt-image-2",
       }),
     ).toBeUndefined();
   });

@@ -50,7 +50,7 @@ describe("openai image generation provider", () => {
     const provider = buildOpenAIImageGenerationProvider();
     const result = await provider.generateImage({
       provider: "openai",
-      model: "gpt-image-1",
+      model: "gpt-image-2",
       prompt: "Draw a QA lighthouse",
       cfg: {
         models: {
@@ -91,7 +91,7 @@ describe("openai image generation provider", () => {
     const provider = buildOpenAIImageGenerationProvider();
     const result = await provider.generateImage({
       provider: "mock-openai",
-      model: "gpt-image-1",
+      model: "gpt-image-2",
       prompt: "Draw a QA lighthouse",
       cfg: {
         models: {
@@ -133,7 +133,7 @@ describe("openai image generation provider", () => {
     const provider = buildOpenAIImageGenerationProvider();
     const result = await provider.generateImage({
       provider: "openai",
-      model: "gpt-image-1",
+      model: "gpt-image-2",
       prompt: "Draw a QA lighthouse",
       cfg: {
         models: {
@@ -173,7 +173,7 @@ describe("openai image generation provider", () => {
     const provider = buildOpenAIImageGenerationProvider();
     const result = await provider.generateImage({
       provider: "openai",
-      model: "gpt-image-1",
+      model: "gpt-image-2",
       prompt: "Change only the background to pale blue",
       cfg: {},
       inputImages: [
@@ -189,7 +189,7 @@ describe("openai image generation provider", () => {
       expect.objectContaining({
         url: "https://api.openai.com/v1/images/edits",
         body: expect.objectContaining({
-          model: "gpt-image-1",
+          model: "gpt-image-2",
           prompt: "Change only the background to pale blue",
           images: [
             {

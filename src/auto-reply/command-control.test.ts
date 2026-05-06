@@ -159,6 +159,27 @@ describe("resolveCommandAuthorization", () => {
     expect(otherAuth.isAuthorizedSender).toBe(false);
   });
 
+  it("requires a real owner identity for owner-enforced commands even with wildcard allowFrom", () => {
+    const cfg = {
+      commands: { ownerAllowFrom: ["whatsapp:+155****4567"] },
+      channels: { whatsapp: { allowFrom: ["*"] } },
+    } as OpenClawConfig;
+
+    const auth = resolveCommandAuthorization({
+      ctx: {
+        Provider: "whatsapp",
+        Surface: "whatsapp",
+        From: "whatsapp:+199****1234",
+        SenderE164: "+199****1234",
+      } as MsgContext,
+      cfg,
+      commandAuthorized: true,
+    });
+
+    expect(auth.senderIsOwner).toBe(false);
+    expect(auth.isAuthorizedSender).toBe(false);
+  });
+
   it("uses explicit owner allowlist when allowFrom is empty", () => {
     const cfg = {
       commands: { ownerAllowFrom: ["whatsapp:+15551234567"] },
