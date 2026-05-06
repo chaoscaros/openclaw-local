@@ -2330,6 +2330,12 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
     expect(mockState.lastDispatchImages).toBeUndefined();
     expect(mockState.lastDispatchImageOrder).toBeUndefined();
+    expect(mockState.lastDispatchCtx?.Body).toBe("describe image");
+    expect(mockState.lastDispatchCtx?.Body).not.toContain("media://");
+    expect(mockState.lastDispatchCtx?.MediaPath).toBe("/tmp/1.png");
+    expect(mockState.lastDispatchCtx?.MediaPaths).toEqual(["/tmp/1.png"]);
+    expect(mockState.lastDispatchCtx?.MediaType).toBe("image/png");
+    expect(mockState.lastDispatchCtx?.MediaTypes).toEqual(["image/png"]);
   });
 
   it("resolves attachment image support from the session agent model", async () => {
@@ -2387,6 +2393,12 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
     expect(mockState.lastDispatchImages).toBeUndefined();
     expect(mockState.lastDispatchImageOrder).toBeUndefined();
+    expect(mockState.lastDispatchCtx?.Body).toBe("describe image");
+    expect(mockState.lastDispatchCtx?.Body).not.toContain("media://");
+    expect(mockState.lastDispatchCtx?.MediaPath).toBe("/tmp/1.png");
+    expect(mockState.lastDispatchCtx?.MediaPaths).toEqual(["/tmp/1.png"]);
+    expect(mockState.lastDispatchCtx?.MediaType).toBe("image/png");
+    expect(mockState.lastDispatchCtx?.MediaTypes).toEqual(["image/png"]);
   });
 
   it("passes imageOrder for mixed inline and offloaded chat.send attachments", async () => {
