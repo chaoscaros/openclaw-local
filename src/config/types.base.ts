@@ -178,7 +178,7 @@ export type SessionConfig = {
   };
   /** Shared defaults for thread-bound session routing across channels/providers. */
   threadBindings?: SessionThreadBindingsConfig;
-  /** Automatic session store maintenance (pruning, capping, file rotation). */
+  /** Automatic session store maintenance (pruning, capping, disk-budget cleanup). */
   maintenance?: SessionMaintenanceConfig;
 };
 
@@ -193,8 +193,6 @@ export type SessionMaintenanceConfig = {
   pruneDays?: number;
   /** Maximum number of session entries to keep. Default: 500. */
   maxEntries?: number;
-  /** Rotate sessions.json when it exceeds this size (e.g. "10mb"). Default: 10mb. */
-  rotateBytes?: number | string;
   /**
    * Retention for archived reset transcripts (`*.reset.<timestamp>`).
    * Set `false` to disable reset-archive cleanup. Default: same as `pruneAfter` (30d).

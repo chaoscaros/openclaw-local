@@ -2046,6 +2046,55 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     });
   });
 
+  it("routes text-only offloaded images through MediaPaths when the model lacks native image input", async () => {
+    createTranscriptFixture("openclaw-chat-send-text-only-image-routing-");
+    mockState.finalText = "ok";
+    mockState.triggerAgentRunStart = true;
+    mockState.sessionEntry = {
+      modelProvider: "test-provider",
+      model: "text-only-model",
+    };
+    mockState.modelCatalog = [
+      {
+        provider: "test-provider",
+        id: "text-only-model",
+        name: "Text-only model",
+        input: ["text"],
+      },
+    ];
+    const respond = vi.fn();
+    const context = createChatContext();
+    const bigPng = Buffer.alloc(2_100_000);
+    bigPng.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-text-only-image-routing",
+      message: "describe this",
+      requestParams: {
+        attachments: [
+          {
+            mimeType: "image/png",
+            content: bigPng.toString("base64"),
+          },
+        ],
+      },
+      expectBroadcast: false,
+      waitForCompletion: false,
+    });
+
+    await waitForAssertion(() => {
+      expect(mockState.lastDispatchCtx?.MediaPath).toMatch(/\.png$/);
+      expect(mockState.lastDispatchCtx?.MediaPaths).toHaveLength(1);
+      expect(mockState.lastDispatchCtx?.MediaPaths?.[0]).toBe(mockState.lastDispatchCtx?.MediaPath);
+      expect(mockState.lastDispatchCtx?.MediaType).toBe("image/png");
+      expect(mockState.lastDispatchCtx?.RawBody).toBe("describe this");
+      expect(mockState.lastDispatchImages).toBeUndefined();
+      expect(mockState.lastDispatchImageOrder).toBeUndefined();
+    });
+  });
+
   it("preserves offloaded attachment media paths in transcript order", async () => {
     createTranscriptFixture("openclaw-chat-send-user-transcript-offloaded-");
     mockState.finalText = "ok";

@@ -863,6 +863,25 @@ describe("resolveSessionModelIdentityRef", () => {
   });
 });
 
+describe("resolveGatewayModelSupportsImages", () => {
+  test("honors configured provider catalog vision models", async () => {
+    await expect(
+      resolveGatewayModelSupportsImages({
+        loadGatewayModelCatalog: async () => [
+          {
+            provider: "anthropic",
+            id: "claude-vision-custom",
+            name: "Claude Vision Custom",
+            input: ["text", "image"],
+          },
+        ],
+        provider: "Anthropic",
+        model: "CLAUDE-VISION-CUSTOM",
+      }),
+    ).resolves.toBe(true);
+  });
+});
+
 describe("deriveSessionTitle", () => {
   test("returns undefined for undefined entry", () => {
     expect(deriveSessionTitle(undefined)).toBeUndefined();

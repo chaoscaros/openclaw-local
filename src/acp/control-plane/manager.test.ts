@@ -992,7 +992,7 @@ describe("AcpSessionManager", () => {
     );
   });
 
-  it("passes persisted cwd runtime options into ensureSession after restart", async () => {
+  it("passes persisted cwd/model/thinking runtime options into ensureSession after restart", async () => {
     const runtimeState = createRuntime();
     hoisted.requireAcpRuntimeBackendMock.mockReturnValue({
       id: "acpx",
@@ -1009,6 +1009,8 @@ describe("AcpSessionManager", () => {
           cwd: "/workspace/stale",
           runtimeOptions: {
             cwd: "/workspace/project",
+            model: "openai-codex/gpt-5.5",
+            thinking: "medium",
           },
         },
       };
@@ -1027,6 +1029,8 @@ describe("AcpSessionManager", () => {
       expect.objectContaining({
         sessionKey,
         cwd: "/workspace/project",
+        model: "openai-codex/gpt-5.5",
+        thinking: "medium",
       }),
     );
   });
@@ -1223,7 +1227,7 @@ describe("AcpSessionManager", () => {
     expect(runtimeState.ensureSession).toHaveBeenCalledTimes(1);
   });
 
-  it("enforces acp.maxConcurrentSessions during initializeSession", async () => {
+  it("enforces the concurrent session cap", async () => {
     const runtimeState = createRuntime();
     hoisted.requireAcpRuntimeBackendMock.mockReturnValue({
       id: "acpx",
@@ -1261,6 +1265,41 @@ describe("AcpSessionManager", () => {
       message: expect.stringContaining("max concurrent sessions"),
     });
     expect(runtimeState.ensureSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes initialize-session runtime model and thinking options into ensureSession", async () => {
+    const runtimeState = createRuntime();
+    hoisted.requireAcpRuntimeBackendMock.mockReturnValue({
+      id: "acpx",
+      runtime: runtimeState.runtime,
+    });
+    hoisted.upsertAcpSessionMetaMock.mockResolvedValue({
+      sessionKey: "agent:codex:acp:session-init-options",
+      storeSessionKey: "agent:codex:acp:session-init-options",
+      acp: readySessionMeta(),
+    });
+
+    const manager = new AcpSessionManager();
+    await manager.initializeSession({
+      cfg: baseCfg,
+      sessionKey: "agent:codex:acp:session-init-options",
+      agent: "codex",
+      mode: "persistent",
+      runtimeOptions: {
+        model: "openai-codex/gpt-5.5",
+        thinking: "high",
+      },
+      cwd: "/workspace/requested",
+    });
+
+    expect(runtimeState.ensureSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: "agent:codex:acp:session-init-options",
+        model: "openai-codex/gpt-5.5",
+        thinking: "high",
+        cwd: "/workspace/requested",
+      }),
+    );
   });
 
   it("drops cached runtime handles when close tolerates backend-unavailable errors", async () => {
@@ -2274,6 +2313,84 @@ describe("AcpSessionManager", () => {
     expect(currentMeta.identity?.agentSessionId).toBe("agent-fresh");
   });
 
+  it("refreshes oneshot ACP runtime identities before close", async () => {
+    const runtimeState = createRuntime();
+    runtimeState.ensureSession.mockResolvedValue({
+      sessionKey: "agent:codex:acp:oneshot-refresh",
+      backend: "acpx",
+      runtimeSessionName: "runtime-oneshot",
+      backendSessionId: "acpx-stale",
+      agentSessionId: "agent-stale",
+    });
+    runtimeState.getStatus.mockResolvedValue({
+      summary: "status=alive",
+      backendSessionId: "acpx-fresh",
+      agentSessionId: "agent-fresh",
+      details: { status: "alive" },
+    });
+    hoisted.requireAcpRuntimeBackendMock.mockReturnValue({
+      id: "acpx",
+      runtime: runtimeState.runtime,
+    });
+
+    let currentMeta: SessionAcpMeta = {
+      ...readySessionMeta(),
+      mode: "oneshot",
+      identity: {
+        state: "resolved",
+        source: "status",
+        acpxSessionId: "acpx-stale",
+        agentSessionId: "agent-stale",
+        lastUpdatedAt: Date.now(),
+      },
+    };
+    const sessionKey = "agent:codex:acp:oneshot-refresh";
+    hoisted.readAcpSessionEntryMock.mockImplementation((paramsUnknown: unknown) => {
+      const key = (paramsUnknown as { sessionKey?: string }).sessionKey ?? sessionKey;
+      return {
+        sessionKey: key,
+        storeSessionKey: key,
+        acp: currentMeta,
+      };
+    });
+    hoisted.upsertAcpSessionMetaMock.mockImplementation(async (paramsUnknown: unknown) => {
+      const params = paramsUnknown as {
+        mutate: (
+          current: SessionAcpMeta | undefined,
+          entry: { acp?: SessionAcpMeta } | undefined,
+        ) => SessionAcpMeta | null | undefined;
+      };
+      const next = params.mutate(currentMeta, { acp: currentMeta });
+      if (next) {
+        currentMeta = next;
+      }
+      return {
+        sessionId: "session-1",
+        updatedAt: Date.now(),
+        acp: currentMeta,
+      };
+    });
+
+    const manager = new AcpSessionManager();
+    await manager.runTurn({
+      cfg: baseCfg,
+      sessionKey,
+      text: "oneshot work",
+      mode: "prompt",
+      requestId: "run-oneshot",
+    });
+
+    expect(runtimeState.getStatus).toHaveBeenCalledTimes(1);
+    expect(currentMeta.identity?.acpxSessionId).toBe("acpx-fresh");
+    expect(currentMeta.identity?.agentSessionId).toBe("agent-fresh");
+    expect(runtimeState.close).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "oneshot-complete",
+        handle: expect.objectContaining({ sessionKey }),
+      }),
+    );
+  });
+
   it("reconciles pending ACP identities during startup scan", async () => {
     const runtimeState = createRuntime();
     runtimeState.getStatus.mockResolvedValue({
@@ -2570,6 +2687,7 @@ describe("AcpSessionManager", () => {
         runtimeOptions: {
           runtimeMode: "plan",
           model: "openai-codex/gpt-5.4",
+          thinking: "medium",
           permissionProfile: "strict",
           timeoutSeconds: 120,
         },
@@ -2594,6 +2712,12 @@ describe("AcpSessionManager", () => {
       expect.objectContaining({
         key: "model",
         value: "openai-codex/gpt-5.4",
+      }),
+    );
+    expect(runtimeState.setConfigOption).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "thinking",
+        value: "medium",
       }),
     );
     expect(runtimeState.setConfigOption).toHaveBeenCalledWith(

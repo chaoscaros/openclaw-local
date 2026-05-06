@@ -22,6 +22,7 @@ export type AgentWaitResult = {
   error?: string;
   startedAt?: number;
   endedAt?: number;
+  yielded?: boolean;
 };
 
 export type AgentRunsDrainResult = {
@@ -35,6 +36,7 @@ type RawAgentWaitResponse = {
   error?: string;
   startedAt?: unknown;
   endedAt?: unknown;
+  yielded?: unknown;
 };
 
 function normalizeAgentWaitResult(
@@ -46,7 +48,22 @@ function normalizeAgentWaitResult(
     error: typeof wait?.error === "string" ? wait.error : undefined,
     startedAt: typeof wait?.startedAt === "number" ? wait.startedAt : undefined,
     endedAt: typeof wait?.endedAt === "number" ? wait.endedAt : undefined,
+    yielded: wait?.yielded === true,
   };
+}
+
+export function isRecoverableAgentWaitError(error: string | undefined): boolean {
+  if (!error) {
+    return false;
+  }
+  const normalized = error.toLowerCase();
+  return (
+    normalized.includes("gateway closed") ||
+    normalized.includes("transport close") ||
+    normalized.includes("connection closed") ||
+    normalized.includes("socket hang up") ||
+    normalized.includes("econnreset")
+  );
 }
 
 function normalizePendingRunIds(runIds: Iterable<string>): string[] {

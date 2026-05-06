@@ -386,4 +386,30 @@ describe("loadModelCatalog", () => {
       name: "GLM-5",
     });
   });
+
+  it("includes configured provider catalog models in loadModelCatalog output", async () => {
+    mockSingleOpenAiCatalogModel();
+
+    const result = await loadModelCatalog({
+      config: {
+        models: {
+          providers: {
+            anthropic: {
+              models: [
+                { id: "claude-vision-custom", name: "Claude Vision Custom", input: ["text", "image"] },
+              ],
+            },
+          },
+        },
+      } as unknown as OpenClawConfig,
+    });
+
+    expect(result).toContainEqual(
+      expect.objectContaining({
+        provider: "anthropic",
+        id: "claude-vision-custom",
+        input: ["text", "image"],
+      }),
+    );
+  });
 });

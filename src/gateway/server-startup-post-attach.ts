@@ -171,11 +171,13 @@ export async function startGatewaySidecars(params: {
     isTruthyEnvValue(process.env.OPENCLAW_SKIP_PROVIDERS);
   if (!skipChannels) {
     try {
-      await prewarmConfiguredPrimaryModel({
+      await params.startChannels();
+      void prewarmConfiguredPrimaryModel({
         cfg: params.cfg,
         log: params.log,
+      }).catch((err) => {
+        params.log.warn(`startup model warmup failed: ${String(err)}`);
       });
-      await params.startChannels();
     } catch (err) {
       params.logChannels.error(`channel startup failed: ${String(err)}`);
     }

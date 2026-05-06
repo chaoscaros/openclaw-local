@@ -5,7 +5,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { createRunningTaskRun } from "../tasks/task-executor.js";
 import { type DeliveryContext, normalizeDeliveryContext } from "../utils/delivery-context.js";
-import { waitForAgentRun } from "./run-wait.js";
+import { isRecoverableAgentWaitError, waitForAgentRun } from "./run-wait.js";
 import type { ensureRuntimePluginsLoaded as ensureRuntimePluginsLoadedFn } from "./runtime-plugins.js";
 import type { SubagentRunOutcome } from "./subagent-announce-output.js";
 import {
@@ -31,6 +31,50 @@ function shouldDeleteAttachments(entry: SubagentRunRecord) {
   return entry.cleanup === "delete" || !entry.retainAttachmentsOnKeep;
 }
 
+export function markSubagentRunPausedAfterYield(params: {
+  entry: SubagentRunRecord;
+  startedAt?: number;
+  endedAt?: number;
+  now?: number;
+}): boolean {
+  const { entry } = params;
+  let mutated = false;
+  if (typeof params.startedAt === "number" && entry.startedAt !== params.startedAt) {
+    entry.startedAt = params.startedAt;
+    if (typeof entry.sessionStartedAt !== "number") {
+      entry.sessionStartedAt = params.startedAt;
+    }
+    mutated = true;
+  }
+  const endedAt = typeof params.endedAt === "number" ? params.endedAt : (params.now ?? Date.now());
+  if (entry.endedAt !== endedAt) {
+    entry.endedAt = endedAt;
+    mutated = true;
+  }
+  if (entry.pauseReason !== "sessions_yield") {
+    entry.pauseReason = "sessions_yield";
+    mutated = true;
+  }
+  if (entry.outcome !== undefined) {
+    entry.outcome = undefined;
+    mutated = true;
+  }
+  if (entry.endedReason !== undefined) {
+    entry.endedReason = undefined;
+    mutated = true;
+  }
+  if (entry.cleanupHandled === true) {
+    entry.cleanupHandled = false;
+    mutated = true;
+  }
+  if (entry.frozenResultText !== undefined) {
+    entry.frozenResultText = undefined;
+    entry.frozenResultCapturedAt = undefined;
+    mutated = true;
+  }
+  return mutated;
+}
+
 export function createSubagentRunManager(params: {
   runs: Map<string, SubagentRunRecord>;
   resumedRuns: Set<string>;
@@ -51,6 +95,7 @@ export function createSubagentRunManager(params: {
   resumeSubagentRun(runId: string): void;
   clearPendingLifecycleError(runId: string): void;
   resolveSubagentWaitTimeoutMs(cfg: OpenClawConfig, runTimeoutSeconds?: number): number;
+  scheduleOrphanRecovery(args?: { delayMs?: number; maxRetries?: number }): void;
   notifyContextEngineSubagentEnded(args: {
     childSessionKey: string;
     reason: "completed" | "deleted" | "released";
@@ -72,7 +117,11 @@ export function createSubagentRunManager(params: {
     triggerCleanup: boolean;
   }): Promise<void>;
 }) {
-  const waitForSubagentCompletion = async (runId: string, waitTimeoutMs: number) => {
+  const waitForSubagentCompletion = async (
+    runId: string,
+    waitTimeoutMs: number,
+    expectedEntry?: SubagentRunRecord,
+  ) => {
     try {
       const wait = await waitForAgentRun({
         runId,
@@ -80,10 +129,34 @@ export function createSubagentRunManager(params: {
         callGateway: params.callGateway,
       });
       const entry = params.runs.get(runId);
-      if (!entry) {
+      if (!entry || (expectedEntry && entry !== expectedEntry)) {
         return;
       }
       if (wait.status === "pending") {
+        return;
+      }
+      if (wait.yielded === true) {
+        if (
+          markSubagentRunPausedAfterYield({
+            entry,
+            startedAt: wait.startedAt,
+            endedAt: wait.endedAt,
+          })
+        ) {
+          params.persist();
+        }
+        return;
+      }
+      if (wait.status === "error" && isRecoverableAgentWaitError(wait.error)) {
+        params.scheduleOrphanRecovery({ delayMs: 1_000 });
+        const scheduledEntry = entry;
+        setTimeout(() => {
+          const current = params.runs.get(runId);
+          if (!current || current !== scheduledEntry || typeof current.endedAt === "number") {
+            return;
+          }
+          void waitForSubagentCompletion(runId, waitTimeoutMs, scheduledEntry);
+        }, 5_000).unref?.();
         return;
       }
       let mutated = false;
@@ -227,6 +300,7 @@ export function createSubagentRunManager(params: {
       sessionStartedAt,
       accumulatedRuntimeMs,
       endedAt: undefined,
+      pauseReason: undefined,
       endedReason: undefined,
       endedHookEmittedAt: undefined,
       wakeOnDescendantSettle: undefined,

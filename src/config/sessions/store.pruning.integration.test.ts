@@ -23,7 +23,6 @@ const ENFORCED_MAINTENANCE_OVERRIDE = {
   mode: "enforce" as const,
   pruneAfterMs: 7 * DAY_MS,
   maxEntries: 500,
-  rotateBytes: 10_485_760,
   resetArchiveRetentionMs: 7 * DAY_MS,
   maxDiskBytes: null,
   highWaterBytes: null,
@@ -44,7 +43,6 @@ function applyEnforcedMaintenanceConfig(mockLoadConfig: ReturnType<typeof vi.fn>
         mode: "enforce",
         pruneAfter: "7d",
         maxEntries: 500,
-        rotateBytes: 10_485_760,
       },
     },
   });
@@ -57,7 +55,6 @@ function applyCappedMaintenanceConfig(mockLoadConfig: ReturnType<typeof vi.fn>) 
         mode: "enforce",
         pruneAfter: "365d",
         maxEntries: 1,
-        rotateBytes: 10_485_760,
       },
     },
   });
@@ -123,6 +120,30 @@ describe("Integration: saveSessionStore with pruning", () => {
     const loaded = loadSessionStore(storePath, { skipCache: true });
     expect(loaded.stale).toBeUndefined();
     expect(loaded.fresh).toBeDefined();
+  });
+
+  it("saveSessionStore preserves the active session during capped maintenance", async () => {
+    applyCappedMaintenanceConfig(mockLoadConfig);
+
+    const now = Date.now();
+    const store = {
+      active: makeEntry(now - 2),
+      newest: makeEntry(now),
+      recent: makeEntry(now - 1),
+    };
+
+    await saveSessionStore(storePath, store, {
+      activeSessionKey: "active",
+      maintenanceOverride: {
+        ...ENFORCED_MAINTENANCE_OVERRIDE,
+        pruneAfterMs: 365 * DAY_MS,
+        maxEntries: 1,
+      },
+    });
+
+    const saved = loadSessionStore(storePath);
+    expect(saved.active).toBeDefined();
+    expect(Object.keys(saved)).toContain("active");
   });
 
   it("archives transcript files for stale sessions pruned on write", async () => {
@@ -198,7 +219,6 @@ describe("Integration: saveSessionStore with pruning", () => {
           pruneAfter: "30d",
           resetArchiveRetention: "3d",
           maxEntries: 500,
-          rotateBytes: 10_485_760,
         },
       },
     });
@@ -231,7 +251,6 @@ describe("Integration: saveSessionStore with pruning", () => {
           mode: "warn",
           pruneAfter: "7d",
           maxEntries: 1,
-          rotateBytes: 10_485_760,
         },
       },
     });
@@ -307,7 +326,6 @@ describe("Integration: saveSessionStore with pruning", () => {
           mode: "enforce",
           pruneAfter: "365d",
           maxEntries: 100,
-          rotateBytes: 10_485_760,
           maxDiskBytes: 900,
           highWaterBytes: 700,
         },
@@ -340,7 +358,6 @@ describe("Integration: saveSessionStore with pruning", () => {
           mode: "enforce",
           pruneAfter: "365d",
           maxEntries: 100,
-          rotateBytes: 10_485_760,
           maxDiskBytes: 900,
           highWaterBytes: 700,
         },
@@ -372,7 +389,6 @@ describe("Integration: saveSessionStore with pruning", () => {
           mode: "enforce",
           pruneAfter: "365d",
           maxEntries: 100,
-          rotateBytes: 10_485_760,
           maxDiskBytes: 500,
           highWaterBytes: 300,
         },

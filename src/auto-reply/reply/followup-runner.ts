@@ -235,6 +235,7 @@ export function createFollowupRunner(params: {
                 skillsSnapshot: run.skillsSnapshot,
                 prompt: queued.prompt,
                 extraSystemPrompt: run.extraSystemPrompt,
+                sourceReplyDeliveryMode: run.sourceReplyDeliveryMode,
                 ownerNumbers: run.ownerNumbers,
                 enforceFinalTag: run.enforceFinalTag,
                 provider,
@@ -353,6 +354,13 @@ export function createFollowupRunner(params: {
       });
 
       if (finalPayloads.length === 0) {
+        return;
+      }
+
+      if (run.sourceReplyDeliveryMode === "message_tool_only") {
+        logVerbose(
+          "followup queue: automatic source delivery suppressed by sourceReplyDeliveryMode: message_tool_only",
+        );
         return;
       }
 

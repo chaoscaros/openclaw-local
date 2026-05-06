@@ -162,6 +162,7 @@ export function createAcpDispatchDeliveryCoordinator(params: {
   sessionTtsAuto?: TtsAutoMode;
   ttsChannel?: string;
   suppressUserDelivery?: boolean;
+  suppressReplyLifecycle?: boolean;
   shouldRouteToOriginating: boolean;
   originatingChannel?: string;
   originatingTo?: string;
@@ -215,11 +216,11 @@ export function createAcpDispatchDeliveryCoordinator(params: {
       return;
     }
     state.startedReplyLifecycle = true;
-    // When delivery is suppressed (e.g. sendPolicy: "deny"), do not fire the
-    // onReplyStart callback — channels wire it to typing indicators / lifecycle
-    // notifications that should not leak outbound events while the session is
-    // under a deny policy. See #53328.
-    if (params.suppressUserDelivery) {
+    // Keep reply lifecycle suppression separate from user-delivery suppression.
+    // Tool-only turns may suppress automatic visible delivery while still
+    // needing typing/lifecycle to start. Only fully suppressed turns (for
+    // example sendPolicy: "deny") should skip onReplyStart.
+    if (params.suppressReplyLifecycle) {
       return;
     }
     void Promise.resolve(params.onReplyStart?.()).catch((error) => {

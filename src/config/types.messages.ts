@@ -4,6 +4,7 @@ import type { TtsConfig } from "./types.tts.js";
 export type GroupChatConfig = {
   mentionPatterns?: string[];
   historyLimit?: number;
+  visibleReplies?: "automatic" | "message_tool_only";
 };
 
 export type DmConfig = {

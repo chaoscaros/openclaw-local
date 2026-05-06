@@ -174,10 +174,12 @@ describe("runMemoryFlushIfNeeded", () => {
     expect(runEmbeddedPiAgentMock).toHaveBeenCalledTimes(1);
     const flushCall = runEmbeddedPiAgentMock.mock.calls[0]?.[0] as {
       prompt?: string;
+      transcriptPrompt?: string;
       memoryFlushWritePath?: string;
       silentExpected?: boolean;
     };
     expect(flushCall.prompt).toContain("Pre-compaction memory flush.");
+    expect(flushCall.transcriptPrompt).toBe("");
     expect(flushCall.memoryFlushWritePath).toMatch(/^memory\/\d{4}-\d{2}-\d{2}\.md$/);
     expect(flushCall.silentExpected).toBe(true);
     expect(refreshQueuedFollowupSessionMock).toHaveBeenCalledWith({

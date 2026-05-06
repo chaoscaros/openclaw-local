@@ -17,6 +17,12 @@ const hoisted = vi.hoisted(() => {
     resolved: 0,
     failed: 0,
   }));
+  const resolveAgentModelPrimaryValue = vi.fn(() => "");
+  const isCliProvider = vi.fn(() => false);
+  const resolveConfiguredModelRef = vi.fn(() => ({ provider: "openai", model: "gpt-5.4" }));
+  const resolveEmbeddedAgentRuntime = vi.fn(() => "pi");
+  const selectAgentHarness = vi.fn(() => ({ id: "pi" }));
+  const ensureOpenClawModelsJson = vi.fn(async () => undefined);
   return {
     startPluginServices,
     startGmailWatcherWithLogs,
@@ -30,6 +36,12 @@ const hoisted = vi.hoisted(() => {
     shouldWakeFromRestartSentinel,
     scheduleRestartSentinelWake,
     reconcilePendingSessionIdentities,
+    resolveAgentModelPrimaryValue,
+    isCliProvider,
+    resolveConfiguredModelRef,
+    resolveEmbeddedAgentRuntime,
+    selectAgentHarness,
+    ensureOpenClawModelsJson,
   };
 });
 
@@ -101,11 +113,32 @@ vi.mock("../infra/update-startup.js", () => ({
   scheduleGatewayUpdateCheck: hoisted.scheduleGatewayUpdateCheck,
 }));
 
+vi.mock("../config/model-input.js", () => ({
+  resolveAgentModelPrimaryValue: hoisted.resolveAgentModelPrimaryValue,
+}));
+
+vi.mock("../agents/model-selection.js", () => ({
+  isCliProvider: hoisted.isCliProvider,
+  resolveConfiguredModelRef: hoisted.resolveConfiguredModelRef,
+}));
+
+vi.mock("../agents/pi-embedded-runner/runtime.js", () => ({
+  resolveEmbeddedAgentRuntime: hoisted.resolveEmbeddedAgentRuntime,
+}));
+
+vi.mock("../agents/harness/selection.js", () => ({
+  selectAgentHarness: hoisted.selectAgentHarness,
+}));
+
+vi.mock("../agents/models-config.js", () => ({
+  ensureOpenClawModelsJson: hoisted.ensureOpenClawModelsJson,
+}));
+
 vi.mock("./server-tailscale.js", () => ({
   startGatewayTailscaleExposure: hoisted.startGatewayTailscaleExposure,
 }));
 
-const { startGatewayPostAttachRuntime } = await import("./server-startup-post-attach.js");
+const { startGatewayPostAttachRuntime, startGatewaySidecars } = await import("./server-startup-post-attach.js");
 const { STARTUP_UNAVAILABLE_GATEWAY_METHODS } =
   await import("./server-startup-unavailable-methods.js");
 
@@ -126,6 +159,17 @@ describe("startGatewayPostAttachRuntime", () => {
     hoisted.shouldWakeFromRestartSentinel.mockReturnValue(false);
     hoisted.scheduleRestartSentinelWake.mockClear();
     hoisted.reconcilePendingSessionIdentities.mockClear();
+    hoisted.resolveAgentModelPrimaryValue.mockReset();
+    hoisted.resolveAgentModelPrimaryValue.mockReturnValue("");
+    hoisted.isCliProvider.mockReset();
+    hoisted.isCliProvider.mockReturnValue(false);
+    hoisted.resolveConfiguredModelRef.mockClear();
+    hoisted.resolveEmbeddedAgentRuntime.mockReset();
+    hoisted.resolveEmbeddedAgentRuntime.mockReturnValue("pi");
+    hoisted.selectAgentHarness.mockReset();
+    hoisted.selectAgentHarness.mockReturnValue({ id: "pi" });
+    hoisted.ensureOpenClawModelsJson.mockReset();
+    hoisted.ensureOpenClawModelsJson.mockResolvedValue(undefined);
   });
 
   it("re-enables startup-gated methods after post-attach sidecars start", async () => {
@@ -177,6 +221,47 @@ describe("startGatewayPostAttachRuntime", () => {
 
     expect([...unavailableGatewayMethods]).toEqual([]);
     expect(startGatewaySidecars).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts channels before waiting for primary model prewarm completion", async () => {
+    hoisted.resolveAgentModelPrimaryValue.mockReturnValue("openai/gpt-5.4");
+    let resolvePrewarm!: () => void;
+    hoisted.ensureOpenClawModelsJson.mockImplementation(
+      async () =>
+        await new Promise<undefined>((resolve) => {
+          resolvePrewarm = () => resolve(undefined);
+        }),
+    );
+    const startChannels = vi.fn(async () => undefined);
+
+    const sidecarsPromise = startGatewaySidecars({
+      cfg: {
+        hooks: { internal: { enabled: false } },
+        agents: { defaults: { model: "openai/gpt-5.4" } },
+      } as never,
+      pluginRegistry: createPostAttachParams().pluginRegistry,
+      defaultWorkspaceDir: "/tmp/openclaw-workspace",
+      deps: {} as never,
+      startChannels,
+      log: { warn: vi.fn() },
+      logHooks: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      },
+      logChannels: {
+        info: vi.fn(),
+        error: vi.fn(),
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(startChannels).toHaveBeenCalledTimes(1);
+      expect(hoisted.ensureOpenClawModelsJson).toHaveBeenCalledTimes(1);
+    });
+
+    resolvePrewarm();
+    await sidecarsPromise;
   });
 });
 

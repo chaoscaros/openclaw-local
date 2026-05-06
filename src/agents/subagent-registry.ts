@@ -687,6 +687,7 @@ const subagentRunManager = createSubagentRunManager({
   resumeSubagentRun,
   clearPendingLifecycleError,
   resolveSubagentWaitTimeoutMs,
+  scheduleOrphanRecovery: scheduleSubagentOrphanRecovery,
   notifyContextEngineSubagentEnded,
   completeCleanupBookkeeping,
   completeSubagentRun,

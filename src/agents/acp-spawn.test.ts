@@ -561,6 +561,8 @@ describe("spawnAcpDirect", () => {
     expect(agentCall?.params?.to).toBe("channel:child-thread");
     expect(agentCall?.params?.threadId).toBe("child-thread");
     expect(agentCall?.params?.deliver).toBe(true);
+    expect(agentCall?.params?.lane).toBe("subagent");
+    expect(agentCall?.params?.acpTurnSource).toBe("manual_spawn");
     expect(hoisted.initializeSessionMock).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionKey: expect.stringMatching(/^agent:codex:acp:/),
@@ -574,6 +576,34 @@ describe("spawnAcpDirect", () => {
     expect(transcriptCalls).toHaveLength(2);
     expect(transcriptCalls[0]?.threadId).toBeUndefined();
     expect(transcriptCalls[1]?.threadId).toBe("child-thread");
+  });
+
+  it("passes model/thinking/timeout runtime options into ACP session initialization", async () => {
+    await spawnAcpDirect(
+      createSpawnRequest({
+        model: "openai-codex/gpt-5.5",
+        thinking: "high",
+        runTimeoutSeconds: 90,
+      }),
+      createRequesterContext(),
+    );
+
+    expect(hoisted.initializeSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeOptions: {
+          model: "openai-codex/gpt-5.5",
+          thinking: "high",
+          timeoutSeconds: 90,
+        },
+      }),
+    );
+    expect(findAgentGatewayCall()?.params).toEqual(
+      expect.objectContaining({
+        timeout: 90,
+        lane: "subagent",
+        acpTurnSource: "manual_spawn",
+      }),
+    );
   });
 
   it("spawns Matrix thread-bound ACP sessions from top-level room targets", async () => {
@@ -1264,6 +1294,61 @@ describe("spawnAcpDirect", () => {
     );
 
     expect(expectFailedSpawn(result, "error").error).toContain("set `acp.defaultAgent`");
+  });
+
+  it("returns actionable mode=session thread requirement guidance", async () => {
+    const result = await spawnAcpDirect(
+      {
+        task: "hello",
+        agentId: "codex",
+        mode: "session",
+      },
+      {
+        agentSessionKey: "agent:main:main",
+      },
+    );
+
+    expect(expectFailedSpawn(result, "error").error).toContain('requires thread=true');
+    expect(expectFailedSpawn(result, "error").error).toContain('or use mode="run" for one-shot work');
+  });
+
+  it("forbids resuming ACP sessions not owned by the requester", async () => {
+    hoisted.loadSessionStoreMock.mockReset().mockImplementation(() => ({
+      "agent:codex:acp:foreign": {
+        sessionId: "sess-foreign",
+        updatedAt: Date.now(),
+        spawnedBy: "agent:main:someone-else",
+        acp: {
+          identity: {
+            state: "resolved",
+            source: "status",
+            acpxSessionId: "acpx-foreign",
+            agentSessionId: "agent-foreign",
+            lastUpdatedAt: Date.now(),
+          },
+        },
+      },
+    }));
+
+    const result = await spawnAcpDirect(
+      {
+        task: "hello",
+        agentId: "codex",
+        resumeSessionId: "agent-foreign",
+      },
+      {
+        agentSessionKey: "agent:main:main",
+      },
+    );
+
+    expect(result).toMatchObject({
+      status: "forbidden",
+      errorCode: "resume_forbidden",
+    });
+    expect(expectFailedSpawn(result, "forbidden").error).toContain(
+      "only allowed for ACP sessions previously recorded for this requester",
+    );
+    expect(hoisted.initializeSessionMock).not.toHaveBeenCalled();
   });
 
   it("fails fast when Discord ACP thread spawn is disabled", async () => {

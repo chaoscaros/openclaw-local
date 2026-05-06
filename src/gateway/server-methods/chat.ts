@@ -486,6 +486,23 @@ function buildChatSendTranscriptMessage(params: {
   };
 }
 
+function stripTrailingOffloadedMediaMarkers(message: string, refs: OffloadedRef[]): string {
+  if (refs.length === 0) {
+    return message;
+  }
+  const removableRefs = new Set(refs.map((ref) => ref.mediaRef));
+  const lines = message.split(/\r?\n/);
+  while (lines.length > 0) {
+    const last = lines[lines.length - 1]?.trim() ?? "";
+    const match = /^\[media attached:\s*(media:\/\/inbound\/[^\]\s]+)\]$/.exec(last);
+    if (!match?.[1] || !removableRefs.delete(match[1])) {
+      break;
+    }
+    lines.pop();
+  }
+  return lines.join("\n").trimEnd();
+}
+
 function resolveChatSendTranscriptMediaFields(savedImages: SavedMedia[]) {
   const mediaPaths = savedImages.map((entry) => entry.path);
   if (mediaPaths.length === 0) {
@@ -1909,6 +1926,8 @@ export const chatHandlers: GatewayRequestHandlers = {
     let parsedImages: ChatImageContent[] = [];
     let imageOrder: PromptImageOrderEntry[] = [];
     let offloadedRefs: OffloadedRef[] = [];
+    let mediaPathOffloadPaths: string[] = [];
+    let mediaPathOffloadTypes: string[] = [];
     const timeoutMs = resolveAgentTimeoutMs({
       cfg,
       overrideMs: p.timeoutMs,
@@ -1973,15 +1992,27 @@ export const chatHandlers: GatewayRequestHandlers = {
         model: modelRef.model,
       });
       try {
+        const routeImageOffloadsAsMediaPaths = !supportsImages;
         const parsed = await parseMessageWithAttachments(inboundMessage, normalizedAttachments, {
           maxBytes: 5_000_000,
           log: context.logGateway,
           supportsImages,
         });
-        parsedMessage = parsed.message;
+        parsedMessage = stripTrailingOffloadedMediaMarkers(
+          parsed.message,
+          routeImageOffloadsAsMediaPaths
+            ? parsed.offloadedRefs.filter((ref) => ref.mimeType.startsWith("image/"))
+            : [],
+        );
         parsedImages = parsed.images;
-        imageOrder = parsed.imageOrder;
+        imageOrder = routeImageOffloadsAsMediaPaths ? [] : parsed.imageOrder;
         offloadedRefs = parsed.offloadedRefs;
+        if (routeImageOffloadsAsMediaPaths) {
+          const imageOffloadedRefs = parsed.offloadedRefs.filter((ref) => ref.mimeType.startsWith("image/"));
+          mediaPathOffloadPaths = imageOffloadedRefs.map((ref) => ref.path);
+          mediaPathOffloadTypes = imageOffloadedRefs.map((ref) => ref.mimeType);
+          parsedImages = [];
+        }
       } catch (err) {
         respond(
           false,
@@ -2084,6 +2115,12 @@ export const chatHandlers: GatewayRequestHandlers = {
         SenderUsername: clientInfo?.displayName,
         GatewayClientScopes: client?.connect?.scopes ?? [],
       };
+      if (mediaPathOffloadPaths.length > 0) {
+        ctx.MediaPath = mediaPathOffloadPaths[0];
+        ctx.MediaPaths = mediaPathOffloadPaths;
+        ctx.MediaType = mediaPathOffloadTypes[0];
+        ctx.MediaTypes = mediaPathOffloadTypes;
+      }
 
       const { onModelSelected, ...replyPipeline } = createChannelReplyPipeline({
         cfg,

@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const noop = () => {};
+const waitForFast = <T>(callback: () => T | Promise<T>) => vi.waitFor(callback, { timeout: 1_000, interval: 1 });
 
 const mocks = vi.hoisted(() => ({
   callGateway: vi.fn(),
@@ -34,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   onSubagentEnded: vi.fn(async () => {}),
   runSubagentEnded: vi.fn(async () => {}),
   resolveAgentTimeoutMs: vi.fn(() => 1_000),
+  scheduleOrphanRecovery: vi.fn(),
 }));
 
 vi.mock("../gateway/call.js", () => ({
@@ -98,6 +100,10 @@ vi.mock("./timeout.js", () => ({
   resolveAgentTimeoutMs: mocks.resolveAgentTimeoutMs,
 }));
 
+vi.mock("./subagent-orphan-recovery.js", () => ({
+  scheduleOrphanRecovery: mocks.scheduleOrphanRecovery,
+}));
+
 describe("subagent registry seam flow", () => {
   let mod: typeof import("./subagent-registry.js");
 
@@ -128,6 +134,7 @@ describe("subagent registry seam flow", () => {
     mocks.resolveContextEngine.mockResolvedValue({
       onSubagentEnded: mocks.onSubagentEnded,
     });
+    mocks.scheduleOrphanRecovery.mockReset();
     mocks.callGateway.mockImplementation(async (request: { method?: string }) => {
       if (request.method === "agent.wait") {
         return {
@@ -219,6 +226,82 @@ describe("subagent registry seam flow", () => {
     });
 
     expect(mocks.persistSubagentRunsToDisk).toHaveBeenCalled();
+  });
+
+  it("schedules orphan recovery instead of terminally failing on recoverable wait transport errors", async () => {
+    mocks.callGateway.mockImplementation(async (request: { method?: string }) => {
+      if (request.method === "agent.wait") {
+        throw new Error("gateway closed (1006): transport close");
+      }
+      return {};
+    });
+
+    mod.registerSubagentRun({
+      runId: "run-interrupted-wait",
+      childSessionKey: "agent:main:subagent:child",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "resume after transport close",
+      cleanup: "keep",
+    });
+
+    await waitForFast(() => {
+      expect(mocks.scheduleOrphanRecovery).toHaveBeenCalledWith(expect.objectContaining({ delayMs: 1_000 }));
+    });
+    expect(mocks.runSubagentAnnounceFlow).not.toHaveBeenCalled();
+    const run = mod
+      .listSubagentRunsForRequester("agent:main:main")
+      .find((entry) => entry.runId === "run-interrupted-wait");
+    expect(run?.endedAt).toBeUndefined();
+    expect(run?.outcome).toBeUndefined();
+  });
+
+  it("keeps sessions_yield-ended subagent runs paused instead of announcing no output", async () => {
+    mocks.callGateway.mockImplementation(async (request: { method?: string }) => {
+      if (request.method === "agent.wait") {
+        return {
+          status: "ok",
+          startedAt: 111,
+          endedAt: 222,
+          stopReason: "end_turn",
+          livenessState: "paused",
+          yielded: true,
+        };
+      }
+      return {};
+    });
+
+    mod.registerSubagentRun({
+      runId: "run-yield-paused",
+      childSessionKey: "agent:main:subagent:child",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "wait for child continuation",
+      cleanup: "keep",
+    });
+
+    await waitForFast(() => {
+      const run = mod
+        .listSubagentRunsForRequester("agent:main:main")
+        .find((entry) => entry.runId === "run-yield-paused");
+      expect(run?.endedAt).toBe(222);
+      expect(run?.pauseReason).toBe("sessions_yield");
+    });
+    expect(mocks.runSubagentAnnounceFlow).not.toHaveBeenCalled();
+    expect(mod.countPendingDescendantRuns("agent:main:main")).toBe(1);
+
+    expect(
+      mod.replaceSubagentRunAfterSteer({
+        previousRunId: "run-yield-paused",
+        nextRunId: "run-yield-continuation",
+      }),
+    ).toBe(true);
+    const replacement = mod
+      .listSubagentRunsForRequester("agent:main:main")
+      .find((entry) => entry.runId === "run-yield-continuation");
+    expect(replacement?.runId).toBe("run-yield-continuation");
+    expect(replacement?.pauseReason).toBeUndefined();
+    expect(replacement?.endedAt).toBeUndefined();
   });
 
   it("deletes delete-mode completion runs when announce cleanup gives up after retry limit", async () => {

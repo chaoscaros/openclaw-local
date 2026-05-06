@@ -6,6 +6,7 @@ import {
   normalizeOptionalString,
 } from "../../shared/string-coerce.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
+import type { SourceReplyDeliveryMode } from "../get-reply-options.types.js";
 import { normalizeGroupActivation } from "../group-activation.js";
 import type { TemplateContext } from "../templating.js";
 import { extractExplicitGroupId } from "./group-id.js";
@@ -101,10 +102,14 @@ function resolveProviderLabel(rawProvider: string | undefined): string {
   return `${providerKey.at(0)?.toUpperCase() ?? ""}${providerKey.slice(1)}`;
 }
 
-export function buildGroupChatContext(params: { sessionCtx: TemplateContext }): string {
+export function buildGroupChatContext(params: {
+  sessionCtx: TemplateContext;
+  sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
+}): string {
   const subject = normalizeOptionalString(params.sessionCtx.GroupSubject);
   const members = normalizeOptionalString(params.sessionCtx.GroupMembers);
   const providerLabel = resolveProviderLabel(params.sessionCtx.Provider);
+  const messageToolOnly = params.sourceReplyDeliveryMode === "message_tool_only";
 
   const lines: string[] = [];
   if (subject) {
@@ -115,9 +120,18 @@ export function buildGroupChatContext(params: { sessionCtx: TemplateContext }): 
   if (members) {
     lines.push(`Participants: ${members}.`);
   }
-  lines.push(
-    "Your replies are automatically sent to this group chat. Do not use the message tool to send to this same group - just reply normally.",
-  );
+  if (messageToolOnly) {
+    lines.push(
+      "Normal final replies are private and are not automatically sent to this group chat. To post visible output here, use the message tool with action=send; the target defaults to this group chat.",
+    );
+    lines.push(
+      "If no visible group response is needed, do not call message(action=send). Your normal final answer stays private and will not be posted to the group.",
+    );
+  } else {
+    lines.push(
+      "Your replies are automatically sent to this group chat. Do not use the message tool to send to this same group - just reply normally.",
+    );
+  }
   return lines.join(" ");
 }
 

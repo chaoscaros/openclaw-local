@@ -42,6 +42,13 @@ describe("group runtime loading", () => {
         silentToken: "NO_REPLY",
       }),
     ).toContain("Minimize empty lines and use normal chat conventions");
+    const toolOnlyContext = groups.buildGroupChatContext({
+      sessionCtx: { ChatType: "group", Provider: "discord" },
+      sourceReplyDeliveryMode: "message_tool_only",
+    });
+    expect(toolOnlyContext).toContain("Normal final replies are private");
+    expect(toolOnlyContext).toContain("message tool with action=send");
+    expect(toolOnlyContext).toContain("do not call message(action=send)");
     expect(groupsRuntimeLoads).not.toHaveBeenCalled();
     vi.doUnmock("./groups.runtime.js");
   });

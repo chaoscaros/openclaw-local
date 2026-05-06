@@ -22,6 +22,7 @@ export type SubagentRunRecord = {
   sessionStartedAt?: number;
   accumulatedRuntimeMs?: number;
   endedAt?: number;
+  pauseReason?: "sessions_yield";
   outcome?: SubagentRunOutcome;
   archiveAtMs?: number;
   cleanupCompletedAt?: number;

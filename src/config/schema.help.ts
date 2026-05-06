@@ -635,27 +635,27 @@ export const FIELD_HELP: Record<string, string> = {
   "skills.load.watchDebounceMs":
     "Debounce window in milliseconds for coalescing rapid skill file changes before reload logic runs. Increase to reduce reload churn on frequent writes, or lower for faster edit feedback.",
   approvals:
-    "用于控制执行审批和插件审批是否转发到发起会话之外的聊天目标。除非值班人员确实需要在外部渠道处理审批，否则建议保持关闭。",
+    "用于控制执行审批和插件审批是否转发到发起会话之外的聊天目标。This section controls whether approval prompts leave the origin session。Use 过滤器、转发模式和目标地址一起收紧范围，除非值班人员确实需要在外部渠道处理审批，否则建议保持关闭，避免把审批提示扩散到无关渠道。",
   "approvals.exec":
-    "集中配置执行审批转发行为，包括是否启用、转发模式、过滤条件和明确目标。当审批提示需要发到运维渠道，而不只是停留在原会话时，在这里设置。",
+    "集中配置执行审批转发行为，包括是否启用、转发模式、过滤条件和明确目标。当审批提示需要发到运维渠道，而不只是停留在原会话时，在这里设置。Use 这一组配置去限定谁会被转发、转发到哪里，并尽量保持最小可见范围。",
   "approvals.exec.enabled":
-    "启用后，会把执行审批请求转发到已配置的投递目标（默认 false）。低风险场景建议关闭，只有需要让人工审批人直接在频道里看到审批提示时再开启。",
+    "启用后，会把执行审批请求转发到已配置的投递目标（默认 false）。低风险场景建议关闭，只有需要让人工审批人直接在频道里看到审批提示时再开启。Use 这个开关前，先确认过滤器和目标地址都已收紧。",
   "approvals.exec.mode":
-    '控制审批提示发往哪里："session" 表示只发回原始会话，"targets" 表示只发到已配置目标，"both" 表示两边都发。建议先用 "session"，只有在确实需要冗余时再扩大。',
+    '控制审批提示发往哪里："session" 表示只发回原始会话，"targets" 表示只发到已配置目标，"both" 表示两边都发。建议先用 "session"，只有在确实需要冗余时再扩大；keep 范围尽量小。',
   "approvals.exec.agentFilter":
-    '可选的代理 ID 允许列表，只有命中的代理才会触发审批转发，例如 `["primary", "ops-agent"]`。用于缩小转发范围，避免无关代理把审批消息发到共享渠道。',
+    '可选的代理 ID 允许列表，只有命中的代理才会触发审批转发，例如 `["primary", "ops-agent"]`。Use 它来缩小转发范围，避免无关代理把审批消息发到共享渠道，并保持最小可见面。',
   "approvals.exec.sessionFilter":
-    '可选的会话 key 过滤器，支持子串或类正则模式，例如 `["discord:", "^agent:ops:"]`。建议保持模式足够精确，确保只有预期的审批上下文会被转发。',
+    '可选的会话 key 过滤器，支持 substring 子串匹配或 regex 类正则模式，例如 `["discord:", "^agent:ops:"]`。Use 精确模式并 keep 匹配范围尽量窄，确保只有预期的审批上下文会被转发到共享目标。',
   "approvals.exec.targets":
-    "当转发模式包含 targets 时，这里定义明确的投递目标列表，每项包含渠道和目标地址。请遵循最小权限原则，并在启用前确认每个目标都有效。",
+    "当转发模式包含 targets 时，这里定义明确的投递目标列表，每项包含渠道和目标地址。Use 最小权限原则，并在启用前确认每个目标都有效，避免把审批流量发到错误频道。",
   "approvals.exec.targets[].channel":
-    "审批转发使用的渠道或 provider ID，例如 discord、slack，或某个插件渠道 ID。请只填写真实可用的渠道 ID，避免因为路由不存在而静默失败。",
+    "审批转发使用的渠道或 provider ID，例如 discord、slack，或某个插件渠道 ID。Use 真实可用的渠道 ID，避免因为路由不存在而静默失败，并 keep 路由范围与运维职责一致。",
   "approvals.exec.targets[].to":
-    "目标渠道内部的地址标识（例如频道 ID、用户 ID，或按 provider 约定的线程根 ID）。不同渠道的语义不同，配置前请先确认对应集成的格式。",
+    "目标渠道内部的地址标识（例如 channel ID、user ID，或按 provider 约定的 thread root ID）。不同渠道的语义 differs per provider，配置前请先确认对应集成的格式。",
   "approvals.exec.targets[].accountId":
-    "可选的账号选择器，适用于多账号渠道场景，需要把审批固定走某个账号上下文时再填写。若目标渠道只有单一身份，一般无需设置。",
+    "可选的账号选择器，适用于多账号渠道场景，需要把审批固定走某个账号上下文时再填写。若目标渠道只有单一身份，一般无需设置；use 它来避免走错账号，并 keep 审批流量落在正确身份下。",
   "approvals.exec.targets[].threadId":
-    "可选的线程或话题 ID，适用于支持线程投递的渠道。可用来把审批流量收敛到运维线程中，而不是直接发到主频道。",
+    "可选的线程或话题 ID，适用于支持线程投递的渠道。Use 它把审批流量收敛到运维线程中，而不是直接发到主频道，keep 讨论上下文集中并减少主频道噪音，也更方便审批留痕。",
   "approvals.plugin":
     "集中配置插件审批转发行为，包括是否启用、转发模式、过滤条件和明确目标。它与执行审批转发相互独立，用于把插件审批提示发到运维渠道。",
   "approvals.plugin.enabled":
@@ -1327,8 +1327,6 @@ export const FIELD_HELP: Record<string, string> = {
     "Deprecated age-retention field kept for compatibility with legacy configs using day counts. Use session.maintenance.pruneAfter instead so duration syntax and behavior are consistent.",
   "session.maintenance.maxEntries":
     "Caps total session entry count retained in the store to prevent unbounded growth over time. Use lower limits for constrained environments, or higher limits when longer history is required.",
-  "session.maintenance.rotateBytes":
-    "Rotates the session store when file size exceeds a threshold such as `10mb` or `1gb`. Use this to bound single-file growth and keep backup/restore operations manageable.",
   "session.maintenance.resetArchiveRetention":
     "Retention for reset transcript archives (`*.reset.<timestamp>`). Accepts a duration (for example `30d`), or `false` to disable cleanup. Defaults to pruneAfter so reset artifacts do not grow forever.",
   "session.maintenance.maxDiskBytes":

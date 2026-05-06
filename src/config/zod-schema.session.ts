@@ -77,7 +77,6 @@ export const SessionSchema = z
         /** @deprecated Use pruneAfter instead. */
         pruneDays: z.number().int().positive().optional(),
         maxEntries: z.number().int().positive().optional(),
-        rotateBytes: z.union([z.string(), z.number()]).optional(),
         resetArchiveRetention: z.union([z.string(), z.number(), z.literal(false)]).optional(),
         maxDiskBytes: z.union([z.string(), z.number()]).optional(),
         highWaterBytes: z.union([z.string(), z.number()]).optional(),
@@ -94,19 +93,6 @@ export const SessionSchema = z
               code: z.ZodIssueCode.custom,
               path: ["pruneAfter"],
               message: "invalid duration (use ms, s, m, h, d)",
-            });
-          }
-        }
-        if (val.rotateBytes !== undefined) {
-          try {
-            parseByteSize(normalizeStringifiedOptionalString(val.rotateBytes) ?? "", {
-              defaultUnit: "b",
-            });
-          } catch {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: ["rotateBytes"],
-              message: "invalid size (use b, kb, mb, gb, tb)",
             });
           }
         }

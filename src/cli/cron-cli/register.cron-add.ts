@@ -17,6 +17,7 @@ import {
   printCronList,
   warnIfCronSchedulerDisabled,
 } from "./shared.js";
+import { normalizeCronSessionTargetOption, parseCronThreadIdOption } from "./thread-id-shared.js";
 
 export function registerCronStatusCommand(cron: Command) {
   addGatewayClientOptions(
@@ -102,6 +103,7 @@ export function registerCronAddCommand(cron: Command) {
         "--to <dest>",
         "Delivery destination (E.164, Telegram chatId, or Discord channel/user)",
       )
+      .option("--thread-id <id>", "Telegram forum topic thread id")
       .option("--account <id>", "Channel account id for delivery (multi-account setups)")
       .option("--best-effort-deliver", "Do not fail the job if delivery fails", false)
       .option("--json", "Output JSON", false)
@@ -168,7 +170,9 @@ export function registerCronAddCommand(cron: Command) {
           const sessionTargetRaw = normalizeOptionalString(opts.session) ?? "";
           const inferredSessionTarget = payload.kind === "agentTurn" ? "isolated" : "main";
           const sessionTarget =
-            sessionSource === "cli" ? sessionTargetRaw || "" : inferredSessionTarget;
+            sessionSource === "cli"
+              ? normalizeCronSessionTargetOption(sessionTargetRaw) || ""
+              : inferredSessionTarget;
           const isCustomSessionTarget =
             normalizeLowercaseStringOrEmpty(sessionTarget).startsWith("session:") &&
             Boolean(normalizeOptionalString(sessionTarget.slice(8)));
@@ -196,9 +200,11 @@ export function registerCronAddCommand(cron: Command) {
           }
 
           const accountId = normalizeOptionalString(opts.account);
+          const threadId = parseCronThreadIdOption(opts.threadId);
+          const hasThreadId = typeof threadId === "number";
 
-          if (accountId && (!isIsolatedLikeSessionTarget || payload.kind !== "agentTurn")) {
-            throw new Error("--account requires a non-main agentTurn job with delivery.");
+          if ((accountId || hasThreadId) && (!isIsolatedLikeSessionTarget || payload.kind !== "agentTurn")) {
+            throw new Error("--account and --thread-id require a non-main agentTurn job with delivery.");
           }
 
           const deliveryMode =
@@ -235,6 +241,7 @@ export function registerCronAddCommand(cron: Command) {
                   mode: deliveryMode,
                   channel: normalizeOptionalString(opts.channel),
                   to: normalizeOptionalString(opts.to),
+                  threadId,
                   accountId,
                   bestEffort: opts.bestEffortDeliver ? true : undefined,
                 }

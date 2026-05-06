@@ -68,7 +68,7 @@ function formatTaskCompletionEvent(event: AgentTaskCompletionInternalEvent): str
   return lines.join("\n");
 }
 
-export function formatAgentInternalEventsForPrompt(events?: AgentInternalEvent[]): string {
+export function formatAgentInternalEventsForPlainPrompt(events?: AgentInternalEvent[]): string {
   if (!events || events.length === 0) {
     return "";
   }
@@ -83,12 +83,20 @@ export function formatAgentInternalEventsForPrompt(events?: AgentInternalEvent[]
   if (blocks.length === 0) {
     return "";
   }
+  return blocks.join("\n\n---\n\n");
+}
+
+export function formatAgentInternalEventsForPrompt(events?: AgentInternalEvent[]): string {
+  const plain = formatAgentInternalEventsForPlainPrompt(events);
+  if (!plain) {
+    return "";
+  }
   return [
     INTERNAL_RUNTIME_CONTEXT_BEGIN,
     "OpenClaw runtime context (internal):",
     "This context is runtime-generated, not user-authored. Keep internal details private.",
     "",
-    blocks.join("\n\n---\n\n"),
+    plain,
     INTERNAL_RUNTIME_CONTEXT_END,
   ].join("\n");
 }

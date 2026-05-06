@@ -8,6 +8,19 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+## 2026.4.15
+
+### Changes
+
+- Cron/delivery: tighten isolated-agent delivery target handling, add model preflight validation, and improve cron add/edit thread-target wiring so scheduled runs fail earlier and route more predictably.
+
+### Fixes
+
+- ACP/agent runtime: separate runtime-context prompt bodies from persisted user-facing transcript bodies, refine dispatch/explicit-turn policy gating, and harden ACP session identity/runtime option handling so ACP turns no longer write polluted transcripts or take the wrong policy path.
+- Sessions/maintenance: replace file-rotation-oriented session-store maintenance with entry-count-aware pruning/capping, preserve the active session during maintenance, and align config/schema coverage with the new behavior.
+- Gateway/auto-reply/provider stream: suppress reply lifecycle when needed, improve source-reply delivery mode handling, and recover OpenAI-compatible reasoning/image stream edge cases so gateway reply flow and provider-stream replay stay consistent.
+- Subagents/models/runtime: improve subagent registry/run-manager coordination, model catalog/runtime override behavior, and startup/post-attach session handling to reduce stale runtime state and follow-up dispatch drift.
+
 ## 2026.4.14
 
 ### Changes

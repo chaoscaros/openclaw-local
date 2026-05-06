@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import path from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createFixtureSuite } from "../../test-utils/fixture-suite.js";
-import { capEntryCount, pruneStaleEntries, rotateSessionFile } from "./store.js";
+import {
+  resolveMaintenanceConfigFromInput,
+  resolveSessionEntryMaintenanceHighWater,
+} from "./store-maintenance.js";
+import { capEntryCount, getActiveSessionMaintenanceWarning, pruneStaleEntries } from "./store.js";
 import type { SessionEntry } from "./types.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -26,11 +28,6 @@ function makeStore(entries: Array<[string, SessionEntry]>): Record<string, Sessi
   return Object.fromEntries(entries);
 }
 
-// ---------------------------------------------------------------------------
-// Unit tests — each function called with explicit override parameters.
-// No config loading needed; overrides bypass resolveMaintenanceConfig().
-// ---------------------------------------------------------------------------
-
 describe("pruneStaleEntries", () => {
   it("removes entries older than maxAgeDays", () => {
     const now = Date.now();
@@ -43,6 +40,22 @@ describe("pruneStaleEntries", () => {
 
     expect(pruned).toBe(1);
     expect(store.old).toBeUndefined();
+    expect(store.fresh).toBeDefined();
+  });
+
+  it("preserves explicitly protected keys", () => {
+    const now = Date.now();
+    const store = makeStore([
+      ["active", makeEntry(now - 31 * DAY_MS)],
+      ["fresh", makeEntry(now - 1 * DAY_MS)],
+    ]);
+
+    const pruned = pruneStaleEntries(store, 30 * DAY_MS, {
+      preserveKeys: new Set(["active"]),
+    });
+
+    expect(pruned).toBe(0);
+    expect(store.active).toBeDefined();
     expect(store.fresh).toBeDefined();
   });
 });
@@ -68,48 +81,79 @@ describe("capEntryCount", () => {
     expect(store.oldest).toBeUndefined();
     expect(store.old).toBeUndefined();
   });
+
+  it("preserves protected keys while capping removable entries", () => {
+    const now = Date.now();
+    const store = makeStore([
+      ["active", makeEntry(now - 3 * DAY_MS)],
+      ["mid", makeEntry(now - 2 * DAY_MS)],
+      ["recent", makeEntry(now - 1 * DAY_MS)],
+      ["newest", makeEntry(now)],
+    ]);
+
+    const evicted = capEntryCount(store, 1, {
+      preserveKeys: new Set(["active"]),
+    });
+
+    expect(evicted).toBe(3);
+    expect(store.active).toBeDefined();
+    expect(store.newest).toBeUndefined();
+    expect(Object.keys(store)).toHaveLength(1);
+  });
 });
 
-describe("rotateSessionFile", () => {
-  let testDir: string;
-  let storePath: string;
+describe("resolveMaintenanceConfigFromInput", () => {
+  it("defaults to enforcing session maintenance", () => {
+    const maintenance = resolveMaintenanceConfigFromInput();
 
-  beforeEach(async () => {
-    testDir = await fixtureSuite.createCaseDir("rotate");
-    storePath = path.join(testDir, "sessions.json");
+    expect(maintenance.mode).toBe("enforce");
   });
 
-  it("file over maxBytes: renamed to .bak.{timestamp}, returns true", async () => {
-    const bigContent = "x".repeat(200);
-    await fs.writeFile(storePath, bigContent, "utf-8");
+  it("batches normal entry-count maintenance for production-sized caps", () => {
+    expect(resolveSessionEntryMaintenanceHighWater(2)).toBe(3);
+    expect(resolveSessionEntryMaintenanceHighWater(50)).toBe(75);
+    expect(resolveSessionEntryMaintenanceHighWater(500)).toBe(550);
+  });
+});
 
-    const rotated = await rotateSessionFile(storePath, 100);
+describe("getActiveSessionMaintenanceWarning", () => {
+  it("warns when the active session is outside the retained recent entries", () => {
+    const now = Date.now();
+    const store = makeStore([
+      ["newest", makeEntry(now)],
+      ["recent", makeEntry(now - 1)],
+      ["active", makeEntry(now - 2)],
+      ["old", makeEntry(now - 3)],
+    ]);
 
-    expect(rotated).toBe(true);
-    await expect(fs.stat(storePath)).rejects.toThrow();
-    const files = await fs.readdir(testDir);
-    const bakFiles = files.filter((f) => f.startsWith("sessions.json.bak."));
-    expect(bakFiles).toHaveLength(1);
-    const bakContent = await fs.readFile(path.join(testDir, bakFiles[0]), "utf-8");
-    expect(bakContent).toBe(bigContent);
+    const warning = getActiveSessionMaintenanceWarning({
+      store,
+      activeSessionKey: "active",
+      pruneAfterMs: DAY_MS,
+      maxEntries: 2,
+      nowMs: now,
+    });
+
+    expect(warning?.wouldCap).toBe(true);
+    expect(warning?.wouldPrune).toBe(false);
   });
 
-  it("multiple rotations: only keeps 3 most recent .bak files", async () => {
-    let now = Date.now();
-    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => (now += 5));
-    try {
-      // 4 rotations are enough to verify pruning to <=3 backups.
-      for (let i = 0; i < 4; i++) {
-        await fs.writeFile(storePath, `data-${i}-${"x".repeat(100)}`, "utf-8");
-        await rotateSessionFile(storePath, 50);
-      }
-    } finally {
-      nowSpy.mockRestore();
-    }
+  it("preserves insertion order tie behavior from stable sorting", () => {
+    const now = Date.now();
+    const store = makeStore([
+      ["same-before", makeEntry(now)],
+      ["active", makeEntry(now)],
+      ["same-after", makeEntry(now)],
+    ]);
 
-    const files = await fs.readdir(testDir);
-    const bakFiles = files.filter((f) => f.startsWith("sessions.json.bak.")).toSorted();
+    const warning = getActiveSessionMaintenanceWarning({
+      store,
+      activeSessionKey: "active",
+      pruneAfterMs: DAY_MS,
+      maxEntries: 1,
+      nowMs: now,
+    });
 
-    expect(bakFiles.length).toBeLessThanOrEqual(3);
+    expect(warning?.wouldCap).toBe(true);
   });
 });
