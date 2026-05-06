@@ -1061,4 +1061,42 @@ describe("loadGatewayPlugins", () => {
     await runtime.run({ sessionKey: "s-5", message: "prefer resolver" });
     expect(getLastDispatchedContext()).toBe(freshContext);
   });
+
+  test("clears resolver-backed fallback context when the resolver disposer runs", async () => {
+    const serverPlugins = serverPluginsModule;
+    const runtime = await createSubagentRuntime(serverPlugins);
+    const context = createTestContext("resolver-disposer");
+
+    const dispose = serverPlugins.setFallbackGatewayContextResolver(() => context);
+    await runtime.run({ sessionKey: "s-6", message: "before dispose" });
+    expect(getLastDispatchedContext()).toBe(context);
+    const dispatchedBefore = handleGatewayRequest.mock.calls.length;
+
+    dispose();
+
+    await expect(runtime.run({ sessionKey: "s-6", message: "after dispose" })).rejects.toThrow(
+      "No scope set and no fallback context available",
+    );
+    expect(handleGatewayRequest).toHaveBeenCalledTimes(dispatchedBefore);
+  });
+
+  test("clearFallbackGatewayContext removes both direct and resolver fallback state", async () => {
+    const serverPlugins = serverPluginsModule;
+    const runtime = await createSubagentRuntime(serverPlugins);
+    const directContext = createTestContext("direct-context");
+    const resolverContext = createTestContext("resolver-context");
+
+    serverPlugins.setFallbackGatewayContext(directContext);
+    serverPlugins.setFallbackGatewayContextResolver(() => resolverContext);
+    await runtime.run({ sessionKey: "s-7", message: "before clear" });
+    expect(getLastDispatchedContext()).toBe(resolverContext);
+    const dispatchedBefore = handleGatewayRequest.mock.calls.length;
+
+    serverPlugins.clearFallbackGatewayContext();
+
+    await expect(runtime.run({ sessionKey: "s-7", message: "after clear" })).rejects.toThrow(
+      "No scope set and no fallback context available",
+    );
+    expect(handleGatewayRequest).toHaveBeenCalledTimes(dispatchedBefore);
+  });
 });
