@@ -433,12 +433,19 @@ export async function runEmbeddedAttempt(
 
     const sessionLabel = params.sessionKey ?? params.sessionId;
     const contextInjectionMode = resolveContextInjectionMode(params.config);
+    const isRawModelRun = params.modelRun === true || params.promptMode === "none";
+    if (isRawModelRun && log.isEnabled("debug")) {
+      log.debug(
+        `raw model run enabled: modelRun=${params.modelRun === true} promptMode=${params.promptMode ?? "unset"}`,
+      );
+    }
+    const activeContextEngine = isRawModelRun ? undefined : params.contextEngine;
     const {
       bootstrapFiles: hookAdjustedBootstrapFiles,
       contextFiles,
       shouldRecordCompletedBootstrapTurn,
     } = await resolveAttemptBootstrapContext({
-      contextInjectionMode,
+      contextInjectionMode: isRawModelRun ? "never" : contextInjectionMode,
       bootstrapContextMode: params.bootstrapContextMode,
       bootstrapContextRunKind: params.bootstrapContextRunKind,
       sessionFile: params.sessionFile,
@@ -497,7 +504,7 @@ export async function runEmbeddedAttempt(
     let yieldAbortSettled: Promise<void> | null = null;
     // Check if the model supports native image input
     const modelHasVision = params.model.input?.includes("image") ?? false;
-    const toolsRaw = params.disableTools
+    const toolsRaw = params.disableTools || isRawModelRun
       ? []
       : (() => {
           const allTools = createOpenClawCodingTools({
@@ -575,15 +582,16 @@ export async function runEmbeddedAttempt(
       modelApi: params.model.api,
       model: params.model,
     });
-    const clientTools = toolsEnabled ? params.clientTools : undefined;
-    const bundleMcpSessionRuntime = toolsEnabled
-      ? await getOrCreateSessionMcpRuntime({
+    const clientTools = toolsEnabled && !isRawModelRun ? params.clientTools : undefined;
+    const bundleMcpSessionRuntime =
+      toolsEnabled && !isRawModelRun
+        ? await getOrCreateSessionMcpRuntime({
           sessionId: params.sessionId,
           sessionKey: params.sessionKey,
           workspaceDir: effectiveWorkspace,
           cfg: params.config,
-        })
-      : undefined;
+          })
+        : undefined;
     const bundleMcpRuntime = bundleMcpSessionRuntime
       ? await materializeBundleMcpToolsForRun({
           runtime: bundleMcpSessionRuntime,
@@ -593,8 +601,9 @@ export async function runEmbeddedAttempt(
           ],
         })
       : undefined;
-    const bundleLspRuntime = toolsEnabled
-      ? await createBundleLspToolRuntime({
+    const bundleLspRuntime =
+      toolsEnabled && !isRawModelRun
+        ? await createBundleLspToolRuntime({
           workspaceDir: effectiveWorkspace,
           cfg: params.config,
           reservedToolNames: [
@@ -722,7 +731,9 @@ export async function runEmbeddedAttempt(
       },
     });
     const isDefaultAgent = sessionAgentId === defaultAgentId;
-    const promptMode = resolvePromptModeForSession(params.sessionKey);
+    const promptMode =
+      params.promptMode ??
+      (isRawModelRun ? "none" : resolvePromptModeForSession(params.sessionKey));
 
     // When toolsAllow is set, use minimal prompt and strip skills catalog
     const effectivePromptMode = params.toolsAllow?.length ? ("minimal" as const) : promptMode;
@@ -796,27 +807,29 @@ export async function runEmbeddedAttempt(
         userTime,
         userTimeFormat,
         contextFiles,
-        includeMemorySection: !params.contextEngine || params.contextEngine.info.id === "legacy",
+        includeMemorySection: !activeContextEngine || activeContextEngine.info.id === "legacy",
         memoryCitationsMode: params.config?.memory?.citations,
         promptContribution,
       });
-    const appendPrompt = transformProviderSystemPrompt({
-      provider: params.provider,
-      config: params.config,
-      workspaceDir: effectiveWorkspace,
-      context: {
-        config: params.config,
-        agentDir: params.agentDir,
-        workspaceDir: effectiveWorkspace,
-        provider: params.provider,
-        modelId: params.modelId,
-        promptMode: effectivePromptMode,
-        runtimeChannel,
-        runtimeCapabilities,
-        agentId: sessionAgentId,
-        systemPrompt: builtAppendPrompt,
-      },
-    });
+    const appendPrompt = isRawModelRun
+      ? ""
+      : transformProviderSystemPrompt({
+          provider: params.provider,
+          config: params.config,
+          workspaceDir: effectiveWorkspace,
+          context: {
+            config: params.config,
+            agentDir: params.agentDir,
+            workspaceDir: effectiveWorkspace,
+            provider: params.provider,
+            modelId: params.modelId,
+            promptMode: effectivePromptMode,
+            runtimeChannel,
+            runtimeCapabilities,
+            agentId: sessionAgentId,
+            systemPrompt: builtAppendPrompt,
+          },
+        });
     const systemPromptReport = buildSystemPromptReport({
       source: "run",
       generatedAt: Date.now(),
@@ -883,7 +896,7 @@ export async function runEmbeddedAttempt(
 
       await runAttemptContextEngineBootstrap({
         hadSessionFile,
-        contextEngine: params.contextEngine,
+        contextEngine: activeContextEngine,
         sessionId: params.sessionId,
         sessionKey: params.sessionKey,
         sessionFile: params.sessionFile,
@@ -921,7 +934,7 @@ export async function runEmbeddedAttempt(
       });
       applyPiAutoCompactionGuard({
         settingsManager,
-        contextEngineInfo: params.contextEngine?.info,
+        contextEngineInfo: activeContextEngine?.info,
       });
 
       // Sets compaction/pruning runtime state and returns extension factories
@@ -996,6 +1009,11 @@ export async function runEmbeddedAttempt(
         throw new Error("Embedded agent session missing");
       }
       const activeSession = session;
+      if (isRawModelRun) {
+        activeSession.agent.reset();
+        applySystemPromptOverrideToSession(activeSession, "");
+        systemPromptText = "";
+      }
       let prePromptMessageCount = activeSession.messages.length;
       abortSessionForYield = () => {
         yieldAbortSettled = Promise.resolve(activeSession.abort());
@@ -1003,7 +1021,7 @@ export async function runEmbeddedAttempt(
       queueYieldInterruptForSession = () => {
         queueSessionsYieldInterruptMessage(activeSession);
       };
-      if (params.contextEngine?.info?.ownsCompaction !== true) {
+      if (!activeContextEngine || activeContextEngine.info.ownsCompaction !== true) {
         removeToolResultContextGuard = installToolResultContextGuard({
           agent: activeSession.agent,
           contextWindowTokens: Math.max(
@@ -1016,7 +1034,7 @@ export async function runEmbeddedAttempt(
       } else {
         removeToolResultContextGuard = installContextEngineLoopHook({
           agent: activeSession.agent,
-          contextEngine: params.contextEngine,
+          contextEngine: activeContextEngine,
           sessionId: params.sessionId,
           sessionKey: params.sessionKey,
           sessionFile: params.sessionFile,
@@ -1374,10 +1392,10 @@ export async function runEmbeddedAttempt(
           activeSession.agent.state.messages = limited;
         }
 
-        if (params.contextEngine) {
+        if (activeContextEngine) {
           try {
             const assembled = await assembleAttemptContextEngine({
-              contextEngine: params.contextEngine,
+              contextEngine: activeContextEngine,
               sessionId: params.sessionId,
               sessionKey: params.sessionKey,
               messages: activeSession.messages,
@@ -1922,7 +1940,7 @@ export async function runEmbeddedAttempt(
           const reserveTokens = settingsManager.getCompactionReserveTokens();
           const contextTokenBudget = params.contextTokenBudget ?? DEFAULT_CONTEXT_TOKENS;
           const preemptiveCompaction =
-            params.contextEngine?.info?.ownsCompaction === true
+            activeContextEngine?.info?.ownsCompaction === true
               ? {
                   route: "fits" as const,
                   shouldCompact: false,
@@ -2247,7 +2265,7 @@ export async function runEmbeddedAttempt(
         }
 
         // Let the active context engine run its post-turn lifecycle.
-        if (params.contextEngine) {
+        if (activeContextEngine) {
           const afterTurnRuntimeContext = buildAfterTurnRuntimeContext({
             attempt: params,
             workspaceDir: effectiveWorkspace,
@@ -2255,7 +2273,7 @@ export async function runEmbeddedAttempt(
             promptCache,
           });
           await finalizeAttemptContextEngineTurn({
-            contextEngine: params.contextEngine,
+            contextEngine: activeContextEngine,
             promptError: Boolean(promptError),
             aborted,
             yieldAborted,

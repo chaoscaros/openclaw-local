@@ -16,7 +16,7 @@ export type AttemptBootstrapContext = {
 export async function resolveAttemptBootstrapContext<
   TContext extends AttemptBootstrapContext,
 >(params: {
-  contextInjectionMode: "always" | "continuation-skip";
+  contextInjectionMode: "always" | "continuation-skip" | "never";
   bootstrapContextMode?: string;
   bootstrapContextRunKind?: string;
   sessionFile: string;
@@ -28,16 +28,19 @@ export async function resolveAttemptBootstrapContext<
     shouldRecordCompletedBootstrapTurn: boolean;
   }
 > {
+  const skipBootstrapContext = params.contextInjectionMode === "never";
   const isContinuationTurn =
+    !skipBootstrapContext &&
     params.contextInjectionMode === "continuation-skip" &&
     params.bootstrapContextRunKind !== "heartbeat" &&
     (await params.hasCompletedBootstrapTurn(params.sessionFile));
   const shouldRecordCompletedBootstrapTurn =
+    !skipBootstrapContext &&
     !isContinuationTurn &&
     params.bootstrapContextMode !== "lightweight" &&
     params.bootstrapContextRunKind !== "heartbeat";
 
-  const context = isContinuationTurn
+  const context = skipBootstrapContext || isContinuationTurn
     ? ({ bootstrapFiles: [], contextFiles: [] } as unknown as TContext)
     : await params.resolveBootstrapContextForRun();
 

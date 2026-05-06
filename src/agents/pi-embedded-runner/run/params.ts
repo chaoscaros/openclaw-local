@@ -1,4 +1,5 @@
 import type { ImageContent } from "@mariozechner/pi-ai";
+import type { PromptMode } from "../../../agents/system-prompt.types.js";
 import type { SourceReplyDeliveryMode } from "../../../auto-reply/get-reply-options.types.js";
 import type { ReplyPayload } from "../../../auto-reply/reply-payload.js";
 import type { ReplyOperation } from "../../../auto-reply/reply/reply-run-registry.js";
@@ -125,6 +126,10 @@ export type RunEmbeddedPiAgentParams = {
   internalEvents?: AgentInternalEvent[];
   inputProvenance?: InputProvenance;
   streamParams?: AgentStreamParams;
+  /** Internal one-shot model probe mode: no tools, no workspace/chat prompt policy. */
+  modelRun?: boolean;
+  /** Internal prompt-mode override for trusted local/gateway callsites. */
+  promptMode?: PromptMode;
   ownerNumbers?: string[];
   enforceFinalTag?: boolean;
   silentExpected?: boolean;

@@ -666,6 +666,38 @@ describe("gateway agent handler", () => {
     resetTimeConfig();
   });
 
+  it("keeps gateway model probes raw and forwards raw-run flags", async () => {
+    setupNewYorkTimeConfig("2026-01-29T01:30:00.000Z");
+
+    primeMainAgentRun({ cfg: mocks.loadConfigReturn });
+    mocks.agentCommand.mockClear();
+
+    await invokeAgent(
+      {
+        message: "Is it the weekend?",
+        agentId: "main",
+        sessionKey: "agent:main:main",
+        idempotencyKey: "test-raw-model-probe",
+        modelRun: true,
+        promptMode: "none",
+      } as AgentParams,
+      { reqId: "ts-raw-1" },
+    );
+
+    await waitForAssertion(() => expect(mocks.agentCommand).toHaveBeenCalled());
+
+    const callArgs = mocks.agentCommand.mock.calls[0][0] as {
+      message?: string;
+      modelRun?: boolean;
+      promptMode?: string;
+    };
+    expect(callArgs.message).toBe("Is it the weekend?");
+    expect(callArgs.modelRun).toBe(true);
+    expect(callArgs.promptMode).toBe("none");
+
+    resetTimeConfig();
+  });
+
   it.each([
     {
       name: "passes senderIsOwner=false for write-scoped gateway callers",

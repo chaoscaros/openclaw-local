@@ -153,6 +153,10 @@ export const AgentParamsSchema = Type.Object(
     bootstrapContextRunKind: Type.Optional(
       Type.Union([Type.Literal("default"), Type.Literal("heartbeat"), Type.Literal("cron")]),
     ),
+    modelRun: Type.Optional(Type.Boolean()),
+    promptMode: Type.Optional(
+      Type.Union([Type.Literal("full"), Type.Literal("minimal"), Type.Literal("none")]),
+    ),
     internalEvents: Type.Optional(Type.Array(AgentInternalEventSchema)),
     inputProvenance: Type.Optional(InputProvenanceSchema),
     idempotencyKey: NonEmptyString,
