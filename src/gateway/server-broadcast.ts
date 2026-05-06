@@ -16,10 +16,22 @@ import type { GatewayWsClient } from "./server/ws-types.js";
 import { logWs, shouldLogWs, summarizeAgentEventForWsLog } from "./ws-log.js";
 
 const EVENT_SCOPE_GUARDS: Record<string, string[]> = {
+  agent: [READ_SCOPE],
+  chat: [READ_SCOPE],
+  "chat.side_result": [READ_SCOPE],
+  cron: [READ_SCOPE],
+  health: [],
   "exec.approval.requested": [APPROVALS_SCOPE],
   "exec.approval.resolved": [APPROVALS_SCOPE],
+  heartbeat: [],
   "plugin.approval.requested": [APPROVALS_SCOPE],
   "plugin.approval.resolved": [APPROVALS_SCOPE],
+  presence: [],
+  shutdown: [],
+  tick: [],
+  "talk.mode": [WRITE_SCOPE],
+  "update.available": [],
+  "voicewake.changed": [READ_SCOPE],
   "device.pair.requested": [PAIRING_SCOPE],
   "device.pair.resolved": [PAIRING_SCOPE],
   "node.pair.requested": [PAIRING_SCOPE],
@@ -28,6 +40,8 @@ const EVENT_SCOPE_GUARDS: Record<string, string[]> = {
   "session.message": [READ_SCOPE],
   "session.tool": [READ_SCOPE],
 };
+
+const NODE_ALLOWED_EVENTS = new Set<string>(["voicewake.changed"]);
 
 export type {
   GatewayBroadcastFn,
@@ -38,12 +52,23 @@ export type {
 
 function hasEventScope(client: GatewayWsClient, event: string): boolean {
   const required = EVENT_SCOPE_GUARDS[event];
+  if (!required && event.startsWith("plugin.")) {
+    const role = client.connect.role ?? "operator";
+    if (role !== "operator") {
+      return false;
+    }
+    const scopes = Array.isArray(client.connect.scopes) ? client.connect.scopes : [];
+    return scopes.includes(WRITE_SCOPE) || scopes.includes(ADMIN_SCOPE);
+  }
   if (!required) {
+    return false;
+  }
+  if (required.length === 0) {
     return true;
   }
   const role = client.connect.role ?? "operator";
   if (role !== "operator") {
-    return false;
+    return role === "node" && NODE_ALLOWED_EVENTS.has(event);
   }
   const scopes = Array.isArray(client.connect.scopes) ? client.connect.scopes : [];
   if (scopes.includes(ADMIN_SCOPE)) {
@@ -56,7 +81,7 @@ function hasEventScope(client: GatewayWsClient, event: string): boolean {
 }
 
 export function createGatewayBroadcaster(params: { clients: Set<GatewayWsClient> }) {
-  let seq = 0;
+  const clientSeq = new WeakMap<GatewayWsClient, number>();
 
   const broadcastInternal = (
     event: string,
@@ -68,18 +93,10 @@ export function createGatewayBroadcaster(params: { clients: Set<GatewayWsClient>
       return;
     }
     const isTargeted = Boolean(targetConnIds);
-    const eventSeq = isTargeted ? undefined : ++seq;
-    const frame = JSON.stringify({
-      type: "event",
-      event,
-      payload,
-      seq: eventSeq,
-      stateVersion: opts?.stateVersion,
-    });
     if (shouldLogWs()) {
       const logMeta: Record<string, unknown> = {
         event,
-        seq: eventSeq ?? "targeted",
+        seq: isTargeted ? "targeted" : "per-client",
         clients: params.clients.size,
         targets: targetConnIds ? targetConnIds.size : undefined,
         dropIfSlow: opts?.dropIfSlow,
@@ -98,8 +115,12 @@ export function createGatewayBroadcaster(params: { clients: Set<GatewayWsClient>
       if (!hasEventScope(c, event)) {
         continue;
       }
+      const nextSeq = (clientSeq.get(c) ?? 0) + 1;
       const slow = c.socket.bufferedAmount > MAX_BUFFERED_BYTES;
       if (slow && opts?.dropIfSlow) {
+        if (!isTargeted) {
+          clientSeq.set(c, nextSeq);
+        }
         continue;
       }
       if (slow) {
@@ -111,6 +132,17 @@ export function createGatewayBroadcaster(params: { clients: Set<GatewayWsClient>
         continue;
       }
       try {
+        const eventSeq = isTargeted ? undefined : nextSeq;
+        if (!isTargeted) {
+          clientSeq.set(c, nextSeq);
+        }
+        const frame = JSON.stringify({
+          type: "event",
+          event,
+          payload,
+          seq: eventSeq,
+          stateVersion: opts?.stateVersion,
+        });
         c.socket.send(frame);
       } catch {
         /* ignore */
