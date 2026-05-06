@@ -3,6 +3,7 @@ import path from "node:path";
 import * as tar from "tar";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { safePathSegmentHashed } from "../infra/install-safe-path.js";
+import * as openclawRoot from "../infra/openclaw-root.js";
 import { runCommandWithTimeout } from "../process/exec.js";
 import { expectSingleNpmInstallIgnoreScriptsCall } from "../test-utils/exec-assertions.js";
 import { expectInstallUsesIgnoreScripts } from "../test-utils/npm-spec-install-test-helpers.js";
@@ -2079,6 +2080,81 @@ describe("installPluginFromDir", () => {
     };
     expect(manifest.devDependencies?.openclaw).toBeUndefined();
     expect(manifest.devDependencies?.vitest).toBe("^3.0.0");
+  });
+
+  it("links the host openclaw package when the plugin declares it as a peerDependency", async () => {
+    const { pluginDir, extensionsDir } = setupPluginInstallDirs();
+    const fakeHostRoot = suiteTempRootTracker.makeTempDir();
+    const run = vi.mocked(runCommandWithTimeout);
+    const resolveRootMock = vi
+      .spyOn(openclawRoot, "resolveOpenClawPackageRootSync")
+      .mockReturnValue(fakeHostRoot);
+
+    try {
+      fs.writeFileSync(
+        path.join(pluginDir, "package.json"),
+        JSON.stringify({
+          name: "peer-install-plugin",
+          version: "1.0.0",
+          openclaw: { extensions: ["index.js"] },
+          peerDependencies: { openclaw: "*" },
+        }),
+      );
+      fs.writeFileSync(path.join(pluginDir, "index.js"), "export {};\n");
+
+      const { result } = await installFromDirWithWarnings({ pluginDir, extensionsDir });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) {
+        return;
+      }
+      const symlinkPath = path.join(result.targetDir, "node_modules", "openclaw");
+      expect(fs.lstatSync(symlinkPath).isSymbolicLink()).toBe(true);
+      expect(fs.realpathSync(symlinkPath)).toBe(fs.realpathSync(fakeHostRoot));
+      expect(run).not.toHaveBeenCalled();
+    } finally {
+      resolveRootMock.mockRestore();
+    }
+  });
+
+  it("is idempotent - re-installing replaces an existing symlink without error", async () => {
+    const { pluginDir, extensionsDir } = setupPluginInstallDirs();
+    const fakeHostRoot = suiteTempRootTracker.makeTempDir();
+    const resolveRootMock = vi
+      .spyOn(openclawRoot, "resolveOpenClawPackageRootSync")
+      .mockReturnValue(fakeHostRoot);
+
+    try {
+      fs.writeFileSync(
+        path.join(pluginDir, "package.json"),
+        JSON.stringify({
+          name: "peer-install-plugin",
+          version: "1.0.0",
+          openclaw: { extensions: ["index.js"] },
+          peerDependencies: { openclaw: "*" },
+        }),
+      );
+      fs.writeFileSync(path.join(pluginDir, "index.js"), "export {};\n");
+
+      const first = await installPluginFromDir({ dirPath: pluginDir, extensionsDir });
+      expect(first.ok).toBe(true);
+
+      const { result: second, warnings } = await installFromDirWithWarnings({
+        pluginDir,
+        extensionsDir,
+        mode: "update",
+      });
+      expect(warnings).toHaveLength(0);
+
+      if (!second.ok) {
+        return;
+      }
+      const symlinkPath = path.join(second.targetDir, "node_modules", "openclaw");
+      expect(fs.lstatSync(symlinkPath).isSymbolicLink()).toBe(true);
+      expect(fs.realpathSync(symlinkPath)).toBe(fs.realpathSync(fakeHostRoot));
+    } finally {
+      resolveRootMock.mockRestore();
+    }
   });
 
   it("blocks install when resolved dependencies introduce a denied package", async () => {
