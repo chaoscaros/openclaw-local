@@ -36,7 +36,7 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
 
   async function expectMessageToolDisabledForPlan(plan: {
     requested: boolean;
-    mode: "none" | "announce";
+    mode: "none" | "announce" | "webhook";
     channel?: string;
     to?: string;
   }) {
@@ -45,6 +45,21 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
     await runCronIsolatedAgentTurn(makeParams());
     expect(runEmbeddedPiAgentMock).toHaveBeenCalledTimes(1);
     expect(runEmbeddedPiAgentMock.mock.calls[0]?.[0]?.disableMessageTool).toBe(true);
+    expect(runEmbeddedPiAgentMock.mock.calls[0]?.[0]?.forceMessageTool).toBe(false);
+  }
+
+  async function expectMessageToolEnabledForPlan(plan: {
+    requested: boolean;
+    mode: "none" | "announce";
+    channel?: string;
+    to?: string;
+  }) {
+    mockRunCronFallbackPassthrough();
+    resolveCronDeliveryPlanMock.mockReturnValue(plan);
+    await runCronIsolatedAgentTurn(makeParams());
+    expect(runEmbeddedPiAgentMock).toHaveBeenCalledTimes(1);
+    expect(runEmbeddedPiAgentMock.mock.calls[0]?.[0]?.disableMessageTool).toBe(false);
+    expect(runEmbeddedPiAgentMock.mock.calls[0]?.[0]?.forceMessageTool).toBe(true);
   }
 
   beforeEach(() => {
@@ -63,15 +78,15 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
     restoreFastTestEnv(previousFastTestEnv);
   });
 
-  it('disables the message tool when delivery.mode is "none"', async () => {
-    await expectMessageToolDisabledForPlan({
+  it('keeps the message tool enabled when delivery.mode is "none"', async () => {
+    await expectMessageToolEnabledForPlan({
       requested: false,
       mode: "none",
     });
   });
 
-  it("disables the message tool when cron delivery is active", async () => {
-    await expectMessageToolDisabledForPlan({
+  it("keeps the message tool enabled when cron delivery is active", async () => {
+    await expectMessageToolEnabledForPlan({
       requested: true,
       mode: "announce",
       channel: "telegram",
@@ -79,20 +94,11 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
     });
   });
 
-  it("keeps the message tool enabled for shared callers when delivery is not requested", async () => {
-    mockRunCronFallbackPassthrough();
-    resolveCronDeliveryPlanMock.mockReturnValue({
-      requested: false,
-      mode: "none",
+  it("disables the message tool for webhook delivery", async () => {
+    await expectMessageToolDisabledForPlan({
+      requested: true,
+      mode: "webhook",
     });
-
-    await runCronIsolatedAgentTurn({
-      ...makeParams(),
-      deliveryContract: "shared",
-    });
-
-    expect(runEmbeddedPiAgentMock).toHaveBeenCalledTimes(1);
-    expect(runEmbeddedPiAgentMock.mock.calls[0]?.[0]?.disableMessageTool).toBe(false);
   });
 
   it("skips cron delivery when output is heartbeat-only", async () => {
@@ -126,7 +132,7 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
     );
   });
 
-  it("skips cron delivery when a shared caller already sent to the same target", async () => {
+  it("skips cron delivery when the message tool already sent to the same target", async () => {
     mockRunCronFallbackPassthrough();
     const params = makeParams();
     const job = {
@@ -152,7 +158,6 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
 
     await runCronIsolatedAgentTurn({
       ...params,
-      deliveryContract: "shared",
       job: job as never,
     });
 

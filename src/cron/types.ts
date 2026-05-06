@@ -60,6 +60,11 @@ export type CronRunTelemetry = {
   usage?: CronUsageSummary;
 };
 
+export type CronDeliveryPreview = {
+  label: string;
+  detail: string;
+};
+
 export type CronRunOutcome = {
   status: CronRunStatus;
   error?: string;

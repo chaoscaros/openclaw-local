@@ -127,22 +127,12 @@ type CronModelCatalogRuntime = typeof import("./run-model-catalog.runtime.js");
 type CronDeliveryRuntime = typeof import("./run-delivery.runtime.js");
 type ResolvedCronDeliveryTarget = Awaited<ReturnType<CronDeliveryRuntime["resolveDeliveryTarget"]>>;
 
-type IsolatedDeliveryContract = "cron-owned" | "shared";
-
-function resolveCronToolPolicy(params: {
-  deliveryRequested: boolean;
-  resolvedDelivery: ResolvedCronDeliveryTarget;
-  deliveryContract: IsolatedDeliveryContract;
-}) {
+function resolveCronToolPolicy(params: { deliveryMode: "announce" | "webhook" | "none" }) {
+  const enableMessageTool = params.deliveryMode !== "webhook";
   return {
-    // Only enforce an explicit message target when the cron delivery target
-    // was successfully resolved. When resolution fails the agent should not
-    // be blocked by a target it cannot satisfy (#27898).
-    requireExplicitMessageTarget: params.deliveryRequested && params.resolvedDelivery.ok,
-    // Cron-owned runs always route user-facing delivery through the runner
-    // itself. Shared callers keep the previous behavior so non-cron paths do
-    // not silently lose the message tool when no explicit delivery is active.
-    disableMessageTool: params.deliveryContract === "cron-owned" ? true : params.deliveryRequested,
+    requireExplicitMessageTarget: false,
+    disableMessageTool: !enableMessageTool,
+    forceMessageTool: enableMessageTool,
   };
 }
 
@@ -150,10 +140,9 @@ async function resolveCronDeliveryContext(params: {
   cfg: OpenClawConfig;
   job: CronJob;
   agentId: string;
-  deliveryContract: IsolatedDeliveryContract;
 }) {
   const deliveryPlan = resolveCronDeliveryPlan(params.job);
-  if (!deliveryPlan.requested) {
+  if (deliveryPlan.mode === "webhook") {
     const resolvedDelivery = {
       ok: false as const,
       channel: undefined,
@@ -161,16 +150,14 @@ async function resolveCronDeliveryContext(params: {
       accountId: undefined,
       threadId: undefined,
       mode: "implicit" as const,
-      error: new Error("cron delivery not requested"),
+      error: new Error("webhook delivery has no chat target"),
     };
     return {
       deliveryPlan,
-      deliveryRequested: false,
+      deliveryRequested: deliveryPlan.requested,
       resolvedDelivery,
       toolPolicy: resolveCronToolPolicy({
-        deliveryRequested: false,
-        resolvedDelivery,
-        deliveryContract: params.deliveryContract,
+        deliveryMode: deliveryPlan.mode,
       }),
     };
   }
@@ -187,9 +174,7 @@ async function resolveCronDeliveryContext(params: {
     deliveryRequested: deliveryPlan.requested,
     resolvedDelivery,
     toolPolicy: resolveCronToolPolicy({
-      deliveryRequested: deliveryPlan.requested,
-      resolvedDelivery,
-      deliveryContract: params.deliveryContract,
+      deliveryMode: deliveryPlan.mode,
     }),
   };
 }
@@ -197,9 +182,17 @@ async function resolveCronDeliveryContext(params: {
 function appendCronDeliveryInstruction(params: {
   commandBody: string;
   deliveryRequested: boolean;
+  messageToolEnabled: boolean;
+  resolvedDeliveryOk: boolean;
 }) {
   if (!params.deliveryRequested) {
     return params.commandBody;
+  }
+  if (params.messageToolEnabled) {
+    const targetHint = params.resolvedDeliveryOk
+      ? "for the current chat"
+      : "with an explicit target";
+    return `${params.commandBody}\n\nUse the message tool if you need to notify the user directly ${targetHint}. If you do not send directly, your final plain-text reply will be delivered automatically.`.trim();
   }
   return `${params.commandBody}\n\nReturn your summary as plain text; it will be delivered automatically. If the task explicitly calls for messaging a specific external recipient, note who/where it should go instead of sending it yourself.`.trim();
 }
@@ -226,7 +219,6 @@ type RunCronAgentTurnParams = {
   sessionKey: string;
   agentId?: string;
   lane?: string;
-  deliveryContract?: IsolatedDeliveryContract;
 };
 
 type WithRunSession = (
@@ -429,7 +421,6 @@ async function prepareCronRunContext(params: {
     cfg: cfgWithAgentDefaults,
     job: input.job,
     agentId,
-    deliveryContract: input.deliveryContract ?? "cron-owned",
   });
 
   const { formattedTime, timeLine } = resolveCronStyleNow(input.cfg, now);
@@ -467,7 +458,12 @@ async function prepareCronRunContext(params: {
   } else {
     commandBody = `${base}\n${timeLine}`.trim();
   }
-  commandBody = appendCronDeliveryInstruction({ commandBody, deliveryRequested });
+  commandBody = appendCronDeliveryInstruction({
+    commandBody,
+    deliveryRequested,
+    messageToolEnabled: !toolPolicy.disableMessageTool,
+    resolvedDeliveryOk: resolvedDelivery.ok,
+  });
 
   const skillsSnapshot = await resolveCronSkillsSnapshot({
     workspaceDir,
@@ -678,8 +674,6 @@ async function finalizeCronRun(params: {
     resolveCronDeliveryBestEffort,
   } = await loadCronDeliveryRuntime();
   const skipMessagingToolDelivery =
-    (prepared.input.deliveryContract ?? "cron-owned") === "shared" &&
-    prepared.deliveryRequested &&
     finalRunResult.didSendViaMessagingTool === true &&
     (finalRunResult.messagingToolSentTargets ?? []).some((target) =>
       matchesMessagingToolDeliveryTarget(target, {
@@ -747,7 +741,6 @@ export async function runCronIsolatedAgentTurn(params: {
   sessionKey: string;
   agentId?: string;
   lane?: string;
-  deliveryContract?: IsolatedDeliveryContract;
 }): Promise<RunCronAgentTurnResult> {
   const abortSignal = params.abortSignal ?? params.signal;
   const isAborted = () => abortSignal?.aborted === true;
