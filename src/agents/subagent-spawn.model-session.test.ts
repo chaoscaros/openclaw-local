@@ -86,6 +86,7 @@ describe("spawnSubagentDirect runtime model persistence", () => {
       sessionKey: /^agent:main:subagent:/,
       provider: "openai-codex",
       model: "gpt-5.4",
+      overrideSource: "user",
     });
     expect(pruneLegacyStoreKeysMock).toHaveBeenCalledTimes(1);
     expect(operations.indexOf("gateway:sessions.patch")).toBeGreaterThan(-1);

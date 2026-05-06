@@ -97,6 +97,7 @@ export function expectPersistedRuntimeModel(params: {
   sessionKey: string | RegExp;
   provider: string;
   model: string;
+  overrideSource?: "user" | "auto";
 }) {
   const [persistedKey, persistedEntry] = Object.entries(params.persistedStore ?? {})[0] ?? [];
   if (typeof params.sessionKey === "string") {
@@ -106,7 +107,10 @@ export function expectPersistedRuntimeModel(params: {
   }
   expect(persistedEntry).toMatchObject({
     modelProvider: params.provider,
+    providerOverride: params.provider,
     model: params.model,
+    modelOverride: params.model,
+    ...(params.overrideSource ? { modelOverrideSource: params.overrideSource } : {}),
   });
 }
 

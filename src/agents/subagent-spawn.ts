@@ -177,6 +177,7 @@ async function persistInitialChildSessionRuntimeModel(params: {
   cfg: OpenClawConfig;
   childSessionKey: string;
   resolvedModel?: string;
+  modelOverrideSource?: "user" | "auto";
 }): Promise<string | undefined> {
   const { provider, model } = splitModelRef(params.resolvedModel);
   if (!model) {
@@ -195,7 +196,14 @@ async function persistInitialChildSessionRuntimeModel(params: {
       });
       store[target.canonicalKey] = mergeSessionEntry(store[target.canonicalKey], {
         model,
-        ...(provider ? { modelProvider: provider } : {}),
+        modelOverride: model,
+        modelOverrideSource: params.modelOverrideSource === "auto" ? "auto" : "user",
+        ...(provider
+          ? {
+              modelProvider: provider,
+              providerOverride: provider,
+            }
+          : {}),
       });
     });
     return undefined;
@@ -546,6 +554,8 @@ export async function spawnSubagentDirect(
       cfg,
       childSessionKey,
       resolvedModel,
+      modelOverrideSource:
+        initialChildSessionPatch.modelOverrideSource === "auto" ? "auto" : "user",
     });
     if (runtimeModelPersistError) {
       try {
