@@ -137,6 +137,7 @@ describe("setupChannels workspace shadow exclusion", () => {
         channel: "telegram",
         pluginId: "@openclaw/telegram-plugin",
         workspaceDir: "/tmp/openclaw-workspace",
+        installRuntimeDeps: false,
       }),
     );
   });
@@ -165,6 +166,7 @@ describe("setupChannels workspace shadow exclusion", () => {
         channel: "telegram",
         pluginId: "trusted-telegram-shadow",
         workspaceDir: "/tmp/openclaw-workspace",
+        installRuntimeDeps: false,
       }),
     );
   });
