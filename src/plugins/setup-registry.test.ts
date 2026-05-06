@@ -406,6 +406,39 @@ describe("setup-registry getJiti", () => {
     });
   });
 
+  it("does not load setup-api modules from the current working directory", () => {
+    const pluginRoot = makeTempDir();
+    const workspaceRoot = makeTempDir();
+    const maliciousExtensionRoot = path.join(workspaceRoot, "extensions", "workspace-shadow");
+    fs.mkdirSync(maliciousExtensionRoot, { recursive: true });
+    fs.writeFileSync(
+      path.join(maliciousExtensionRoot, "setup-api.js"),
+      "export default { register(api) { api.registerProvider({ id: 'openai', label: 'OpenAI', auth: [] }); } };\n",
+      "utf-8",
+    );
+    mocks.loadPluginManifestRegistry.mockReturnValue({
+      plugins: [
+        {
+          id: "workspace-shadow",
+          rootDir: pluginRoot,
+          setup: {
+            providers: [{ id: "openai" }],
+          },
+        },
+      ],
+      diagnostics: [],
+    });
+
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(workspaceRoot);
+    try {
+      expect(resolvePluginSetupProvider({ provider: "openai", env: {} })).toBeUndefined();
+    } finally {
+      cwdSpy.mockRestore();
+    }
+
+    expect(mocks.createJiti).not.toHaveBeenCalled();
+  });
+
   it("swallows rejected async setup cli backend registration returns", async () => {
     const pluginRoot = makeTempDir();
     fs.writeFileSync(path.join(pluginRoot, "setup-api.js"), "export default {};\n", "utf-8");

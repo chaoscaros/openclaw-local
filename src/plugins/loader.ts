@@ -296,7 +296,7 @@ function createPluginJitiLoader(options: Pick<PluginLoadOptions, "pluginSdkResol
     if (cached) {
       return cached;
     }
-    const loader = createJiti(import.meta.url, {
+    const loader = createJiti(modulePath, {
       ...buildPluginLoaderJitiOptions(aliasMap),
       // Source .ts runtime shims import sibling ".js" specifiers that only exist
       // after build. Disable native loading for source entries so Jiti rewrites
