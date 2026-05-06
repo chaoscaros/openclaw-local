@@ -116,6 +116,31 @@ describe("model-pricing-cache", () => {
     expect(refs).toContain("tavily/search-preview");
   });
 
+  it("skips web search plugin pricing refs when plugins are globally disabled", () => {
+    const refs = collectConfiguredModelPricingRefs({
+      plugins: {
+        enabled: false,
+        entries: {
+          tavily: {
+            config: {
+              webSearch: {
+                model: "tavily/search-preview",
+              },
+            },
+          },
+        },
+      },
+      agents: {
+        defaults: {
+          model: { primary: "openai/gpt-5.4" },
+        },
+      },
+    } as OpenClawConfig).map((ref) => modelKey(ref.provider, ref.model));
+
+    expect(refs).toContain("openai/gpt-5.4");
+    expect(refs).not.toContain("tavily/search-preview");
+  });
+
   it("loads openrouter pricing and maps provider aliases, wrappers, and anthropic dotted ids", async () => {
     const config = {
       agents: {

@@ -10,6 +10,7 @@ import {
 import { resolvePluginWebSearchConfig } from "../config/plugin-web-search-config.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { normalizePluginsConfig } from "../plugins/config-state.js";
 import { resolveManifestContractPluginIds } from "../plugins/manifest-registry.js";
 import { normalizeProviderModelIdWithPlugin } from "../plugins/provider-runtime.js";
 import { normalizeOptionalString, resolvePrimaryStringValue } from "../shared/string-coerce.js";
@@ -249,6 +250,9 @@ function addConfiguredWebSearchPluginModels(params: {
   aliasIndex: ReturnType<typeof buildModelAliasIndex>;
   refs: Map<string, ModelRef>;
 }): void {
+  if (normalizePluginsConfig(params.config.plugins).enabled === false) {
+    return;
+  }
   for (const pluginId of resolveManifestContractPluginIds({
     contract: "webSearchProviders",
     config: params.config,
