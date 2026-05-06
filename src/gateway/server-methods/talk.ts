@@ -1,5 +1,6 @@
 import { loadConfig, readConfigFileSnapshot } from "../../config/config.js";
 import { redactConfigObject } from "../../config/redact-snapshot.js";
+import { resolveSecretInputRef } from "../../config/types.secrets.js";
 import {
   buildTalkConfigResponse,
   normalizeTalkSection,
@@ -200,6 +201,49 @@ function buildTalkSpeakOverrides(
   };
 }
 
+function stripUnresolvedSecretApiKeyFromRecord(config: Record<string, unknown>): Record<string, unknown> {
+  const { ref } = resolveSecretInputRef({ value: config.apiKey });
+  if (!ref) {
+    return config;
+  }
+  const { apiKey: _omit, ...rest } = config;
+  return rest;
+}
+
+function stripUnresolvedSecretApiKey(config: TalkProviderConfig): TalkProviderConfig {
+  return stripUnresolvedSecretApiKeyFromRecord(config) as TalkProviderConfig;
+}
+
+function stripUnresolvedSecretApiKeysFromBaseTtsProviders(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  const providers = asRecord(config.providers);
+  if (!providers) {
+    return config;
+  }
+  let changed = false;
+  const nextProviders: Record<string, unknown> = {};
+  for (const [providerId, providerValue] of Object.entries(providers)) {
+    const providerConfig = asRecord(providerValue);
+    if (!providerConfig) {
+      nextProviders[providerId] = providerValue;
+      continue;
+    }
+    const stripped = stripUnresolvedSecretApiKeyFromRecord(providerConfig);
+    nextProviders[providerId] = stripped;
+    if (stripped !== providerConfig) {
+      changed = true;
+    }
+  }
+  if (!changed) {
+    return config;
+  }
+  return {
+    ...config,
+    providers: nextProviders,
+  };
+}
+
 function inferMimeType(
   outputFormat: string | undefined,
   fileExtension: string | undefined,
@@ -261,19 +305,23 @@ function resolveTalkResponseFromConfig(params: {
   const speechProvider = getSpeechProvider(provider, params.runtimeConfig);
   const sourceBaseTts = asRecord(params.sourceConfig.messages?.tts) ?? {};
   const runtimeBaseTts = asRecord(params.runtimeConfig.messages?.tts) ?? {};
+  const selectedBaseTts =
+    Object.keys(runtimeBaseTts).length > 0
+      ? runtimeBaseTts
+      : stripUnresolvedSecretApiKeysFromBaseTtsProviders(sourceBaseTts);
+  const sourceProviderConfig = sourceResolved?.config ?? {};
+  const runtimeProviderConfig = runtimeResolved?.config ?? {};
   const talkProviderConfig = sourceResolved?.config ?? runtimeResolved?.config ?? {};
+  const providerInputConfig = stripUnresolvedSecretApiKey(
+    Object.keys(runtimeProviderConfig).length > 0 ? runtimeProviderConfig : sourceProviderConfig,
+  );
   const resolvedConfig =
     speechProvider?.resolveTalkConfig?.({
       cfg: params.runtimeConfig,
-      baseTtsConfig: Object.keys(sourceBaseTts).length > 0 ? sourceBaseTts : runtimeBaseTts,
-      talkProviderConfig,
-      timeoutMs:
-        typeof sourceBaseTts.timeoutMs === "number"
-          ? sourceBaseTts.timeoutMs
-          : typeof runtimeBaseTts.timeoutMs === "number"
-            ? runtimeBaseTts.timeoutMs
-            : 30_000,
-    }) ?? talkProviderConfig;
+      baseTtsConfig: selectedBaseTts,
+      talkProviderConfig: providerInputConfig,
+      timeoutMs: typeof selectedBaseTts.timeoutMs === "number" ? selectedBaseTts.timeoutMs : 30_000,
+    }) ?? providerInputConfig;
 
   return {
     ...payload,
@@ -286,7 +334,7 @@ function resolveTalkResponseFromConfig(params: {
 }
 
 export const talkHandlers: GatewayRequestHandlers = {
-  "talk.config": async ({ params, respond, client }) => {
+  "talk.config": async ({ params, respond, client, context }) => {
     if (!validateTalkConfigParams(params)) {
       respond(
         false,
@@ -310,7 +358,10 @@ export const talkHandlers: GatewayRequestHandlers = {
     }
 
     const snapshot = await readConfigFileSnapshot();
-    const runtimeConfig = loadConfig();
+    const runtimeConfig =
+      typeof (context as { getRuntimeConfig?: unknown }).getRuntimeConfig === "function"
+        ? (context as { getRuntimeConfig: () => OpenClawConfig }).getRuntimeConfig()
+        : loadConfig();
     const configPayload: Record<string, unknown> = {};
 
     const talk = resolveTalkResponseFromConfig({

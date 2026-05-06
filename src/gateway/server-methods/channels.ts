@@ -283,10 +283,14 @@ export const channelsHandlers: GatewayRequestHandlers = {
       return;
     }
     try {
+      const runtimeConfig =
+        typeof (context as { getRuntimeConfig?: unknown }).getRuntimeConfig === "function"
+          ? (context as { getRuntimeConfig: () => OpenClawConfig }).getRuntimeConfig()
+          : snapshot.config ?? {};
       const payload = await logoutChannelAccount({
         channelId,
         accountId,
-        cfg: snapshot.config ?? {},
+        cfg: runtimeConfig,
         context,
         plugin,
       });
