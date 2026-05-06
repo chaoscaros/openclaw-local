@@ -391,6 +391,8 @@ function resetRunOutcomeMocks(): void {
       deliveryRequested,
       skipHeartbeatDelivery,
       skipMessagingToolDelivery,
+      resolvedDelivery,
+      messagingToolSentTargets,
     }) => ({
       result: undefined,
       summary,
@@ -400,6 +402,41 @@ function resetRunOutcomeMocks(): void {
       deliveryPayloads,
       skipHeartbeatDelivery,
       skipMessagingToolDelivery,
+      delivery: {
+        resolved: resolvedDelivery?.ok
+          ? {
+              ok: true,
+              channel: resolvedDelivery.channel,
+              to: resolvedDelivery.to,
+              accountId: resolvedDelivery.accountId,
+              source: resolvedDelivery.mode,
+            }
+          : {
+              ok: false,
+              channel: resolvedDelivery?.channel,
+              to: resolvedDelivery?.to,
+              accountId: resolvedDelivery?.accountId,
+              source: resolvedDelivery?.mode,
+              error: resolvedDelivery?.error?.message,
+            },
+        ...(Array.isArray(messagingToolSentTargets) && messagingToolSentTargets.length > 0
+          ? {
+              messageToolSentTo: messagingToolSentTargets.map((target: any) => ({
+                channel:
+                  target.provider === "message" &&
+                  resolvedDelivery?.ok &&
+                  target.to === resolvedDelivery.to &&
+                  (!resolvedDelivery.accountId ||
+                    !target.accountId ||
+                    target.accountId === resolvedDelivery.accountId)
+                    ? resolvedDelivery.channel
+                    : target.provider,
+                ...(target.to ? { to: target.to } : {}),
+                ...(target.accountId ? { accountId: target.accountId } : {}),
+              })),
+            }
+          : {}),
+      },
     }),
   );
   preflightCronModelProviderMock.mockReset();

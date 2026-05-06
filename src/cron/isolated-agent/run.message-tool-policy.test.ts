@@ -170,6 +170,49 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
     );
   });
 
+  it("rewrites generic message provider to resolved channel in delivery trace", async () => {
+    mockRunCronFallbackPassthrough();
+    resolveCronDeliveryPlanMock.mockReturnValue({
+      requested: true,
+      mode: "announce",
+      channel: "telegram",
+      to: "123",
+    });
+    resolveDeliveryTargetMock.mockResolvedValue({
+      ok: true,
+      channel: "telegram",
+      to: "123",
+      accountId: undefined,
+      mode: "explicit",
+      error: undefined,
+    });
+    runEmbeddedPiAgentMock.mockResolvedValue({
+      payloads: [{ text: "sent" }],
+      didSendViaMessagingTool: true,
+      messagingToolSentTargets: [{ tool: "message", provider: "message", to: "123" }],
+      meta: { agentMeta: { usage: { input: 10, output: 20 } } },
+    });
+
+    const result = await runCronIsolatedAgentTurn({
+      ...makeParams(),
+      job: {
+        id: "message-tool-generic-target",
+        name: "Message Tool Generic Target",
+        schedule: { kind: "every", everyMs: 60_000 },
+        sessionTarget: "isolated",
+        payload: { kind: "agentTurn", message: "send a message" },
+        delivery: { mode: "announce", channel: "telegram", to: "123" },
+      } as never,
+    });
+
+    expect(result.delivery).toEqual(
+      expect.objectContaining({
+        resolved: { ok: true, channel: "telegram", to: "123", source: "explicit" },
+        messageToolSentTo: [{ channel: "telegram", to: "123" }],
+      }),
+    );
+  });
+
   it("skips cron delivery for account-bound jobs when message tool omits accountId", async () => {
     mockRunCronFallbackPassthrough();
     const params = makeParams();
@@ -193,6 +236,7 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
       channel: "telegram",
       to: "123",
       accountId: "bot-a",
+      mode: "explicit",
       error: undefined,
     });
     runEmbeddedPiAgentMock.mockResolvedValue({
@@ -202,7 +246,7 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
       meta: { agentMeta: { usage: { input: 10, output: 20 } } },
     });
 
-    await runCronIsolatedAgentTurn({
+    const result = await runCronIsolatedAgentTurn({
       ...params,
       job: job as never,
     });
@@ -212,6 +256,11 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
       expect.objectContaining({
         deliveryRequested: true,
         skipMessagingToolDelivery: true,
+      }),
+    );
+    expect(result.delivery).toEqual(
+      expect.objectContaining({
+        messageToolSentTo: [{ channel: "telegram", to: "123" }],
       }),
     );
   });
@@ -239,6 +288,7 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
       channel: "telegram",
       to: "123",
       accountId: "bot-a",
+      mode: "explicit",
       error: undefined,
     });
     runEmbeddedPiAgentMock.mockResolvedValue({
@@ -250,7 +300,7 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
       meta: { agentMeta: { usage: { input: 10, output: 20 } } },
     });
 
-    await runCronIsolatedAgentTurn({
+    const result = await runCronIsolatedAgentTurn({
       ...params,
       job: job as never,
     });
@@ -260,6 +310,11 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
       expect.objectContaining({
         deliveryRequested: true,
         skipMessagingToolDelivery: false,
+      }),
+    );
+    expect(result.delivery).toEqual(
+      expect.objectContaining({
+        messageToolSentTo: [{ channel: "message", to: "123", accountId: "bot-b" }],
       }),
     );
   });

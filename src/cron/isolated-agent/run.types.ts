@@ -16,5 +16,21 @@ export type RunCronAgentTurnResult = {
    * cannot guarantee a final delivery ack synchronously.
    */
   deliveryAttempted?: boolean;
+  /** Optional delivery trace for cron routing/debugging. */
+  delivery?: {
+    resolved?: {
+      ok: boolean;
+      channel?: string;
+      to?: string;
+      accountId?: string;
+      source?: string;
+      error?: string;
+    };
+    messageToolSentTo?: Array<{
+      channel: string;
+      to?: string;
+      accountId?: string;
+    }>;
+  };
 } & CronRunOutcome &
   CronRunTelemetry;

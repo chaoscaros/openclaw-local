@@ -10,6 +10,7 @@ import { sleepWithAbort } from "../../infra/backoff.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import type { OutboundDeliveryResult } from "../../infra/outbound/deliver.js";
 import { normalizeTargetForProvider } from "../../infra/outbound/target-normalization.js";
+import type { MessagingToolSend } from "../../agents/pi-embedded-messaging.types.js";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalLowercaseString,
@@ -73,6 +74,7 @@ type DispatchCronDeliveryParams = {
   deliveryBestEffort: boolean;
   deliveryPayloadHasStructuredContent: boolean;
   deliveryPayloads: ReplyPayload[];
+  messagingToolSentTargets?: MessagingToolSend[];
   synthesizedText?: string;
   summary?: string;
   outputText?: string;
@@ -89,11 +91,66 @@ export type DispatchCronDeliveryState = {
   result?: RunCronAgentTurnResult;
   delivered: boolean;
   deliveryAttempted: boolean;
+  delivery?: RunCronAgentTurnResult["delivery"];
   summary?: string;
   outputText?: string;
   synthesizedText?: string;
   deliveryPayloads: ReplyPayload[];
 };
+
+function normalizeMessagingToolTarget(
+  target: MessagingToolSend,
+  resolvedDelivery: DeliveryTargetResolution,
+): NonNullable<RunCronAgentTurnResult["delivery"]>["messageToolSentTo"][number] | undefined {
+  const channel = normalizeOptionalString(target.provider);
+  if (!channel) {
+    return undefined;
+  }
+  const traceChannel =
+    channel === "message" &&
+    resolvedDelivery.ok &&
+    matchesMessagingToolDeliveryTarget(target, {
+      channel: resolvedDelivery.channel,
+      to: resolvedDelivery.to,
+      accountId: resolvedDelivery.accountId,
+    })
+      ? resolvedDelivery.channel
+      : channel;
+  return {
+    channel: traceChannel,
+    ...(target.to ? { to: target.to } : {}),
+    ...(target.accountId ? { accountId: target.accountId } : {}),
+  };
+}
+
+function buildCronDeliveryTrace(params: {
+  resolvedDelivery: DeliveryTargetResolution;
+  messagingToolSentTargets?: MessagingToolSend[];
+}): RunCronAgentTurnResult["delivery"] {
+  const resolved = params.resolvedDelivery.ok
+    ? {
+        ok: true as const,
+        channel: params.resolvedDelivery.channel,
+        to: params.resolvedDelivery.to,
+        accountId: params.resolvedDelivery.accountId,
+        source: params.resolvedDelivery.mode,
+      }
+    : {
+        ok: false as const,
+        channel: params.resolvedDelivery.channel,
+        to: params.resolvedDelivery.to,
+        accountId: params.resolvedDelivery.accountId,
+        source: params.resolvedDelivery.mode,
+        error: params.resolvedDelivery.error.message,
+      };
+  const messageToolSentTo = (params.messagingToolSentTargets ?? [])
+    .map((target) => normalizeMessagingToolTarget(target, params.resolvedDelivery))
+    .filter((target): target is NonNullable<typeof target> => Boolean(target));
+  return {
+    resolved,
+    ...(messageToolSentTo.length > 0 ? { messageToolSentTo } : {}),
+  };
+}
 
 const TRANSIENT_DIRECT_CRON_DELIVERY_ERROR_PATTERNS: readonly RegExp[] = [
   /\berrorcode=unavailable\b/i,
@@ -392,6 +449,10 @@ export async function dispatchCronDelivery(
   let outputText = params.outputText;
   let synthesizedText = params.synthesizedText;
   let deliveryPayloads = params.deliveryPayloads;
+  const deliveryTrace = buildCronDeliveryTrace({
+    resolvedDelivery: params.resolvedDelivery,
+    messagingToolSentTargets: params.messagingToolSentTargets,
+  });
 
   // Shared callers can treat a matching message-tool send as the completed
   // delivery path. Cron-owned callers keep this false so direct cron delivery
@@ -406,6 +467,7 @@ export async function dispatchCronDelivery(
       summary,
       outputText,
       deliveryAttempted,
+      delivery: deliveryTrace,
       ...params.telemetry,
     });
   const cleanupDirectCronSessionIfNeeded = async (): Promise<void> => {
@@ -436,6 +498,7 @@ export async function dispatchCronDelivery(
       outputText,
       delivered: false,
       deliveryAttempted: true,
+      delivery: deliveryTrace,
       ...params.telemetry,
     });
   };
@@ -474,6 +537,7 @@ export async function dispatchCronDelivery(
           status: "error",
           error: params.abortReason(),
           deliveryAttempted,
+          delivery: deliveryTrace,
           ...params.telemetry,
         });
       }
@@ -503,6 +567,7 @@ export async function dispatchCronDelivery(
           outputText,
           deliveryAttempted,
           delivered: false,
+          delivery: deliveryTrace,
           ...params.telemetry,
         });
       }
@@ -586,6 +651,7 @@ export async function dispatchCronDelivery(
           outputText,
           error: String(err),
           deliveryAttempted,
+          delivery: deliveryTrace,
           ...params.telemetry,
         });
       }
@@ -667,6 +733,7 @@ export async function dispatchCronDelivery(
         summary,
         outputText,
         deliveryAttempted,
+        delivery: deliveryTrace,
         ...params.telemetry,
       });
     }
@@ -686,6 +753,7 @@ export async function dispatchCronDelivery(
         summary,
         outputText,
         deliveryAttempted,
+        delivery: deliveryTrace,
         ...params.telemetry,
       });
     }
@@ -697,6 +765,7 @@ export async function dispatchCronDelivery(
         status: "error",
         error: params.abortReason(),
         deliveryAttempted,
+        delivery: deliveryTrace,
         ...params.telemetry,
       });
     }
@@ -727,10 +796,12 @@ export async function dispatchCronDelivery(
           summary,
           outputText,
           deliveryAttempted,
+          delivery: deliveryTrace,
           ...params.telemetry,
         }),
         delivered,
         deliveryAttempted,
+        delivery: deliveryTrace,
         summary,
         outputText,
         synthesizedText,
@@ -750,6 +821,7 @@ export async function dispatchCronDelivery(
           result: directResult,
           delivered,
           deliveryAttempted,
+          delivery: deliveryTrace,
           summary,
           outputText,
           synthesizedText,
@@ -763,6 +835,7 @@ export async function dispatchCronDelivery(
           result: finalizedTextResult,
           delivered,
           deliveryAttempted,
+          delivery: deliveryTrace,
           summary,
           outputText,
           synthesizedText,
@@ -775,6 +848,7 @@ export async function dispatchCronDelivery(
   return {
     delivered,
     deliveryAttempted,
+    delivery: deliveryTrace,
     summary,
     outputText,
     synthesizedText,

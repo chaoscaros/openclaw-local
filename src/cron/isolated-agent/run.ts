@@ -662,6 +662,7 @@ async function finalizeCronRun(params: {
       outputText,
       delivered: result?.delivered,
       deliveryAttempted: result?.deliveryAttempted,
+      delivery: deliveryResult.delivery,
       ...telemetry,
     });
 
@@ -700,6 +701,7 @@ async function finalizeCronRun(params: {
     deliveryBestEffort: resolveCronDeliveryBestEffort(prepared.input.job),
     deliveryPayloadHasStructuredContent,
     deliveryPayloads,
+    messagingToolSentTargets: finalRunResult.messagingToolSentTargets,
     synthesizedText,
     summary,
     outputText,
@@ -714,6 +716,7 @@ async function finalizeCronRun(params: {
       ...deliveryResult.result,
       deliveryAttempted:
         deliveryResult.result.deliveryAttempted ?? deliveryResult.deliveryAttempted,
+      delivery: deliveryResult.result.delivery ?? deliveryResult.delivery,
     };
     if (!hasFatalErrorPayload || deliveryResult.result.status !== "ok") {
       return resultWithDeliveryMeta;
