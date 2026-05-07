@@ -68,7 +68,7 @@ export async function maybeHandleResetCommand(
 
   const targetSessionEntry = params.sessionStore?.[params.sessionKey] ?? params.sessionEntry;
 
-  await emitResetCommandHooks({
+  const hookResult = await emitResetCommandHooks({
     action: commandAction,
     ctx: params.ctx,
     cfg: params.cfg,
@@ -78,5 +78,17 @@ export async function maybeHandleResetCommand(
     previousSessionEntry: params.previousSessionEntry,
     workspaceDir: params.workspaceDir,
   });
+  if (!resetTail) {
+    return {
+      shouldContinue: false,
+      ...(hookResult.routedReply
+        ? {}
+        : {
+            reply: {
+              text: commandAction === "reset" ? "✅ Session reset." : "✅ New session started.",
+            },
+          }),
+    };
+  }
   return null;
 }

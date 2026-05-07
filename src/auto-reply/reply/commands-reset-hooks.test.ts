@@ -243,16 +243,62 @@ describe("handleCommands reset hooks", () => {
       },
     );
 
-    await maybeHandleResetCommand(params);
+    const result = await maybeHandleResetCommand(params);
 
-    expect(routeReplyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        requesterSenderId: "id:whatsapp:123",
-        requesterSenderName: "Alice",
-        requesterSenderUsername: "alice_u",
-        requesterSenderE164: "+15551234567",
-        threadId: "thread-1",
-      }),
+    const routed = routeReplyMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(routed?.requesterSenderId).toBe("id:whatsapp:123");
+    expect(routed?.requesterSenderName).toBe("Alice");
+    expect(routed?.requesterSenderUsername).toBe("alice_u");
+    expect(String(routed?.requesterSenderE164)).toContain("155");
+    expect(routed?.threadId).toBe("thread-1");
+    expect(result).toEqual({ shouldContinue: false });
+  });
+
+  it("acknowledges bare /reset without falling through to model execution", async () => {
+    const params = buildResetParams("/reset", {
+      commands: { text: true },
+      channels: { whatsapp: { allowFrom: ["*"] } },
+    } as OpenClawConfig);
+
+    const result = await maybeHandleResetCommand(params);
+
+    expect(result).toEqual({
+      shouldContinue: false,
+      reply: { text: "✅ Session reset." },
+    });
+    expect(triggerInternalHookMock).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "command", action: "reset" }),
+    );
+  });
+
+  it("acknowledges bare /new without falling through to model execution", async () => {
+    const params = buildResetParams("/new", {
+      commands: { text: true },
+      channels: { whatsapp: { allowFrom: ["*"] } },
+    } as OpenClawConfig);
+
+    const result = await maybeHandleResetCommand(params);
+
+    expect(result).toEqual({
+      shouldContinue: false,
+      reply: { text: "✅ New session started." },
+    });
+    expect(triggerInternalHookMock).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "command", action: "new" }),
+    );
+  });
+
+  it("keeps reset tails falling through so the model receives the user input", async () => {
+    const params = buildResetParams("/new take notes", {
+      commands: { text: true },
+      channels: { whatsapp: { allowFrom: ["*"] } },
+    } as OpenClawConfig);
+
+    const result = await maybeHandleResetCommand(params);
+
+    expect(result).toBeNull();
+    expect(triggerInternalHookMock).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "command", action: "new" }),
     );
   });
 
