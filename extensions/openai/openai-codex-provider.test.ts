@@ -245,7 +245,7 @@ describe("openai codex provider", () => {
     });
   });
 
-  it("resolves gpt-5.4-mini from codex templates with codex-sized limits", () => {
+  it("resolves gpt-5.4-mini from gpt-5.4 runtime templates with native runtime caps", () => {
     const provider = buildOpenAICodexProviderPlugin();
 
     const model = provider.resolveDynamicModel?.({
@@ -253,17 +253,18 @@ describe("openai codex provider", () => {
       modelId: "gpt-5.4-mini",
       modelRegistry: {
         find: (providerId: string, modelId: string) => {
-          if (providerId === "openai-codex" && modelId === "gpt-5.1-codex-mini") {
+          if (providerId === "openai-codex" && modelId === "gpt-5.4") {
             return {
-              id: "gpt-5.1-codex-mini",
-              name: "gpt-5.1-codex-mini",
+              id: "gpt-5.4",
+              name: "gpt-5.4",
               provider: "openai-codex",
               api: "openai-codex-responses",
               baseUrl: "https://chatgpt.com/backend-api",
               reasoning: true,
-              input: ["text", "image"],
-              cost: { input: 0.25, output: 2, cacheRead: 0.025, cacheWrite: 0 },
-              contextWindow: 272_000,
+              input: ["text", "image"] as const,
+              cost: { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0 },
+              contextWindow: 1_050_000,
+              contextTokens: 272_000,
               maxTokens: 128_000,
             };
           }
@@ -274,11 +275,13 @@ describe("openai codex provider", () => {
 
     expect(model).toMatchObject({
       id: "gpt-5.4-mini",
-      contextWindow: 272_000,
+      api: "openai-codex-responses",
+      baseUrl: "https://chatgpt.com/backend-api",
+      contextWindow: 400_000,
+      contextTokens: 272_000,
       maxTokens: 128_000,
       cost: { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0 },
     });
-    expect(model).not.toHaveProperty("contextTokens");
   });
 
   it("augments catalog with gpt-5.4 native contextWindow and runtime cap", () => {
@@ -317,7 +320,8 @@ describe("openai codex provider", () => {
     expect(entries).toContainEqual(
       expect.objectContaining({
         id: "gpt-5.4-mini",
-        contextWindow: 272_000,
+        contextWindow: 400_000,
+        contextTokens: 272_000,
         cost: { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0 },
       }),
     );
