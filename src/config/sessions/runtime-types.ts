@@ -69,4 +69,5 @@ export type UpdateLastRoute = (params: {
   deliveryContext?: DeliveryContext;
   ctx?: MsgContext;
   groupResolution?: GroupKeyResolution | null;
-}) => Promise<SessionEntry>;
+  createIfMissing?: boolean;
+}) => Promise<SessionEntry | null>;

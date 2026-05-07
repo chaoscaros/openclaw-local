@@ -106,6 +106,33 @@ describe("recordInboundSession", () => {
     );
   });
 
+  it("forwards session creation policy to last-route updates", async () => {
+    await recordInboundSession({
+      storePath: "/tmp/openclaw-session-store.json",
+      sessionKey: "agent:main:demo-channel:1234:thread:42",
+      ctx,
+      createIfMissing: false,
+      updateLastRoute: {
+        sessionKey: "agent:main:main",
+        channel: "demo-channel",
+        to: "demo-channel:1234",
+      },
+      onRecordError: vi.fn(),
+    });
+
+    expect(recordSessionMetaFromInboundMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        createIfMissing: false,
+      }),
+    );
+    expect(updateLastRouteMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: "agent:main:main",
+        createIfMissing: false,
+      }),
+    );
+  });
+
   it("skips last-route updates when main DM owner pin mismatches sender", async () => {
     const onSkip = vi.fn();
 
