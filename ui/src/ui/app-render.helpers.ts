@@ -587,6 +587,12 @@ export function renderChatControls(state: AppViewState) {
   const hiddenCronCount = hideCron
     ? countHiddenCronSessions(state.sessionKey, state.sessionsResult)
     : 0;
+  const refreshDisabled =
+    !state.connected ||
+    state.chatLoading ||
+    state.chatSending ||
+    Boolean(state.chatRunId) ||
+    state.chatStream !== null;
   const disableThinkingToggle = state.onboarding;
   const disableFocusToggle = state.onboarding;
   const showThinking = state.onboarding ? false : state.settings.chatShowThinking;
@@ -645,7 +651,7 @@ export function renderChatControls(state: AppViewState) {
     <div class="chat-controls">
       <button
         class="btn btn--sm btn--icon"
-        ?disabled=${state.chatLoading || !state.connected}
+        ?disabled=${refreshDisabled}
         @click=${async () => {
           const app = state as unknown as ChatRefreshHost;
           app.chatManualRefreshInFlight = true;
@@ -726,12 +732,18 @@ export function renderChatControls(state: AppViewState) {
           state.sessionsHideCron = !hideCron;
         }}
         aria-pressed=${hideCron}
-        title=${hideCron
-          ? hiddenCronCount > 0
-            ? t("chat.showCronSessionsHidden", { count: String(hiddenCronCount) })
-            : t("chat.showCronSessions")
-          : t("chat.hideCronSessions")}
-      >
+  const cronLabel = hideCron
+    ? hiddenCronCount > 0
+      ? t("chat.showCronSessionsHidden", { count: String(hiddenCronCount) })
+      : t("chat.showCronSessions")
+    : t("chat.hideCronSessions");
+  const refreshDisabled =
+    !state.connected ||
+    state.chatLoading ||
+    state.chatSending ||
+    Boolean(state.chatRunId) ||
+    state.chatStream !== null;
+
         ${renderCronFilterIcon(hiddenCronCount)}
       </button>
     </div>
