@@ -86,12 +86,26 @@ function normalizeSessionEntryDelivery(entry: SessionEntry): SessionEntry {
   };
 }
 
+// resolvedSkills carries the full parsed Skill[] and is only useful as an
+// in-turn runtime cache. Persisting it bloats sessions.json dramatically, so
+// strip it from entries that flow through store normalization.
+function stripPersistedSkillsCache(entry: SessionEntry): SessionEntry {
+  const snapshot = entry.skillsSnapshot;
+  if (!snapshot || snapshot.resolvedSkills === undefined) {
+    return entry;
+  }
+  const { resolvedSkills: _drop, ...rest } = snapshot;
+  return { ...entry, skillsSnapshot: rest };
+}
+
 export function normalizeSessionStore(store: Record<string, SessionEntry>): void {
   for (const [key, entry] of Object.entries(store)) {
     if (!entry) {
       continue;
     }
-    const normalized = normalizeSessionEntryDelivery(normalizeSessionRuntimeModelFields(entry));
+    const normalized = stripPersistedSkillsCache(
+      normalizeSessionEntryDelivery(normalizeSessionRuntimeModelFields(entry)),
+    );
     if (normalized !== entry) {
       store[key] = normalized;
     }
