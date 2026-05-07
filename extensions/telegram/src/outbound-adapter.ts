@@ -91,6 +91,7 @@ export async function sendTelegramPayloadMessages(params: {
   const payloadOpts = {
     ...params.baseOpts,
     quoteText,
+    ...(params.payload.audioAsVoice === true ? { asVoice: true } : {}),
   };
 
   // Telegram allows reply_markup on media; attach buttons only to the first send.
