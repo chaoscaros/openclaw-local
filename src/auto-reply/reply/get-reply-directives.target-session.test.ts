@@ -328,6 +328,7 @@ describe("resolveReplyDirectives", () => {
       groupResolution: undefined,
       isGroup: false,
       triggerBodyNormalized: "/trace on",
+      resetTriggered: false,
       commandAuthorized: true,
       defaultProvider: "openai",
       defaultModel: "gpt-4o-mini",
@@ -407,6 +408,72 @@ describe("resolveReplyDirectives", () => {
       }),
     });
     expect(resolveDefaultReasoningLevel).toHaveBeenCalledOnce();
+  });
+
+  it("keeps consumed text reset triggers empty after directive cleanup", async () => {
+    const { resolveReplyDirectives } = await loadResolveReplyDirectivesForTest();
+    const sessionCtx = {
+      Body: "",
+      BodyStripped: "",
+      BodyForAgent: "",
+      BodyForCommands: "new session",
+      CommandBody: "new session",
+      Provider: "slack",
+      Surface: "slack",
+    } as TemplateContext;
+
+    const result = await resolveReplyDirectives({
+      ctx: buildTestCtx({
+        Body: "new session",
+        BodyForAgent: "new session",
+        BodyForCommands: "new session",
+        CommandBody: "new session",
+        CommandAuthorized: true,
+        Provider: "slack",
+        Surface: "slack",
+      }),
+      cfg: {
+        session: {
+          resetTriggers: ["/new", "/reset", "new session"],
+        },
+      },
+      agentId: "main",
+      agentDir: "/tmp/main-agent",
+      workspaceDir: "/tmp",
+      agentCfg: {},
+      sessionCtx,
+      sessionEntry: makeSessionEntry(),
+      sessionStore: {
+        "agent:main:slack:C123": makeSessionEntry(),
+      },
+      sessionKey: "agent:main:slack:C123",
+      storePath: "/tmp/sessions.json",
+      sessionScope: "per-sender",
+      groupResolution: undefined,
+      isGroup: false,
+      triggerBodyNormalized: "new session",
+      resetTriggered: true,
+      commandAuthorized: true,
+      defaultProvider: "openai",
+      defaultModel: "gpt-4o-mini",
+      aliasIndex: { byAlias: new Map(), byKey: new Map() },
+      provider: "openai",
+      model: "gpt-4o-mini",
+      hasResolvedHeartbeatModelOverride: false,
+      typing: makeTypingController(),
+      opts: undefined,
+      skillFilter: undefined,
+    });
+
+    expect(result).toEqual({
+      kind: "continue",
+      result: expect.objectContaining({
+        cleanedBody: "",
+      }),
+    });
+    expect(sessionCtx.Body).toBe("");
+    expect(sessionCtx.BodyForAgent).toBe("");
+    expect(sessionCtx.BodyStripped).toBe("");
   });
 
   it("skips the model reasoning default when thinking is active", async () => {
