@@ -3445,6 +3445,91 @@ describe("sendPolicy deny — suppress delivery, not processing (#53328)", () =>
     });
   });
 
+  it("poisons inbound dedupe when dispatch fails after a block reply", async () => {
+    setNoAbort();
+    const ctx = buildTestCtx({
+      Provider: "whatsapp",
+      OriginatingChannel: "whatsapp",
+      OriginatingTo: "whatsapp:+155****0125",
+      To: "whatsapp:+155****0125",
+      AccountId: "default",
+      MessageSid: "msg-dup-block-error",
+      SessionKey: "agent:main:whatsapp:direct:+155****0125",
+      CommandBody: "hello",
+      RawBody: "hello",
+      Body: "hello",
+    });
+    const firstDispatcher = createDispatcher();
+    const replyResolver = vi.fn(async (_ctx: MsgContext, opts?: GetReplyOptions) => {
+      await opts?.onBlockReply?.({ text: "partial answer" });
+      throw new Error("provider failed after block");
+    });
+
+    await expect(
+      dispatchReplyFromConfig({
+        ctx,
+        cfg: emptyConfig,
+        dispatcher: firstDispatcher,
+        replyResolver,
+      }),
+    ).rejects.toThrow("provider failed after block");
+
+    await dispatchReplyFromConfig({
+      ctx,
+      cfg: emptyConfig,
+      dispatcher: createDispatcher(),
+      replyResolver,
+    });
+
+    expect(firstDispatcher.sendBlockReply).toHaveBeenCalledWith({ text: "partial answer" });
+    expect(replyResolver).toHaveBeenCalledTimes(1);
+  });
+
+  it("poisons inbound dedupe when dispatch fails after a suppressed tool result", async () => {
+    setNoAbort();
+    sessionStoreMocks.currentEntry = {
+      sessionId: "s1",
+      updatedAt: 0,
+      sendPolicy: "deny",
+    };
+    const ctx = buildTestCtx({
+      Provider: "whatsapp",
+      OriginatingChannel: "whatsapp",
+      OriginatingTo: "whatsapp:+155****0126",
+      To: "whatsapp:+155****0126",
+      AccountId: "default",
+      MessageSid: "msg-dup-tool-error",
+      SessionKey: "agent:main:whatsapp:direct:+155****0126",
+      CommandBody: "hello",
+      RawBody: "hello",
+      Body: "hello",
+    });
+    const firstDispatcher = createDispatcher();
+    const replyResolver = vi.fn(async (_ctx: MsgContext, opts?: GetReplyOptions) => {
+      await opts?.onToolResult?.({ text: "tool touched external state" });
+      throw new Error("provider failed after tool");
+    });
+
+    await expect(
+      dispatchReplyFromConfig({
+        ctx,
+        cfg: emptyConfig,
+        dispatcher: firstDispatcher,
+        replyResolver,
+      }),
+    ).rejects.toThrow("provider failed after tool");
+
+    await dispatchReplyFromConfig({
+      ctx,
+      cfg: emptyConfig,
+      dispatcher: createDispatcher(),
+      replyResolver,
+    });
+
+    expect(firstDispatcher.sendToolResult).not.toHaveBeenCalled();
+    expect(replyResolver).toHaveBeenCalledTimes(1);
+  });
+
   it("skips plugin-bound claim hook under deny and falls through to suppressed agent dispatch", async () => {
     // Plugin-bound inbound handlers can emit outbound replies we cannot
     // rewind. Under deny, skip the plugin claim entirely and let the agent

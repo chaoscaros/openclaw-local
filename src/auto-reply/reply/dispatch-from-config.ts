@@ -284,13 +284,18 @@ export async function dispatchReplyFromConfig(
   };
 
   const inboundDedupeClaim = claimInboundDedupe(ctx);
-  if (inboundDedupeClaim.status === "duplicate" || inboundDedupeClaim.status === "inflight") {
+  if (inboundDedupeClaim.status === "duplicate") {
     recordProcessed("skipped", { reason: "duplicate" });
     return { queuedFinal: false, counts: dispatcher.getQueuedCounts() };
   }
+  let inboundDedupeReplayUnsafe = false;
+  const markInboundDedupeReplayUnsafe = () => {
+    inboundDedupeReplayUnsafe = true;
+  };
 
   const sessionStoreEntry = resolveSessionStoreLookup(ctx, cfg);
   const acpDispatchSessionKey = sessionStoreEntry.sessionKey ?? sessionKey;
+
   const sessionAgentId = resolveSessionAgentId({ sessionKey: acpDispatchSessionKey, config: cfg });
   const sessionAgentCfg = resolveAgentConfig(cfg, sessionAgentId);
   const shouldEmitVerboseProgress = createShouldEmitVerboseProgress({
@@ -373,6 +378,7 @@ export async function dispatchReplyFromConfig(
     if (!shouldRouteToOriginating || !originatingChannel || !originatingTo || !routeReplyRuntime) {
       return null;
     }
+    markInboundDedupeReplayUnsafe();
     return await routeReplyRuntime.routeReply({
       payload,
       channel: originatingChannel,
@@ -433,6 +439,7 @@ export async function dispatchReplyFromConfig(
       }
       return result.ok;
     }
+    markInboundDedupeReplayUnsafe();
     return mode === "additive"
       ? dispatcher.sendToolResult(payload)
       : dispatcher.sendFinalReply(payload);
@@ -624,6 +631,7 @@ export async function dispatchReplyFromConfig(
             );
           }
         } else {
+          markInboundDedupeReplayUnsafe();
           queuedFinal = dispatcher.sendFinalReply(payload);
         }
       } else {
@@ -643,6 +651,9 @@ export async function dispatchReplyFromConfig(
     const sendFinalPayload = async (
       payload: ReplyPayload,
     ): Promise<{ queuedFinal: boolean; routedFinalCount: number }> => {
+      if (resolveSendableOutboundReplyParts(payload).hasContent) {
+        markInboundDedupeReplayUnsafe();
+      }
       const ttsPayload = await maybeApplyTtsToReplyPayload({
         payload,
         cfg,
@@ -794,6 +805,7 @@ export async function dispatchReplyFromConfig(
         await sendPayloadAsync(payload, undefined, false);
         return;
       }
+      markInboundDedupeReplayUnsafe();
       dispatcher.sendToolResult(payload);
     };
     const sendPlanUpdate = async (payload: {
@@ -810,6 +822,7 @@ export async function dispatchReplyFromConfig(
         await sendPayloadAsync(replyPayload, undefined, false);
         return;
       }
+      markInboundDedupeReplayUnsafe();
       dispatcher.sendToolResult(replyPayload);
     };
     const summarizeApprovalLabel = (payload: {
@@ -899,6 +912,7 @@ export async function dispatchReplyFromConfig(
         suppressTyping: typing.suppressTyping,
         onToolResult: (payload: ReplyPayload) => {
           const run = async () => {
+            markInboundDedupeReplayUnsafe();
             if (suppressDelivery) {
               return;
             }
@@ -923,12 +937,14 @@ export async function dispatchReplyFromConfig(
           return run();
         },
         onPlanUpdate: async ({ phase, explanation, steps }) => {
+          markInboundDedupeReplayUnsafe();
           if (phase !== "update") {
             return;
           }
           await sendPlanUpdate({ explanation, steps });
         },
         onApprovalEvent: async ({ phase, status, command, message }) => {
+          markInboundDedupeReplayUnsafe();
           if (phase !== "requested") {
             return;
           }
@@ -939,6 +955,7 @@ export async function dispatchReplyFromConfig(
           await maybeSendWorkingStatus(label);
         },
         onPatchSummary: async ({ phase, summary, title }) => {
+          markInboundDedupeReplayUnsafe();
           if (phase !== "end") {
             return;
           }
@@ -950,6 +967,12 @@ export async function dispatchReplyFromConfig(
         },
         onBlockReply: (payload: ReplyPayload, context?: BlockReplyContext) => {
           const run = async () => {
+            if (
+              payload.isReasoning !== true &&
+              resolveSendableOutboundReplyParts(payload).hasContent
+            ) {
+              markInboundDedupeReplayUnsafe();
+            }
             if (suppressDelivery) {
               return;
             }
@@ -992,6 +1015,7 @@ export async function dispatchReplyFromConfig(
             if (shouldRouteToOriginating) {
               await sendPayloadAsync(ttsPayload, context?.abortSignal, false);
             } else {
+              markInboundDedupeReplayUnsafe();
               dispatcher.sendBlockReply(ttsPayload);
             }
           };
@@ -1095,6 +1119,7 @@ export async function dispatchReplyFromConfig(
                 );
               }
             } else {
+              markInboundDedupeReplayUnsafe();
               const didQueue = dispatcher.sendFinalReply(ttsOnlyPayload);
               queuedFinal = didQueue || queuedFinal;
             }
@@ -1120,7 +1145,11 @@ export async function dispatchReplyFromConfig(
     return { queuedFinal, counts };
   } catch (err) {
     if (inboundDedupeClaim.status === "claimed") {
-      releaseInboundDedupe(inboundDedupeClaim.key);
+      if (inboundDedupeReplayUnsafe) {
+        commitInboundDedupe(inboundDedupeClaim.key);
+      } else {
+        releaseInboundDedupe(inboundDedupeClaim.key);
+      }
     }
     recordProcessed("error", { error: String(err) });
     markIdle("message_error");
