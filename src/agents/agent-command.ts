@@ -621,24 +621,33 @@ async function agentCommandInternal(
       shouldRefreshSnapshotForVersion(currentSkillsSnapshot.version, skillsSnapshotVersion) ||
       !matchesSkillFilter(currentSkillsSnapshot.skillFilter, skillFilter);
     const needsSkillsSnapshot = isNewSession || shouldRefreshSkillsSnapshot;
-    const skillsSnapshot = needsSkillsSnapshot
-      ? buildWorkspaceSkillSnapshot(workspaceDir, {
-          config: cfg,
-          eligibility: {
-            remote: getRemoteSkillEligibility({
-              advertiseExecNode: canExecRequestNode({
-                cfg,
-                sessionEntry,
-                sessionKey,
-                agentId: sessionAgentId,
-              }),
+    const buildSkillsSnapshot = () =>
+      buildWorkspaceSkillSnapshot(workspaceDir, {
+        config: cfg,
+        eligibility: {
+          remote: getRemoteSkillEligibility({
+            advertiseExecNode: canExecRequestNode({
+              cfg,
+              sessionEntry,
+              sessionKey,
+              agentId: sessionAgentId,
             }),
-          },
-          snapshotVersion: skillsSnapshotVersion,
-          skillFilter,
-          agentId: sessionAgentId,
-        })
-      : currentSkillsSnapshot;
+          }),
+        },
+        snapshotVersion: skillsSnapshotVersion,
+        skillFilter,
+        agentId: sessionAgentId,
+      });
+    const skillsSnapshot = needsSkillsSnapshot
+      ? buildSkillsSnapshot()
+      : !currentSkillsSnapshot
+        ? undefined
+        : currentSkillsSnapshot.resolvedSkills === undefined
+          ? {
+              ...currentSkillsSnapshot,
+              resolvedSkills: buildSkillsSnapshot().resolvedSkills,
+            }
+          : currentSkillsSnapshot;
 
     if (skillsSnapshot && sessionStore && sessionKey && needsSkillsSnapshot) {
       const current = sessionEntry ?? {

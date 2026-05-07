@@ -10,6 +10,14 @@ const state = vi.hoisted(() => ({
   clearAgentRunContextMock: vi.fn(),
   updateSessionStoreAfterAgentRunMock: vi.fn(),
   deliverAgentCommandResultMock: vi.fn(),
+  buildWorkspaceSkillSnapshotMock: vi.fn(() => ({
+    prompt: "",
+    skills: [],
+    resolvedSkills: [],
+    version: 0,
+  })),
+  sessionEntryMock: undefined as unknown,
+  sessionStoreMock: undefined as unknown,
 }));
 
 vi.mock("./model-fallback.js", () => ({
@@ -57,10 +65,10 @@ vi.mock("./command/session.js", () => ({
   resolveSession: () => ({
     sessionId: "session-1",
     sessionKey: "agent:main",
-    sessionEntry: { sessionId: "session-1", updatedAt: Date.now() },
-    sessionStore: {},
+    sessionEntry: state.sessionEntryMock ?? { sessionId: "session-1", updatedAt: Date.now() },
+    sessionStore: state.sessionStoreMock ?? {},
     storePath: "/tmp/store.json",
-    isNewSession: true,
+    isNewSession: state.sessionEntryMock ? false : true,
     persistedThinking: undefined,
     persistedVerbose: undefined,
   }),
@@ -255,11 +263,12 @@ vi.mock("./model-selection.js", () => ({
 }));
 
 vi.mock("./skills.js", () => ({
-  buildWorkspaceSkillSnapshot: () => ({}),
+  buildWorkspaceSkillSnapshot: (...args: unknown[]) => state.buildWorkspaceSkillSnapshotMock(...args),
 }));
 
 vi.mock("./skills/refresh.js", () => ({
   getSkillsSnapshotVersion: () => 0,
+  shouldRefreshSnapshotForVersion: () => false,
 }));
 
 vi.mock("./spawned-context.js", () => ({
@@ -305,6 +314,14 @@ function makeSuccessResult(provider: string, model: string) {
 describe("agentCommand – LiveSessionModelSwitchError retry", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    state.sessionEntryMock = undefined;
+    state.sessionStoreMock = undefined;
+    state.buildWorkspaceSkillSnapshotMock.mockReturnValue({
+      prompt: "",
+      skills: [],
+      resolvedSkills: [],
+      version: 0,
+    });
     state.deliverAgentCommandResultMock.mockResolvedValue(undefined);
     state.updateSessionStoreAfterAgentRunMock.mockResolvedValue(undefined);
   });
@@ -572,5 +589,62 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
     expect(state.resolveEffectiveModelFallbacksMock.mock.calls[1][0]).toMatchObject({
       hasSessionModelOverride: true,
     });
+  });
+
+  it("hydrates stripped persisted skill snapshots before running the CLI path", async () => {
+    const persistedSnapshot = {
+      prompt: "persisted prompt",
+      skills: [{ name: "cli-skill" }],
+      version: 0,
+    };
+    const rebuiltSkills = [
+      {
+        name: "cli-skill",
+        description: "CLI skill",
+        filePath: "/tmp/workspace/skills/cli-skill/SKILL.md",
+        baseDir: "/tmp/workspace/skills/cli-skill",
+        source: "# CLI skill",
+      },
+    ];
+    state.sessionEntryMock = {
+      sessionId: "session-1",
+      updatedAt: Date.now(),
+      skillsSnapshot: persistedSnapshot,
+    };
+    state.sessionStoreMock = {};
+    state.buildWorkspaceSkillSnapshotMock.mockReturnValue({
+      prompt: "rebuilt prompt",
+      skills: [{ name: "different-skill" }],
+      resolvedSkills: rebuiltSkills,
+      version: 99,
+    });
+    state.runWithModelFallbackMock.mockImplementation(async (params: FallbackRunnerParams) => {
+      const result = await params.run(params.provider, params.model);
+      return {
+        result,
+        provider: params.provider,
+        model: params.model,
+        attempts: [],
+      };
+    });
+    state.runAgentAttemptMock.mockResolvedValue(makeSuccessResult("anthropic", "claude"));
+
+    const agentCommand = await getAgentCommand();
+    await agentCommand({
+      message: "hello",
+      to: "+123****7890",
+      senderIsOwner: true,
+    });
+
+    const attemptParams = state.runAgentAttemptMock.mock.calls.at(-1)?.[0] as
+      | { skillsSnapshot?: Record<string, unknown> }
+      | undefined;
+    expect(attemptParams?.skillsSnapshot).toMatchObject({
+      prompt: "persisted prompt",
+      skills: [{ name: "cli-skill" }],
+      version: 0,
+      resolvedSkills: rebuiltSkills,
+    });
+    expect(state.buildWorkspaceSkillSnapshotMock).toHaveBeenCalledTimes(1);
   });
 });
