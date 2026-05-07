@@ -59,8 +59,8 @@ export type ParsedMessageWithImages = {
    * do not receive these as inline image blocks.
    *
    * ⚠️  Call sites (chat.ts, agent.ts, server-node-events.ts) MUST also pass
-   * `supportsImages: modelSupportsImages(model)` so that text-only model runs
-   * do not inject unresolvable media:// markers into prompt text.
+   * `supportsImages: modelSupportsImages(model)` so text-only model runs
+   * offload images as media refs instead of passing inline image blocks.
    */
   offloadedRefs: OffloadedRef[];
 };
@@ -82,6 +82,7 @@ type SavedMedia = {
 };
 
 const OFFLOAD_THRESHOLD_BYTES = 2_000_000;
+const TEXT_ONLY_OFFLOAD_LIMIT = 10;
 
 const MIME_TO_EXT: Record<string, string> = {
   "image/jpeg": ".jpg",
@@ -304,7 +305,7 @@ export async function parseMessageWithAttachments(
     return { message, images: [], imageOrder: [], offloadedRefs: [] };
   }
 
-  const forceOffloadAllImages = opts?.supportsImages === false;
+  const shouldForceOffload = opts?.supportsImages === false;
 
   const images: ChatImageContent[] = [];
   const imageOrder: PromptImageOrderEntry[] = [];
@@ -367,17 +368,31 @@ export async function parseMessageWithAttachments(
 
       let isOffloaded = false;
 
-      if (forceOffloadAllImages || sizeBytes > OFFLOAD_THRESHOLD_BYTES) {
+      if (shouldForceOffload && offloadedRefs.length >= TEXT_ONLY_OFFLOAD_LIMIT) {
+        log?.warn(
+          `attachment ${label}: dropping image because text-only offload limit ${TEXT_ONLY_OFFLOAD_LIMIT} was reached`,
+        );
+        updatedMessage += "\n[image attachment omitted: text-only attachment limit reached]";
+        continue;
+      }
+
+      if (shouldForceOffload || sizeBytes > OFFLOAD_THRESHOLD_BYTES) {
         const isSupportedForOffload = SUPPORTED_OFFLOAD_MIMES.has(finalMime);
 
         if (!isSupportedForOffload) {
+          if (shouldForceOffload) {
+            log?.warn(
+              `attachment ${label}: format ${finalMime} cannot be offloaded for text-only model, dropping`,
+            );
+            continue;
+          }
           // Passing this inline would reintroduce the OOM risk this PR prevents.
           throw new Error(
             `attachment ${label}: format ${finalMime} is too large to pass inline ` +
-              `(${sizeBytes} > ${OFFLOAD_THRESHOLD_BYTES} bytes) and cannot be offloaded. ` +
-              `Please convert to JPEG, PNG, WEBP, GIF, HEIC, or HEIF.`,
+              "and cannot be offloaded safely",
           );
         }
+
 
         // Decode and run input-validation BEFORE the MediaOffloadError try/catch.
         // verifyDecodedSize is a 4xx client error and must not be wrapped as a
@@ -408,7 +423,11 @@ export async function parseMessageWithAttachments(
           const mediaRef = `media://inbound/${savedMedia.id}`;
 
           updatedMessage += `\n[media attached: ${mediaRef}]`;
-          log?.info?.(`[Gateway] Intercepted large image payload. Saved: ${mediaRef}`);
+          log?.info?.(
+            shouldForceOffload
+              ? `[Gateway] Offloaded image for text-only model. Saved: ${mediaRef}`
+              : `[Gateway] Intercepted large image payload. Saved: ${mediaRef}`,
+          );
 
           // Record for transcript metadata — separate from `images` because
           // these are not passed inline to the model.
