@@ -2,11 +2,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildOpenAIImageGenerationProvider } from "./image-generation-provider.js";
 
 const {
+  ensureAuthProfileStoreMock,
+  isProviderApiKeyConfiguredMock,
+  listProfilesForProviderMock,
   resolveApiKeyForProviderMock,
   postJsonRequestMock,
   assertOkOrThrowHttpErrorMock,
   resolveProviderHttpRequestConfigMock,
 } = vi.hoisted(() => ({
+  ensureAuthProfileStoreMock: vi.fn(() => ({ version: 1, profiles: {} })),
+  isProviderApiKeyConfiguredMock: vi.fn<(params?: { provider?: string; agentDir?: string }) => boolean>(() => false),
+  listProfilesForProviderMock: vi.fn(
+    (store: { profiles?: Record<string, { provider?: string }> }, provider: string) =>
+      Object.entries(store.profiles ?? {})
+        .filter(([, profile]) => profile.provider === provider)
+        .map(([profileId]) => profileId),
+  ),
   resolveApiKeyForProviderMock: vi.fn(async () => ({ apiKey: "openai-key" })),
   postJsonRequestMock: vi.fn(),
   assertOkOrThrowHttpErrorMock: vi.fn(async () => {}),
@@ -16,6 +27,12 @@ const {
     headers: new Headers(params.defaultHeaders),
     dispatcherPolicy: undefined,
   })),
+}));
+
+vi.mock("openclaw/plugin-sdk/provider-auth", () => ({
+  ensureAuthProfileStore: ensureAuthProfileStoreMock,
+  isProviderApiKeyConfigured: isProviderApiKeyConfiguredMock,
+  listProfilesForProvider: listProfilesForProviderMock,
 }));
 
 vi.mock("openclaw/plugin-sdk/provider-auth-runtime", () => ({
@@ -28,13 +45,84 @@ vi.mock("openclaw/plugin-sdk/provider-http", () => ({
   resolveProviderHttpRequestConfig: resolveProviderHttpRequestConfigMock,
 }));
 
+function mockCodexAuthOnly() {
+  resolveApiKeyForProviderMock.mockImplementation(async (params?: { provider?: string }) => {
+    if (params?.provider === "openai-codex") {
+      return { apiKey: "codex-key", source: "profile:openai-codex:default", mode: "oauth" };
+    }
+    throw new Error('No API key found for provider "openai".');
+  });
+}
+
+function createCodexOAuthAuthStore() {
+  return {
+    version: 1 as const,
+    profiles: {
+      "openai-codex:default": {
+        type: "oauth" as const,
+        provider: "openai-codex",
+        access: "codex-access",
+        refresh: "codex-refresh",
+        expires: Date.now() + 60_000,
+      },
+    },
+  };
+}
+
 describe("openai image generation provider", () => {
   afterEach(() => {
-    resolveApiKeyForProviderMock.mockClear();
+    ensureAuthProfileStoreMock.mockReset();
+    ensureAuthProfileStoreMock.mockReturnValue({ version: 1, profiles: {} });
+    isProviderApiKeyConfiguredMock.mockReset();
+    isProviderApiKeyConfiguredMock.mockReturnValue(false);
+    listProfilesForProviderMock.mockClear();
+    resolveApiKeyForProviderMock.mockReset();
+    resolveApiKeyForProviderMock.mockResolvedValue({ apiKey: "openai-key" });
     postJsonRequestMock.mockReset();
     assertOkOrThrowHttpErrorMock.mockClear();
     resolveProviderHttpRequestConfigMock.mockClear();
     vi.unstubAllEnvs();
+  });
+
+  it("reports configured when either OpenAI API key auth or Codex OAuth auth is available", () => {
+    const provider = buildOpenAIImageGenerationProvider();
+
+    isProviderApiKeyConfiguredMock.mockImplementation((params?: { provider?: string }) => {
+      return params?.provider === "openai";
+    });
+    expect(provider.isConfigured?.({ agentDir: "/tmp/agent" })).toBe(true);
+
+    isProviderApiKeyConfiguredMock.mockClear();
+    ensureAuthProfileStoreMock.mockReturnValue(createCodexOAuthAuthStore());
+    expect(provider.isConfigured?.({ agentDir: "/tmp/agent" })).toBe(true);
+
+    isProviderApiKeyConfiguredMock.mockReturnValue(false);
+    ensureAuthProfileStoreMock.mockReturnValue({ version: 1, profiles: {} });
+    expect(provider.isConfigured?.({ agentDir: "/tmp/agent" })).toBe(false);
+  });
+
+  it("does not report Codex OAuth image auth as configured for custom OpenAI endpoints", () => {
+    const provider = buildOpenAIImageGenerationProvider();
+
+    isProviderApiKeyConfiguredMock.mockImplementation((params?: { provider?: string }) => {
+      return params?.provider === "openai-codex";
+    });
+
+    expect(
+      provider.isConfigured?.({
+        agentDir: "/tmp/agent",
+        cfg: {
+          models: {
+            providers: {
+              openai: {
+                baseUrl: "https://openai-compatible.example.test/v1",
+                models: [],
+              },
+            },
+          },
+        },
+      }),
+    ).toBe(false);
   });
 
   it("does not auto-allow local baseUrl overrides for image requests", async () => {
@@ -155,6 +243,42 @@ describe("openai image generation provider", () => {
     expect(postJsonRequestMock).toHaveBeenCalledWith(
       expect.objectContaining({
         allowPrivateNetwork: true,
+      }),
+    );
+    expect(result.images).toHaveLength(1);
+  });
+
+  it("uses Codex OAuth image auth when direct OpenAI auth is unavailable", async () => {
+    postJsonRequestMock.mockResolvedValue({
+      response: new Response(
+        'data: {"type":"response.output_item.done","item":{"type":"image_generation_call","result":"Y29kZXgtcG5nLWJ5dGVz"}}\n\n' +
+          'data: {"type":"response.completed","response":{}}\n\n',
+      ),
+      release: vi.fn(async () => {}),
+    });
+    mockCodexAuthOnly();
+
+    const provider = buildOpenAIImageGenerationProvider();
+    const result = await provider.generateImage({
+      provider: "openai",
+      model: "gpt-image-2",
+      prompt: "Draw a codex-auth image",
+      cfg: {},
+      authStore: createCodexOAuthAuthStore(),
+    });
+
+    expect(resolveApiKeyForProviderMock).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "openai-codex" }),
+    );
+    expect(postJsonRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://chatgpt.com/backend-api/codex/responses",
+        body: expect.objectContaining({
+          model: "gpt-5.4",
+          tool_choice: { type: "image_generation" },
+          stream: true,
+          store: false,
+        }),
       }),
     );
     expect(result.images).toHaveLength(1);
