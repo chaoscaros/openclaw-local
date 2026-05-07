@@ -676,6 +676,31 @@ describe("loadChatHistory", () => {
 });
 
 describe("sendChatMessage", () => {
+  it("does not start a second chat.send while the first send is awaiting ack", async () => {
+    let resolveSent: ((value: unknown) => void) | undefined;
+    const sent = new Promise((resolve) => {
+      resolveSent = resolve;
+    });
+    const request = vi.fn(() => sent);
+    const state = createState({
+      connected: true,
+      client: { request } as unknown as ChatState["client"],
+    });
+
+    const first = sendChatMessage(state, "hello");
+    const activeRunId = state.chatRunId;
+    const second = sendChatMessage(state, "hello");
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(state.chatMessages).toHaveLength(1);
+    await expect(second).resolves.toBe(activeRunId);
+
+    resolveSent?.({ runId: activeRunId, status: "started" });
+    await expect(first).resolves.toBe(activeRunId);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(state.chatMessages).toHaveLength(1);
+  });
+
   it("stores whether dreaming assistance was applied from chat.send ack", async () => {
     const request = vi.fn().mockResolvedValue({ dreamingAssistApplied: true });
     const state = createState({
