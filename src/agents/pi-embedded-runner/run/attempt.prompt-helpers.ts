@@ -121,6 +121,23 @@ export function shouldWarnOnOrphanedUserRepair(
   return trigger === "user" || trigger === "manual";
 }
 
+export type PromptSubmissionSkipReason = "blank_user_prompt" | "empty_prompt_history_images";
+
+export function resolvePromptSubmissionSkipReason(params: {
+  prompt: string;
+  messages: readonly unknown[];
+  imageCount: number;
+  runtimeOnly?: boolean;
+}): PromptSubmissionSkipReason | null {
+  if (params.runtimeOnly) {
+    return null;
+  }
+  if (params.prompt.trim().length > 0 || params.imageCount > 0) {
+    return null;
+  }
+  return params.messages.length > 0 ? "blank_user_prompt" : "empty_prompt_history_images";
+}
+
 function extractUserMessagePlainText(content: unknown): string | undefined {
   if (typeof content === "string") {
     const trimmed = content.trim();

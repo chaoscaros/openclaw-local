@@ -189,6 +189,7 @@ import {
   resolveAttemptPrependSystemContext,
   resolvePromptBuildHookResult,
   resolvePromptModeForSession,
+  resolvePromptSubmissionSkipReason,
   shouldWarnOnOrphanedUserRepair,
   shouldInjectHeartbeatPrompt,
 } from "./attempt.prompt-helpers.js";
@@ -2031,7 +2032,25 @@ export async function runEmbeddedAttempt(
               inFlightPrompt: promptSubmission.prompt,
             });
 
-            if (promptSubmission.runtimeOnly) {
+            const promptSkipReason = resolvePromptSubmissionSkipReason({
+              prompt: promptSubmission.prompt,
+              messages: activeSession.messages,
+              runtimeOnly: promptSubmission.runtimeOnly,
+              imageCount: imageResult.images.length,
+            });
+            if (promptSkipReason) {
+              skipPromptSubmission = true;
+              const skipContext =
+                `runId=${params.runId} sessionId=${params.sessionId} trigger=${params.trigger} ` +
+                `provider=${params.provider}/${params.modelId}`;
+              if (promptSkipReason === "blank_user_prompt") {
+                log.warn(`embedded run prompt skipped: blank user prompt ${skipContext}`);
+              } else {
+                log.info(`embedded run prompt skipped: empty prompt/history/images ${skipContext}`);
+              }
+            }
+
+            if (!skipPromptSubmission && promptSubmission.runtimeOnly) {
               const runtimeSystemPrompt = promptSubmission.runtimeSystemContext
                 ? composeSystemPromptWithHookContext({
                     baseSystemPrompt: systemPromptText,
@@ -2050,7 +2069,7 @@ export async function runEmbeddedAttempt(
                   applySystemPromptOverrideToSession(activeSession, systemPromptText);
                 }
               }
-            } else {
+            } else if (!skipPromptSubmission) {
               const runtimeContext = promptSubmission.runtimeContext?.trim();
               const runtimeSystemPrompt = runtimeContext
                 ? composeSystemPromptWithHookContext({

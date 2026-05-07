@@ -11,7 +11,10 @@ const videoGenerationTaskStatusMocks = vi.hoisted(() => ({
 vi.mock("../../music-generation-task-status.js", () => musicGenerationTaskStatusMocks);
 vi.mock("../../video-generation-task-status.js", () => videoGenerationTaskStatusMocks);
 
-import { resolveAttemptPrependSystemContext } from "./attempt.prompt-helpers.js";
+import {
+  resolveAttemptPrependSystemContext,
+  resolvePromptSubmissionSkipReason,
+} from "./attempt.prompt-helpers.js";
 
 describe("resolveAttemptPrependSystemContext", () => {
   it("prepends active video task guidance ahead of hook system context", () => {
@@ -60,5 +63,55 @@ describe("resolveAttemptPrependSystemContext", () => {
       musicGenerationTaskStatusMocks.buildActiveMusicGenerationTaskPromptContextForSession,
     ).not.toHaveBeenCalled();
     expect(result).toBe("Hook system context");
+  });
+});
+
+describe("resolvePromptSubmissionSkipReason", () => {
+  it("skips empty prompt submissions without history or images", () => {
+    expect(
+      resolvePromptSubmissionSkipReason({
+        prompt: "   ",
+        messages: [],
+        imageCount: 0,
+      }),
+    ).toBe("empty_prompt_history_images");
+  });
+
+  it("skips blank visible user prompt submissions even when replay history exists", () => {
+    expect(
+      resolvePromptSubmissionSkipReason({
+        prompt: "   ",
+        messages: [{ role: "user", content: "previous turn", timestamp: 1 }],
+        imageCount: 0,
+      }),
+    ).toBe("blank_user_prompt");
+  });
+
+  it("allows text or image prompt submissions", () => {
+    expect(
+      resolvePromptSubmissionSkipReason({
+        prompt: "hello",
+        messages: [],
+        imageCount: 0,
+      }),
+    ).toBeNull();
+    expect(
+      resolvePromptSubmissionSkipReason({
+        prompt: "   ",
+        messages: [],
+        imageCount: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("allows blank prompt on runtimeOnly turns", () => {
+    expect(
+      resolvePromptSubmissionSkipReason({
+        prompt: "",
+        messages: [],
+        runtimeOnly: true,
+        imageCount: 0,
+      }),
+    ).toBeNull();
   });
 });
