@@ -2,6 +2,11 @@ import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-pay
 import { isParentOwnedBackgroundAcpSession } from "../../acp/session-interaction-mode.js";
 import { resolveAgentConfig, resolveSessionAgentId } from "../../agents/agent-scope.js";
 import {
+  isToolAllowedByPolicies,
+  resolveEffectiveToolPolicy,
+} from "../../agents/pi-tools.policy.js";
+import { mergeAlsoAllowPolicy, resolveToolProfilePolicy } from "../../agents/tool-policy.js";
+import {
   resolveConversationBindingRecord,
   touchConversationBindingRecord,
 } from "../../bindings/records.js";
@@ -477,6 +482,33 @@ export async function dispatchReplyFromConfig(
     chatType: sessionStoreEntry.entry?.chatType,
   });
   const {
+    globalPolicy,
+    globalProviderPolicy,
+    agentPolicy,
+    agentProviderPolicy,
+    profile,
+    providerProfile,
+    profileAlsoAllow,
+    providerProfileAlsoAllow,
+  } = resolveEffectiveToolPolicy({
+    config: cfg,
+    sessionKey: acpDispatchSessionKey,
+    agentId: sessionAgentId,
+  });
+  const profilePolicy = mergeAlsoAllowPolicy(resolveToolProfilePolicy(profile), profileAlsoAllow);
+  const providerProfilePolicy = mergeAlsoAllowPolicy(
+    resolveToolProfilePolicy(providerProfile),
+    providerProfileAlsoAllow,
+  );
+  const messageToolAvailable = isToolAllowedByPolicies("message", [
+    profilePolicy,
+    providerProfilePolicy,
+    globalProviderPolicy,
+    agentProviderPolicy,
+    globalPolicy,
+    agentPolicy,
+  ]);
+  const {
     sourceReplyDeliveryMode,
     sendPolicyDenied,
     suppressAutomaticSourceDelivery,
@@ -493,6 +525,7 @@ export async function dispatchReplyFromConfig(
     suppressAcpChildUserDelivery,
     explicitSuppressTyping: params.replyOptions?.suppressTyping === true,
     shouldSuppressTyping,
+    messageToolAvailable,
   });
 
   let pluginFallbackReason:
