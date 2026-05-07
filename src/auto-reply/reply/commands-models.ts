@@ -8,7 +8,9 @@ import {
   resolveDefaultModelForAgent,
   resolveModelRefFromString,
 } from "../../agents/model-selection.js";
+import { resolveConfigWriteTargetFromPath } from "../../channels/plugins/config-writes.js";
 import { getChannelPlugin } from "../../channels/plugins/index.js";
+import { normalizeChannelId } from "../../channels/registry.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
@@ -16,8 +18,15 @@ import {
   normalizeOptionalString,
 } from "../../shared/string-coerce.js";
 import type { ReplyPayload } from "../types.js";
-import { rejectUnauthorizedCommand } from "./command-gates.js";
+import { resolveChannelAccountId } from "./channel-context.js";
+import {
+  rejectNonOwnerCommand,
+  rejectUnauthorizedCommand,
+  requireGatewayClientScopeForInternalChannel,
+} from "./command-gates.js";
 import type { CommandHandler } from "./commands-types.js";
+import { resolveConfigWriteDeniedText } from "./config-write-authorization.js";
+import { addModelToConfig, listAddableProviders, validateAddProvider } from "./models-add.js";
 
 const PAGE_SIZE_DEFAULT = 20;
 const PAGE_SIZE_MAX = 100;
@@ -385,6 +394,86 @@ export const handleModelsCommand: CommandHandler = async (params, allowTextComma
   const unauthorized = rejectUnauthorizedCommand(params, "/models");
   if (unauthorized) {
     return unauthorized;
+  }
+
+  const rawArgs = commandBodyNormalized.replace(/^\/models\b/i, "").trim();
+  const rawTokens = rawArgs.split(/\s+/g).filter(Boolean);
+  const firstToken = normalizeLowercaseStringOrEmpty(rawTokens[0]);
+  if (firstToken === "add") {
+    const nonOwner = rejectNonOwnerCommand(params, "/models add");
+    if (nonOwner) {
+      return nonOwner;
+    }
+    const missingAdminScope = requireGatewayClientScopeForInternalChannel(params, {
+      label: "/models add",
+      allowedScopes: ["operator.admin"],
+      missingText: "❌ /models add requires operator.admin for gateway clients.",
+    });
+    if (missingAdminScope) {
+      return missingAdminScope;
+    }
+    const providerRaw = normalizeOptionalString(rawTokens[1]);
+    const modelId = normalizeOptionalString(rawTokens.slice(2).join(" "));
+    if (!providerRaw || !modelId) {
+      return {
+        shouldContinue: false,
+        reply: {
+          text: [
+            "Usage: /models add <provider> <model-id>",
+            "",
+            "Addable providers:",
+            ...listAddableProviders().map((provider) => `- ${provider}`),
+          ].join("\n"),
+        },
+      };
+    }
+    const validatedProvider = validateAddProvider(providerRaw);
+    if (!validatedProvider.ok) {
+      return {
+        shouldContinue: false,
+        reply: {
+          text: [
+            `Unknown addable provider: ${providerRaw}`,
+            "",
+            "Addable providers:",
+            ...validatedProvider.providers.map((provider) => `- ${provider}`),
+          ].join("\n"),
+        },
+      };
+    }
+    const channelId = params.command.channelId ?? normalizeChannelId(params.command.channel);
+    const deniedText = resolveConfigWriteDeniedText({
+      cfg: params.cfg,
+      channel: params.command.channel,
+      channelId,
+      accountId: resolveChannelAccountId({
+        cfg: params.cfg,
+        ctx: params.ctx,
+        command: params.command,
+      }),
+      gatewayClientScopes: params.ctx.GatewayClientScopes,
+      target: resolveConfigWriteTargetFromPath(["models", "providers", validatedProvider.provider]),
+    });
+    if (deniedText) {
+      return { shouldContinue: false, reply: { text: deniedText } };
+    }
+    const outcome = await addModelToConfig({
+      provider: validatedProvider.provider,
+      modelId,
+    });
+    const status = outcome.existed ? "updated" : "added";
+    const allowlistLine = outcome.allowlistAdded
+      ? `Allowlist added: ${outcome.provider}/${outcome.modelId}`
+      : `Allowlist kept: ${outcome.provider}/${outcome.modelId}`;
+    return {
+      shouldContinue: false,
+      reply: {
+        text: [
+          `✅ Model ${status}: ${outcome.provider}/${outcome.modelId}`,
+          allowlistLine,
+        ].join("\n"),
+      },
+    };
   }
 
   const modelsAgentId = params.sessionKey

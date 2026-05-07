@@ -13,6 +13,21 @@ const modelCatalogMocks = vi.hoisted(() => ({
   loadModelCatalog: vi.fn(),
 }));
 
+const modelAddMocks = vi.hoisted(() => ({
+  listAddableProviders: vi.fn(() => ["openai-codex"]),
+  validateAddProvider: vi.fn((provider?: string) =>
+    provider === "openai-codex"
+      ? { ok: true as const, provider: "openai-codex" }
+      : { ok: false as const, providers: ["openai-codex"], ...(provider ? { knownProvider: provider } : {}) },
+  ),
+  addModelToConfig: vi.fn(async () => ({
+    provider: "openai-codex",
+    modelId: "gpt-5.5-pro",
+    existed: false,
+    allowlistAdded: true,
+  })),
+}));
+
 const modelAuthLabelMocks = vi.hoisted(() => ({
   resolveModelAuthLabel: vi.fn<(params: unknown) => string | undefined>(() => undefined),
 }));
@@ -23,6 +38,12 @@ vi.mock("../../agents/model-catalog.js", () => ({
 
 vi.mock("../../agents/model-auth-label.js", () => ({
   resolveModelAuthLabel: modelAuthLabelMocks.resolveModelAuthLabel,
+}));
+
+vi.mock("./models-add.js", () => ({
+  listAddableProviders: modelAddMocks.listAddableProviders,
+  validateAddProvider: modelAddMocks.validateAddProvider,
+  addModelToConfig: modelAddMocks.addModelToConfig,
 }));
 
 const telegramModelsTestPlugin: ChannelPlugin = {
@@ -96,7 +117,9 @@ function buildModelsParams(
     command: {
       commandBodyNormalized: commandBody,
       isAuthorizedSender: true,
+      senderIsOwner: true,
       senderId: "owner",
+      channel: surface,
     },
     sessionKey: "agent:main:main",
     provider: "anthropic",
@@ -120,6 +143,26 @@ describe("handleModelsCommand", () => {
     commands: { text: true },
     agents: { defaults: { model: { primary: "anthropic/claude-opus-4-5" } } },
   } as OpenClawConfig;
+
+  it("shows /models add usage when provider/model is missing", async () => {
+    const result = await handleModelsCommand(buildModelsParams("/models add", cfg, "discord"), true);
+    expect(result?.shouldContinue).toBe(false);
+    expect(result?.reply?.text).toContain("Usage: /models add <provider> <model-id>");
+    expect(result?.reply?.text).toContain("openai-codex");
+  });
+
+  it("adds an openai-codex model via /models add", async () => {
+    const result = await handleModelsCommand(
+      buildModelsParams("/models add openai-codex gpt-5.5-pro", cfg, "discord"),
+      true,
+    );
+    expect(modelAddMocks.addModelToConfig).toHaveBeenCalledWith({
+      provider: "openai-codex",
+      modelId: "gpt-5.5-pro",
+    });
+    expect(result?.shouldContinue).toBe(false);
+    expect(result?.reply?.text).toContain("✅ Model added: openai-codex/gpt-5.5-pro");
+  });
 
   it.each(["discord", "whatsapp"])("lists providers on %s text surfaces", async (surface) => {
     const result = await handleModelsCommand(buildModelsParams("/models", cfg, surface), true);

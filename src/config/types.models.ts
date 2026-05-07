@@ -70,6 +70,7 @@ export type ModelDefinitionConfig = {
   maxTokens: number;
   headers?: Record<string, string>;
   compat?: ModelCompatConfig;
+  metadataSource?: "models-add";
 };
 
 export type ModelProviderConfig = {
