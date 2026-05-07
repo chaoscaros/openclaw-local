@@ -274,7 +274,7 @@ describe("openai image generation provider", () => {
       expect.objectContaining({
         url: "https://chatgpt.com/backend-api/codex/responses",
         body: expect.objectContaining({
-          model: "gpt-5.4",
+          model: "gpt-5.5",
           tool_choice: { type: "image_generation" },
           stream: true,
           store: false,
@@ -282,6 +282,55 @@ describe("openai image generation provider", () => {
       }),
     );
     expect(result.images).toHaveLength(1);
+  });
+
+  it.each([
+    "https://chatgpt.com/backend-api",
+    "https://chatgpt.com/backend-api/",
+    "https://chatgpt.com/backend-api/v1",
+    "https://chatgpt.com/backend-api/codex/v1",
+  ])("canonicalizes configured Codex OAuth image baseUrl %s", async (configuredBaseUrl) => {
+    postJsonRequestMock.mockResolvedValue({
+      response: new Response(
+        'data: {"type":"response.output_item.done","item":{"type":"image_generation_call","result":"Y29kZXgtcG5nLWJ5dGVz"}}\n\n' +
+          'data: {"type":"response.completed","response":{}}\n\n',
+      ),
+      release: vi.fn(async () => {}),
+    });
+    mockCodexAuthOnly();
+
+    const provider = buildOpenAIImageGenerationProvider();
+    await provider.generateImage({
+      provider: "openai",
+      model: "gpt-image-2",
+      prompt: "Draw through a legacy configured Codex endpoint",
+      cfg: {
+        models: {
+          providers: {
+            "openai-codex": {
+              baseUrl: configuredBaseUrl,
+              api: "openai-codex-responses",
+              models: [],
+            },
+          },
+        },
+      },
+      authStore: createCodexOAuthAuthStore(),
+    });
+
+    expect(resolveProviderHttpRequestConfigMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+        provider: "openai-codex",
+        api: "openai-codex-responses",
+        capability: "image",
+      }),
+    );
+    expect(postJsonRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://chatgpt.com/backend-api/codex/responses",
+      }),
+    );
   });
 
   it("uses JSON image_url edits for input-image requests", async () => {
