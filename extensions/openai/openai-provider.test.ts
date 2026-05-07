@@ -117,7 +117,7 @@ describe("buildOpenAIProvider", () => {
     });
   });
 
-  it("surfaces gpt-5.4 mini and nano in xhigh and augmented catalog metadata", () => {
+  it("surfaces gpt-5.5 in xhigh without synthetic catalog metadata", () => {
     const provider = buildOpenAIProvider();
 
     expect(
@@ -136,10 +136,25 @@ describe("buildOpenAIProvider", () => {
     const entries = provider.augmentModelCatalog?.({
       env: process.env,
       entries: [
+        { provider: "openai", id: "gpt-5.4", name: "gpt-5.4" },
+        { provider: "openai", id: "gpt-5.4-pro", name: "gpt-5.4-pro" },
         { provider: "openai", id: "gpt-5-mini", name: "GPT-5 mini" },
         { provider: "openai", id: "gpt-5-nano", name: "GPT-5 nano" },
       ],
     } as never);
+
+    expect(entries).not.toContainEqual(
+      expect.objectContaining({
+        provider: "openai",
+        id: "gpt-5.5",
+      }),
+    );
+    expect(
+      provider.supportsXHighThinking?.({
+        provider: "openai",
+        modelId: "gpt-5.5",
+      } as never),
+    ).toBe(true);
 
     expect(entries).toContainEqual(
       expect.objectContaining({
@@ -215,6 +230,64 @@ describe("buildOpenAIProvider", () => {
     });
   });
 
+  it("leaves gpt-5.5 to Pi and resolves gpt-5.5-pro locally", () => {
+    const provider = buildOpenAIProvider();
+
+    const model = provider.resolveDynamicModel?.({
+      provider: "openai",
+      modelId: "gpt-5.5",
+      modelRegistry: {
+        find: (_provider: string, id: string) =>
+          id === "gpt-5.4"
+            ? {
+                id,
+                name: "GPT-5.4",
+                provider: "openai",
+                api: "openai-responses",
+                baseUrl: "https://api.openai.com/v1",
+                reasoning: true,
+                input: ["text", "image"],
+                cost: { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0 },
+                contextWindow: 1_050_000,
+                maxTokens: 128_000,
+              }
+            : null,
+      } as never,
+    });
+    const pro = provider.resolveDynamicModel?.({
+      provider: "openai",
+      modelId: "gpt-5.5-pro",
+      modelRegistry: {
+        find: (_provider: string, id: string) =>
+          id === "gpt-5.4-pro"
+            ? {
+                id,
+                name: "GPT-5.4 Pro",
+                provider: "openai",
+                api: "openai-responses",
+                baseUrl: "https://api.openai.com/v1",
+                reasoning: true,
+                input: ["text", "image"],
+                cost: { input: 30, output: 180, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 1_050_000,
+                maxTokens: 128_000,
+              }
+            : null,
+      } as never,
+    });
+
+    expect(model).toBeUndefined();
+    expect(pro).toMatchObject({
+      provider: "openai",
+      id: "gpt-5.5-pro",
+      api: "openai-responses",
+      baseUrl: "https://api.openai.com/v1",
+      contextWindow: 1_000_000,
+      maxTokens: 128_000,
+      cost: { input: 30, output: 180, cacheRead: 0, cacheWrite: 0 },
+    });
+  });
+
   it("keeps modern live selection on OpenAI 5.2+ and Codex 5.2+", () => {
     const provider = buildOpenAIProvider();
     const codexProvider = buildOpenAICodexProviderPlugin();
@@ -229,6 +302,12 @@ describe("buildOpenAIProvider", () => {
       provider.isModernModelRef?.({
         provider: "openai",
         modelId: "gpt-5.2",
+      } as never),
+    ).toBe(true);
+    expect(
+      provider.isModernModelRef?.({
+        provider: "openai",
+        modelId: "gpt-5.5",
       } as never),
     ).toBe(true);
     expect(
@@ -260,6 +339,12 @@ describe("buildOpenAIProvider", () => {
       codexProvider.isModernModelRef?.({
         provider: "openai-codex",
         modelId: "gpt-5.4",
+      } as never),
+    ).toBe(true);
+    expect(
+      codexProvider.isModernModelRef?.({
+        provider: "openai-codex",
+        modelId: "gpt-5.5",
       } as never),
     ).toBe(true);
   });

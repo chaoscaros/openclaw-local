@@ -124,9 +124,14 @@ function createOpenAiCatalogProviderPlugin(
     suppressBuiltInModel: ({ provider, modelId }) =>
       (provider === "openai" || provider === "azure-openai-responses") &&
       modelId === "gpt-5.3-codex-spark"
-        ? { suppress: true, errorMessage: "openai-codex/gpt-5.3-codex-spark" }
+        ? {
+            suppress: true,
+            errorMessage: "openai/gpt-5.3-codex-spark with the Codex OAuth profile",
+          }
         : undefined,
     augmentModelCatalog: () => [
+      { provider: "openai", id: "gpt-5.5", name: "gpt-5.5" },
+      { provider: "openai", id: "gpt-5.5-pro", name: "gpt-5.5-pro" },
       { provider: "openai", id: "gpt-5.4", name: "gpt-5.4" },
       { provider: "openai", id: "gpt-5.4-pro", name: "gpt-5.4-pro" },
       { provider: "openai", id: "gpt-5.4-mini", name: "gpt-5.4-mini" },
@@ -763,7 +768,7 @@ describe("provider-runtime", () => {
         {
           ...createOpenAiCatalogProviderPlugin({
             buildMissingAuthMessage: () =>
-              'No API key found for provider "openai". Use openai-codex/gpt-5.4.',
+              'No API key found for provider "openai". Use openai/gpt-5.5 with the Codex OAuth profile.',
             buildUnknownModelHint,
           }),
         } as ProviderPlugin,

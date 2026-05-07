@@ -9,6 +9,8 @@ export const openaiCodexCatalogEntries = [
 ];
 
 export const expectedAugmentedOpenaiCodexCatalogEntries = [
+  { provider: "openai", id: "gpt-5.5", name: "gpt-5.5" },
+  { provider: "openai", id: "gpt-5.5-pro", name: "gpt-5.5-pro" },
   { provider: "openai", id: "gpt-5.4", name: "gpt-5.4" },
   { provider: "openai", id: "gpt-5.4-pro", name: "gpt-5.4-pro" },
   { provider: "openai", id: "gpt-5.4-mini", name: "gpt-5.4-mini" },
@@ -44,7 +46,7 @@ export function expectCodexMissingAuthHint(
         listProfileIds: (providerId) => (providerId === "openai-codex" ? ["p1"] : []),
       },
     }),
-  ).toContain("openai-codex/gpt-5.4");
+  ).toContain("openai/gpt-5.5 with the Codex OAuth profile");
 }
 
 export function expectCodexBuiltInSuppression(
@@ -68,7 +70,7 @@ export function expectCodexBuiltInSuppression(
     }),
   ).toMatchObject({
     suppress: true,
-    errorMessage: expect.stringContaining("openai-codex/gpt-5.3-codex-spark"),
+    errorMessage: expect.stringContaining("openai/gpt-5.3-codex-spark with the Codex OAuth profile"),
   });
 }
 
