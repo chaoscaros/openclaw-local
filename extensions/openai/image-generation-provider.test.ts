@@ -333,6 +333,80 @@ describe("openai image generation provider", () => {
     );
   });
 
+  it("normalizes legacy gpt-image-1 sizes before native OpenAI generation", async () => {
+    postJsonRequestMock.mockResolvedValue({
+      response: {
+        json: async () => ({
+          data: [{ b64_json: Buffer.from("png-bytes").toString("base64") }],
+        }),
+      },
+      release: vi.fn(async () => {}),
+    });
+
+    const provider = buildOpenAIImageGenerationProvider();
+    const result = await provider.generateImage({
+      provider: "openai",
+      model: "gpt-image-1",
+      prompt: "Create a wide Matrix QA image",
+      cfg: {},
+      size: "2048x1152",
+    });
+
+    expect(postJsonRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.openai.com/v1/images/generations",
+        body: expect.objectContaining({
+          model: "gpt-image-1",
+          size: "1536x1024",
+        }),
+      }),
+    );
+    expect(result.metadata).toEqual({
+      requestedSize: "2048x1152",
+      normalizedSize: "1536x1024",
+    });
+  });
+
+  it("does not normalize model-specific sizes for custom OpenAI-compatible endpoints", async () => {
+    postJsonRequestMock.mockResolvedValue({
+      response: {
+        json: async () => ({
+          data: [{ b64_json: Buffer.from("png-bytes").toString("base64") }],
+        }),
+      },
+      release: vi.fn(async () => {}),
+    });
+
+    const provider = buildOpenAIImageGenerationProvider();
+    const result = await provider.generateImage({
+      provider: "openai",
+      model: "gpt-image-1",
+      prompt: "Create a wide local-provider image",
+      cfg: {
+        models: {
+          providers: {
+            openai: {
+              baseUrl: "https://openai-compatible.example.com/v1",
+              models: [],
+            },
+          },
+        },
+      },
+      size: "2048x1152",
+    });
+
+    expect(postJsonRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://openai-compatible.example.com/v1/images/generations",
+        body: expect.objectContaining({
+          model: "gpt-image-1",
+          size: "2048x1152",
+        }),
+      }),
+    );
+    expect(result.metadata).toBeUndefined();
+  });
+
   it("uses JSON image_url edits for input-image requests", async () => {
     postJsonRequestMock.mockResolvedValue({
       response: {
