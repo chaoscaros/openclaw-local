@@ -39,6 +39,8 @@ export const ChatSendParamsSchema = Type.Object(
     thinking: Type.Optional(Type.String()),
     deliver: Type.Optional(Type.Boolean()),
     applyDreamingAssist: Type.Optional(Type.Boolean()),
+    planModeEnabled: Type.Optional(Type.Boolean()),
+    devSpecFirstEnabled: Type.Optional(Type.Boolean()),
     originatingChannel: Type.Optional(Type.String()),
     originatingTo: Type.Optional(Type.String()),
     originatingAccountId: Type.Optional(Type.String()),

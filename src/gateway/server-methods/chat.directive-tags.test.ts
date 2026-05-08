@@ -941,6 +941,42 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     }
   });
 
+  it("injects plan mode guidance into BodyForAgent without mutating RawBody", async () => {
+    createTranscriptFixture("openclaw-chat-send-plan-mode-");
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-plan-mode",
+      message: "请帮我梳理一下这个问题",
+      requestParams: { planModeEnabled: true },
+    });
+
+    expect(mockState.lastDispatchCtx?.RawBody).toBe("请帮我梳理一下这个问题");
+    expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("计划模式已开启");
+    expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("请帮我梳理一下这个问题");
+  });
+
+  it("injects dev-spec-first guidance for development requests only", async () => {
+    createTranscriptFixture("openclaw-chat-send-dev-spec-first-");
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-dev-spec-first",
+      message: "你帮我改这个页面，直接开发前先整理规格",
+      requestParams: { devSpecFirstEnabled: true },
+    });
+
+    expect(mockState.lastDispatchCtx?.RawBody).toBe("你帮我改这个页面，直接开发前先整理规格");
+    expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("规格优先模式已开启");
+    expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("任务描述、文件路径、改动范围、禁改区域");
+  });
+
   it("rejects oversized chat.send session keys before dispatch", async () => {
     createTranscriptFixture("openclaw-chat-send-session-key-too-long-");
     const respond = vi.fn();

@@ -40,14 +40,16 @@ function createState(overrides: Partial<AppViewState> = {}) {
   } as unknown as AppViewState;
 }
 
-function renderRefreshButton(overrides: Partial<AppViewState> = {}) {
+function renderControls(overrides: Partial<AppViewState> = {}) {
   const container = document.createElement("div");
   document.body.append(container);
   render(renderChatControls(createState(overrides)), container);
+  return container;
+}
 
-  const button = container.querySelector<HTMLButtonElement>(
-    `.chat-controls .btn--icon`,
-  );
+function renderRefreshButton(overrides: Partial<AppViewState> = {}) {
+  const container = renderControls(overrides);
+  const button = container.querySelector<HTMLButtonElement>(`.chat-controls .btn--icon`);
   expect(button).not.toBeNull();
   return button!;
 }
@@ -55,6 +57,18 @@ function renderRefreshButton(overrides: Partial<AppViewState> = {}) {
 describe("chat header controls (browser)", () => {
   afterEach(() => {
     document.body.innerHTML = "";
+  });
+
+  it("does not leak cron toggle template logic into the rendered header", () => {
+    const container = renderControls();
+    const text = container.textContent ?? "";
+    expect(text).not.toContain('showCronSessionsHidden');
+    expect(text).not.toContain('hiddenCronCount');
+
+    const iconButtons = Array.from(container.querySelectorAll<HTMLButtonElement>(`.chat-controls .btn--icon`));
+    const cronButton = iconButtons.at(-1) ?? null;
+    expect(cronButton).not.toBeNull();
+    expect(cronButton?.getAttribute("title")?.trim()).toBeTruthy();
   });
 
   it.each([

@@ -1404,6 +1404,11 @@ type DreamingAssistanceResolution = {
   reason?: DreamingAssistReason;
 };
 
+type PlanningModeResolution = {
+  planModeEnabled?: boolean;
+  devSpecFirstEnabled?: boolean;
+};
+
 function resolveDreamingAssistance(params: {
   cfg: ReturnType<typeof loadConfig>;
   agentId: string;
@@ -1458,6 +1463,62 @@ function injectDreamingAssistanceStrategy(message: string, strategy?: string): s
     return message;
   }
   return `${message}\n\n[Dreaming协助策略参考，仅作本轮回复方式约束：${normalizedStrategy}]`;
+}
+
+function isLikelyDevelopmentRequest(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  const developmentHints = [
+    "帮我改",
+    "改代码",
+    "直接开发",
+    "直接改",
+    "应用修改",
+    "应用补丁",
+    "改文件",
+    "开始写",
+    "做功能",
+    "实现需求",
+    "实现这个",
+    "修bug",
+    "修 bug",
+    "修复bug",
+    "修复 bug",
+    "调整页面",
+    "改页面",
+    "改组件",
+    "重构",
+    "implement",
+    "apply",
+    "fix bug",
+    "fix the bug",
+    "change code",
+    "update code",
+    "refactor",
+    "build feature",
+  ];
+  return developmentHints.some((hint) => normalized.includes(hint));
+}
+
+function injectPlanningModeGuidance(message: string, resolution: PlanningModeResolution): string {
+  const normalizedMessage = message.trim();
+  if (!normalizedMessage || normalizedMessage.startsWith("/")) {
+    return message;
+  }
+  const planModeEnabled = resolution.planModeEnabled === true;
+  const devSpecFirstEnabled = resolution.devSpecFirstEnabled === true;
+  if (!planModeEnabled && !devSpecFirstEnabled) {
+    return message;
+  }
+  if (devSpecFirstEnabled && isLikelyDevelopmentRequest(normalizedMessage)) {
+    return `${message}\n\n[规格优先模式已开启：这是开发类请求。先进入规格整理模式，不要直接开发、不要假设已修改文件。先输出完整规格，至少包含：任务描述、文件路径、改动范围、禁改区域、复用要求、实现约束、输出要求、验收标准。输出完规格后，明确要求用户回复“直接开发”或“应用修改”后才进入执行。]`;
+  }
+  if (planModeEnabled) {
+    return `${message}\n\n[计划模式已开启：优先先给出简洁、可执行的计划或分析，不要直接声称已经执行完成。若这是开发请求，优先先整理步骤、边界与验证方式，再决定是否进入执行。]`;
+  }
+  return message;
 }
 
 function normalizeExplicitChatSendOrigin(
@@ -1847,6 +1908,8 @@ export const chatHandlers: GatewayRequestHandlers = {
       thinking?: string;
       deliver?: boolean;
       applyDreamingAssist?: boolean;
+      planModeEnabled?: boolean;
+      devSpecFirstEnabled?: boolean;
       originatingChannel?: string;
       originatingTo?: string;
       originatingAccountId?: string;
@@ -2068,9 +2131,13 @@ export const chatHandlers: GatewayRequestHandlers = {
       const baseMessageForAgent = systemProvenanceReceipt
         ? [systemProvenanceReceipt, parsedMessage].filter(Boolean).join("\n\n")
         : parsedMessage;
-      const messageForAgent = p.applyDreamingAssist === false
+      const messageWithDreamingAssist = p.applyDreamingAssist === false
         ? baseMessageForAgent
         : injectDreamingAssistanceStrategy(baseMessageForAgent, dreamingAssistStrategy);
+      const messageForAgent = injectPlanningModeGuidance(messageWithDreamingAssist, {
+        planModeEnabled: p.planModeEnabled,
+        devSpecFirstEnabled: p.devSpecFirstEnabled,
+      });
       const clientInfo = client?.connect?.client;
       const {
         originatingChannel,

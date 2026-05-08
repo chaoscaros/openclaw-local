@@ -73,6 +73,8 @@ export type ChatProps = {
   dreamingAssistApplied?: boolean | null;
   dreamingAssistReason?: DreamingAssistReason | null;
   dreamingAssistEnabled?: boolean;
+  planModeEnabled?: boolean;
+  devSpecFirstEnabled?: boolean;
   showThinking: boolean;
   showToolCalls: boolean;
   loading: boolean;
@@ -126,6 +128,8 @@ export type ChatProps = {
   onRefresh: () => void;
   onToggleFocusMode: () => void;
   onToggleDreamingAssist?: () => void;
+  onTogglePlanMode?: () => void;
+  onToggleDevSpecFirst?: () => void;
   getDraft?: () => string;
   onDraftChange: (next: string) => void;
   onRequestUpdate?: () => void;
@@ -1482,6 +1486,86 @@ export function renderChat(props: ChatProps) {
     props.onDraftChange(target.value);
   };
 
+  const showModeSwitchPanel =
+    (props.pendingRunId && props.dreamingAssistApplied !== null && props.dreamingAssistApplied !== undefined) ||
+    props.onToggleDreamingAssist ||
+    props.onTogglePlanMode ||
+    props.onToggleDevSpecFirst;
+
+  const modeSwitchPanel = showModeSwitchPanel
+    ? html`<div class="chat-mode-switches__panel">
+        ${props.onToggleDreamingAssist || props.onTogglePlanMode || props.onToggleDevSpecFirst
+          ? html`<div class="chat-mode-switches__list">
+              ${props.onToggleDreamingAssist
+                ? html`<button
+                    class="chat-mode-switch"
+                    type="button"
+                    role="switch"
+                    aria-checked=${props.dreamingAssistEnabled !== false}
+                    @click=${() => props.onToggleDreamingAssist?.()}
+                  >
+                    <span class="chat-mode-switch__meta">
+                      <span class="chat-mode-switch__icon">${icons.brain}</span>
+                      <span class="chat-mode-switch__text">
+                        <span class="chat-mode-switch__label">协助策略</span>
+                      </span>
+                    </span>
+                    <span class="chat-mode-switch__control ${props.dreamingAssistEnabled !== false ? "is-on" : "is-off"}">
+                      <span class="chat-mode-switch__thumb"></span>
+                    </span>
+                  </button>`
+                : nothing}
+              ${props.onTogglePlanMode
+                ? html`<button
+                    class="chat-mode-switch"
+                    type="button"
+                    role="switch"
+                    aria-checked=${props.planModeEnabled === true}
+                    @click=${() => props.onTogglePlanMode?.()}
+                  >
+                    <span class="chat-mode-switch__meta">
+                      <span class="chat-mode-switch__icon">${icons.scrollText}</span>
+                      <span class="chat-mode-switch__text">
+                        <span class="chat-mode-switch__label">计划模式</span>
+                      </span>
+                    </span>
+                    <span class="chat-mode-switch__control ${props.planModeEnabled === true ? "is-on" : "is-off"}">
+                      <span class="chat-mode-switch__thumb"></span>
+                    </span>
+                  </button>`
+                : nothing}
+              ${props.onToggleDevSpecFirst
+                ? html`<button
+                    class="chat-mode-switch"
+                    type="button"
+                    role="switch"
+                    aria-checked=${props.devSpecFirstEnabled === true}
+                    @click=${() => props.onToggleDevSpecFirst?.()}
+                  >
+                    <span class="chat-mode-switch__meta">
+                      <span class="chat-mode-switch__icon">${icons.fileCode}</span>
+                      <span class="chat-mode-switch__text">
+                        <span class="chat-mode-switch__label">规格优先</span>
+                      </span>
+                    </span>
+                    <span class="chat-mode-switch__control ${props.devSpecFirstEnabled === true ? "is-on" : "is-off"}">
+                      <span class="chat-mode-switch__thumb"></span>
+                    </span>
+                  </button>`
+                : nothing}
+            </div>`
+          : nothing}
+        ${props.pendingRunId && props.dreamingAssistApplied !== null && props.dreamingAssistApplied !== undefined
+          ? html`<div class="chat-mode-switches__status ${props.dreamingAssistApplied ? "is-success" : "is-muted"}">
+              ${props.dreamingAssistApplied ? "本轮已应用协助策略" : "本轮未应用协助策略"}
+            </div>`
+          : nothing}
+        ${props.pendingRunId && !props.dreamingAssistApplied && props.dreamingAssistReason
+          ? html`<div class="chat-mode-switches__reason">${renderDreamingAssistReason(props.dreamingAssistReason)}</div>`
+          : nothing}
+      </div>`
+    : nothing;
+
   const section = html`
     <section
       class="card chat"
@@ -1575,25 +1659,6 @@ export function renderChat(props: ChatProps) {
               </div>
             </div>
           `
-        : nothing}
-      ${(props.pendingRunId && props.dreamingAssistApplied !== null && props.dreamingAssistApplied !== undefined) || props.onToggleDreamingAssist
-        ? html`<div class="callout ${props.dreamingAssistApplied ? "success" : "muted"}" role="status">
-            <div class="row wrap items-center gap-2">
-              <span>${props.pendingRunId && props.dreamingAssistApplied !== null && props.dreamingAssistApplied !== undefined
-                ? props.dreamingAssistApplied
-                  ? "本轮已应用协助策略"
-                  : "本轮未应用协助策略"
-                : "协助策略"}</span>
-              ${props.onToggleDreamingAssist
-                ? html`<button class="btn btn--subtle btn--sm" @click=${() => props.onToggleDreamingAssist?.()}>
-                    ${props.dreamingAssistEnabled === false ? "协助策略：关" : "协助策略：开"}
-                  </button>`
-                : nothing}
-            </div>
-            ${props.pendingRunId && !props.dreamingAssistApplied && props.dreamingAssistReason
-              ? html`<div>${renderDreamingAssistReason(props.dreamingAssistReason)}</div>`
-              : nothing}
-          </div>`
         : nothing}
       ${renderSideResult(props.sideResult, props.onDismissSideResult)}
       ${renderFallbackIndicator(props.fallbackStatus)}
@@ -1701,6 +1766,18 @@ export function renderChat(props: ChatProps) {
                     ${vs.sttRecording ? icons.micOff : icons.mic}
                   </button>
                 `
+              : nothing}
+            ${showModeSwitchPanel
+              ? html`<details class="agent-chat__mode-menu">
+                  <summary class="agent-chat__mode-trigger" aria-label="打开聊天模式设置">
+                    <span class="agent-chat__mode-trigger-icon">${icons.settings}</span>
+                    <span class="agent-chat__mode-trigger-label">模式</span>
+                    <span class="agent-chat__mode-trigger-caret">${icons.arrowDown}</span>
+                  </summary>
+                  <div class="agent-chat__mode-menu-panel" role="dialog" aria-label="聊天模式设置">
+                    ${modeSwitchPanel}
+                  </div>
+                </details>`
               : nothing}
             ${tokens ? html`<span class="agent-chat__token-count">${tokens}</span>` : nothing}
           </div>

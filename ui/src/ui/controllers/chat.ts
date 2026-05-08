@@ -137,11 +137,18 @@ function sleep(ms: number): Promise<void> {
 
 type DreamingAssistReason = "disabled" | "no_strategy" | "scope_mismatch" | "expired";
 
+type ChatSendAck = {
+  dreamingAssistApplied?: boolean;
+  dreamingAssistReason?: DreamingAssistReason;
+};
+
 export type ChatState = {
   client: GatewayBrowserClient | null;
   connected: boolean;
   sessionKey: string;
   dreamingAssistEnabled?: boolean;
+  planModeEnabled?: boolean;
+  devSpecFirstEnabled?: boolean;
   dreamingAssistApplied?: boolean | null;
   dreamingAssistReason?: DreamingAssistReason | null;
   chatLoading: boolean;
@@ -277,12 +284,26 @@ function buildApiAttachments(attachments?: ChatAttachment[]) {
 async function requestChatSend(
   state: ChatState,
   params: { message: string; attachments?: ChatAttachment[]; runId: string },
-): Promise<{ dreamingAssistApplied?: boolean; dreamingAssistReason?: DreamingAssistReason } | null> {
+): Promise<ChatSendAck | null> {
+  const settingsState = state as ChatState & {
+    settings?: {
+      dreamingAssistEnabled?: boolean;
+      planModeEnabled?: boolean;
+      devSpecFirstEnabled?: boolean;
+    };
+  };
+  const dreamingAssistEnabled =
+    state.dreamingAssistEnabled ?? settingsState.settings?.dreamingAssistEnabled ?? true;
+  const planModeEnabled = state.planModeEnabled ?? settingsState.settings?.planModeEnabled ?? false;
+  const devSpecFirstEnabled =
+    state.devSpecFirstEnabled ?? settingsState.settings?.devSpecFirstEnabled ?? false;
   return await state.client!.request("chat.send", {
     sessionKey: state.sessionKey,
     message: params.message,
     deliver: false,
-    applyDreamingAssist: state.dreamingAssistEnabled !== false,
+    applyDreamingAssist: dreamingAssistEnabled !== false,
+    planModeEnabled,
+    devSpecFirstEnabled,
     idempotencyKey: params.runId,
     attachments: buildApiAttachments(params.attachments),
   });

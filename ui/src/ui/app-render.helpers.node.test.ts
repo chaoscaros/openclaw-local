@@ -32,9 +32,11 @@ vi.mock("./controllers/sessions.ts", () => ({
 
 import {
   isCronSessionKey,
+  isDreamingNarrativeSessionKey,
   parseSessionKey,
   resolveAssistantAttachmentAuthToken,
   resolveSessionDisplayName,
+  resolveSessionOptionGroups,
   switchChatSession,
 } from "./app-render.helpers.ts";
 import type { AppViewState } from "./app-view-state.ts";
@@ -345,6 +347,48 @@ describe("isCronSessionKey", () => {
     expect(isCronSessionKey("main")).toBe(false);
     expect(isCronSessionKey("discord:group:eng")).toBe(false);
     expect(isCronSessionKey("agent:main:slack:cron:job:run:uuid")).toBe(false);
+  });
+});
+
+describe("isDreamingNarrativeSessionKey", () => {
+  it("returns true for internal dreaming narrative session keys", () => {
+    expect(isDreamingNarrativeSessionKey("dreaming-narrative-light-abc")).toBe(true);
+    expect(isDreamingNarrativeSessionKey("agent:main:dreaming-narrative-rem-abc")).toBe(true);
+    expect(isDreamingNarrativeSessionKey("agent:solo:dreaming-narrative-deep-abc")).toBe(true);
+  });
+
+  it("returns false for ordinary or channel sessions", () => {
+    expect(isDreamingNarrativeSessionKey("main")).toBe(false);
+    expect(isDreamingNarrativeSessionKey("agent:main:telegram:group:dreaming-narrative-room")).toBe(false);
+    expect(isDreamingNarrativeSessionKey("agent:main:cron:dreaming-narrative-job")).toBe(false);
+  });
+});
+
+describe("resolveSessionOptionGroups", () => {
+  it("hides internal dreaming narrative sessions from the switcher while keeping normal sessions", () => {
+    const state = {
+      sessionsHideCron: true,
+      agentsList: { agents: [{ id: "main", name: "Main" }] },
+    } as unknown as AppViewState;
+    const groups = resolveSessionOptionGroups(
+      state,
+      "main",
+      {
+        ts: 1,
+        path: "",
+        count: 3,
+        defaults: {},
+        sessions: [
+          row({ key: "main" }),
+          row({ key: "agent:main:dreaming-narrative-light-abc" }),
+          row({ key: "agent:main:telegram:direct:user-1", label: "User 1" }),
+        ],
+      } as SessionsListResult,
+    );
+    const keys = groups.flatMap((group) => group.options.map((option) => option.key));
+    expect(keys).toContain("main");
+    expect(keys).toContain("agent:main:telegram:direct:user-1");
+    expect(keys).not.toContain("agent:main:dreaming-narrative-light-abc");
   });
 });
 

@@ -53,6 +53,8 @@ export type UiSettings = {
   chatShowThinking: boolean;
   chatShowToolCalls: boolean;
   dreamingAssistEnabled: boolean;
+  planModeEnabled: boolean;
+  devSpecFirstEnabled: boolean;
   splitRatio: number; // Sidebar split ratio (0.4 to 0.7, default 0.6)
   navCollapsed: boolean; // Collapsible sidebar state
   navWidth: number; // Sidebar width when expanded (240–400px)
@@ -192,6 +194,8 @@ export function loadSettings(): UiSettings {
     chatShowThinking: true,
     chatShowToolCalls: true,
     dreamingAssistEnabled: true,
+    planModeEnabled: false,
+    devSpecFirstEnabled: false,
     splitRatio: 0.6,
     navCollapsed: false,
     navWidth: 220,
@@ -239,6 +243,14 @@ export function loadSettings(): UiSettings {
         typeof (parsed as { dreamingAssistEnabled?: unknown }).dreamingAssistEnabled === "boolean"
           ? Boolean((parsed as { dreamingAssistEnabled?: unknown }).dreamingAssistEnabled)
           : defaults.dreamingAssistEnabled,
+      planModeEnabled:
+        typeof (parsed as { planModeEnabled?: unknown }).planModeEnabled === "boolean"
+          ? Boolean((parsed as { planModeEnabled?: unknown }).planModeEnabled)
+          : defaults.planModeEnabled,
+      devSpecFirstEnabled:
+        typeof (parsed as { devSpecFirstEnabled?: unknown }).devSpecFirstEnabled === "boolean"
+          ? Boolean((parsed as { devSpecFirstEnabled?: unknown }).devSpecFirstEnabled)
+          : defaults.devSpecFirstEnabled,
       splitRatio:
         typeof parsed.splitRatio === "number" &&
         parsed.splitRatio >= 0.4 &&
@@ -317,6 +329,8 @@ function persistSettings(next: UiSettings) {
     chatShowThinking: next.chatShowThinking,
     chatShowToolCalls: next.chatShowToolCalls,
     dreamingAssistEnabled: next.dreamingAssistEnabled,
+    planModeEnabled: next.planModeEnabled,
+    devSpecFirstEnabled: next.devSpecFirstEnabled,
     splitRatio: next.splitRatio,
     navCollapsed: next.navCollapsed,
     navWidth: next.navWidth,

@@ -118,6 +118,10 @@ function createChatHeaderState(
       borderRadius: 50,
       chatFocusMode: false,
       chatShowThinking: false,
+      chatShowToolCalls: true,
+      dreamingAssistEnabled: true,
+      planModeEnabled: false,
+      devSpecFirstEnabled: false,
     },
     chatMessage: "",
     chatStream: null,
@@ -166,6 +170,8 @@ function createProps(overrides: Partial<ChatProps> = {}): ChatProps {
     dreamingAssistApplied: null,
     dreamingAssistReason: null,
     dreamingAssistEnabled: true,
+    planModeEnabled: false,
+    devSpecFirstEnabled: false,
     showThinking: false,
     showToolCalls: true,
     loading: false,
@@ -194,6 +200,8 @@ function createProps(overrides: Partial<ChatProps> = {}): ChatProps {
     onRefresh: () => undefined,
     onToggleFocusMode: () => undefined,
     onToggleDreamingAssist: () => undefined,
+    onTogglePlanMode: () => undefined,
+    onToggleDevSpecFirst: () => undefined,
     onDraftChange: () => undefined,
     onSend: () => undefined,
     onQueueRemove: () => undefined,
@@ -221,6 +229,9 @@ function createOverviewProps(overrides: Partial<OverviewProps> = {}): OverviewPr
       chatFocusMode: false,
       chatShowThinking: true,
       chatShowToolCalls: true,
+      dreamingAssistEnabled: true,
+      planModeEnabled: false,
+      devSpecFirstEnabled: false,
       splitRatio: 0.6,
       navCollapsed: false,
       navWidth: 220,
@@ -694,10 +705,11 @@ describe("chat view", () => {
       ),
       container,
     );
-    const button = Array.from(container.querySelectorAll("button")).find((node) =>
-      node.textContent?.includes("协助策略：开"),
+    const button = Array.from(container.querySelectorAll<HTMLElement>('[role="switch"]')).find((node) =>
+      node.textContent?.includes("协助策略"),
     );
     expect(button).toBeTruthy();
+    expect(button?.getAttribute("aria-checked")).toBe("true");
     button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onToggleDreamingAssist).toHaveBeenCalledOnce();
   });
@@ -2973,5 +2985,30 @@ describe("chat view", () => {
 
     expect(container.textContent).not.toContain("Tool input");
     expect(container.textContent).toContain('"status": "error"');
+  });
+
+  it("renders direct switch toggles for assist, plan mode, and spec-first", async () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          planModeEnabled: true,
+          devSpecFirstEnabled: true,
+          pendingRunId: null,
+          dreamingAssistApplied: null,
+        }),
+      ),
+      container,
+    );
+    await flushTasks();
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("计划模式");
+    expect(text).toContain("规格优先");
+    expect(text).toContain("协助策略");
+    const switches = Array.from(container.querySelectorAll<HTMLElement>('[role="switch"]'));
+    expect(switches).toHaveLength(3);
+    expect(switches[1]?.getAttribute("aria-checked")).toBe("true");
+    expect(switches[2]?.getAttribute("aria-checked")).toBe("true");
   });
 });

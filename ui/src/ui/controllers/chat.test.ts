@@ -24,6 +24,8 @@ function createState(overrides: Partial<ChatState> = {}): ChatState {
     connected: true,
     dreamingAssistApplied: null,
     dreamingAssistReason: null,
+    planModeEnabled: false,
+    devSpecFirstEnabled: false,
     lastError: null,
     sessionKey: "main",
     ...overrides,
@@ -707,6 +709,8 @@ describe("sendChatMessage", () => {
       connected: true,
       client: { request } as unknown as ChatState["client"],
       dreamingAssistEnabled: true,
+      planModeEnabled: true,
+      devSpecFirstEnabled: true,
     });
 
     const result = await sendChatMessage(state, "hello");
@@ -716,7 +720,11 @@ describe("sendChatMessage", () => {
     expect(state.dreamingAssistReason).toBeNull();
     expect(request).toHaveBeenCalledWith(
       "chat.send",
-      expect.objectContaining({ applyDreamingAssist: true }),
+      expect.objectContaining({
+        applyDreamingAssist: true,
+        planModeEnabled: true,
+        devSpecFirstEnabled: true,
+      }),
     );
   });
 

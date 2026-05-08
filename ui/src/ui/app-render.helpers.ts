@@ -587,6 +587,11 @@ export function renderChatControls(state: AppViewState) {
   const hiddenCronCount = hideCron
     ? countHiddenCronSessions(state.sessionKey, state.sessionsResult)
     : 0;
+  const cronLabel = hideCron
+    ? hiddenCronCount > 0
+      ? t("chat.showCronSessionsHidden", { count: String(hiddenCronCount) })
+      : t("chat.showCronSessions")
+    : t("chat.hideCronSessions");
   const refreshDisabled =
     !state.connected ||
     state.chatLoading ||
@@ -732,18 +737,9 @@ export function renderChatControls(state: AppViewState) {
           state.sessionsHideCron = !hideCron;
         }}
         aria-pressed=${hideCron}
-  const cronLabel = hideCron
-    ? hiddenCronCount > 0
-      ? t("chat.showCronSessionsHidden", { count: String(hiddenCronCount) })
-      : t("chat.showCronSessions")
-    : t("chat.hideCronSessions");
-  const refreshDisabled =
-    !state.connected ||
-    state.chatLoading ||
-    state.chatSending ||
-    Boolean(state.chatRunId) ||
-    state.chatStream !== null;
-
+        title=${cronLabel}
+        aria-label=${cronLabel}
+      >
         ${renderCronFilterIcon(hiddenCronCount)}
       </button>
     </div>
@@ -1303,6 +1299,21 @@ export function resolveSessionDisplayName(
   return fallbackName;
 }
 
+function resolveSessionKeyScopedRest(key: string): string {
+  const normalized = normalizeLowercaseStringOrEmpty(key);
+  if (!normalized) {
+    return "";
+  }
+  if (!normalized.startsWith("agent:")) {
+    return normalized;
+  }
+  const parts = normalized.split(":").filter(Boolean);
+  if (parts.length < 3) {
+    return "";
+  }
+  return parts.slice(2).join(":");
+}
+
 export function isCronSessionKey(key: string): boolean {
   const normalized = normalizeLowercaseStringOrEmpty(key);
   if (!normalized) {
@@ -1311,15 +1322,15 @@ export function isCronSessionKey(key: string): boolean {
   if (normalized.startsWith("cron:")) {
     return true;
   }
-  if (!normalized.startsWith("agent:")) {
+  return resolveSessionKeyScopedRest(normalized).startsWith("cron:");
+}
+
+export function isDreamingNarrativeSessionKey(key: string): boolean {
+  const normalized = normalizeLowercaseStringOrEmpty(key);
+  if (!normalized) {
     return false;
   }
-  const parts = normalized.split(":").filter(Boolean);
-  if (parts.length < 3) {
-    return false;
-  }
-  const rest = parts.slice(2).join(":");
-  return rest.startsWith("cron:");
+  return resolveSessionKeyScopedRest(normalized).startsWith("dreaming-narrative-");
 }
 
 type SessionOptionEntry = {
@@ -1391,6 +1402,9 @@ export function resolveSessionOptionGroups(
       continue;
     }
     if (hideCron && row.key !== sessionKey && isCronSessionKey(row.key)) {
+      continue;
+    }
+    if (row.key !== sessionKey && isDreamingNarrativeSessionKey(row.key)) {
       continue;
     }
     addOption(row.key);
