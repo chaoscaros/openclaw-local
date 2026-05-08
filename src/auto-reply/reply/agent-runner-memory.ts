@@ -120,7 +120,7 @@ export type SessionTranscriptUsageSnapshot = {
 
 // Keep a generous near-threshold window so large assistant outputs still trigger
 // transcript reads in time to flip memory-flush gating when needed.
-const TRANSCRIPT_OUTPUT_READ_BUFFER_TOKENS = 12_000;
+const TRANSCRIPT_OUTPUT_READ_BUFFER_TOKENS = 20_000;
 const STALE_TOKEN_FALLBACK_BUFFER_TOKENS = 20_000;
 const TRANSCRIPT_TAIL_CHUNK_BYTES = 64 * 1024;
 
@@ -398,6 +398,22 @@ export async function runPreflightCompactionIfNeeded(params: {
   const promptTokenEstimate = estimatePromptTokensForMemoryFlush(
     params.promptForEstimate ?? params.followupRun.prompt,
   );
+  const threshold = contextWindowTokens - reserveTokensFloor - softThresholdTokens;
+  const hasStalePersistedLowTokenSnapshot =
+    typeof persistedTotalTokens === "number" &&
+    Number.isFinite(persistedTotalTokens) &&
+    persistedTotalTokens > 0 &&
+    typeof promptTokenEstimate === "number" &&
+    Number.isFinite(promptTokenEstimate) &&
+    threshold > 0 &&
+    persistedTotalTokens + promptTokenEstimate < threshold - STALE_TOKEN_FALLBACK_BUFFER_TOKENS;
+  if (shouldUseTranscriptFallback && hasStalePersistedLowTokenSnapshot) {
+    logVerbose(
+      `preflightCompaction skipped transcript fallback: sessionKey=${params.sessionKey} ` +
+        `persistedTotalTokens=${persistedTotalTokens} promptTokensEst=${promptTokenEstimate} threshold=${threshold}`,
+    );
+    return entry ?? params.sessionEntry;
+  }
   const transcriptPromptTokens =
     typeof freshPersistedTokens === "number"
       ? undefined
@@ -416,23 +432,6 @@ export async function runPreflightCompactionIfNeeded(params: {
     projectedTokenCount > 0
       ? projectedTokenCount
       : undefined;
-
-  const threshold = contextWindowTokens - reserveTokensFloor - softThresholdTokens;
-  const hasStalePersistedLowTokenSnapshot =
-    typeof persistedTotalTokens === "number" &&
-    Number.isFinite(persistedTotalTokens) &&
-    persistedTotalTokens > 0 &&
-    typeof promptTokenEstimate === "number" &&
-    Number.isFinite(promptTokenEstimate) &&
-    threshold > 0 &&
-    persistedTotalTokens + promptTokenEstimate < threshold - STALE_TOKEN_FALLBACK_BUFFER_TOKENS;
-  if (shouldUseTranscriptFallback && hasStalePersistedLowTokenSnapshot) {
-    logVerbose(
-      `preflightCompaction skipped transcript fallback: sessionKey=${params.sessionKey} ` +
-        `persistedTotalTokens=${persistedTotalTokens} promptTokensEst=${promptTokenEstimate} threshold=${threshold}`,
-    );
-    return entry ?? params.sessionEntry;
-  }
   logVerbose(
     `preflightCompaction check: sessionKey=${params.sessionKey} ` +
       `tokenCount=${tokenCountForCompaction ?? freshPersistedTokens ?? "undefined"} ` +

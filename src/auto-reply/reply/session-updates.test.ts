@@ -105,4 +105,53 @@ describe("ensureSkillSnapshot", () => {
     );
     expect(resolveAgentIdFromSessionKeyMock).not.toHaveBeenCalled();
   });
+
+  it("reuses cached runtime skill snapshots when only resolvedSkills hydration is needed", async () => {
+    vi.stubEnv("OPENCLAW_TEST_FAST", "0");
+    buildWorkspaceSkillSnapshotMock.mockReturnValue({
+      prompt: "skills",
+      skills: [{ name: "alpha" }],
+      resolvedSkills: [
+        {
+          name: "alpha",
+          description: "A skill",
+          filePath: "/tmp/alpha/SKILL.md",
+          baseDir: "/tmp/alpha",
+          source: "workspace",
+        },
+      ],
+      version: 7,
+    });
+    getSkillsSnapshotVersionMock.mockReturnValue(7);
+
+    const sessionEntry = {
+      sessionId: "session-1",
+      updatedAt: Date.now(),
+      skillsSnapshot: {
+        prompt: "skills",
+        skills: [{ name: "alpha" }],
+        version: 7,
+      },
+    };
+    const cfg = {};
+
+    const first = await ensureSkillSnapshot({
+      sessionEntry,
+      sessionKey: "main",
+      isFirstTurnInSession: false,
+      workspaceDir: "/tmp/workspace",
+      cfg,
+    });
+    const second = await ensureSkillSnapshot({
+      sessionEntry,
+      sessionKey: "main",
+      isFirstTurnInSession: false,
+      workspaceDir: "/tmp/workspace",
+      cfg,
+    });
+
+    expect(first.skillsSnapshot?.resolvedSkills).toHaveLength(1);
+    expect(second.skillsSnapshot?.resolvedSkills).toHaveLength(1);
+    expect(buildWorkspaceSkillSnapshotMock).toHaveBeenCalledTimes(1);
+  });
 });

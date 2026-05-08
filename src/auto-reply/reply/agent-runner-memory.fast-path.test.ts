@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearMemoryPluginState, registerMemoryFlushPlanResolver } from "../../plugins/memory-state.js";
 import type { SessionEntry } from "../../config/sessions.js";
+
+const { readSessionMessagesMock } = vi.hoisted(() => ({
+  readSessionMessagesMock: vi.fn(() => []),
+}));
+
+vi.mock("../../gateway/session-utils.fs.js", () => ({
+  readSessionMessages: readSessionMessagesMock,
+}));
+
 import {
   runMemoryFlushIfNeeded,
   runPreflightCompactionIfNeeded,
@@ -100,6 +109,7 @@ describe("agent-runner-memory fast path", () => {
 
     expect(result).toBe(entry);
     expect(compactEmbeddedPiSessionMock).not.toHaveBeenCalled();
+    expect(readSessionMessagesMock).not.toHaveBeenCalled();
   });
 
   it("skips memory flush transcript reads for stale but safely low token snapshots", async () => {

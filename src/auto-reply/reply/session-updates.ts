@@ -4,7 +4,7 @@ import path from "node:path";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { canExecRequestNode } from "../../agents/exec-defaults.js";
 import { buildWorkspaceSkillSnapshot } from "../../agents/skills.js";
-import { matchesSkillFilter } from "../../agents/skills/filter.js";
+import { matchesSkillFilter, normalizeSkillFilter } from "../../agents/skills/filter.js";
 import {
   ensureSkillsWatcher,
   getSkillsSnapshotVersion,
@@ -25,6 +25,52 @@ import { resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
 import { buildSessionEndHookPayload, buildSessionStartHookPayload } from "./session-hooks.js";
 export { drainFormattedSystemEvents } from "./session-system-events.js";
+
+const defaultSkillSnapshotRuntimeCache = new Map<string, NonNullable<SessionEntry["skillsSnapshot"]>>();
+const skillSnapshotRuntimeCacheByConfig = new WeakMap<OpenClawConfig, Map<string, NonNullable<SessionEntry["skillsSnapshot"]>>>();
+
+function resolveSkillSnapshotRuntimeCache(
+  cfg?: OpenClawConfig,
+): Map<string, NonNullable<SessionEntry["skillsSnapshot"]>> {
+  if (!cfg) {
+    return defaultSkillSnapshotRuntimeCache;
+  }
+  let cache = skillSnapshotRuntimeCacheByConfig.get(cfg);
+  if (!cache) {
+    cache = new Map<string, NonNullable<SessionEntry["skillsSnapshot"]>>();
+    skillSnapshotRuntimeCacheByConfig.set(cfg, cache);
+  }
+  return cache;
+}
+
+function resolveSkillSnapshotRuntimeCacheKey(params: {
+  workspaceDir: string;
+  snapshotVersion: number;
+  sessionAgentId?: string;
+  skillFilter?: string[];
+}): string {
+  const normalizedFilter = normalizeSkillFilter(params.skillFilter);
+  const filterKey =
+    params.skillFilter === undefined
+      ? "__undefined__"
+      : normalizedFilter && normalizedFilter.length > 0
+        ? normalizedFilter.join("\u001f")
+        : "__empty__";
+  return [params.workspaceDir, String(params.snapshotVersion), params.sessionAgentId ?? "", filterKey].join(
+    "\u001e",
+  );
+}
+
+function cloneSkillSnapshot(
+  snapshot: NonNullable<SessionEntry["skillsSnapshot"]>,
+): NonNullable<SessionEntry["skillsSnapshot"]> {
+  return {
+    ...snapshot,
+    skills: snapshot.skills?.map((skill) => ({ ...skill })),
+    skillFilter: snapshot.skillFilter?.slice(),
+    resolvedSkills: snapshot.resolvedSkills?.map((skill) => ({ ...skill })),
+  };
+}
 
 // resolvedSkills is stripped from the persisted snapshot by store-load.ts.
 // On cold session resume we need to refill just that runtime cache field while
@@ -161,14 +207,28 @@ export async function ensureSkillSnapshot(params: {
   const shouldRefreshSnapshot =
     shouldRefreshSnapshotForVersion(existingSnapshot?.version, snapshotVersion) ||
     !matchesSkillFilter(existingSnapshot?.skillFilter, skillFilter);
-  const buildSnapshot = () =>
-    buildWorkspaceSkillSnapshot(workspaceDir, {
+  const skillSnapshotRuntimeCache = resolveSkillSnapshotRuntimeCache(cfg);
+  const skillSnapshotRuntimeCacheKey = resolveSkillSnapshotRuntimeCacheKey({
+    workspaceDir,
+    snapshotVersion,
+    sessionAgentId,
+    skillFilter,
+  });
+  const buildSnapshot = () => {
+    const cachedSnapshot = skillSnapshotRuntimeCache.get(skillSnapshotRuntimeCacheKey);
+    if (cachedSnapshot) {
+      return cloneSkillSnapshot(cachedSnapshot);
+    }
+    const snapshot = buildWorkspaceSkillSnapshot(workspaceDir, {
       config: cfg,
       agentId: sessionAgentId,
       skillFilter,
       eligibility: { remote: remoteEligibility },
       snapshotVersion,
     });
+    skillSnapshotRuntimeCache.set(skillSnapshotRuntimeCacheKey, cloneSkillSnapshot(snapshot));
+    return snapshot;
+  };
 
   if (isFirstTurnInSession && sessionStore && sessionKey) {
     const current = nextEntry ??
