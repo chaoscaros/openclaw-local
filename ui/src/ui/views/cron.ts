@@ -11,6 +11,11 @@ import { formatRelativeTimestamp, formatMs } from "../format.ts";
 import { pathForTab } from "../navigation.ts";
 import { formatCronSchedule, formatNextRun } from "../presenter.ts";
 import type { ChannelUiMetaEntry, CronJob, CronRunLogEntry, CronStatus } from "../types.ts";
+import {
+  filterCronTemplateGroups,
+  findCronTemplateById,
+  type CronTemplateDefinition,
+} from "./cron-templates.ts";
 import type {
   CronDeliveryStatus,
   CronJobsEnabledFilter,
@@ -62,7 +67,14 @@ export type CronProps = {
   timezoneSuggestions: string[];
   deliveryToSuggestions: string[];
   accountSuggestions: string[];
+  activeTemplateId?: string | null;
+  templateQuery?: string;
+  templateRiskFilter?: "all" | "safe" | "review";
+  recentTemplateIds?: string[];
   onFormChange: (patch: Partial<CronFormState>) => void;
+  onTemplateQueryChange?: (value: string) => void;
+  onTemplateRiskFilterChange?: (value: "all" | "safe" | "review") => void;
+  onApplyTemplate?: (template: CronTemplateDefinition) => void;
   onRefresh: () => void;
   onAdd: () => void;
   onEdit: (job: CronJob) => void;
@@ -378,6 +390,13 @@ export function renderCron(props: CronProps) {
     props.form.sessionTarget !== "main" && props.form.payloadKind === "agentTurn";
   const selectedDeliveryMode =
     props.form.deliveryMode === "announce" && !supportsAnnounce ? "none" : props.form.deliveryMode;
+  const templateQuery = props.templateQuery ?? "";
+  const templateRiskFilter = props.templateRiskFilter ?? "all";
+  const templateGroups = filterCronTemplateGroups({ query: templateQuery, risk: templateRiskFilter });
+  const activeTemplate = findCronTemplateById(props.activeTemplateId ?? null);
+  const recentTemplates = (props.recentTemplateIds ?? [])
+    .map((id) => findCronTemplateById(id))
+    .filter(Boolean) as CronTemplateDefinition[];
   const blockingFields = collectBlockingFields(props.fieldErrors, props.form, selectedDeliveryMode);
   const blockedByValidation = !props.busy && blockingFields.length > 0;
   const hasActiveJobsFilters =
@@ -431,6 +450,101 @@ export function renderCron(props: CronProps) {
 
     <section class="cron-workspace">
       <div class="cron-workspace-main">
+        <section class="card cron-templates-card">
+          <div class="card-title">自动化模板</div>
+          <div class="card-sub">从模板快速预填定时任务；默认先生成总结、草稿或建议，再由你微调后创建。</div>
+          <div class="cron-template-toolbar">
+            <label class="field cron-template-toolbar__search">
+              <span>搜索模板</span>
+              <input
+                .value=${templateQuery}
+                placeholder="模板名、场景、标签"
+                @input=${(e: Event) => props.onTemplateQueryChange?.((e.target as HTMLInputElement).value)}
+              />
+            </label>
+            <label class="field cron-template-toolbar__risk">
+              <span>风险</span>
+              <select
+                .value=${templateRiskFilter}
+                @change=${(e: Event) =>
+                  props.onTemplateRiskFilterChange?.(
+                    (e.target as HTMLSelectElement).value as "all" | "safe" | "review",
+                  )}
+              >
+                <option value="all">全部</option>
+                <option value="safe">仅低风险</option>
+                <option value="review">仅需复核</option>
+              </select>
+            </label>
+          </div>
+          ${recentTemplates.length > 0
+            ? html`<div class="cron-template-recents">
+                <div class="cron-template-recents__title">最近使用</div>
+                <div class="cron-template-recents__chips">
+                  ${recentTemplates.map((template) => html`
+                    <button
+                      type="button"
+                      class="chip cron-template-recents__chip"
+                      @click=${() => {
+                        props.onApplyTemplate?.(template);
+                        focusFormField("cron-name");
+                      }}
+                    >
+                      ${template.title}
+                    </button>
+                  `)}
+                </div>
+              </div>`
+            : nothing}
+          ${activeTemplate
+            ? html`<div class="cron-template-preview">
+                <div class="cron-template-preview__title">模板预览</div>
+                <div class="cron-template-preview__meta">
+                  <span class="chip">${activeTemplate.scheduleSummary}</span>
+                  <span class="chip">${activeTemplate.deliverySummary}</span>
+                  <span class="chip">${activeTemplate.outputSummary}</span>
+                </div>
+              </div>`
+            : nothing}
+          <div class="cron-template-groups">
+            ${templateGroups.map(
+              (group) => html`
+                <section class="cron-template-group">
+                  <div class="cron-template-group__title">${group.title}</div>
+                  <div class="cron-template-grid">
+                    ${group.templates.map((template) => {
+                      const isActive = activeTemplate?.id === template.id;
+                      return html`
+                        <button
+                          type="button"
+                          class=${`cron-template-card${isActive ? " is-active" : ""}`}
+                          data-test-id=${`cron-template-${template.id}`}
+                          @click=${() => {
+                            props.onApplyTemplate?.(template);
+                            focusFormField("cron-name");
+                          }}
+                        >
+                          <span class="cron-template-card__icon">${template.icon}</span>
+                          <span class="cron-template-card__body">
+                            <span class="cron-template-card__head">
+                              <span class="cron-template-card__title">${template.title}</span>
+                              <span class="cron-template-card__risk">${template.riskLabel}</span>
+                            </span>
+                            <span class="cron-template-card__description">${template.description}</span>
+                          </span>
+                        </button>
+                      `;
+                    })}
+                  </div>
+                </section>
+              `,
+            )}
+          </div>
+          ${templateGroups.length === 0
+            ? html`<div class="muted">没有匹配的模板，试试更短的关键词或切换风险筛选。</div>`
+            : nothing}
+        </section>
+
         <section class="card">
           <div
             class="row"
@@ -705,6 +819,11 @@ export function renderCron(props: CronProps) {
           ${isEditing ? t("cron.form.updateSubtitle") : t("cron.form.createSubtitle")}
         </div>
         <div class="cron-form">
+          ${activeTemplate
+            ? html`<div class="callout cron-template-applied">
+                已应用模板：${activeTemplate.title}。你可以继续调整时间、目标会话、投递方式和 prompt 后再创建。
+              </div>`
+            : nothing}
           <div class="cron-required-legend">
             <span class="cron-required-marker" aria-hidden="true">*</span> ${t(
               "cron.form.required",

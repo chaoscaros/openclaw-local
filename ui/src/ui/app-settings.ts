@@ -336,7 +336,7 @@ export async function refreshActiveTab(host: SettingsHost) {
       // still available after reload even when it falls outside the default
       // active-session filter.
       await loadSessionsForLiveChatContext(app);
-      await loadTaskModeData(app);
+      await Promise.all([loadTaskModeData(app), loadCron(host)]);
       return;
     case "cron":
       await loadCron(host);

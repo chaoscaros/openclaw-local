@@ -133,6 +133,37 @@ function buildProps(overrides: Partial<TasksViewProps> = {}): TasksViewProps {
     onSetTodoStatus: async () => null,
     onDeleteTodo: async () => null,
     onEditTask: () => undefined,
+    onCreateAutomationDraft: () => undefined,
+    automationSummaryByTaskId: {
+      "task-1": {
+        jobCount: 2,
+        latestAt: Date.now() - 1200,
+        latestJobName: "Task 1 自动化跟进",
+        latestStatus: "ok",
+        latestSummary: "最近一次自动化已整理进展、风险和下一步建议。",
+      },
+    },
+    automationJobsByTaskId: {
+      "task-1": [
+        {
+          id: "cron-job-1",
+          name: "Task 1 自动化跟进",
+          enabled: true,
+          createdAtMs: Date.now() - 10000,
+          updatedAtMs: Date.now() - 3000,
+          schedule: { kind: "every", everyMs: 86400000 },
+          sessionTarget: "isolated",
+          wakeMode: "now",
+          payload: { kind: "agentTurn", message: "follow up" },
+          description: "从任务生成：[task:task-1] Task 1",
+          state: { lastStatus: "ok", lastRunAtMs: Date.now() - 1200 },
+        },
+      ],
+    },
+    onOpenAutomationPanel: () => undefined,
+    onToggleAutomationJob: () => undefined,
+    onRunAutomationJob: () => undefined,
+    onEditAutomationJob: () => undefined,
     ...overrides,
   };
 }
@@ -192,6 +223,7 @@ describe("renderTasks", () => {
     expect(text).toContain("goods_spu_id");
     expect(text).not.toContain("per_page");
     expect(text).toContain("同步历史进度");
+    expect(text).toContain("生成自动化");
     expect(text).toContain("执行清单");
     expect(text).toContain("定位聊天任务切换器当前任务显示问题");
     expect(text).toContain("补齐任务详情里的执行清单交互");
@@ -200,6 +232,14 @@ describe("renderTasks", () => {
     expect(text).not.toContain("执行层健康");
     expect(text).not.toContain("最近 Run");
     expect(text).toContain("run-1");
+    expect(text).toContain("自动化跟进");
+    expect(text).toContain("Task 1 自动化跟进");
+    expect(text).toContain("最近一次自动化已整理进展、风险和下一步建议。");
+    expect(text).toContain("查看定时任务");
+    expect(text).toContain("关联自动化列表");
+    expect(text).toContain("运行一次");
+    expect(text).toContain("停用");
+    expect(text).toContain("编辑");
     expect(text).toContain("关联 runtime tasks");
     expect(text).toContain("runtime-task-1 · latest");
     expect(text).toContain("subagent");
@@ -556,9 +596,26 @@ describe("renderTasks", () => {
     const onDelete = vi.fn();
     const onToggleEdit = vi.fn();
     const onSyncProgress = vi.fn();
+    const onCreateAutomationDraft = vi.fn();
+    const onOpenAutomationPanel = vi.fn();
+    const onToggleAutomationJob = vi.fn();
+    const onRunAutomationJob = vi.fn();
+    const onEditAutomationJob = vi.fn();
     render(
       renderTasks(
-        buildProps({ onSelectCurrent, onChangeStatus, onArchive, onDelete, onToggleEdit, onSyncProgress }),
+        buildProps({
+          onSelectCurrent,
+          onChangeStatus,
+          onArchive,
+          onDelete,
+          onToggleEdit,
+          onSyncProgress,
+          onCreateAutomationDraft,
+          onOpenAutomationPanel,
+          onToggleAutomationJob,
+          onRunAutomationJob,
+          onEditAutomationJob,
+        }),
       ),
       container,
     );
@@ -571,12 +628,22 @@ describe("renderTasks", () => {
     select!.dispatchEvent(new Event("change", { bubbles: true }));
     const buttons = Array.from(container.querySelectorAll("button"));
     buttons.find((button) => button.textContent?.includes("Set current"))?.click();
+    buttons.find((button) => button.textContent?.includes("生成自动化"))?.click();
+    buttons.find((button) => button.textContent?.includes("查看定时任务"))?.click();
+    buttons.find((button) => button.textContent?.includes("停用"))?.click();
+    buttons.find((button) => button.textContent?.includes("运行一次"))?.click();
+    buttons.find((button) => button.textContent?.includes("编辑"))?.click();
     buttons.find((button) => button.textContent?.includes("同步历史进度"))?.click();
     buttons.find((button) => button.textContent?.includes("Edit"))?.click();
     buttons.find((button) => button.textContent?.includes("Archive"))?.click();
     buttons.find((button) => button.textContent?.includes("Delete"))?.click();
     expect(onChangeStatus).toHaveBeenCalledWith("task-1", "completed");
     expect(onSelectCurrent).toHaveBeenCalledWith("task-2");
+    expect(onCreateAutomationDraft).toHaveBeenCalledWith(expect.objectContaining({ taskId: "task-1" }));
+    expect(onOpenAutomationPanel).toHaveBeenCalledTimes(1);
+    expect(onToggleAutomationJob).toHaveBeenCalledWith(expect.objectContaining({ id: "cron-job-1" }), false);
+    expect(onRunAutomationJob).toHaveBeenCalledWith(expect.objectContaining({ id: "cron-job-1" }));
+    expect(onEditAutomationJob).toHaveBeenCalledWith(expect.objectContaining({ id: "cron-job-1" }));
     expect(onSyncProgress).toHaveBeenCalledWith("task-1");
     expect(onToggleEdit).toHaveBeenCalledTimes(1);
     expect(onArchive).toHaveBeenCalled();

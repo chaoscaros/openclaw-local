@@ -10,7 +10,7 @@ import {
   type TaskTodoPriority,
   type TaskTodoStatus,
 } from "../controllers/tasks.ts";
-import type { GatewaySessionRow } from "../types.ts";
+import type { CronJob, GatewaySessionRow } from "../types.ts";
 
 export type TasksViewProps = {
   archiveMode?: boolean;
@@ -49,6 +49,23 @@ export type TasksViewProps = {
   onSetTodoStatus: (taskId: string, todoId: string, status: TaskTodoStatus) => Promise<unknown>;
   onDeleteTodo: (taskId: string, todoId: string) => Promise<unknown>;
   onEditTask: (task: TaskItem) => void;
+  onCreateAutomationDraft?: (task: TaskItem) => void;
+  automationSummaryByTaskId?: Record<
+    string,
+    {
+      jobCount: number;
+      latestAt?: number;
+      latestJobName?: string;
+      latestStatus?: string;
+      latestSummary?: string;
+      hasErrors?: boolean;
+    }
+  >;
+  automationJobsByTaskId?: Record<string, CronJob[]>;
+  onOpenAutomationPanel?: () => void;
+  onToggleAutomationJob?: (job: CronJob, enabled: boolean) => void;
+  onRunAutomationJob?: (job: CronJob) => void;
+  onEditAutomationJob?: (job: CronJob) => void;
 };
 
 type RuntimeTaskSummaryEntry = NonNullable<TaskItem["runtimeTaskSummaries"]>[number];
@@ -1218,6 +1235,52 @@ function renderTaskTodoBlock(task: TaskItem, props: TasksViewProps) {
   </div>`;
 }
 
+function renderTaskAutomationBlock(task: TaskItem, props: TasksViewProps) {
+  const summary = props.automationSummaryByTaskId?.[task.taskId] ?? null;
+  const jobs = props.automationJobsByTaskId?.[task.taskId] ?? [];
+  return html`<div class="task-preview-pane__block">
+    <div class="task-preview-pane__block-title">
+      <span>自动化跟进</span>
+      <div class="row" style="gap: 8px; flex-wrap: wrap;">
+        <button type="button" class="btn btn--ghost" @click=${() => props.onCreateAutomationDraft?.(task)}>生成自动化</button>
+        <button type="button" class="btn btn--ghost" @click=${() => props.onOpenAutomationPanel?.()}>查看定时任务</button>
+      </div>
+    </div>
+    ${summary
+      ? html`<div class="task-preview-pane__detail-list">
+          <div><strong>关联任务数：</strong>${summary.jobCount}</div>
+          <div><strong>最近任务：</strong>${summary.latestJobName ?? "未命名任务"}</div>
+          <div><strong>最近状态：</strong>${summary.latestStatus ?? "未知"}</div>
+          <div><strong>最近运行：</strong>${summary.latestAt ? formatRelativeTimestamp(summary.latestAt) : "暂无运行记录"}</div>
+          <div><strong>最近摘要：</strong>${summary.latestSummary?.trim() || "暂无摘要，可能尚未运行或未返回总结。"}</div>
+          ${summary.hasErrors ? html`<div><strong>注意：</strong>最近关联自动化里存在失败或异常记录。</div>` : nothing}
+        </div>`
+      : html`<div class="task-empty-inline">当前任务还没有关联的自动化。可先生成一条自动化草稿用于持续跟进。</div>`}
+    ${jobs.length
+      ? html`<div class="task-preview-pane__detail-list">
+          <div><strong>关联自动化列表</strong></div>
+          ${jobs.map((job) => html`
+            <div class="task-automation-row">
+              <div class="task-automation-row__main">
+                <div class="task-automation-row__title">${job.name}</div>
+                <div class="task-automation-row__meta">
+                  <span>${job.enabled ? "已启用" : "已停用"}</span>
+                  <span>${job.state?.lastStatus ?? job.state?.lastRunStatus ?? "未知"}</span>
+                  <span>${job.state?.lastRunAtMs ? formatRelativeTimestamp(job.state.lastRunAtMs) : "未运行"}</span>
+                </div>
+              </div>
+              <div class="task-automation-row__actions">
+                <button type="button" class="btn btn--ghost" @click=${() => props.onToggleAutomationJob?.(job, !job.enabled)}>${job.enabled ? "停用" : "启用"}</button>
+                <button type="button" class="btn btn--ghost" @click=${() => props.onRunAutomationJob?.(job)}>运行一次</button>
+                <button type="button" class="btn btn--ghost" @click=${() => props.onEditAutomationJob?.(job)}>编辑</button>
+              </div>
+            </div>
+          `)}
+        </div>`
+      : nothing}
+  </div>`;
+}
+
 function renderTaskPreview(task: TaskItem | null, props: TasksViewProps, archiveMode = false) {
   if (!task) {
     return html`
@@ -1311,6 +1374,8 @@ function renderTaskPreview(task: TaskItem | null, props: TasksViewProps, archive
 
       ${renderRuntimeTaskLinks(task, props)}
 
+      ${!archiveMode ? renderTaskAutomationBlock(task, props) : nothing}
+
       ${!archiveMode ? renderTaskTodoBlock(task, props) : nothing}
 
       <div class="task-preview-pane__block">
@@ -1347,6 +1412,7 @@ function renderTaskPreview(task: TaskItem | null, props: TasksViewProps, archive
               ${props.currentSession?.taskId !== task.taskId
                 ? html`<button type="button" class="btn" @click=${() => props.onSelectCurrent(task.taskId)}>${t("taskModeUi.actions.setCurrent")}</button>`
                 : nothing}
+              <button type="button" class="btn btn--ghost" @click=${() => props.onCreateAutomationDraft?.(task)}>生成自动化</button>
               <button type="button" class="btn btn--ghost" @click=${() => props.onSyncProgress?.(task.taskId)}>同步历史进度</button>
               <button type="button" class="btn btn--ghost" @click=${() => props.onToggleEdit?.(task)}>${t("taskModeUi.actions.edit")}</button>
               <button type="button" class="btn btn--ghost" @click=${() => props.onArchive(task.taskId)}>${t("taskModeUi.actions.archive")}</button>
