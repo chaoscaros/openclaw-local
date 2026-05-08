@@ -676,14 +676,27 @@ async function normalizeSessionFileForComparison(params: {
   }
 }
 
-function isDreamingSessionStoreKey(sessionKey: string): boolean {
+function resolveSessionStoreKeySessionSegment(sessionKey: string): string {
   const firstSeparator = sessionKey.indexOf(":");
   if (firstSeparator < 0) {
-    return sessionKey.startsWith(DREAMING_SESSION_KEY_PREFIX);
+    return sessionKey;
   }
   const secondSeparator = sessionKey.indexOf(":", firstSeparator + 1);
-  const sessionSegment = secondSeparator < 0 ? sessionKey : sessionKey.slice(secondSeparator + 1);
-  return sessionSegment.startsWith(DREAMING_SESSION_KEY_PREFIX);
+  return secondSeparator < 0 ? sessionKey : sessionKey.slice(secondSeparator + 1);
+}
+
+function isDreamingSessionStoreKey(sessionKey: string): boolean {
+  return resolveSessionStoreKeySessionSegment(sessionKey).startsWith(DREAMING_SESSION_KEY_PREFIX);
+}
+
+function matchesDreamingTargetSessionKey(params: { sessionKey: string; targetSessionKey?: string }): boolean {
+  const target = params.targetSessionKey?.trim();
+  if (!target) {
+    return false;
+  }
+  return (
+    params.sessionKey === target || resolveSessionStoreKeySessionSegment(params.sessionKey) === target
+  );
 }
 
 async function normalizeSessionEntryPathForComparison(params: {
@@ -708,7 +721,10 @@ async function normalizeSessionEntryPathForComparison(params: {
   });
 }
 
-async function scrubDreamingNarrativeArtifacts(logger: Logger): Promise<void> {
+async function scrubDreamingNarrativeArtifacts(
+  logger: Logger,
+  opts?: { targetSessionKey?: string },
+): Promise<void> {
   const cfg = loadConfig();
   const agentsDir = path.join(resolveStateDir(), "agents");
   let agentEntries: Dirent[] = [];
@@ -751,6 +767,10 @@ async function scrubDreamingNarrativeArtifacts(logger: Logger): Promise<void> {
       if (!isDreamingSessionStoreKey(key)) {
         continue;
       }
+      if (matchesDreamingTargetSessionKey({ sessionKey: key, targetSessionKey: opts?.targetSessionKey })) {
+        needsStoreUpdate = true;
+        continue;
+      }
       if (!normalizedSessionFile || !(await safePathExists(normalizedSessionFile))) {
         needsStoreUpdate = true;
       }
@@ -769,6 +789,11 @@ async function scrubDreamingNarrativeArtifacts(logger: Logger): Promise<void> {
             referencedSessionFiles.add(normalizedSessionFile);
           }
           if (!isDreamingSessionStoreKey(key)) {
+            continue;
+          }
+          if (matchesDreamingTargetSessionKey({ sessionKey: key, targetSessionKey: opts?.targetSessionKey })) {
+            delete lockedStore[key];
+            prunedForAgent += 1;
             continue;
           }
           if (!normalizedSessionFile || !(await safePathExists(normalizedSessionFile))) {
@@ -857,6 +882,7 @@ export async function generateAndAppendDreamNarrative(params: {
   const message = buildNarrativePrompt(params.data);
   let runId: string | null = null;
   let waitStatus: string | null = null;
+  let didDeleteSession = false;
 
   try {
     runId = await startNarrativeRunOrFallback({
@@ -936,13 +962,16 @@ export async function generateAndAppendDreamNarrative(params: {
 
     try {
       await params.subagent.deleteSession({ sessionKey });
+      didDeleteSession = true;
     } catch (cleanupErr) {
       params.logger.warn(
         `memory-core: narrative session cleanup failed for ${params.data.phase} phase: ${formatErrorMessage(cleanupErr)}`,
       );
     }
 
-    await scrubDreamingNarrativeArtifacts(params.logger).catch((scrubErr: unknown) => {
+    await scrubDreamingNarrativeArtifacts(params.logger, {
+      targetSessionKey: didDeleteSession ? sessionKey : undefined,
+    }).catch((scrubErr: unknown) => {
       params.logger.warn(
         `memory-core: dreaming cleanup scrub failed for ${params.data.phase} phase: ${formatErrorMessage(scrubErr)}`,
       );

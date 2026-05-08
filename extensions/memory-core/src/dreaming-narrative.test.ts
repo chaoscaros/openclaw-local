@@ -852,6 +852,50 @@ describe("generateAndAppendDreamNarrative", () => {
     expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("dreaming cleanup scrubbed"));
   });
 
+  it("prunes the just-finished dreaming narrative session from session stores immediately after cleanup", async () => {
+    const workspaceDir = await createTempWorkspace("openclaw-dreaming-narrative-");
+    const stateDir = await createTempWorkspace("openclaw-dreaming-state-");
+    const sessionsDir = path.join(stateDir, "agents", "main", "sessions");
+    await fs.mkdir(sessionsDir, { recursive: true });
+    const storePath = path.join(sessionsDir, "sessions.json");
+    const workspaceHash = createHash("sha1").update(workspaceDir).digest("hex").slice(0, 12);
+    const rawSessionKey = `dreaming-narrative-light-${workspaceHash}`;
+    const namespacedSessionKey = `agent:main:${rawSessionKey}`;
+    await fs.writeFile(
+      storePath,
+      `${JSON.stringify({
+        [namespacedSessionKey]: { sessionId: "still-live" },
+        "agent:main:kept-session": { sessionId: "kept" },
+      })}\n`,
+      "utf-8",
+    );
+    await fs.writeFile(path.join(sessionsDir, "still-live.jsonl"), '{"runId":"dreaming-narrative-light-live"}\n', "utf-8");
+    await fs.writeFile(path.join(sessionsDir, "kept.jsonl"), '{"runId":"normal-run"}\n', "utf-8");
+
+    vi.spyOn(configRuntimeModule, "loadConfig").mockReturnValue({ session: {} } as never);
+    vi.spyOn(configRuntimeModule, "resolveStorePath").mockImplementation(((_store, { agentId }) => {
+      expect(agentId).toBe("main");
+      return storePath;
+    }) as typeof configRuntimeModule.resolveStorePath);
+    vi.spyOn(memoryCoreHostRuntimeCoreModule, "resolveStateDir").mockReturnValue(stateDir);
+
+    const subagent = createMockSubagent("A quiet memory took shape.");
+    const logger = createMockLogger();
+    const nowMs = Date.parse("2026-04-05T03:00:00Z");
+
+    await generateAndAppendDreamNarrative({
+      subagent,
+      workspaceDir,
+      data: { phase: "light", snippets: ["memory fragment"] },
+      nowMs,
+      logger,
+    });
+
+    const updatedStore = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<string, unknown>;
+    expect(updatedStore).not.toHaveProperty(namespacedSessionKey);
+    expect(updatedStore).toHaveProperty("agent:main:kept-session");
+  });
+
   it("isolates narrative sessions across workspaces even at the same timestamp", async () => {
     const firstWorkspaceDir = await createTempWorkspace("openclaw-dreaming-narrative-");
     const secondWorkspaceDir = await createTempWorkspace("openclaw-dreaming-narrative-");
