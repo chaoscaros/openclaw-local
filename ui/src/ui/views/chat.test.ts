@@ -202,8 +202,14 @@ function createProps(overrides: Partial<ChatProps> = {}): ChatProps {
     onToggleDreamingAssist: () => undefined,
     onTogglePlanMode: () => undefined,
     onToggleDevSpecFirst: () => undefined,
+    onToggleChangeReviewMode: () => undefined,
     onDraftChange: () => undefined,
     onSend: () => undefined,
+    onOpenChangeReview: () => undefined,
+    onCloseChangeReview: () => undefined,
+    onSelectChangeReviewFile: () => undefined,
+    onApplyChangeReview: () => undefined,
+    onRevertChangeReview: () => undefined,
     onQueueRemove: () => undefined,
     onDismissSideResult: () => undefined,
     onNewSession: () => undefined,
@@ -274,7 +280,10 @@ describe("chat view", () => {
   it("shows whether dreaming assistance was applied for the current run", async () => {
     await i18n.setLocale("en");
     const container = document.createElement("div");
-    render(renderChat(createProps({ pendingRunId: "run-1", dreamingAssistApplied: true })), container);
+    render(
+      renderChat(createProps({ pendingRunId: "run-1", dreamingAssistApplied: true })),
+      container,
+    );
     await Promise.resolve();
     expect(container.textContent ?? "").toContain("本轮已应用协助策略");
     expect(container.textContent ?? "").not.toContain("未应用原因：");
@@ -284,7 +293,13 @@ describe("chat view", () => {
     await i18n.setLocale("en");
     const container = document.createElement("div");
     render(
-      renderChat(createProps({ pendingRunId: "run-1", dreamingAssistApplied: false, dreamingAssistReason: "scope_mismatch" })),
+      renderChat(
+        createProps({
+          pendingRunId: "run-1",
+          dreamingAssistApplied: false,
+          dreamingAssistReason: "scope_mismatch",
+        }),
+      ),
       container,
     );
     await Promise.resolve();
@@ -296,17 +311,44 @@ describe("chat view", () => {
   it("renders all supported dreaming assist reason messages", async () => {
     await i18n.setLocale("en");
     const disabled = document.createElement("div");
-    render(renderChat(createProps({ pendingRunId: "run-1", dreamingAssistApplied: false, dreamingAssistReason: "disabled" })), disabled);
+    render(
+      renderChat(
+        createProps({
+          pendingRunId: "run-1",
+          dreamingAssistApplied: false,
+          dreamingAssistReason: "disabled",
+        }),
+      ),
+      disabled,
+    );
     await Promise.resolve();
     expect(disabled.textContent ?? "").toContain("未应用：协助策略已关闭");
 
     const noStrategy = document.createElement("div");
-    render(renderChat(createProps({ pendingRunId: "run-1", dreamingAssistApplied: false, dreamingAssistReason: "no_strategy" })), noStrategy);
+    render(
+      renderChat(
+        createProps({
+          pendingRunId: "run-1",
+          dreamingAssistApplied: false,
+          dreamingAssistReason: "no_strategy",
+        }),
+      ),
+      noStrategy,
+    );
     await Promise.resolve();
     expect(noStrategy.textContent ?? "").toContain("未应用：当前没有可用策略");
 
     const expired = document.createElement("div");
-    render(renderChat(createProps({ pendingRunId: "run-1", dreamingAssistApplied: false, dreamingAssistReason: "expired" })), expired);
+    render(
+      renderChat(
+        createProps({
+          pendingRunId: "run-1",
+          dreamingAssistApplied: false,
+          dreamingAssistReason: "expired",
+        }),
+      ),
+      expired,
+    );
     await Promise.resolve();
     expect(expired.textContent ?? "").toContain("未应用：协助策略已过期");
   });
@@ -365,7 +407,18 @@ describe("chat view", () => {
     ] as never;
     state.sessionsResult = {
       ...state.sessionsResult,
-      sessions: [{ ...(state.sessionsResult.sessions[0] ?? { key: "main", kind: "direct", updatedAt: Date.now() }), key: "main", mode: "task", taskId: "task-1" }],
+      sessions: [
+        {
+          ...(state.sessionsResult.sessions[0] ?? {
+            key: "main",
+            kind: "direct",
+            updatedAt: Date.now(),
+          }),
+          key: "main",
+          mode: "task",
+          taskId: "task-1",
+        },
+      ],
     };
     state.setCurrentSessionMode = vi.fn();
     state.setCurrentTaskForSession = vi.fn();
@@ -380,7 +433,9 @@ describe("chat view", () => {
     expect(text).toContain("Open task board");
     expect(text).toContain("Task 1");
 
-    const switchBtn = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('切换任务')) as HTMLButtonElement;
+    const switchBtn = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("切换任务"),
+    ) as HTMLButtonElement;
     expect(switchBtn).toBeTruthy();
   });
 
@@ -705,8 +760,8 @@ describe("chat view", () => {
       ),
       container,
     );
-    const button = Array.from(container.querySelectorAll<HTMLElement>('[role="switch"]')).find((node) =>
-      node.textContent?.includes("协助策略"),
+    const button = Array.from(container.querySelectorAll<HTMLElement>('[role="switch"]')).find(
+      (node) => node.textContent?.includes("协助策略"),
     );
     expect(button).toBeTruthy();
     expect(button?.getAttribute("aria-checked")).toBe("true");
@@ -2987,15 +3042,17 @@ describe("chat view", () => {
     expect(container.textContent).toContain('"status": "error"');
   });
 
-  it("renders direct switch toggles for assist, plan mode, and spec-first", async () => {
+  it("renders mode menu toggles for assist, plan mode, spec-first, and change review", async () => {
     const container = document.createElement("div");
     render(
       renderChat(
         createProps({
           planModeEnabled: true,
           devSpecFirstEnabled: true,
+          changeReviewModeEnabled: true,
           pendingRunId: null,
           dreamingAssistApplied: null,
+          onToggleChangeReviewMode: () => undefined,
         }),
       ),
       container,
@@ -3006,9 +3063,93 @@ describe("chat view", () => {
     expect(text).toContain("计划模式");
     expect(text).toContain("规格优先");
     expect(text).toContain("协助策略");
+    expect(text).toContain("改动确认");
     const switches = Array.from(container.querySelectorAll<HTMLElement>('[role="switch"]'));
-    expect(switches).toHaveLength(3);
+    expect(switches).toHaveLength(4);
     expect(switches[1]?.getAttribute("aria-checked")).toBe("true");
     expect(switches[2]?.getAttribute("aria-checked")).toBe("true");
+    expect(switches[3]?.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("renders pending change review summary and side-by-side modal actions", async () => {
+    const onApplyChangeReview = vi.fn();
+    const onRevertChangeReview = vi.fn();
+    const onOpenChangeReview = vi.fn();
+    const onSelectChangeReviewFile = vi.fn();
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          pendingChangeReview: {
+            pending: true,
+            id: "review-1",
+            updatedAt: Date.now(),
+            files: [
+              {
+                path: "src/demo.ts",
+                status: "modified",
+                changeType: "modified",
+                beforeContent: "const a = 1;\nconst b = 2;\n",
+                afterContent: "const a = 1;\nconst b = 3;\n",
+              },
+              {
+                path: "src/extra.ts",
+                status: "added",
+                changeType: "added",
+                beforeContent: null,
+                afterContent: "export const extra = true;\n",
+              },
+            ],
+          },
+          pendingChangeReviewOpen: true,
+          pendingChangeReviewSelectedPath: "src/demo.ts",
+          pendingChangeReviewAction: { type: "revert", path: "src/demo.ts" },
+          onOpenChangeReview,
+          onSelectChangeReviewFile,
+          onApplyChangeReview,
+          onRevertChangeReview,
+        }),
+      ),
+      container,
+    );
+    await flushTasks();
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("待确认改动");
+    expect(text).toContain("查看本次改动");
+    expect(text).toContain("全部应用");
+    expect(text).toContain("全部还原");
+    expect(text).toContain("变更前");
+    expect(text).toContain("变更后");
+    expect(text).toContain("const b = 2;");
+    expect(text).toContain("const b = 3;");
+
+    const removedLine = container.querySelector(
+      ".chat-change-review-modal__code-row--removed .chat-change-review-modal__line-text",
+    );
+    const addedLine = container.querySelector(
+      ".chat-change-review-modal__code-row--added .chat-change-review-modal__line-text",
+    );
+    expect(removedLine?.textContent).toContain("const b = 2;");
+    expect(addedLine?.textContent).toContain("const b = 3;");
+
+    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>("button"));
+    const openButton = buttons.find((button) => button.textContent?.includes("查看本次改动"));
+    const fileButton = buttons.find((button) => button.textContent?.includes("src/extra.ts"));
+    const applyAllButton = buttons.find((button) => button.textContent?.includes("全部应用"));
+    const revertFileButton = buttons.find((button) => button.textContent?.includes("还原中..."));
+    expect(openButton).toBeTruthy();
+    expect(fileButton).toBeTruthy();
+    expect(applyAllButton?.disabled).toBe(true);
+    expect(revertFileButton?.disabled).toBe(true);
+
+    openButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    fileButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flushTasks();
+
+    expect(onOpenChangeReview).toHaveBeenCalledTimes(1);
+    expect(onSelectChangeReviewFile).toHaveBeenCalledWith("src/extra.ts");
+    expect(onApplyChangeReview).not.toHaveBeenCalled();
+    expect(onRevertChangeReview).not.toHaveBeenCalled();
   });
 });

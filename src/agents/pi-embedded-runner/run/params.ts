@@ -32,6 +32,8 @@ export type RunEmbeddedPiAgentParams = {
   trigger?: EmbeddedRunTrigger;
   /** Relative workspace path that memory-triggered writes are allowed to append to. */
   memoryFlushWritePath?: string;
+  /** Whether change-review mode is enabled for this run. */
+  changeReviewModeEnabled?: boolean;
   /** Delivery target (e.g. telegram:group:123:topic:456) for topic/thread routing. */
   messageTo?: string;
   /** Thread/topic identifier for routing replies to the originating thread. */

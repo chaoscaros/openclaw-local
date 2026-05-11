@@ -12,9 +12,9 @@ import {
 import { refreshSlashCommands } from "./chat/slash-commands.ts";
 import { refreshVisibleToolsEffectiveForCurrentSession } from "./controllers/agents.ts";
 import { ChatState, loadChatHistory } from "./controllers/chat.ts";
-import { formatRelativeTimestamp } from "./format.ts";
 import { loadSessions } from "./controllers/sessions.ts";
 import { resolveSessionTask } from "./controllers/tasks.ts";
+import { formatRelativeTimestamp } from "./format.ts";
 import { icons } from "./icons.ts";
 import { iconForTab, pathForTab, titleForTab, type Tab } from "./navigation.ts";
 import { parseAgentSessionKey } from "./session-key.ts";
@@ -86,6 +86,7 @@ function resetChatStateForSessionSwitch(state: AppViewState, sessionKey: string)
   state.fallbackStatus = null;
   state.chatAvatarUrl = null;
   state.chatQueue = [];
+  state.chatChangeReview = null;
   host.chatStreamStartedAt = null;
   state.chatRunId = null;
   host.chatSideResultTerminalRuns.clear();
@@ -225,27 +226,39 @@ function requestViewUpdate(state: AppViewState) {
   (state as AppViewState & { requestUpdate?: () => void }).requestUpdate?.();
 }
 
-function renderChatTaskTodoSummary(task: { todoItems?: Array<{ content: string; status: string }> } | null | undefined) {
+function renderChatTaskTodoSummary(
+  task: { todoItems?: Array<{ content: string; status: string }> } | null | undefined,
+) {
   const items = task?.todoItems ?? [];
   const inProgress = items.find((item) => item.status === "in_progress");
   const pending = items.find((item) => item.status === "pending");
   const completed = items.filter((item) => item.status === "completed").slice(0, 3);
   if (!inProgress && !pending && completed.length === 0) {
-    return html`<div class="chat-task-context-bar__drawer-summary">暂无执行清单，建议在任务中心补充 next step。</div>`;
+    return html`<div class="chat-task-context-bar__drawer-summary">
+      暂无执行清单，建议在任务中心补充 next step。
+    </div>`;
   }
   return html`
     <div class="chat-task-context-bar__drawer-grid chat-task-context-bar__drawer-grid--todo">
       <article class="chat-task-context-bar__drawer-card">
         <div class="chat-task-context-bar__drawer-card-label">当前进行中</div>
-        <div class="chat-task-context-bar__drawer-card-value">${inProgress?.content ?? "暂无进行中的执行项"}</div>
+        <div class="chat-task-context-bar__drawer-card-value">
+          ${inProgress?.content ?? "暂无进行中的执行项"}
+        </div>
       </article>
       <article class="chat-task-context-bar__drawer-card">
         <div class="chat-task-context-bar__drawer-card-label">下一步</div>
-        <div class="chat-task-context-bar__drawer-card-value">${pending?.content ?? inProgress?.content ?? "暂无下一步，建议补充执行清单"}</div>
+        <div class="chat-task-context-bar__drawer-card-value">
+          ${pending?.content ?? inProgress?.content ?? "暂无下一步，建议补充执行清单"}
+        </div>
       </article>
       <article class="chat-task-context-bar__drawer-card chat-task-context-bar__drawer-card--wide">
         <div class="chat-task-context-bar__drawer-card-label">最近完成</div>
-        <div class="chat-task-context-bar__drawer-card-value">${completed.length ? completed.map((item) => item.content).join(" · ") : "暂无已完成执行项"}</div>
+        <div class="chat-task-context-bar__drawer-card-value">
+          ${completed.length
+            ? completed.map((item) => item.content).join(" · ")
+            : "暂无已完成执行项"}
+        </div>
       </article>
     </div>
   `;
@@ -273,7 +286,10 @@ function taskIsDisplayableCurrentTask(
   return !task.archived && status === "active" && hasDisplayableTaskTitle(task);
 }
 
-function matchTaskScore(task: { title?: string; description?: string; flowCurrentStep?: string; taskId: string }, query: string) {
+function matchTaskScore(
+  task: { title?: string; description?: string; flowCurrentStep?: string; taskId: string },
+  query: string,
+) {
   const normalized = normalizeLowercaseStringOrEmpty(query);
   if (!normalized) {
     return 0;
@@ -301,7 +317,8 @@ function matchTaskScore(task: { title?: string; description?: string; flowCurren
 }
 
 export function renderChatTaskHeaderBar(state: AppViewState) {
-  const currentSession = state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey) ?? null;
+  const currentSession =
+    state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey) ?? null;
   const mode = currentSession?.mode ?? "normal";
   const taskItems = state.tasksItems ?? [];
   const resolvedCurrentTask = resolveSessionTask(
@@ -315,19 +332,33 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
   const fallbackDisplayTask = resolvedCurrentTask.displayTask ?? null;
   const quickSwitcherTasks = taskItems
     .filter((task) => taskIsDisplayableCurrentTask(task) && task.taskId !== currentSession?.taskId)
-    .map((task) => ({ task, score: chatTaskHeaderUi.query ? matchTaskScore(task, chatTaskHeaderUi.query) : 0 }))
+    .map((task) => ({
+      task,
+      score: chatTaskHeaderUi.query ? matchTaskScore(task, chatTaskHeaderUi.query) : 0,
+    }))
     .filter((entry) => !chatTaskHeaderUi.query || entry.score > 0)
     .toSorted((left, right) => {
       if (right.score !== left.score) {
         return right.score - left.score;
       }
-      return (right.task.updatedAt ?? right.task.createdAt) - (left.task.updatedAt ?? left.task.createdAt);
+      return (
+        (right.task.updatedAt ?? right.task.createdAt) -
+        (left.task.updatedAt ?? left.task.createdAt)
+      );
     })
     .map((entry) => entry.task);
-  const currentTaskSummary = normalizeOptionalString(currentTask?.flowCurrentStep) ?? normalizeOptionalString(currentTask?.description) ?? null;
-  const currentTaskStatus = localizeTaskText(currentTask?.effectiveStatus ?? currentTask?.status ?? null);
+  const currentTaskSummary =
+    normalizeOptionalString(currentTask?.flowCurrentStep) ??
+    normalizeOptionalString(currentTask?.description) ??
+    null;
+  const currentTaskStatus = localizeTaskText(
+    currentTask?.effectiveStatus ?? currentTask?.status ?? null,
+  );
   const unresolvedBoundTaskId = resolvedCurrentTask.unresolvedBoundTaskId;
-  const currentTaskDisplayTitle = normalizeOptionalString(currentTask?.title) ?? normalizeOptionalString(fallbackDisplayTask?.title) ?? null;
+  const currentTaskDisplayTitle =
+    normalizeOptionalString(currentTask?.title) ??
+    normalizeOptionalString(fallbackDisplayTask?.title) ??
+    null;
   const quickSwitcherLabel = currentTaskDisplayTitle ?? "当前未绑定任务";
   const lastSwitchFeedback =
     chatTaskHeaderUi.switchedTaskId &&
@@ -338,7 +369,9 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
   const currentTaskSection = currentTask ? [currentTask] : [];
   const recentTasks = quickSwitcherTasks;
   const switcherRecentTitle = chatTaskHeaderUi.query ? "推荐匹配" : "可切换任务";
-  const switcherRecentEmptyText = chatTaskHeaderUi.query ? "没有匹配的可切换任务。" : "没有可切换的任务。";
+  const switcherRecentEmptyText = chatTaskHeaderUi.query
+    ? "没有匹配的可切换任务。"
+    : "没有可切换的任务。";
   const currentTaskChipBadge = currentTask
     ? "当前会话任务"
     : unresolvedBoundTaskId
@@ -354,7 +387,9 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
         },
         {
           label: t("taskWorkspace.updated"),
-          value: currentTask.updatedAt ? formatRelativeTimestamp(currentTask.updatedAt) : t("common.na"),
+          value: currentTask.updatedAt
+            ? formatRelativeTimestamp(currentTask.updatedAt)
+            : t("common.na"),
         },
         {
           label: t("taskWorkspace.lastLinkedSession"),
@@ -367,16 +402,22 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
       <div class="chat-task-context-bar__left">
         <button
           type="button"
-          class="chat-task-context-bar__mode ${mode === "task" ? "chat-task-context-bar__mode--task" : ""}"
+          class="chat-task-context-bar__mode ${mode === "task"
+            ? "chat-task-context-bar__mode--task"
+            : ""}"
           @click=${() => state.setCurrentSessionMode(mode === "task" ? "normal" : "task")}
         >
           <span class="chat-task-context-bar__mode-dot"></span>
-          <span class="chat-task-context-bar__mode-text">${mode === "task" ? t("taskModeUi.banner.task") : t("taskModeUi.banner.normal")}</span>
+          <span class="chat-task-context-bar__mode-text"
+            >${mode === "task" ? t("taskModeUi.banner.task") : t("taskModeUi.banner.normal")}</span
+          >
         </button>
 
         <button
           type="button"
-          class="chat-task-context-bar__task-chip ${currentTask ? "" : "chat-task-context-bar__task-chip--empty"}"
+          class="chat-task-context-bar__task-chip ${currentTask
+            ? ""
+            : "chat-task-context-bar__task-chip--empty"}"
           aria-label=${`${t("taskModeUi.banner.currentTask")}：${quickSwitcherLabel}`}
           @click=${() => {
             chatTaskHeaderUi.switcherOpen = !chatTaskHeaderUi.switcherOpen;
@@ -388,7 +429,9 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
         >
           <span class="chat-task-context-bar__task-chip-main">
             <span class="chat-task-context-bar__task-chip-title-row">
-              <span class="chat-task-context-bar__task-chip-kicker">${t("taskModeUi.banner.currentTask")}</span>
+              <span class="chat-task-context-bar__task-chip-kicker"
+                >${t("taskModeUi.banner.currentTask")}</span
+              >
               <span class="chat-task-context-bar__task-chip-title">${quickSwitcherLabel}</span>
               <span class="chat-task-context-bar__task-chip-badge">${currentTaskChipBadge}</span>
             </span>
@@ -417,7 +460,11 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
         >
           ${chatTaskHeaderUi.detailOpen ? "收起详情" : "任务详情"}
         </button>
-        <button type="button" class="chat-task-context-bar__action-btn chat-task-context-bar__action-btn--ghost" @click=${() => state.setTab("tasks")}>
+        <button
+          type="button"
+          class="chat-task-context-bar__action-btn chat-task-context-bar__action-btn--ghost"
+          @click=${() => state.setTab("tasks")}
+        >
           ${t("taskModeUi.banner.openTasks")}
         </button>
       </div>
@@ -437,15 +484,22 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
                 />
               </label>
               ${lastSwitchFeedback
-                ? html`<div class="chat-task-context-bar__suggestions-title">${lastSwitchFeedback}</div>`
+                ? html`<div class="chat-task-context-bar__suggestions-title">
+                    ${lastSwitchFeedback}
+                  </div>`
                 : nothing}
               <div class="chat-task-context-bar__suggestions-title">当前任务</div>
               <div class="chat-task-context-bar__suggestions">
                 ${currentTaskSection.length
                   ? currentTaskSection.map(
                       (task) => html`
-                        <div class="chat-task-context-bar__suggestion chat-task-context-bar__suggestion--current" aria-current="true">
-                          <span class="chat-task-context-bar__suggestion-title">${currentTaskDisplayTitle ?? task.title ?? "当前任务详情同步中"}</span>
+                        <div
+                          class="chat-task-context-bar__suggestion chat-task-context-bar__suggestion--current"
+                          aria-current="true"
+                        >
+                          <span class="chat-task-context-bar__suggestion-title"
+                            >${currentTaskDisplayTitle ?? task.title ?? "当前任务详情同步中"}</span
+                          >
                           <span class="chat-task-context-bar__suggestion-meta">
                             ${localizeTaskText(task.effectiveStatus ?? task.status)} · 当前会话任务
                           </span>
@@ -454,12 +508,21 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
                     )
                   : unresolvedBoundTaskId
                     ? html`
-                        <div class="chat-task-context-bar__suggestion chat-task-context-bar__suggestion--current" aria-current="true">
-                          <span class="chat-task-context-bar__suggestion-title">当前任务详情同步中</span>
-                          <span class="chat-task-context-bar__suggestion-meta">已绑定任务 · ${unresolvedBoundTaskId} · 请稍候或刷新任务列表</span>
+                        <div
+                          class="chat-task-context-bar__suggestion chat-task-context-bar__suggestion--current"
+                          aria-current="true"
+                        >
+                          <span class="chat-task-context-bar__suggestion-title"
+                            >当前任务详情同步中</span
+                          >
+                          <span class="chat-task-context-bar__suggestion-meta"
+                            >已绑定任务 · ${unresolvedBoundTaskId} · 请稍候或刷新任务列表</span
+                          >
                         </div>
                       `
-                    : html`<div class="chat-task-context-bar__empty">当前会话还没有绑定任务。</div>`}
+                    : html`<div class="chat-task-context-bar__empty">
+                        当前会话还没有绑定任务。
+                      </div>`}
               </div>
               <div class="chat-task-context-bar__suggestions-title">${switcherRecentTitle}</div>
               <div class="chat-task-context-bar__suggestions">
@@ -480,31 +543,39 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
                         >
                           <span class="chat-task-context-bar__suggestion-title">${task.title}</span>
                           <span class="chat-task-context-bar__suggestion-meta">
-                            ${localizeTaskText(task.effectiveStatus ?? task.status)} · ${formatRelativeTimestamp(task.updatedAt ?? task.createdAt)}
+                            ${localizeTaskText(task.effectiveStatus ?? task.status)} ·
+                            ${formatRelativeTimestamp(task.updatedAt ?? task.createdAt)}
                           </span>
                         </button>
                       `,
                     )
-                  : html`<div class="chat-task-context-bar__empty">${switcherRecentEmptyText}</div>`}
+                  : html`<div class="chat-task-context-bar__empty">
+                      ${switcherRecentEmptyText}
+                    </div>`}
               </div>
             </div>
           `
         : nothing}
-
       ${chatTaskHeaderUi.detailOpen
         ? html`
             <div class="chat-task-context-bar__drawer">
               <div class="chat-task-context-bar__drawer-header">
                 <div>
                   <div class="chat-task-context-bar__drawer-eyebrow">任务上下文</div>
-                  <div class="chat-task-context-bar__drawer-title">${currentTaskDisplayTitle ?? (currentTask ? "当前任务详情同步中" : "当前未绑定任务")}</div>
+                  <div class="chat-task-context-bar__drawer-title">
+                    ${currentTaskDisplayTitle ??
+                    (currentTask ? "当前任务详情同步中" : "当前未绑定任务")}
+                  </div>
                 </div>
                 ${currentTaskStatus
-                  ? html`<span class="chat-task-context-bar__drawer-status">${currentTaskStatus}</span>`
+                  ? html`<span class="chat-task-context-bar__drawer-status"
+                      >${currentTaskStatus}</span
+                    >`
                   : nothing}
               </div>
               <div class="chat-task-context-bar__drawer-summary">
-                ${currentTaskSummary ?? "给当前会话绑定任务后，用户和 agent 会围绕同一份任务上下文继续协作。"}
+                ${currentTaskSummary ??
+                "给当前会话绑定任务后，用户和 agent 会围绕同一份任务上下文继续协作。"}
               </div>
               ${renderChatTaskTodoSummary(currentTask)}
               <div class="chat-task-context-bar__drawer-grid">
@@ -519,11 +590,17 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
               </div>
               <div class="chat-task-context-bar__drawer-footer">
                 ${currentTask && currentSession?.taskId !== currentTask.taskId
-                  ? html`<button type="button" class="btn" @click=${() => state.setCurrentTaskForSession(currentTask.taskId)}>
+                  ? html`<button
+                      type="button"
+                      class="btn"
+                      @click=${() => state.setCurrentTaskForSession(currentTask.taskId)}
+                    >
                       ${t("taskModeUi.actions.setCurrent")}
                     </button>`
                   : nothing}
-                <button type="button" class="btn btn--ghost" @click=${() => state.setTab("tasks")}>打开任务中心</button>
+                <button type="button" class="btn btn--ghost" @click=${() => state.setTab("tasks")}>
+                  打开任务中心
+                </button>
               </div>
             </div>
           `
@@ -575,9 +652,7 @@ export function renderChatSessionSelect(state: AppViewState) {
           )}
         </select>
       </label>
-      ${modelSelect}
-      ${thinkingSelect}
-      ${renderChatTaskHeaderBar(state)}
+      ${modelSelect} ${thinkingSelect} ${renderChatTaskHeaderBar(state)}
     </div>
   `;
 }

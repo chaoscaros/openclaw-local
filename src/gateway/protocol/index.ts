@@ -63,6 +63,10 @@ import {
   CommandsListParamsSchema,
   type CommandsListResult,
   CommandsListResultSchema,
+  ChangeReviewActionResultSchema,
+  ChangeReviewIdParamsSchema,
+  ChangeReviewResultSchema,
+  ChangeReviewSessionParamsSchema,
   type ChatAbortParams,
   ChatAbortParamsSchema,
   type ChatEvent,
@@ -503,6 +507,10 @@ export const validateChatHistoryParams = ajv.compile(ChatHistoryParamsSchema);
 export const validateChatSendParams = ajv.compile(ChatSendParamsSchema);
 export const validateChatAbortParams = ajv.compile<ChatAbortParams>(ChatAbortParamsSchema);
 export const validateChatInjectParams = ajv.compile<ChatInjectParams>(ChatInjectParamsSchema);
+export const validateChangeReviewSessionParams = ajv.compile(ChangeReviewSessionParamsSchema);
+export const validateChangeReviewIdParams = ajv.compile(ChangeReviewIdParamsSchema);
+export const validateChangeReviewResult = ajv.compile(ChangeReviewResultSchema);
+export const validateChangeReviewActionResult = ajv.compile(ChangeReviewActionResultSchema);
 export const validateChatEvent = ajv.compile(ChatEventSchema);
 export const validateUpdateRunParams = ajv.compile<UpdateRunParams>(UpdateRunParamsSchema);
 export const validateWebLoginStartParams =

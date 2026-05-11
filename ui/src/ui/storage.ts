@@ -55,6 +55,7 @@ export type UiSettings = {
   dreamingAssistEnabled: boolean;
   planModeEnabled: boolean;
   devSpecFirstEnabled: boolean;
+  changeReviewModeEnabled: boolean;
   splitRatio: number; // Sidebar split ratio (0.4 to 0.7, default 0.6)
   navCollapsed: boolean; // Collapsible sidebar state
   navWidth: number; // Sidebar width when expanded (240–400px)
@@ -196,6 +197,7 @@ export function loadSettings(): UiSettings {
     dreamingAssistEnabled: true,
     planModeEnabled: false,
     devSpecFirstEnabled: false,
+    changeReviewModeEnabled: false,
     splitRatio: 0.6,
     navCollapsed: false,
     navWidth: 220,
@@ -251,6 +253,11 @@ export function loadSettings(): UiSettings {
         typeof (parsed as { devSpecFirstEnabled?: unknown }).devSpecFirstEnabled === "boolean"
           ? Boolean((parsed as { devSpecFirstEnabled?: unknown }).devSpecFirstEnabled)
           : defaults.devSpecFirstEnabled,
+      changeReviewModeEnabled:
+        typeof (parsed as { changeReviewModeEnabled?: unknown }).changeReviewModeEnabled ===
+        "boolean"
+          ? Boolean((parsed as { changeReviewModeEnabled?: unknown }).changeReviewModeEnabled)
+          : defaults.changeReviewModeEnabled,
       splitRatio:
         typeof parsed.splitRatio === "number" &&
         parsed.splitRatio >= 0.4 &&
@@ -331,6 +338,7 @@ function persistSettings(next: UiSettings) {
     dreamingAssistEnabled: next.dreamingAssistEnabled,
     planModeEnabled: next.planModeEnabled,
     devSpecFirstEnabled: next.devSpecFirstEnabled,
+    changeReviewModeEnabled: next.changeReviewModeEnabled,
     splitRatio: next.splitRatio,
     navCollapsed: next.navCollapsed,
     navWidth: next.navWidth,

@@ -79,6 +79,21 @@ describe("handleChatEvent", () => {
     expect(handleChatEvent(state, payload)).toBe(null);
   });
 
+  it("accepts equivalent agent/main session keys", () => {
+    const state = createState({ sessionKey: "agent:solo:main", chatRunId: "run-1" });
+    const payload: ChatEventPayload = {
+      runId: "run-1",
+      sessionKey: "main",
+      state: "final",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Done" }],
+      },
+    };
+    expect(handleChatEvent(state, payload)).toBe("final");
+    expect(state.chatMessages).toHaveLength(1);
+  });
+
   it("returns null for delta from another run", () => {
     const state = createState({
       sessionKey: "main",
@@ -711,6 +726,7 @@ describe("sendChatMessage", () => {
       dreamingAssistEnabled: true,
       planModeEnabled: true,
       devSpecFirstEnabled: true,
+      changeReviewModeEnabled: true,
     });
 
     const result = await sendChatMessage(state, "hello");
@@ -724,6 +740,7 @@ describe("sendChatMessage", () => {
         applyDreamingAssist: true,
         planModeEnabled: true,
         devSpecFirstEnabled: true,
+        changeReviewModeEnabled: true,
       }),
     );
   });
@@ -943,5 +960,22 @@ describe("loadChatHistory", () => {
       { role: "assistant", content: [{ type: "text", text: "other history" }] },
     ]);
     expect(state.chatThinkingLevel).toBe("low");
+  });
+
+  it("refreshes change review status after loading history for the active session", async () => {
+    const request = vi.fn().mockResolvedValue({
+      messages: [{ role: "assistant", content: [{ type: "text", text: "history" }] }],
+      thinkingLevel: "low",
+    });
+    const loadChangeReviewStatus = vi.fn().mockResolvedValue(undefined);
+    const state = createState({
+      connected: true,
+      client: { request } as unknown as ChatState["client"],
+      loadChangeReviewStatus,
+    });
+
+    await loadChatHistory(state);
+
+    expect(loadChangeReviewStatus).toHaveBeenCalledWith("main");
   });
 });

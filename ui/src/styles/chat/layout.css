@@ -135,6 +135,257 @@
   border-color: var(--accent);
 }
 
+.chat-change-review {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-change-review__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.chat-change-review__meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.chat-change-review__files {
+  display: grid;
+  gap: 6px;
+}
+
+.chat-change-review__file {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  font-size: 12px;
+  align-items: center;
+}
+
+.chat-change-review__status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--panel) 86%, white 14%);
+  border: 1px solid var(--border);
+}
+
+.chat-change-review__status--modified {
+  color: #c2410c;
+  background: color-mix(in srgb, #fb923c 16%, white 84%);
+  border-color: color-mix(in srgb, #fb923c 32%, white 68%);
+}
+
+.chat-change-review__status--added {
+  color: #15803d;
+  background: color-mix(in srgb, #4ade80 16%, white 84%);
+  border-color: color-mix(in srgb, #4ade80 32%, white 68%);
+}
+
+.chat-change-review__status--deleted {
+  color: #b91c1c;
+  background: color-mix(in srgb, #f87171 16%, white 84%);
+  border-color: color-mix(in srgb, #f87171 32%, white 68%);
+}
+
+.chat-change-review__path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chat-change-review-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.chat-change-review-modal__scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.chat-change-review-modal__panel {
+  position: relative;
+  width: min(1240px, calc(100vw - 48px));
+  height: min(82vh, 860px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+  padding: 18px;
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 72px rgba(15, 23, 42, 0.24);
+}
+
+.chat-change-review-modal__header,
+.chat-change-review-modal__detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chat-change-review-modal__title,
+.chat-change-review-modal__detail-path {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.chat-change-review-modal__meta,
+.chat-change-review-modal__detail-status {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.chat-change-review-modal__header-actions,
+.chat-change-review-modal__detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.chat-change-review-modal__body {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 14px;
+  min-height: 0;
+}
+
+.chat-change-review-modal__files,
+.chat-change-review-modal__detail {
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+}
+
+.chat-change-review-modal__files {
+  padding: 10px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.chat-change-review-modal__file {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.chat-change-review-modal__file:hover,
+.chat-change-review-modal__file.is-active {
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel) 92%);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border) 72%);
+}
+
+.chat-change-review-modal__file-path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chat-change-review-modal__detail {
+  padding: 12px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.chat-change-review-modal__compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-height: 0;
+}
+
+.chat-change-review-modal__column {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.chat-change-review-modal__column-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.chat-change-review-modal__code {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chat-change-review-modal__code-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+}
+
+.chat-change-review-modal__line-number,
+.chat-change-review-modal__line-text {
+  padding: 2px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-change-review-modal__line-number {
+  color: var(--muted);
+  text-align: right;
+  border-right: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.chat-change-review-modal__code-row--removed {
+  color: #991b1b;
+  background: color-mix(in srgb, #f87171 14%, transparent);
+}
+
+.chat-change-review-modal__code-row--added {
+  color: #166534;
+  background: color-mix(in srgb, #4ade80 14%, transparent);
+}
+
+.chat-change-review-modal__code-row--empty {
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+}
+
+.chat-change-review-modal__empty {
+  padding: 18px;
+  color: var(--muted);
+}
+
 .chat-new-messages svg {
   width: 16px;
   height: 16px;
@@ -697,8 +948,9 @@
 
 .agent-chat__toolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
+  gap: 8px;
   padding: 6px 10px;
   border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   overflow: visible;
@@ -709,6 +961,16 @@
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.agent-chat__toolbar-left {
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.agent-chat__toolbar-right {
+  flex-shrink: 0;
 }
 
 .agent-chat__mode-menu {
@@ -1931,178 +2193,3 @@
   gap: 10px;
 }
 
-.task-timeline-mini__item {
-  display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-}
-
-.task-timeline-mini__time {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.task-timeline-mini__body {
-  display: grid;
-  gap: 4px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.task-timeline-mini__body strong {
-  color: var(--text);
-}
-
-.task-preview-pane__actions,
-.task-archive-toolbar,
-.task-archive-toolbar__actions,
-.task-side-sheet__footer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.task-empty-inline {
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.task-archive-toolbar {
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
-  background: color-mix(in srgb, var(--panel) 90%, transparent);
-}
-
-.task-archive-toolbar__meta {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.task-archive-empty__icon {
-  font-size: 28px;
-}
-
-.task-archive-empty__list {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.task-side-sheet {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.task-side-sheet__scrim {
-  position: absolute;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.42);
-}
-
-.task-side-sheet__panel {
-  position: relative;
-  width: min(520px, 100%);
-  height: 100%;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 0;
-  overflow: hidden;
-  background: var(--card);
-  border-left: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
-  box-shadow: -18px 0 40px rgba(15, 23, 42, 0.18);
-}
-
-.task-side-sheet__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: 12px;
-}
-
-.task-side-sheet__eyebrow {
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.task-side-sheet__title {
-  margin: 4px 0 0;
-  font-size: 22px;
-  line-height: 1.2;
-}
-
-.task-side-sheet__body {
-  display: grid;
-  gap: 14px;
-  align-content: start;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding-right: 6px;
-}
-
-@media (max-width: 1100px) {
-  .task-toolbar,
-  .task-hub-layout,
-  .task-list-item__row,
-  .task-list-item__info-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .task-list-item__footer-left {
-    min-width: 0;
-  }
-
-  .task-preview-pane {
-    position: static;
-  }
-}
-
-@media (max-width: 720px) {
-  .task-page__header,
-  .task-archive-toolbar {
-    align-items: stretch;
-  }
-
-  .task-page__header--hero,
-  .task-toolbar--panel {
-    padding: 12px;
-  }
-
-  .task-page--hub .task-hub-layout,
-  .task-page--archive .task-hub-layout,
-  .task-page--hub .task-hub-layout__main,
-  .task-page--archive .task-hub-layout__main,
-  .task-preview-pane {
-    min-height: 0;
-    max-height: none;
-    overflow: visible;
-  }
-
-  .task-preview-pane__grid,
-  .task-timeline-mini__item,
-  .task-preview-pane__detail-list--meta {
-    grid-template-columns: 1fr;
-  }
-
-  .task-side-sheet__panel {
-    width: 100%;
-  }
-}

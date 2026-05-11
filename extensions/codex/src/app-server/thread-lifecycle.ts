@@ -122,7 +122,7 @@ export function buildThreadResumeParams(
     threadId: options.threadId,
     model: params.modelId,
     modelProvider: normalizeModelProvider(params.provider),
-    approvalPolicy: options.appServer.approvalPolicy,
+    approvalPolicy: resolveApprovalPolicyForRun(params, options.appServer),
     approvalsReviewer: options.appServer.approvalsReviewer,
     sandbox: options.appServer.sandbox,
     ...(options.appServer.serviceTier ? { serviceTier: options.appServer.serviceTier } : {}),
@@ -142,7 +142,7 @@ export function buildTurnStartParams(
     threadId: options.threadId,
     input: buildUserInput(params),
     cwd: options.cwd,
-    approvalPolicy: options.appServer.approvalPolicy,
+    approvalPolicy: resolveApprovalPolicyForRun(params, options.appServer),
     approvalsReviewer: options.appServer.approvalsReviewer,
     model: params.modelId,
     ...(options.appServer.serviceTier ? { serviceTier: options.appServer.serviceTier } : {}),
@@ -174,10 +174,23 @@ function buildDeveloperInstructions(params: EmbeddedRunAttemptParams): string {
   const sections = [
     "You are running inside OpenClaw. Use OpenClaw dynamic tools for messaging, cron, sessions, and host actions when available.",
     "Preserve the user's existing channel/session context. If sending a channel reply, use the OpenClaw messaging tool instead of describing that you would reply.",
+    params.changeReviewModeEnabled === true
+      ? "Change-review mode is active. Do not use Codex native command/file mutation tools or Python execution for project edits. Use the OpenClaw dynamic write/edit tools so changes stay staged until the user applies them."
+      : undefined,
     params.extraSystemPrompt,
     params.skillsSnapshot?.prompt,
   ];
   return sections.filter((section) => typeof section === "string" && section.trim()).join("\n\n");
+}
+
+function resolveApprovalPolicyForRun(
+  params: EmbeddedRunAttemptParams,
+  appServer: CodexAppServerRuntimeOptions,
+): CodexAppServerRuntimeOptions["approvalPolicy"] {
+  if (params.changeReviewModeEnabled === true) {
+    return "on-request";
+  }
+  return appServer.approvalPolicy;
 }
 
 function buildUserInput(params: EmbeddedRunAttemptParams): CodexUserInput[] {

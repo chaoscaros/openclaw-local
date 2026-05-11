@@ -359,7 +359,9 @@ describe("isDreamingNarrativeSessionKey", () => {
 
   it("returns false for ordinary or channel sessions", () => {
     expect(isDreamingNarrativeSessionKey("main")).toBe(false);
-    expect(isDreamingNarrativeSessionKey("agent:main:telegram:group:dreaming-narrative-room")).toBe(false);
+    expect(isDreamingNarrativeSessionKey("agent:main:telegram:group:dreaming-narrative-room")).toBe(
+      false,
+    );
     expect(isDreamingNarrativeSessionKey("agent:main:cron:dreaming-narrative-job")).toBe(false);
   });
 });
@@ -370,21 +372,17 @@ describe("resolveSessionOptionGroups", () => {
       sessionsHideCron: true,
       agentsList: { agents: [{ id: "main", name: "Main" }] },
     } as unknown as AppViewState;
-    const groups = resolveSessionOptionGroups(
-      state,
-      "main",
-      {
-        ts: 1,
-        path: "",
-        count: 3,
-        defaults: {},
-        sessions: [
-          row({ key: "main" }),
-          row({ key: "agent:main:dreaming-narrative-light-abc" }),
-          row({ key: "agent:main:telegram:direct:user-1", label: "User 1" }),
-        ],
-      } as SessionsListResult,
-    );
+    const groups = resolveSessionOptionGroups(state, "main", {
+      ts: 1,
+      path: "",
+      count: 3,
+      defaults: {},
+      sessions: [
+        row({ key: "main" }),
+        row({ key: "agent:main:dreaming-narrative-light-abc" }),
+        row({ key: "agent:main:telegram:direct:user-1", label: "User 1" }),
+      ],
+    } as SessionsListResult);
     const keys = groups.flatMap((group) => group.options.map((option) => option.key));
     expect(keys).toContain("main");
     expect(keys).toContain("agent:main:telegram:direct:user-1");
@@ -434,6 +432,12 @@ describe("switchChatSession", () => {
       fallbackStatus: { phase: "active" },
       chatAvatarUrl: "/avatar/old",
       chatQueue: [{ id: "queued" }],
+      chatChangeReview: {
+        pending: true,
+        id: "review-1",
+        files: [{ path: "src/demo.ts", status: "M" }],
+        diffText: "diff --git a/src/demo.ts b/src/demo.ts",
+      },
       chatRunId: "run-1",
       chatSideResultTerminalRuns: new Set(["btw-run-1"]),
       chatStreamStartedAt: 1,
@@ -455,6 +459,7 @@ describe("switchChatSession", () => {
     await Promise.resolve();
 
     expect(state.chatSideResult).toBeNull();
+    expect(state.chatChangeReview).toBeNull();
     expect(state.chatSideResultTerminalRuns.size).toBe(0);
     expect(refreshChatAvatarMock).toHaveBeenCalledWith(state);
     expect(refreshSlashCommandsMock).toHaveBeenCalledWith({

@@ -1,15 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GATEWAY_EVENT_UPDATE_AVAILABLE } from "../../../src/gateway/events.js";
 import { ConnectErrorDetailCodes } from "../../../src/gateway/protocol/connect-error-details.js";
-import { connectGateway, continueTaskBindingAfterSessionRefresh, resolveControlUiClientVersion } from "./app-gateway.ts";
+import {
+  connectGateway,
+  continueTaskBindingAfterSessionRefresh,
+  resolveControlUiClientVersion,
+} from "./app-gateway.ts";
 import type { GatewayHelloOk } from "./gateway.ts";
 
-const { loadChatHistoryMock, loadTaskModeDataMock, loadSessionsMock, patchSessionMock } = vi.hoisted(() => ({
-  loadChatHistoryMock: vi.fn(async () => undefined),
-  loadTaskModeDataMock: vi.fn(async () => undefined),
-  loadSessionsMock: vi.fn(async () => undefined),
-  patchSessionMock: vi.fn(async () => undefined),
-}));
+const { loadChatHistoryMock, loadTaskModeDataMock, loadSessionsMock, patchSessionMock } =
+  vi.hoisted(() => ({
+    loadChatHistoryMock: vi.fn(async () => undefined),
+    loadTaskModeDataMock: vi.fn(async () => undefined),
+    loadSessionsMock: vi.fn(async () => undefined),
+    patchSessionMock: vi.fn(async () => undefined),
+  }));
 
 type GatewayClientMock = {
   start: ReturnType<typeof vi.fn>;
@@ -169,10 +174,18 @@ function createHost(): TestGatewayHost {
     sessionsError: null,
     sessionsResult: {
       ts: 1,
-      path: '',
+      path: "",
       count: 1,
       defaults: { modelProvider: null, model: null, contextTokens: null },
-      sessions: [{ key: 'main', kind: 'direct', updatedAt: Date.now(), mode: 'task', taskId: 'task-current' }],
+      sessions: [
+        {
+          key: "main",
+          kind: "direct",
+          updatedAt: Date.now(),
+          mode: "task",
+          taskId: "task-current",
+        },
+      ],
     },
     sessionKey: "main",
     chatMessages: [],
@@ -254,26 +267,35 @@ describe("connectGateway", () => {
 
   it("rebinds the current task onto a new session after /new completes", async () => {
     const host = createHost();
-    host.taskCarryoverAfterChatByRun.set('run-new', { taskId: 'task-current', sourceSessionKey: 'main' });
+    host.taskCarryoverAfterChatByRun.set("run-new", {
+      taskId: "task-current",
+      sourceSessionKey: "main",
+    });
     host.sessionsResult = {
       ts: 2,
-      path: '',
+      path: "",
       count: 2,
       defaults: { modelProvider: null, model: null, contextTokens: null },
       sessions: [
-        { key: 'main', kind: 'direct', updatedAt: Date.now(), mode: 'task', taskId: 'task-current' },
-        { key: 'agent:solo:main:new', kind: 'direct', updatedAt: Date.now(), mode: 'normal' },
+        {
+          key: "main",
+          kind: "direct",
+          updatedAt: Date.now(),
+          mode: "task",
+          taskId: "task-current",
+        },
+        { key: "agent:solo:main:new", kind: "direct", updatedAt: Date.now(), mode: "normal" },
       ],
     } as never;
 
-    await continueTaskBindingAfterSessionRefresh(host, 'run-new', 'agent:solo:main:new');
+    await continueTaskBindingAfterSessionRefresh(host, "run-new", "agent:solo:main:new");
 
-    expect(patchSessionMock).toHaveBeenCalledWith(host, 'agent:solo:main:new', {
-      mode: 'task',
-      taskId: 'task-current',
+    expect(patchSessionMock).toHaveBeenCalledWith(host, "agent:solo:main:new", {
+      mode: "task",
+      taskId: "task-current",
     });
     expect(loadTaskModeDataMock).toHaveBeenCalled();
-    expect(host.taskCarryoverAfterChatByRun.has('run-new')).toBe(false);
+    expect(host.taskCarryoverAfterChatByRun.has("run-new")).toBe(false);
   });
 
   it("ignores stale client onEvent callbacks after reconnect", () => {
@@ -869,6 +891,182 @@ describe("connectGateway", () => {
     });
 
     expect(loadChatHistoryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("captures change review after a final chat event in the active session when review mode is enabled", async () => {
+    const host = createHost();
+    host.settings.changeReviewModeEnabled = true;
+    host.captureChangeReview = vi.fn(async () => undefined);
+    connectGateway(host);
+    const client = gatewayClientInstances[0];
+    expect(client).toBeDefined();
+
+    emitToolResultEvent(client);
+    client.emitEvent({
+      event: "chat",
+      payload: {
+        runId: "engine-run-1",
+        sessionKey: "main",
+        state: "final",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Done" }],
+        },
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(host.captureChangeReview).toHaveBeenCalledWith("main", "engine-run-1");
+  });
+
+  it("captures change review as soon as a patch event finishes in the active session", async () => {
+    const host = createHost();
+    host.settings.changeReviewModeEnabled = true;
+    host.captureChangeReview = vi.fn(async () => undefined);
+    connectGateway(host);
+    const client = gatewayClientInstances[0];
+    expect(client).toBeDefined();
+
+    client.emitEvent({
+      event: "agent",
+      payload: {
+        runId: "engine-run-patch",
+        seq: 1,
+        stream: "patch",
+        ts: 1,
+        sessionKey: "main",
+        data: {
+          phase: "end",
+          itemId: "patch:tool-1",
+          toolCallId: "tool-1",
+          name: "edit",
+          modified: ["supply_vue/.gitignore"],
+          summary: "1 modified",
+        },
+      },
+    });
+    await Promise.resolve();
+
+    expect(host.captureChangeReview).toHaveBeenCalledWith("main", "engine-run-patch");
+  });
+
+  it("captures change review as soon as a mutating tool result arrives in the active session", async () => {
+    const host = createHost();
+    host.settings.changeReviewModeEnabled = true;
+    host.captureChangeReview = vi.fn(async () => undefined);
+    connectGateway(host);
+    const client = gatewayClientInstances[0];
+    expect(client).toBeDefined();
+
+    client.emitEvent({
+      event: "agent",
+      payload: {
+        runId: "engine-run-exec",
+        seq: 1,
+        stream: "tool",
+        ts: 1,
+        sessionKey: "main",
+        data: {
+          phase: "result",
+          toolCallId: "tool-exec-1",
+          name: "exec",
+          result: { text: "ok" },
+        },
+      },
+    });
+    await Promise.resolve();
+
+    expect(host.captureChangeReview).toHaveBeenCalledWith("main", "engine-run-exec");
+  });
+
+  it("captures change review immediately when a ready review event arrives", async () => {
+    const host = createHost();
+    host.settings.changeReviewModeEnabled = true;
+    host.captureChangeReview = vi.fn(async () => undefined);
+    connectGateway(host);
+    const client = gatewayClientInstances[0];
+    expect(client).toBeDefined();
+
+    client.emitEvent({
+      event: "agent",
+      payload: {
+        runId: "engine-run-ready",
+        seq: 1,
+        stream: "change_review",
+        ts: 1,
+        sessionKey: "main",
+        data: {
+          phase: "ready",
+          reviewId: "review-1",
+          files: [{ path: "supply_vue/.gitignore", changeType: "modified" }],
+        },
+      },
+    });
+    await Promise.resolve();
+
+    expect(host.captureChangeReview).toHaveBeenCalledWith("main", "engine-run-ready");
+  });
+
+  it("treats main and agent:solo:main as the same session for capture triggers", async () => {
+    const host = createHost();
+    host.sessionKey = "agent:solo:main";
+    host.settings.sessionKey = "agent:solo:main";
+    host.settings.lastActiveSessionKey = "agent:solo:main";
+    host.settings.changeReviewModeEnabled = true;
+    host.captureChangeReview = vi.fn(async () => undefined);
+    connectGateway(host);
+    const client = gatewayClientInstances[0];
+    expect(client).toBeDefined();
+
+    client.emitEvent({
+      event: "agent",
+      payload: {
+        runId: "engine-run-alias",
+        seq: 1,
+        stream: "patch",
+        ts: 1,
+        sessionKey: "main",
+        data: {
+          phase: "end",
+          itemId: "patch:tool-alias",
+          toolCallId: "tool-alias",
+          name: "edit",
+          modified: ["supply_vue/.gitignore"],
+          summary: "1 modified",
+        },
+      },
+    });
+    await Promise.resolve();
+
+    expect(host.captureChangeReview).toHaveBeenCalledWith("main", "engine-run-alias");
+  });
+
+  it("does not capture change review for another session even when review mode is enabled", async () => {
+    const host = createHost();
+    host.settings.changeReviewModeEnabled = true;
+    host.captureChangeReview = vi.fn(async () => undefined);
+    connectGateway(host);
+    const client = gatewayClientInstances[0];
+    expect(client).toBeDefined();
+
+    emitToolResultEvent(client);
+    client.emitEvent({
+      event: "chat",
+      payload: {
+        runId: "engine-run-1",
+        sessionKey: "other-session",
+        state: "final",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Done" }],
+        },
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(host.captureChangeReview).not.toHaveBeenCalled();
   });
 });
 

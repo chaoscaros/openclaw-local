@@ -89,6 +89,15 @@ export type AppViewState = {
   chatModelsLoading: boolean;
   chatModelCatalog: ModelCatalogEntry[];
   chatQueue: ChatQueueItem[];
+  chatChangeReview: {
+    pending: boolean;
+    id?: string;
+    createdAt?: number;
+    updatedAt?: number;
+    files?: Array<{ path: string; status: string }>;
+    diffText?: string;
+  } | null;
+  loadChangeReviewStatus?: (sessionKey?: string) => Promise<void>;
   chatManualRefreshInFlight: boolean;
   nodesLoading: boolean;
   nodes: Array<Record<string, unknown>>;
@@ -234,7 +243,11 @@ export type AppViewState = {
   setCurrentSessionMode: (mode: "normal" | "task") => Promise<void>;
   updateTaskModeTask: (
     taskId: string,
-    patch: { title?: string; description?: string | null; status?: import("./controllers/tasks.ts").TaskStatus },
+    patch: {
+      title?: string;
+      description?: string | null;
+      status?: import("./controllers/tasks.ts").TaskStatus;
+    },
   ) => Promise<unknown>;
   syncTaskModeTaskProgress: (
     taskId: string,
@@ -415,7 +428,7 @@ export type AppViewState = {
     overviewLogCursor: number;
     client: GatewayBrowserClient | null;
     refreshSessionsAfterChat: Set<string>;
-  taskCarryoverAfterChatByRun: Map<string, { taskId: string; sourceSessionKey: string }>;
+    taskCarryoverAfterChatByRun: Map<string, { taskId: string; sourceSessionKey: string }>;
     connect: () => void;
     setTab: (tab: Tab) => void;
     setTheme: (theme: ThemeName, context?: ThemeTransitionContext) => void;

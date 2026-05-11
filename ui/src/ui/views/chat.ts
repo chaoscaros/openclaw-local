@@ -1,8 +1,8 @@
 import { html, nothing, type TemplateResult } from "lit";
-import { t } from "../../i18n/index.ts";
 import { ref } from "lit/directives/ref.js";
 import { repeat } from "lit/directives/repeat.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
+import { t } from "../../i18n/index.ts";
 import type { CompactionStatus, FallbackStatus } from "../app-tool-stream.ts";
 import {
   CHAT_ATTACHMENT_ACCEPT,
@@ -36,6 +36,7 @@ import {
 } from "../chat/slash-commands.ts";
 import { isSttSupported, startStt, stopStt } from "../chat/speech.ts";
 import { buildSidebarContent, extractToolCards, extractToolPreview } from "../chat/tool-cards.ts";
+import type { TaskItem } from "../controllers/tasks.ts";
 import type { EmbedSandboxMode } from "../embed-sandbox.ts";
 import { icons } from "../icons.ts";
 import { toSanitizedMarkdownHtml } from "../markdown.ts";
@@ -43,13 +44,20 @@ import type { SidebarContent } from "../sidebar-content.ts";
 import { detectTextDirection } from "../text-direction.ts";
 import type { GatewaySessionRow, SessionsListResult } from "../types.ts";
 import type { ChatItem, MessageGroup, ToolCard } from "../types/chat-types.ts";
-import type { TaskItem } from "../controllers/tasks.ts";
 import type { ChatAttachment, ChatQueueItem } from "../ui-types.ts";
 import { agentLogoUrl, resolveAgentAvatarUrl } from "./agents-utils.ts";
 import { renderMarkdownSidebar } from "./markdown-sidebar.ts";
 import "../components/resizable-divider.ts";
 
 type DreamingAssistReason = "disabled" | "no_strategy" | "scope_mismatch" | "expired";
+type ChangeReviewFile = {
+  path: string;
+  status: string;
+  changeType?: string;
+  beforeContent?: string | null;
+  afterContent?: string | null;
+};
+type ChangeReviewAction = { type: "apply" | "revert"; path?: string | null };
 
 function renderDreamingAssistReason(reason?: DreamingAssistReason | null): string {
   switch (reason) {
@@ -75,6 +83,7 @@ export type ChatProps = {
   dreamingAssistEnabled?: boolean;
   planModeEnabled?: boolean;
   devSpecFirstEnabled?: boolean;
+  changeReviewModeEnabled?: boolean;
   showThinking: boolean;
   showToolCalls: boolean;
   loading: boolean;
@@ -92,6 +101,17 @@ export type ChatProps = {
   assistantAvatarUrl?: string | null;
   draft: string;
   queue: ChatQueueItem[];
+  pendingChangeReview?: {
+    pending: boolean;
+    id?: string;
+    createdAt?: number;
+    updatedAt?: number;
+    files?: ChangeReviewFile[];
+    diffText?: string;
+  } | null;
+  pendingChangeReviewOpen?: boolean;
+  pendingChangeReviewSelectedPath?: string | null;
+  pendingChangeReviewAction?: ChangeReviewAction | null;
   connected: boolean;
   canSend: boolean;
   disabledReason: string | null;
@@ -130,10 +150,16 @@ export type ChatProps = {
   onToggleDreamingAssist?: () => void;
   onTogglePlanMode?: () => void;
   onToggleDevSpecFirst?: () => void;
+  onToggleChangeReviewMode?: () => void;
   getDraft?: () => string;
   onDraftChange: (next: string) => void;
   onRequestUpdate?: () => void;
   onSend: () => void;
+  onOpenChangeReview?: () => void;
+  onCloseChangeReview?: () => void;
+  onSelectChangeReviewFile?: (path: string) => void;
+  onApplyChangeReview?: (id: string, path?: string) => void;
+  onRevertChangeReview?: (id: string, path?: string) => void;
   onAbort?: () => void;
   onQueueRemove: (id: string) => void;
   onDismissSideResult?: () => void;
@@ -153,6 +179,318 @@ export type ChatProps = {
   onChatScroll?: (event: Event) => void;
   basePath?: string;
 };
+
+function renderChangeReviewStatusLabel(status: string): string {
+  if (status === "added") {
+    return "新增";
+  }
+  if (status === "deleted") {
+    return "删除";
+  }
+  return "修改";
+}
+
+type ChangeReviewCompareRow = {
+  leftNumber: number | null;
+  rightNumber: number | null;
+  leftText: string;
+  rightText: string;
+  leftKind: "context" | "removed" | "empty";
+  rightKind: "context" | "added" | "empty";
+};
+
+function splitChangeReviewLines(content: string | null | undefined): string[] {
+  if (!content) {
+    return [];
+  }
+  return content.replace(/\n$/, "").split("\n");
+}
+
+function buildNaiveCompareRows(
+  beforeLines: string[],
+  afterLines: string[],
+): ChangeReviewCompareRow[] {
+  const maxLength = Math.max(beforeLines.length, afterLines.length);
+  const rows: ChangeReviewCompareRow[] = [];
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftText = beforeLines[index];
+    const rightText = afterLines[index];
+    if (leftText === rightText) {
+      rows.push({
+        leftNumber: leftText === undefined ? null : index + 1,
+        rightNumber: rightText === undefined ? null : index + 1,
+        leftText: leftText ?? "",
+        rightText: rightText ?? "",
+        leftKind: leftText === undefined ? "empty" : "context",
+        rightKind: rightText === undefined ? "empty" : "context",
+      });
+      continue;
+    }
+    if (leftText !== undefined) {
+      rows.push({
+        leftNumber: index + 1,
+        rightNumber: null,
+        leftText,
+        rightText: "",
+        leftKind: "removed",
+        rightKind: "empty",
+      });
+    }
+    if (rightText !== undefined) {
+      rows.push({
+        leftNumber: null,
+        rightNumber: index + 1,
+        leftText: "",
+        rightText,
+        leftKind: "empty",
+        rightKind: "added",
+      });
+    }
+  }
+  return rows;
+}
+
+function buildChangeReviewCompareRows(file: ChangeReviewFile): ChangeReviewCompareRow[] {
+  const beforeLines = splitChangeReviewLines(file.beforeContent);
+  const afterLines = splitChangeReviewLines(file.afterContent);
+  const matrixCellCount = (beforeLines.length + 1) * (afterLines.length + 1);
+  if (matrixCellCount > 250_000) {
+    return buildNaiveCompareRows(beforeLines, afterLines);
+  }
+  const width = afterLines.length + 1;
+  const matrix = new Uint32Array((beforeLines.length + 1) * width);
+  for (let leftIndex = beforeLines.length - 1; leftIndex >= 0; leftIndex -= 1) {
+    for (let rightIndex = afterLines.length - 1; rightIndex >= 0; rightIndex -= 1) {
+      const currentIndex = leftIndex * width + rightIndex;
+      if (beforeLines[leftIndex] === afterLines[rightIndex]) {
+        matrix[currentIndex] = matrix[(leftIndex + 1) * width + rightIndex + 1] + 1;
+      } else {
+        matrix[currentIndex] = Math.max(
+          matrix[(leftIndex + 1) * width + rightIndex],
+          matrix[leftIndex * width + rightIndex + 1],
+        );
+      }
+    }
+  }
+
+  const rows: ChangeReviewCompareRow[] = [];
+  let leftIndex = 0;
+  let rightIndex = 0;
+  while (leftIndex < beforeLines.length && rightIndex < afterLines.length) {
+    if (beforeLines[leftIndex] === afterLines[rightIndex]) {
+      rows.push({
+        leftNumber: leftIndex + 1,
+        rightNumber: rightIndex + 1,
+        leftText: beforeLines[leftIndex] ?? "",
+        rightText: afterLines[rightIndex] ?? "",
+        leftKind: "context",
+        rightKind: "context",
+      });
+      leftIndex += 1;
+      rightIndex += 1;
+      continue;
+    }
+    const removeScore = matrix[(leftIndex + 1) * width + rightIndex];
+    const addScore = matrix[leftIndex * width + rightIndex + 1];
+    if (removeScore >= addScore) {
+      rows.push({
+        leftNumber: leftIndex + 1,
+        rightNumber: null,
+        leftText: beforeLines[leftIndex] ?? "",
+        rightText: "",
+        leftKind: "removed",
+        rightKind: "empty",
+      });
+      leftIndex += 1;
+      continue;
+    }
+    rows.push({
+      leftNumber: null,
+      rightNumber: rightIndex + 1,
+      leftText: "",
+      rightText: afterLines[rightIndex] ?? "",
+      leftKind: "empty",
+      rightKind: "added",
+    });
+    rightIndex += 1;
+  }
+  while (leftIndex < beforeLines.length) {
+    rows.push({
+      leftNumber: leftIndex + 1,
+      rightNumber: null,
+      leftText: beforeLines[leftIndex] ?? "",
+      rightText: "",
+      leftKind: "removed",
+      rightKind: "empty",
+    });
+    leftIndex += 1;
+  }
+  while (rightIndex < afterLines.length) {
+    rows.push({
+      leftNumber: null,
+      rightNumber: rightIndex + 1,
+      leftText: "",
+      rightText: afterLines[rightIndex] ?? "",
+      leftKind: "empty",
+      rightKind: "added",
+    });
+    rightIndex += 1;
+  }
+  return rows;
+}
+
+function renderChangeReviewColumn(
+  rows: ChangeReviewCompareRow[],
+  side: "left" | "right",
+  label: string,
+  emptyText: string,
+) {
+  return html`<div class="chat-change-review-modal__column">
+    <div class="chat-change-review-modal__column-title">${label}</div>
+    <div class="chat-change-review-modal__code" role="document" aria-label=${label}>
+      ${rows.length === 0
+        ? html`<div class="chat-change-review-modal__empty">${emptyText}</div>`
+        : rows.map((row) => {
+            const number = side === "left" ? row.leftNumber : row.rightNumber;
+            const text = side === "left" ? row.leftText : row.rightText;
+            const kind = side === "left" ? row.leftKind : row.rightKind;
+            return html`<div
+              class="chat-change-review-modal__code-row chat-change-review-modal__code-row--${kind}"
+            >
+              <span class="chat-change-review-modal__line-number">${number ?? ""}</span>
+              <span class="chat-change-review-modal__line-text">${text || " "}</span>
+            </div>`;
+          })}
+    </div>
+  </div>`;
+}
+
+function renderChangeReviewCompare(file: ChangeReviewFile) {
+  const rows = buildChangeReviewCompareRows(file);
+  const beforeEmptyText = file.changeType === "added" ? "变更前文件不存在" : "无内容";
+  const afterEmptyText = file.changeType === "deleted" ? "该文件将被删除" : "无内容";
+  return html`<div class="chat-change-review-modal__compare">
+    ${renderChangeReviewColumn(rows, "left", "变更前", beforeEmptyText)}
+    ${renderChangeReviewColumn(rows, "right", "变更后", afterEmptyText)}
+  </div>`;
+}
+
+function renderChangeReviewModal(props: ChatProps) {
+  const review = props.pendingChangeReview;
+  if (!review?.pending || !props.pendingChangeReviewOpen || !review.id) {
+    return nothing;
+  }
+  const files = review.files ?? [];
+  const selectedPath = props.pendingChangeReviewSelectedPath ?? files[0]?.path ?? null;
+  const selectedFile = files.find((file) => file.path === selectedPath) ?? files[0] ?? null;
+  const action = props.pendingChangeReviewAction ?? null;
+  const busy = action !== null;
+  const summaryTime = review.updatedAt
+    ? new Date(review.updatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
+    : "刚刚";
+  return html`<div
+    class="chat-change-review-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-label="待确认改动详情"
+  >
+    <button
+      class="chat-change-review-modal__scrim"
+      type="button"
+      aria-label="关闭待确认改动详情"
+      @click=${() => props.onCloseChangeReview?.()}
+    ></button>
+    <div class="chat-change-review-modal__panel">
+      <div class="chat-change-review-modal__header">
+        <div>
+          <div class="chat-change-review-modal__title">待确认改动</div>
+          <div class="chat-change-review-modal__meta">${files.length} 个文件 · ${summaryTime}</div>
+        </div>
+        <div class="chat-change-review-modal__header-actions">
+          <button
+            class="btn"
+            type="button"
+            ?disabled=${busy}
+            @click=${() => props.onApplyChangeReview?.(review.id!)}
+          >
+            ${action?.type === "apply" && !action.path ? "全部应用中..." : "全部应用"}
+          </button>
+          <button
+            class="btn btn--ghost"
+            type="button"
+            ?disabled=${busy}
+            @click=${() => props.onRevertChangeReview?.(review.id!)}
+          >
+            ${action?.type === "revert" && !action.path ? "全部还原中..." : "全部还原"}
+          </button>
+          <button
+            class="btn btn--ghost"
+            type="button"
+            @click=${() => props.onCloseChangeReview?.()}
+          >
+            关闭
+          </button>
+        </div>
+      </div>
+      <div class="chat-change-review-modal__body">
+        <div class="chat-change-review-modal__files">
+          ${files.map(
+            (file) => html`<button
+              class="chat-change-review-modal__file ${selectedFile?.path === file.path
+                ? "is-active"
+                : ""}"
+              type="button"
+              ?disabled=${busy}
+              @click=${() => props.onSelectChangeReviewFile?.(file.path)}
+            >
+              <span class="chat-change-review__status chat-change-review__status--${file.status}"
+                >${renderChangeReviewStatusLabel(file.status)}</span
+              >
+              <span class="chat-change-review-modal__file-path">${file.path}</span>
+            </button>`,
+          )}
+        </div>
+        <div class="chat-change-review-modal__detail">
+          ${selectedFile
+            ? html`
+                <div class="chat-change-review-modal__detail-header">
+                  <div>
+                    <div class="chat-change-review-modal__detail-path">${selectedFile.path}</div>
+                    <div class="chat-change-review-modal__detail-status">
+                      ${renderChangeReviewStatusLabel(selectedFile.status)}
+                    </div>
+                  </div>
+                  <div class="chat-change-review-modal__detail-actions">
+                    <button
+                      class="btn"
+                      type="button"
+                      ?disabled=${busy}
+                      @click=${() => props.onApplyChangeReview?.(review.id!, selectedFile.path)}
+                    >
+                      ${action?.type === "apply" && action.path === selectedFile.path
+                        ? "应用中..."
+                        : "应用此文件"}
+                    </button>
+                    <button
+                      class="btn btn--ghost"
+                      type="button"
+                      ?disabled=${busy}
+                      @click=${() => props.onRevertChangeReview?.(review.id!, selectedFile.path)}
+                    >
+                      ${action?.type === "revert" && action.path === selectedFile.path
+                        ? "还原中..."
+                        : "还原此文件"}
+                    </button>
+                  </div>
+                </div>
+                ${renderChangeReviewCompare(selectedFile)}
+              `
+            : html`<div class="chat-change-review-modal__empty">没有可查看的文件</div>`}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
 
 const COMPACTION_TOAST_DURATION_MS = 5000;
 const FALLBACK_TOAST_DURATION_MS = 8000;
@@ -922,7 +1260,11 @@ function renderWelcomeState(props: ChatProps): TemplateResult {
         <h2>${t("taskModeUi.banner.task")}</h2>
         <p class="agent-chat__hint">${t("taskModeUi.emptyTaskModeHint")}</p>
         <div class="agent-chat__suggestions">
-          <button type="button" class="agent-chat__suggestion" @click=${() => props.onOpenTasksTab?.()}>
+          <button
+            type="button"
+            class="agent-chat__suggestion"
+            @click=${() => props.onOpenTasksTab?.()}
+          >
             ${t("taskModeUi.banner.openTasks")}
           </button>
         </div>
@@ -952,9 +1294,13 @@ function renderWelcomeState(props: ChatProps): TemplateResult {
           </div>`}
       <h2>${name}</h2>
       <div class="agent-chat__badges">
-        <span class="agent-chat__badge"><img src=${logoUrl} alt="" /> ${t("chatUi.readyToChat")}</span>
+        <span class="agent-chat__badge"
+          ><img src=${logoUrl} alt="" /> ${t("chatUi.readyToChat")}</span
+        >
       </div>
-      <p class="agent-chat__hint">${t("chatUi.typeMessageHint")}&nbsp;<kbd>/</kbd>&nbsp;${t("chatUi.forCommands")}</p>
+      <p class="agent-chat__hint">
+        ${t("chatUi.typeMessageHint")}&nbsp;<kbd>/</kbd>&nbsp;${t("chatUi.forCommands")}
+      </p>
       <div class="agent-chat__suggestions">
         ${WELCOME_SUGGESTION_KEYS.map(
           (key) => html`
@@ -1173,13 +1519,14 @@ function renderSlashMenu(
   }
 
   return html`
-      <div class="slash-menu" role="listbox" aria-label=${t("chatUi.slashCommands")}>
+    <div class="slash-menu" role="listbox" aria-label=${t("chatUi.slashCommands")}>
       ${sections}
       <div class="slash-menu-footer">
-        <kbd>↑↓</kbd> ${t("chatUi.navigate")} <kbd>Tab</kbd> ${t("chatUi.fill")} <kbd>Enter</kbd> ${t("chatUi.select")} <kbd>Esc</kbd> ${t("chatUi.close")}
+        <kbd>↑↓</kbd> ${t("chatUi.navigate")} <kbd>Tab</kbd> ${t("chatUi.fill")}
+        <kbd>Enter</kbd> ${t("chatUi.select")} <kbd>Esc</kbd> ${t("chatUi.close")}
       </div>
     </div>
-`;
+  `;
 }
 
 export function renderChat(props: ChatProps) {
@@ -1487,14 +1834,20 @@ export function renderChat(props: ChatProps) {
   };
 
   const showModeSwitchPanel =
-    (props.pendingRunId && props.dreamingAssistApplied !== null && props.dreamingAssistApplied !== undefined) ||
+    (props.pendingRunId &&
+      props.dreamingAssistApplied !== null &&
+      props.dreamingAssistApplied !== undefined) ||
     props.onToggleDreamingAssist ||
     props.onTogglePlanMode ||
-    props.onToggleDevSpecFirst;
+    props.onToggleDevSpecFirst ||
+    props.onToggleChangeReviewMode;
 
   const modeSwitchPanel = showModeSwitchPanel
     ? html`<div class="chat-mode-switches__panel">
-        ${props.onToggleDreamingAssist || props.onTogglePlanMode || props.onToggleDevSpecFirst
+        ${props.onToggleDreamingAssist ||
+        props.onTogglePlanMode ||
+        props.onToggleDevSpecFirst ||
+        props.onToggleChangeReviewMode
           ? html`<div class="chat-mode-switches__list">
               ${props.onToggleDreamingAssist
                 ? html`<button
@@ -1510,7 +1863,11 @@ export function renderChat(props: ChatProps) {
                         <span class="chat-mode-switch__label">协助策略</span>
                       </span>
                     </span>
-                    <span class="chat-mode-switch__control ${props.dreamingAssistEnabled !== false ? "is-on" : "is-off"}">
+                    <span
+                      class="chat-mode-switch__control ${props.dreamingAssistEnabled !== false
+                        ? "is-on"
+                        : "is-off"}"
+                    >
                       <span class="chat-mode-switch__thumb"></span>
                     </span>
                   </button>`
@@ -1529,7 +1886,11 @@ export function renderChat(props: ChatProps) {
                         <span class="chat-mode-switch__label">计划模式</span>
                       </span>
                     </span>
-                    <span class="chat-mode-switch__control ${props.planModeEnabled === true ? "is-on" : "is-off"}">
+                    <span
+                      class="chat-mode-switch__control ${props.planModeEnabled === true
+                        ? "is-on"
+                        : "is-off"}"
+                    >
                       <span class="chat-mode-switch__thumb"></span>
                     </span>
                   </button>`
@@ -1548,20 +1909,55 @@ export function renderChat(props: ChatProps) {
                         <span class="chat-mode-switch__label">规格优先</span>
                       </span>
                     </span>
-                    <span class="chat-mode-switch__control ${props.devSpecFirstEnabled === true ? "is-on" : "is-off"}">
+                    <span
+                      class="chat-mode-switch__control ${props.devSpecFirstEnabled === true
+                        ? "is-on"
+                        : "is-off"}"
+                    >
+                      <span class="chat-mode-switch__thumb"></span>
+                    </span>
+                  </button>`
+                : nothing}
+              ${props.onToggleChangeReviewMode
+                ? html`<button
+                    class="chat-mode-switch"
+                    type="button"
+                    role="switch"
+                    aria-checked=${props.changeReviewModeEnabled === true}
+                    @click=${() => props.onToggleChangeReviewMode?.()}
+                  >
+                    <span class="chat-mode-switch__meta">
+                      <span class="chat-mode-switch__icon">${icons.checkSquare}</span>
+                      <span class="chat-mode-switch__text">
+                        <span class="chat-mode-switch__label">改动确认</span>
+                      </span>
+                    </span>
+                    <span
+                      class="chat-mode-switch__control ${props.changeReviewModeEnabled === true
+                        ? "is-on"
+                        : "is-off"}"
+                    >
                       <span class="chat-mode-switch__thumb"></span>
                     </span>
                   </button>`
                 : nothing}
             </div>`
           : nothing}
-        ${props.pendingRunId && props.dreamingAssistApplied !== null && props.dreamingAssistApplied !== undefined
-          ? html`<div class="chat-mode-switches__status ${props.dreamingAssistApplied ? "is-success" : "is-muted"}">
+        ${props.pendingRunId &&
+        props.dreamingAssistApplied !== null &&
+        props.dreamingAssistApplied !== undefined
+          ? html`<div
+              class="chat-mode-switches__status ${props.dreamingAssistApplied
+                ? "is-success"
+                : "is-muted"}"
+            >
               ${props.dreamingAssistApplied ? "本轮已应用协助策略" : "本轮未应用协助策略"}
             </div>`
           : nothing}
         ${props.pendingRunId && !props.dreamingAssistApplied && props.dreamingAssistReason
-          ? html`<div class="chat-mode-switches__reason">${renderDreamingAssistReason(props.dreamingAssistReason)}</div>`
+          ? html`<div class="chat-mode-switches__reason">
+              ${renderDreamingAssistReason(props.dreamingAssistReason)}
+            </div>`
           : nothing}
       </div>`
     : nothing;
@@ -1636,7 +2032,9 @@ export function renderChat(props: ChatProps) {
       ${props.queue.length
         ? html`
             <div class="chat-queue" role="status" aria-live="polite">
-              <div class="chat-queue__title">${t("chatUi.queued", { count: String(props.queue.length) })}</div>
+              <div class="chat-queue__title">
+                ${t("chatUi.queued", { count: String(props.queue.length) })}
+              </div>
               <div class="chat-queue__list">
                 ${props.queue.map(
                   (item) => html`
@@ -1664,6 +2062,42 @@ export function renderChat(props: ChatProps) {
       ${renderFallbackIndicator(props.fallbackStatus)}
       ${renderCompactionIndicator(props.compactionStatus)}
       ${renderContextNotice(activeSession, props.sessions?.defaults?.contextTokens ?? null)}
+      ${props.pendingChangeReview?.pending
+        ? html`<div class="callout warning chat-change-review" role="status">
+            <div class="chat-change-review__header">
+              <div>
+                <strong>待确认改动</strong>
+                <div class="chat-change-review__meta">
+                  ${props.pendingChangeReview.files?.length ?? 0} 个文件 ·
+                  ${props.pendingChangeReview.updatedAt
+                    ? new Date(props.pendingChangeReview.updatedAt).toLocaleTimeString("zh-CN", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "刚刚"}
+                </div>
+              </div>
+              <div class="row" style="gap: 8px; flex-wrap: wrap;">
+                <button class="btn" type="button" @click=${() => props.onOpenChangeReview?.()}>
+                  查看本次改动
+                </button>
+              </div>
+            </div>
+            <div class="chat-change-review__files">
+              ${(props.pendingChangeReview.files ?? [])
+                .slice(0, 3)
+                .map(
+                  (file) =>
+                    html`<div class="chat-change-review__file">
+                      <span
+                        class="chat-change-review__status chat-change-review__status--${file.status}"
+                        >${renderChangeReviewStatusLabel(file.status)}</span
+                      ><span class="chat-change-review__path">${file.path}</span>
+                    </div>`,
+                )}
+            </div>
+          </div>`
+        : nothing}
       ${props.showNewMessages
         ? html`
             <button class="chat-new-messages" type="button" @click=${props.onScrollToBottom}>
@@ -1845,7 +2279,7 @@ export function renderChat(props: ChatProps) {
     }
   });
 
-  return section;
+  return html`${section}${renderChangeReviewModal(props)}`;
 }
 
 const CHAT_HISTORY_RENDER_LIMIT = 200;

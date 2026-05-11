@@ -61,6 +61,7 @@ import {
   refreshVisibleToolsEffectiveForCurrentSession as refreshVisibleToolsEffectiveForCurrentSessionInternal,
 } from "./controllers/agents.ts";
 import { loadAssistantIdentity as loadAssistantIdentityInternal } from "./controllers/assistant-identity.ts";
+import { loadChatHistory } from "./controllers/chat.ts";
 import type { DevicePairingList } from "./controllers/devices.ts";
 import type {
   DreamingStatus,
@@ -69,6 +70,11 @@ import type {
 } from "./controllers/dreaming.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
+import type {
+  ClawHubSearchResult,
+  ClawHubSkillDetail,
+  SkillMessage,
+} from "./controllers/skills.ts";
 import {
   archiveTaskForSession,
   createTaskForCurrentSession,
@@ -84,11 +90,6 @@ import {
   updateTaskModeTask,
   updateTaskTodo,
 } from "./controllers/tasks.ts";
-import type {
-  ClawHubSearchResult,
-  ClawHubSkillDetail,
-  SkillMessage,
-} from "./controllers/skills.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
 import type { SidebarContent } from "./sidebar-content.ts";
@@ -129,6 +130,46 @@ declare global {
 }
 
 const bootAssistantIdentity = normalizeAssistantIdentity({});
+const CHANGE_REVIEW_READY_WAIT_MS = [120, 280, 520, 900];
+
+type ChangeReviewPayload = {
+  pending?: boolean;
+  id?: string;
+  createdAt?: number;
+  updatedAt?: number;
+  stagedOnly?: boolean;
+  files?: Array<{
+    path: string;
+    status: string;
+    changeType?: string;
+    beforeContent?: string | null;
+    afterContent?: string | null;
+  }>;
+  diffText?: string;
+  sourceRunId?: string;
+};
+
+function waitForChangeReviewCaptureRetry(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function syncChatChangeReviewSelection(host: {
+  chatChangeReview: ChangeReviewPayload | null;
+  chatChangeReviewSelectedPath: string | null;
+  chatChangeReviewOpen: boolean;
+}) {
+  const files = host.chatChangeReview?.files ?? [];
+  if (files.length === 0) {
+    host.chatChangeReviewSelectedPath = null;
+    host.chatChangeReviewOpen = false;
+    return;
+  }
+  const selectedPath = host.chatChangeReviewSelectedPath;
+  if (selectedPath && files.some((file) => file.path === selectedPath)) {
+    return;
+  }
+  host.chatChangeReviewSelectedPath = files[0]?.path ?? null;
+}
 
 function resolveOnboardingMode(): boolean {
   if (!window.location.search) {
@@ -196,12 +237,30 @@ export class OpenClawApp extends LitElement {
   @state() chatAvatarUrl: string | null = null;
   @state() chatThinkingLevel: string | null = null;
   @state() dreamingAssistApplied: boolean | null = null;
-  @state() dreamingAssistReason: "disabled" | "no_strategy" | "scope_mismatch" | "expired" | null = null;
+  @state() dreamingAssistReason: "disabled" | "no_strategy" | "scope_mismatch" | "expired" | null =
+    null;
   @state() chatModelOverrides: Record<string, ChatModelOverride | null> = {};
   @state() chatModelsLoading = false;
   @state() chatModelCatalog: ModelCatalogEntry[] = [];
   @state() chatQueue: ChatQueueItem[] = [];
   @state() chatAttachments: ChatAttachment[] = [];
+  @state() chatChangeReview: {
+    pending: boolean;
+    id?: string;
+    createdAt?: number;
+    updatedAt?: number;
+    files?: Array<{
+      path: string;
+      status: string;
+      changeType?: string;
+      beforeContent?: string | null;
+      afterContent?: string | null;
+    }>;
+    diffText?: string;
+  } | null = null;
+  @state() chatChangeReviewOpen = false;
+  @state() chatChangeReviewSelectedPath: string | null = null;
+  @state() chatChangeReviewAction: { type: "apply" | "revert"; path?: string | null } | null = null;
   @state() chatManualRefreshInFlight = false;
   @state() navDrawerOpen = false;
 
@@ -720,12 +779,145 @@ export class OpenClawApp extends LitElement {
     );
   }
 
+  async loadChangeReviewStatus(sessionKey = this.sessionKey) {
+    if (!this.client || !this.connected) {
+      this.chatChangeReview = null;
+      syncChatChangeReviewSelection(this);
+      return;
+    }
+    try {
+      const result = await this.client.request<ChangeReviewPayload>("changeReview.status", {
+        sessionKey,
+      });
+      if (sessionKey !== this.sessionKey) {
+        return;
+      }
+      this.chatChangeReview = result?.pending ? result : null;
+      syncChatChangeReviewSelection(this);
+    } catch {
+      if (sessionKey === this.sessionKey) {
+        this.chatChangeReview = null;
+        syncChatChangeReviewSelection(this);
+      }
+    }
+  }
+
+  async captureChangeReview(sessionKey = this.sessionKey, runId?: string) {
+    if (!this.client || !this.connected) {
+      return;
+    }
+    const requestCapture = () =>
+      this.client!.request<ChangeReviewPayload>("changeReview.capture", {
+        sessionKey,
+        ...(runId ? { runId } : {}),
+      });
+    const requestStatus = () =>
+      this.client!.request<ChangeReviewPayload>("changeReview.status", {
+        sessionKey,
+      });
+    try {
+      let result = await requestCapture();
+      if (!result?.pending && runId) {
+        for (const waitMs of CHANGE_REVIEW_READY_WAIT_MS) {
+          await waitForChangeReviewCaptureRetry(waitMs);
+          if (!this.client || !this.connected || sessionKey !== this.sessionKey) {
+            return;
+          }
+          result = await requestCapture();
+          if (result?.pending) {
+            break;
+          }
+          result = await requestStatus();
+          if (result?.pending) {
+            break;
+          }
+        }
+      }
+      if (sessionKey !== this.sessionKey) {
+        return;
+      }
+      this.chatChangeReview = result?.pending ? result : null;
+      syncChatChangeReviewSelection(this);
+    } catch {
+      if (sessionKey === this.sessionKey) {
+        this.chatChangeReview = null;
+        syncChatChangeReviewSelection(this);
+      }
+    }
+  }
+
+  openChangeReview() {
+    if (!this.chatChangeReview?.pending) {
+      return;
+    }
+    this.chatChangeReviewOpen = true;
+    syncChatChangeReviewSelection(this);
+  }
+
+  closeChangeReview() {
+    this.chatChangeReviewOpen = false;
+  }
+
+  selectChangeReviewFile(path: string) {
+    this.chatChangeReviewSelectedPath = path;
+  }
+
+  async applyChangeReview(id: string, path?: string) {
+    if (!this.client || !this.connected) {
+      return;
+    }
+    this.lastError = null;
+    this.chatChangeReviewAction = { type: "apply", path: path ?? null };
+    try {
+      await this.client.request("changeReview.apply", path ? { id, path } : { id });
+      if (path) {
+        await this.loadChangeReviewStatus();
+      } else {
+        this.chatChangeReview = null;
+        syncChatChangeReviewSelection(this);
+      }
+    } catch (err) {
+      this.lastError = `应用待确认改动失败：${String(err)}`;
+      if (path) {
+        await this.loadChangeReviewStatus();
+      }
+    } finally {
+      this.chatChangeReviewAction = null;
+    }
+  }
+
+  async revertChangeReview(id: string, path?: string) {
+    if (!this.client || !this.connected) {
+      return;
+    }
+    this.lastError = null;
+    this.chatChangeReviewAction = { type: "revert", path: path ?? null };
+    try {
+      await this.client.request("changeReview.revert", path ? { id, path } : { id });
+      if (path) {
+        await this.loadChangeReviewStatus();
+      } else {
+        this.chatChangeReview = null;
+        syncChatChangeReviewSelection(this);
+      }
+      await loadChatHistory(this as unknown as Parameters<typeof loadChatHistory>[0]);
+    } catch (err) {
+      this.lastError = `还原待确认改动失败：${String(err)}`;
+      await this.loadChangeReviewStatus();
+    } finally {
+      this.chatChangeReviewAction = null;
+    }
+  }
+
   async loadTaskModeData() {
     await loadTaskModeData(this as unknown as Parameters<typeof loadTaskModeData>[0]);
   }
 
   async createTaskForCurrentSession(title: string, description?: string) {
-    const result = await createTaskForCurrentSession(this as unknown as Parameters<typeof createTaskForCurrentSession>[0], { title, description });
+    const result = await createTaskForCurrentSession(
+      this as unknown as Parameters<typeof createTaskForCurrentSession>[0],
+      { title, description },
+    );
     if (result) {
       this.taskCreateOpen = false;
       this.taskCreateTitle = "";
@@ -735,39 +927,102 @@ export class OpenClawApp extends LitElement {
   }
 
   async setCurrentTaskForSession(taskId: string) {
-    await setCurrentTaskForSession(this as unknown as Parameters<typeof setCurrentTaskForSession>[0], taskId);
+    await setCurrentTaskForSession(
+      this as unknown as Parameters<typeof setCurrentTaskForSession>[0],
+      taskId,
+    );
   }
 
   async setCurrentSessionMode(mode: "normal" | "task") {
-    await setCurrentSessionMode(this as unknown as Parameters<typeof setCurrentSessionMode>[0], mode);
+    await setCurrentSessionMode(
+      this as unknown as Parameters<typeof setCurrentSessionMode>[0],
+      mode,
+    );
   }
 
-  async updateTaskModeTask(taskId: string, patch: { title?: string; description?: string | null; status?: import("./controllers/tasks.ts").TaskStatus }) {
-    return await updateTaskModeTask(this as unknown as Parameters<typeof updateTaskModeTask>[0], taskId, patch);
+  async updateTaskModeTask(
+    taskId: string,
+    patch: {
+      title?: string;
+      description?: string | null;
+      status?: import("./controllers/tasks.ts").TaskStatus;
+    },
+  ) {
+    return await updateTaskModeTask(
+      this as unknown as Parameters<typeof updateTaskModeTask>[0],
+      taskId,
+      patch,
+    );
   }
 
   async syncTaskModeTaskProgress(taskId: string, opts?: { silent?: boolean; reload?: boolean }) {
-    return await syncTaskModeTaskProgress(this as unknown as Parameters<typeof syncTaskModeTaskProgress>[0], taskId, opts);
+    return await syncTaskModeTaskProgress(
+      this as unknown as Parameters<typeof syncTaskModeTaskProgress>[0],
+      taskId,
+      opts,
+    );
   }
 
-  async createTaskTodo(taskId: string, input: { content: string; priority?: import("./controllers/tasks.ts").TaskTodoPriority; note?: string; verification?: string }) {
-    return await createTaskTodo(this as unknown as Parameters<typeof createTaskTodo>[0], taskId, input);
+  async createTaskTodo(
+    taskId: string,
+    input: {
+      content: string;
+      priority?: import("./controllers/tasks.ts").TaskTodoPriority;
+      note?: string;
+      verification?: string;
+    },
+  ) {
+    return await createTaskTodo(
+      this as unknown as Parameters<typeof createTaskTodo>[0],
+      taskId,
+      input,
+    );
   }
 
-  async updateTaskTodo(taskId: string, todoId: string, patch: { content?: string; priority?: import("./controllers/tasks.ts").TaskTodoPriority; note?: string | null; verification?: string | null }) {
-    return await updateTaskTodo(this as unknown as Parameters<typeof updateTaskTodo>[0], taskId, todoId, patch);
+  async updateTaskTodo(
+    taskId: string,
+    todoId: string,
+    patch: {
+      content?: string;
+      priority?: import("./controllers/tasks.ts").TaskTodoPriority;
+      note?: string | null;
+      verification?: string | null;
+    },
+  ) {
+    return await updateTaskTodo(
+      this as unknown as Parameters<typeof updateTaskTodo>[0],
+      taskId,
+      todoId,
+      patch,
+    );
   }
 
-  async setTaskTodoStatus(taskId: string, todoId: string, status: import("./controllers/tasks.ts").TaskTodoStatus) {
-    return await setTaskTodoStatus(this as unknown as Parameters<typeof setTaskTodoStatus>[0], taskId, todoId, status);
+  async setTaskTodoStatus(
+    taskId: string,
+    todoId: string,
+    status: import("./controllers/tasks.ts").TaskTodoStatus,
+  ) {
+    return await setTaskTodoStatus(
+      this as unknown as Parameters<typeof setTaskTodoStatus>[0],
+      taskId,
+      todoId,
+      status,
+    );
   }
 
   async deleteTaskTodo(taskId: string, todoId: string) {
-    return await deleteTaskTodo(this as unknown as Parameters<typeof deleteTaskTodo>[0], taskId, todoId);
+    return await deleteTaskTodo(
+      this as unknown as Parameters<typeof deleteTaskTodo>[0],
+      taskId,
+      todoId,
+    );
   }
 
   async archiveTaskForSession(taskId: string) {
-    await archiveTaskForSession(this as unknown as Parameters<typeof archiveTaskForSession>[0], taskId);
+    await archiveTaskForSession(
+      this as unknown as Parameters<typeof archiveTaskForSession>[0],
+      taskId,
+    );
   }
 
   async restoreArchivedTask(taskId: string) {
@@ -775,7 +1030,10 @@ export class OpenClawApp extends LitElement {
   }
 
   async deleteTaskForSession(taskId: string) {
-    await deleteTaskForSession(this as unknown as Parameters<typeof deleteTaskForSession>[0], taskId);
+    await deleteTaskForSession(
+      this as unknown as Parameters<typeof deleteTaskForSession>[0],
+      taskId,
+    );
   }
 
   async handleWhatsAppStart(force: boolean) {

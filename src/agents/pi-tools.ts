@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import { codingTools, createReadTool, readTool } from "@mariozechner/pi-coding-agent";
 import type { ModelCompatConfig } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -72,6 +75,7 @@ function isOpenAIProvider(provider?: string) {
 }
 
 const MEMORY_FLUSH_ALLOWED_TOOL_NAMES = new Set(["read", "write"]);
+const CHANGE_REVIEW_RESTRICTED_TOOL_NAMES = new Set(["exec", "process", "apply_patch"]);
 
 function createLazyExecTool(defaults?: ExecToolDefaults): AnyAgentTool {
   let loadedTool: AnyAgentTool | undefined;
@@ -118,6 +122,169 @@ function createLazyProcessTool(defaults?: ProcessToolDefaults): AnyAgentTool {
     execute: async (...args: Parameters<AnyAgentTool["execute"]>) =>
       (await loadTool()).execute(...args),
   } as AnyAgentTool;
+}
+
+type ChangeReviewPreviewFile = {
+  path: string;
+  absolutePath: string;
+  changeType: "added" | "modified" | "deleted";
+  beforeContent: string | null;
+  afterContent: string | null;
+  diffText: string;
+};
+
+async function readOptionalUtf8File(filePath: string): Promise<string | null> {
+  try {
+    return await fs.readFile(filePath, "utf-8");
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    if (code === "ENOENT") {
+      return null;
+    }
+    throw err;
+  }
+}
+
+function buildPreviewDiff(
+  filePath: string,
+  beforeContent: string | null,
+  afterContent: string | null,
+): string {
+  if (beforeContent === afterContent) {
+    return "";
+  }
+  const beforeLines = beforeContent == null ? [] : beforeContent.replace(/\n$/, "").split("\n");
+  const afterLines = afterContent == null ? [] : afterContent.replace(/\n$/, "").split("\n");
+  return [
+    `diff --git a/${filePath} b/${filePath}`,
+    `--- a/${filePath}`,
+    `+++ b/${filePath}`,
+    `@@ -1,${beforeLines.length} +1,${afterLines.length} @@`,
+    ...beforeLines.map((line) => `-${line}`),
+    ...afterLines.map((line) => `+${line}`),
+  ].join("\n");
+}
+
+function buildPreviewResult(
+  toolName: string,
+  previewFiles: ChangeReviewPreviewFile[],
+): AgentToolResult<unknown> {
+  const summary = `${previewFiles.length} file(s) staged for change review.`;
+  return {
+    isError: false,
+    content: [{ type: "text", text: summary }],
+    details: {
+      changeReviewPreview: {
+        toolName,
+        files: previewFiles,
+      },
+    },
+  } as AgentToolResult<unknown>;
+}
+
+function resolvePreviewPath(
+  root: string,
+  filePath: string,
+): { absolutePath: string; relativePath: string } {
+  const absolutePath = path.isAbsolute(filePath)
+    ? path.resolve(filePath)
+    : path.resolve(root, filePath);
+  const relativePath = path.relative(root, absolutePath).split(path.sep).join("/");
+  return { absolutePath, relativePath };
+}
+
+async function buildWritePreview(
+  root: string,
+  params: Record<string, unknown>,
+): Promise<ChangeReviewPreviewFile[]> {
+  const filePath = typeof params.path === "string" ? params.path.trim() : "";
+  const nextContent = typeof params.content === "string" ? params.content : "";
+  if (!filePath) {
+    return [];
+  }
+  const { absolutePath, relativePath } = resolvePreviewPath(root, filePath);
+  const beforeContent = await readOptionalUtf8File(absolutePath);
+  const changeType = beforeContent == null ? "added" : "modified";
+  return [
+    {
+      path: relativePath,
+      absolutePath,
+      changeType,
+      beforeContent,
+      afterContent: nextContent,
+      diffText: buildPreviewDiff(relativePath, beforeContent, nextContent),
+    },
+  ];
+}
+
+async function buildEditPreview(
+  root: string,
+  params: Record<string, unknown>,
+): Promise<ChangeReviewPreviewFile[]> {
+  const filePath = typeof params.path === "string" ? params.path.trim() : "";
+  if (!filePath || !Array.isArray(params.edits)) {
+    return [];
+  }
+  const { absolutePath, relativePath } = resolvePreviewPath(root, filePath);
+  const beforeContent = await readOptionalUtf8File(absolutePath);
+  if (beforeContent == null) {
+    throw new Error(`Edit preview failed: file not found: ${filePath}`);
+  }
+  let afterContent = beforeContent;
+  for (const entry of params.edits) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const oldText =
+      typeof (entry as Record<string, unknown>).oldText === "string"
+        ? ((entry as Record<string, unknown>).oldText as string)
+        : "";
+    const newText =
+      typeof (entry as Record<string, unknown>).newText === "string"
+        ? ((entry as Record<string, unknown>).newText as string)
+        : "";
+    if (!oldText || !afterContent.includes(oldText)) {
+      throw new Error(`Edit preview failed: could not find text in ${filePath}`);
+    }
+    afterContent = afterContent.replace(oldText, newText);
+  }
+  return [
+    {
+      path: relativePath,
+      absolutePath,
+      changeType: "modified",
+      beforeContent,
+      afterContent,
+      diffText: buildPreviewDiff(relativePath, beforeContent, afterContent),
+    },
+  ];
+}
+
+function wrapToolWithChangeReviewPreview(
+  tool: AnyAgentTool,
+  params: {
+    root: string;
+    enabled?: boolean;
+  },
+): AnyAgentTool {
+  if (!params.enabled) {
+    return tool;
+  }
+  if (tool.name !== "write" && tool.name !== "edit") {
+    return tool;
+  }
+  return {
+    ...tool,
+    execute: async (_toolCallId, rawParams, _signal, _onUpdate) => {
+      const record =
+        rawParams && typeof rawParams === "object" ? (rawParams as Record<string, unknown>) : {};
+      const previewFiles =
+        tool.name === "write"
+          ? await buildWritePreview(params.root, record)
+          : await buildEditPreview(params.root, record);
+      return buildPreviewResult(tool.name, previewFiles);
+    },
+  };
 }
 
 function applyModelProviderToolPolicy(
@@ -255,6 +422,8 @@ export function createOpenClawCodingTools(options?: {
   trigger?: string;
   /** Relative workspace path that memory-triggered writes may append to. */
   memoryFlushWritePath?: string;
+  /** Whether change-review mode is enabled for this run. */
+  changeReviewModeEnabled?: boolean;
   agentDir?: string;
   workspaceDir?: string;
   /**
@@ -666,12 +835,22 @@ export function createOpenClawCodingTools(options?: {
       modelCompat: options?.modelCompat,
     }),
   );
-  const withHooks = normalized.map((tool) =>
+  const changeReviewFiltered = options?.changeReviewModeEnabled
+    ? normalized.filter((tool) => !CHANGE_REVIEW_RESTRICTED_TOOL_NAMES.has(tool.name))
+    : normalized;
+  const withPreviewInterception = changeReviewFiltered.map((tool) =>
+    wrapToolWithChangeReviewPreview(tool, {
+      root: sandboxRoot ?? workspaceRoot,
+      enabled: options?.changeReviewModeEnabled,
+    }),
+  );
+  const withHooks = withPreviewInterception.map((tool) =>
     wrapToolWithBeforeToolCallHook(tool, {
       agentId,
       sessionKey: options?.sessionKey,
       sessionId: options?.sessionId,
       runId: options?.runId,
+      changeReviewModeEnabled: options?.changeReviewModeEnabled,
       loopDetection: resolveToolLoopDetectionConfig({ cfg: options?.config, agentId }),
     }),
   );

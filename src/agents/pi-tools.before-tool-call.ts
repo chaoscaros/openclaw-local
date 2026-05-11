@@ -17,6 +17,7 @@ export type HookContext = {
   /** Ephemeral session UUID — regenerated on /new and /reset. */
   sessionId?: string;
   runId?: string;
+  changeReviewModeEnabled?: boolean;
   loopDetection?: ToolLoopDetectionConfig;
 };
 

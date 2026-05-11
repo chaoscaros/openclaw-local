@@ -120,6 +120,10 @@ import {
   TickEventSchema,
 } from "./frames.js";
 import {
+  ChangeReviewActionResultSchema,
+  ChangeReviewIdParamsSchema,
+  ChangeReviewResultSchema,
+  ChangeReviewSessionParamsSchema,
   ChatAbortParamsSchema,
   ChatEventSchema,
   ChatHistoryParamsSchema,
@@ -359,6 +363,10 @@ export const ProtocolSchemas = {
   ChatAbortParams: ChatAbortParamsSchema,
   ChatInjectParams: ChatInjectParamsSchema,
   ChatEvent: ChatEventSchema,
+  ChangeReviewSessionParams: ChangeReviewSessionParamsSchema,
+  ChangeReviewIdParams: ChangeReviewIdParamsSchema,
+  ChangeReviewResult: ChangeReviewResultSchema,
+  ChangeReviewActionResult: ChangeReviewActionResultSchema,
   UpdateRunParams: UpdateRunParamsSchema,
   TickEvent: TickEventSchema,
   ShutdownEvent: ShutdownEventSchema,

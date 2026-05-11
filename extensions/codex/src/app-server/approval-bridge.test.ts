@@ -106,6 +106,36 @@ describe("Codex app-server approval bridge", () => {
     );
   });
 
+  it("denies native file and command approvals in change-review mode before opening approval UI", async () => {
+    const params = createParams();
+    params.changeReviewModeEnabled = true;
+
+    const result = await handleCodexAppServerApprovalRequest({
+      method: "item/commandExecution/requestApproval",
+      requestParams: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "cmd-2",
+        command: "python - <<'PY'\nprint(1)\nPY",
+      },
+      paramsForRun: params,
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+
+    expect(result).toEqual({ decision: "decline" });
+    expect(mockCallGatewayTool).not.toHaveBeenCalled();
+    expect(params.onAgentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stream: "approval",
+        data: expect.objectContaining({
+          status: "denied",
+          command: "python - <<'PY'\nprint(1)\nPY",
+        }),
+      }),
+    );
+  });
+
   it("maps app-server approval response families separately", () => {
     expect(
       buildApprovalResponse(

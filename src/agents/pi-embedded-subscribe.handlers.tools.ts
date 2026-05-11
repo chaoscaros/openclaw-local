@@ -1,4 +1,14 @@
+import path from "node:path";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
+import { resolveAgentWorkspaceDir, resolveSessionAgentId } from "../agents/agent-scope.js";
+import { loadConfig } from "../config/config.js";
+import {
+  beginToolMutationCapture,
+  createVirtualReviewBundle,
+  discardToolMutationCapture,
+  finishToolMutationCapture,
+  type ChangeReviewBundle,
+} from "../gateway/change-review-store.js";
 import type {
   AgentApprovalEventData,
   AgentCommandOutputEventData,
@@ -112,7 +122,18 @@ function isExecToolName(toolName: string): boolean {
 }
 
 function isPatchToolName(toolName: string): boolean {
-  return toolName === "apply_patch";
+  return toolName === "apply_patch" || toolName === "patch";
+}
+
+function isReviewWriteToolName(toolName: string): boolean {
+  return (
+    toolName === "write" ||
+    toolName === "write_file" ||
+    toolName === "file_write" ||
+    toolName === "edit" ||
+    toolName === "edit_file" ||
+    toolName === "file_edit"
+  );
 }
 
 function buildCommandItemId(toolCallId: string): string {
@@ -201,6 +222,186 @@ function buildPatchSummaryText(summary: ApplyPatchSummary): string {
     parts.push(`${summary.deleted.length} deleted`);
   }
   return parts.length > 0 ? parts.join(", ") : "no file changes recorded";
+}
+
+function extractFileMutationPaths(args: unknown): string[] {
+  if (!args || typeof args !== "object") {
+    return [];
+  }
+  const record = args as Record<string, unknown>;
+  const values = [
+    readStringValue(record.path),
+    readStringValue(record.file_path),
+    readStringValue(record.filePath),
+    readStringValue(record.filepath),
+    readStringValue(record.file),
+    readStringValue(record.oldPath),
+    readStringValue(record.old_path),
+    readStringValue(record.newPath),
+    readStringValue(record.new_path),
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  return Array.from(new Set(values));
+}
+
+function extractApplyPatchPaths(args: unknown): string[] {
+  if (!args || typeof args !== "object") {
+    return [];
+  }
+  const patchText = readStringValue((args as Record<string, unknown>).patch) ?? "";
+  if (!patchText.trim()) {
+    return [];
+  }
+  const matches = Array.from(
+    patchText.matchAll(/^(?:\*\*\* (?:Update|Add|Delete) File:|--- a\/|\+\+\+ b\/)(.+)$/gm),
+  );
+  const values = matches
+    .map((match) => match[1]?.trim() ?? "")
+    .filter((value) => value && value !== "/dev/null");
+  return Array.from(new Set(values));
+}
+
+function extractExecMutationPaths(args: unknown, workspaceDir?: string | null): string[] {
+  if (!args || typeof args !== "object") {
+    return [];
+  }
+  const record = args as Record<string, unknown>;
+  const commandText =
+    readStringValue(record.command) ??
+    readStringValue(record.cmd) ??
+    readStringValue(record.script) ??
+    "";
+  if (!commandText.trim()) {
+    return [];
+  }
+  const cwdValue =
+    readStringValue(record.cwd) ??
+    readStringValue(record.workdir) ??
+    readStringValue(record.directory) ??
+    "";
+  const execBaseDir = cwdValue
+    ? path.isAbsolute(cwdValue)
+      ? cwdValue
+      : workspaceDir
+        ? path.resolve(workspaceDir, cwdValue)
+        : cwdValue
+    : (workspaceDir ?? "");
+  const tokenMatches = Array.from(
+    commandText.matchAll(
+      /(?:^|[\s'"`])((?:\.{1,2}\/|\/)?[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*)(?=$|[\s'"`|;&>])/g,
+    ),
+  );
+  const values = tokenMatches
+    .map((match) => match[1]?.trim() ?? "")
+    .filter((value) => {
+      if (!value || /^[A-Za-z0-9_-]+$/.test(value)) {
+        return false;
+      }
+      if (value.startsWith("/tmp/") || value.startsWith("/var/")) {
+        return false;
+      }
+      return true;
+    })
+    .map((value) => {
+      if (path.isAbsolute(value) || !execBaseDir) {
+        return value;
+      }
+      return path.resolve(execBaseDir, value);
+    });
+  return Array.from(new Set(values));
+}
+
+function resolveWorkspaceDirForToolContext(ctx: ToolHandlerContext, args?: unknown): string | null {
+  const record = args && typeof args === "object" ? (args as Record<string, unknown>) : null;
+  const explicitCwd = record
+    ? (readStringValue(record.cwd) ??
+      readStringValue(record.workdir) ??
+      readStringValue(record.directory) ??
+      "")
+    : "";
+  if (explicitCwd && path.isAbsolute(explicitCwd)) {
+    return explicitCwd;
+  }
+  const config = loadConfig();
+  const agentId = typeof ctx.params.agentId === "string" ? ctx.params.agentId.trim() : "";
+  if (agentId) {
+    return resolveAgentWorkspaceDir(config, agentId);
+  }
+  const sessionKey = typeof ctx.params.sessionKey === "string" ? ctx.params.sessionKey.trim() : "";
+  if (!sessionKey) {
+    return null;
+  }
+  const resolvedAgentId = resolveSessionAgentId({ sessionKey, config });
+  return resolveAgentWorkspaceDir(config, resolvedAgentId);
+}
+
+function emitChangeReviewReadyEvent(
+  ctx: ToolHandlerContext,
+  runId: string,
+  bundle: ChangeReviewBundle | null,
+) {
+  if (!bundle || !ctx.params.sessionKey) {
+    return;
+  }
+  const data = {
+    phase: "ready",
+    reviewId: bundle.reviewId,
+    files: bundle.files.map((file) => ({ path: file.path, changeType: file.changeType })),
+  };
+  emitAgentEvent({
+    runId,
+    sessionKey: ctx.params.sessionKey,
+    stream: "change_review",
+    data,
+  });
+  void ctx.params.onAgentEvent?.({
+    stream: "change_review",
+    data,
+  });
+}
+
+function readChangeReviewPreview(result: unknown): ChangeReviewBundle["files"] | null {
+  const details =
+    result && typeof result === "object" ? (result as { details?: unknown }).details : undefined;
+  const preview =
+    details && typeof details === "object"
+      ? (details as { changeReviewPreview?: unknown }).changeReviewPreview
+      : undefined;
+  const files =
+    preview && typeof preview === "object" ? (preview as { files?: unknown }).files : undefined;
+  if (!Array.isArray(files) || files.length === 0) {
+    return null;
+  }
+  const parsed = files.flatMap((file) => {
+    if (!file || typeof file !== "object") {
+      return [];
+    }
+    const record = file as Record<string, unknown>;
+    if (
+      typeof record.path !== "string" ||
+      typeof record.absolutePath !== "string" ||
+      typeof record.changeType !== "string" ||
+      typeof record.diffText !== "string"
+    ) {
+      return [];
+    }
+    return [
+      {
+        path: record.path,
+        absolutePath: record.absolutePath,
+        changeType: record.changeType as "added" | "modified" | "deleted",
+        beforeContent:
+          typeof record.beforeContent === "string" || record.beforeContent === null
+            ? record.beforeContent
+            : null,
+        afterContent:
+          typeof record.afterContent === "string" || record.afterContent === null
+            ? record.afterContent
+            : null,
+        diffText: record.diffText,
+      },
+    ];
+  });
+  return parsed.length > 0 ? parsed : null;
 }
 
 function extendExecMeta(toolName: string, args: unknown, meta?: string): string | undefined {
@@ -554,15 +755,12 @@ export function handleToolExecutionStart(
   const continueAfterBlockReplyFlush = (): void | Promise<void> => {
     const onBlockReplyFlushResult = ctx.params.onBlockReplyFlush?.();
     if (isPromiseLike<void>(onBlockReplyFlushResult)) {
-      return onBlockReplyFlushResult.then(() => {
-        continueToolExecutionStart();
-      });
+      return onBlockReplyFlushResult.then(() => continueToolExecutionStart());
     }
-    continueToolExecutionStart();
-    return undefined;
+    return continueToolExecutionStart();
   };
 
-  const continueToolExecutionStart = () => {
+  const continueToolExecutionStart = async () => {
     const rawToolName = evt.toolName;
     const toolName = normalizeToolName(rawToolName);
     const toolCallId = evt.toolCallId;
@@ -592,6 +790,28 @@ export function handleToolExecutionStart(
 
     const meta = extendExecMeta(toolName, args, inferToolMetaFromArgs(toolName, args));
     ctx.state.toolMetaById.set(toolCallId, buildToolCallSummary(toolName, args, meta));
+    const workspaceDir = resolveWorkspaceDirForToolContext(ctx, args);
+    const reviewCandidatePaths = isReviewWriteToolName(toolName)
+      ? extractFileMutationPaths(args)
+      : isExecToolName(toolName)
+        ? extractExecMutationPaths(args, workspaceDir)
+        : isPatchToolName(toolName)
+          ? extractApplyPatchPaths(args)
+          : [];
+    if (workspaceDir && ctx.params.sessionKey && reviewCandidatePaths.length > 0) {
+      try {
+        await beginToolMutationCapture({
+          sessionKey: ctx.params.sessionKey,
+          runId,
+          toolCallId,
+          workspaceDir,
+          repoRoot: workspaceDir,
+          filePaths: reviewCandidatePaths,
+        });
+      } catch (err) {
+        ctx.log.warn(`change review capture start failed: tool=${toolName} error=${String(err)}`);
+      }
+    }
     ctx.log.debug(
       `embedded run tool start: runId=${ctx.params.runId} tool=${toolName} toolCallId=${toolCallId}`,
     );
@@ -1051,9 +1271,109 @@ export async function handleToolExecutionEnd(
     }
   }
 
+  const fileMutationPaths = extractFileMutationPaths(startArgs);
+  const execMutationPaths = isExecToolName(toolName)
+    ? extractExecMutationPaths(startArgs, resolveWorkspaceDirForToolContext(ctx, startArgs))
+    : [];
+  const changeReviewPreviewFiles = !isToolError ? readChangeReviewPreview(result) : null;
+  if (isToolError) {
+    discardToolMutationCapture(runId, toolCallId);
+  }
+  if (
+    isReviewWriteToolName(toolName) &&
+    !isToolError &&
+    (fileMutationPaths.length > 0 || changeReviewPreviewFiles)
+  ) {
+    const patchItemId = buildPatchItemId(toolCallId);
+    const workspaceDir = resolveWorkspaceDirForToolContext(ctx, startArgs) ?? process.cwd();
+    const reviewBundle = changeReviewPreviewFiles
+      ? createVirtualReviewBundle({
+          sessionKey: ctx.params.sessionKey ?? "",
+          runId,
+          workspaceDir,
+          repoRoot: workspaceDir,
+          files: changeReviewPreviewFiles,
+        })
+      : await finishToolMutationCapture({
+          sessionKey: ctx.params.sessionKey ?? "",
+          runId,
+          toolCallId,
+          fileStatuses: fileMutationPaths.map((filePath) => ({
+            path: filePath,
+            changeType: "modified" as const,
+          })),
+        }).catch((err) => {
+          ctx.log.warn(`change review capture end failed: tool=${toolName} error=${String(err)}`);
+          return null;
+        });
+    emitChangeReviewReadyEvent(ctx, runId, reviewBundle);
+    const modifiedPaths = changeReviewPreviewFiles?.map((file) => file.path) ?? fileMutationPaths;
+    const patchData: AgentPatchSummaryEventData = {
+      itemId: patchItemId,
+      phase: "end",
+      title: buildPatchItemTitle(meta),
+      toolCallId,
+      name: toolName,
+      added: [],
+      modified: modifiedPaths,
+      deleted: [],
+      summary: `${modifiedPaths.length} modified`,
+    };
+    emitAgentPatchSummaryEvent({
+      runId: ctx.params.runId,
+      ...(ctx.params.sessionKey ? { sessionKey: ctx.params.sessionKey } : {}),
+      data: patchData,
+    });
+    void ctx.params.onAgentEvent?.({
+      stream: "patch",
+      data: patchData,
+    });
+  }
+
+  if (isExecToolName(toolName) && !isToolError && execMutationPaths.length > 0) {
+    const reviewBundle = await finishToolMutationCapture({
+      sessionKey: ctx.params.sessionKey ?? "",
+      runId,
+      toolCallId,
+      fileStatuses: execMutationPaths.map((filePath) => ({ path: filePath })),
+    }).catch((err) => {
+      ctx.log.warn(`change review exec capture end failed: tool=${toolName} error=${String(err)}`);
+      return null;
+    });
+    emitChangeReviewReadyEvent(ctx, runId, reviewBundle);
+  }
+
   if (isPatchToolName(toolName)) {
     const patchSummary = readApplyPatchSummary(result);
     const patchItemId = buildPatchItemId(toolCallId);
+    if (!isToolError && !patchSummary) {
+      discardToolMutationCapture(runId, toolCallId);
+    }
+    if (!isToolError && patchSummary) {
+      const fileStatuses = [
+        ...patchSummary.added.map((filePath) => ({ path: filePath, changeType: "added" as const })),
+        ...patchSummary.modified.map((filePath) => ({
+          path: filePath,
+          changeType: "modified" as const,
+        })),
+        ...patchSummary.deleted.map((filePath) => ({
+          path: filePath,
+          changeType: "deleted" as const,
+        })),
+      ];
+      const reviewBundle = await finishToolMutationCapture({
+        sessionKey: ctx.params.sessionKey ?? "",
+        runId,
+        toolCallId,
+        fileStatuses,
+      }).catch((err) => {
+        ctx.log.warn(
+          `change review patch capture end failed: tool=${toolName} error=${String(err)}`,
+        );
+        return null;
+      });
+      emitChangeReviewReadyEvent(ctx, runId, reviewBundle);
+    }
     const summaryText = patchSummary ? buildPatchSummaryText(patchSummary) : undefined;
     emitTrackedItemEvent(ctx, {
       itemId: patchItemId,

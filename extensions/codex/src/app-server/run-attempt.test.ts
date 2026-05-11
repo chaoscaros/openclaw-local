@@ -426,6 +426,30 @@ describe("runCodexAppServerAttempt", () => {
     );
   });
 
+  it("forces on-request native approvals during change-review runs", () => {
+    const params = createParams("/tmp/session.jsonl", "/tmp/workspace");
+    params.changeReviewModeEnabled = true;
+    const appServer = {
+      start: {
+        transport: "stdio" as const,
+        command: "codex",
+        args: ["app-server", "--listen", "stdio://"],
+        headers: {},
+      },
+      requestTimeoutMs: 60_000,
+      approvalPolicy: "never" as const,
+      approvalsReviewer: "user" as const,
+      sandbox: "workspace-write" as const,
+    };
+
+    expect(buildThreadResumeParams(params, { threadId: "thread-1", appServer })).toEqual(
+      expect.objectContaining({ approvalPolicy: "on-request" }),
+    );
+    expect(
+      buildTurnStartParams(params, { threadId: "thread-1", cwd: "/tmp/workspace", appServer }),
+    ).toEqual(expect.objectContaining({ approvalPolicy: "on-request" }));
+  });
+
   it("builds resume and turn params from the currently selected OpenClaw model", () => {
     const params = createParams("/tmp/session.jsonl", "/tmp/workspace");
     const appServer = {

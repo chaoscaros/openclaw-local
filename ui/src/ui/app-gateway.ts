@@ -2,6 +2,7 @@ import {
   GATEWAY_EVENT_UPDATE_AVAILABLE,
   type GatewayUpdateAvailableEventPayload,
 } from "../../../src/gateway/events.js";
+import { toAgentRequestSessionKey } from "../../../src/routing/session-key.js";
 import {
   CHAT_SESSIONS_ACTIVE_MINUTES,
   clearPendingQueueItemsForRun,
@@ -42,7 +43,12 @@ import {
 } from "./controllers/exec-approval.ts";
 import { loadHealthState, type HealthState } from "./controllers/health.ts";
 import { loadNodes, type NodesState } from "./controllers/nodes.ts";
-import { loadSessions, patchSession, subscribeSessions, type SessionsState } from "./controllers/sessions.ts";
+import {
+  loadSessions,
+  patchSession,
+  subscribeSessions,
+  type SessionsState,
+} from "./controllers/sessions.ts";
 import { loadTaskModeData, type TasksState } from "./controllers/tasks.ts";
 import {
   resolveGatewayErrorDetailCode,
@@ -67,6 +73,7 @@ function isGenericBrowserFetchFailure(message: string): boolean {
 
 type GatewayHost = {
   settings: UiSettings;
+  captureChangeReview?: (sessionKey?: string, runId?: string) => Promise<void>;
   password: string;
   clientInstanceId: string;
   client: GatewayBrowserClient | null;
@@ -123,6 +130,18 @@ function isTerminalChatState(
   state: ChatEventPayload["state"] | ReturnType<typeof handleChatEvent> | null | undefined,
 ): state is "final" | "aborted" | "error" {
   return state === "final" || state === "aborted" || state === "error";
+}
+
+function doSessionKeysMatch(a: string | undefined | null, b: string | undefined | null): boolean {
+  const left = (a ?? "").trim();
+  const right = (b ?? "").trim();
+  if (!left || !right) {
+    return left === right;
+  }
+  if (left === right) {
+    return true;
+  }
+  return toAgentRequestSessionKey(left) === toAgentRequestSessionKey(right);
 }
 
 type ConnectGatewayOptions = {
@@ -370,14 +389,17 @@ export async function continueTaskBindingAfterSessionRefresh(
     return;
   }
   const normalizedEventSessionKey = eventSessionKey?.trim() || "";
-  const targetSessionKey = normalizedEventSessionKey && normalizedEventSessionKey !== carry.sourceSessionKey
-    ? normalizedEventSessionKey
-    : "";
+  const targetSessionKey =
+    normalizedEventSessionKey && normalizedEventSessionKey !== carry.sourceSessionKey
+      ? normalizedEventSessionKey
+      : "";
   if (!targetSessionKey) {
     host.taskCarryoverAfterChatByRun.delete(runId);
     return;
   }
-  const targetSession = host.sessionsResult?.sessions.find((row: { key: string }) => row.key === targetSessionKey) ?? null;
+  const targetSession =
+    host.sessionsResult?.sessions.find((row: { key: string }) => row.key === targetSessionKey) ??
+    null;
   if (!targetSession) {
     return;
   }
@@ -386,9 +408,29 @@ export async function continueTaskBindingAfterSessionRefresh(
     void loadTaskModeData(host as unknown as TasksState);
     return;
   }
-  await patchSession(host as unknown as SessionsState, targetSessionKey, { mode: "task", taskId: carry.taskId });
+  await patchSession(host as unknown as SessionsState, targetSessionKey, {
+    mode: "task",
+    taskId: carry.taskId,
+  });
   host.taskCarryoverAfterChatByRun.delete(runId);
   void loadTaskModeData(host as unknown as TasksState);
+}
+
+function maybeCaptureChangeReview(
+  host: GatewayHost,
+  payload: ChatEventPayload | undefined,
+  state: ReturnType<typeof handleChatEvent>,
+) {
+  if (state !== "final") {
+    return;
+  }
+  if (!host.settings.changeReviewModeEnabled) {
+    return;
+  }
+  if (payload?.sessionKey && payload.sessionKey !== host.sessionKey) {
+    return;
+  }
+  void host.captureChangeReview?.(payload?.sessionKey ?? host.sessionKey, payload?.runId);
 }
 
 function handleTerminalChatEvent(
@@ -430,6 +472,7 @@ function handleTerminalChatEvent(
       if (completedRunId && host.chatRunId && host.chatRunId !== completedRunId) {
         return;
       }
+      maybeCaptureChangeReview(host, payload, state);
       resetToolStream(toolHost);
       flushQueue();
     });
@@ -438,6 +481,64 @@ function handleTerminalChatEvent(
   resetToolStream(toolHost);
   flushQueue();
   return false;
+}
+
+const MUTATING_AGENT_TOOL_NAMES = new Set([
+  "write",
+  "write_file",
+  "file_write",
+  "edit",
+  "edit_file",
+  "file_edit",
+  "patch",
+  "apply_patch",
+  "exec",
+  "bash",
+]);
+
+function isMutatingAgentToolName(name: string): boolean {
+  return MUTATING_AGENT_TOOL_NAMES.has(name);
+}
+
+function maybeCaptureChangeReviewFromAgentMutationEvent(
+  host: GatewayHost,
+  payload: AgentEventPayload | undefined,
+) {
+  if (!host.settings.changeReviewModeEnabled) {
+    return;
+  }
+  if (payload?.sessionKey && !doSessionKeysMatch(payload.sessionKey, host.sessionKey)) {
+    return;
+  }
+  if (!payload?.runId) {
+    return;
+  }
+  if (payload.stream === "change_review") {
+    const phase = typeof payload.data?.phase === "string" ? payload.data.phase : "";
+    if (phase === "ready") {
+      void host.captureChangeReview?.(payload.sessionKey ?? host.sessionKey, payload.runId);
+    }
+    return;
+  }
+  if (payload.stream === "patch") {
+    const phase = typeof payload.data?.phase === "string" ? payload.data.phase : "";
+    if (phase === "end") {
+      void host.captureChangeReview?.(payload.sessionKey ?? host.sessionKey, payload.runId);
+    }
+    return;
+  }
+  if (payload.stream !== "tool") {
+    return;
+  }
+  const phase = typeof payload.data?.phase === "string" ? payload.data.phase : "";
+  if (phase !== "result") {
+    return;
+  }
+  const toolName = typeof payload.data?.name === "string" ? payload.data.name : "";
+  if (!isMutatingAgentToolName(toolName)) {
+    return;
+  }
+  void host.captureChangeReview?.(payload.sessionKey ?? host.sessionKey, payload.runId);
 }
 
 function handleChatGatewayEvent(host: GatewayHost, payload: ChatEventPayload | undefined) {
@@ -459,7 +560,11 @@ function handleChatGatewayEvent(host: GatewayHost, payload: ChatEventPayload | u
   const state = handleChatEvent(host as unknown as ChatState, payload);
   const historyReloaded = handleTerminalChatEvent(host, payload, state);
   if (state === "final" && !historyReloaded && shouldReloadHistoryForFinalEvent(payload)) {
-    void loadChatHistory(host as unknown as ChatState);
+    void loadChatHistory(host as unknown as ChatState).finally(() =>
+      maybeCaptureChangeReview(host, payload, state),
+    );
+  } else {
+    maybeCaptureChangeReview(host, payload, state);
   }
 }
 
@@ -468,7 +573,7 @@ function handleSessionMessageGatewayEvent(
   payload: { sessionKey?: string } | undefined,
 ) {
   const sessionKey = payload?.sessionKey?.trim();
-  if (!sessionKey || sessionKey !== host.sessionKey) {
+  if (!sessionKey || !doSessionKeysMatch(sessionKey, host.sessionKey)) {
     return;
   }
   if (host.chatRunId) {
@@ -490,10 +595,9 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
     if (host.onboarding) {
       return;
     }
-    handleAgentEvent(
-      host as unknown as Parameters<typeof handleAgentEvent>[0],
-      evt.payload as AgentEventPayload | undefined,
-    );
+    const agentPayload = evt.payload as AgentEventPayload | undefined;
+    handleAgentEvent(host as unknown as Parameters<typeof handleAgentEvent>[0], agentPayload);
+    maybeCaptureChangeReviewFromAgentMutationEvent(host, agentPayload);
     return;
   }
 

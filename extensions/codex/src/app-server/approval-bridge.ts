@@ -45,6 +45,22 @@ export async function handleCodexAppServerApprovalRequest(params: {
     paramsForRun: params.paramsForRun,
   });
 
+  if (
+    params.paramsForRun.changeReviewModeEnabled === true &&
+    (context.kind === "exec" || context.kind === "plugin")
+  ) {
+    emitApprovalEvent(params.paramsForRun, {
+      phase: "resolved",
+      kind: context.kind,
+      status: "denied",
+      title: context.title,
+      ...context.eventDetails,
+      message:
+        "Change-review mode blocks Codex native command/file approvals so project edits stay on the staged OpenClaw tool path.",
+    });
+    return buildApprovalResponse(params.method, context.requestParams, "denied");
+  }
+
   try {
     const timeoutMs = DEFAULT_CODEX_APPROVAL_TIMEOUT_MS;
     const requestResult: ApprovalRequestResult | undefined = await callGatewayTool(

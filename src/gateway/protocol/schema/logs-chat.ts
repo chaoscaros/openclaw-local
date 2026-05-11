@@ -41,6 +41,7 @@ export const ChatSendParamsSchema = Type.Object(
     applyDreamingAssist: Type.Optional(Type.Boolean()),
     planModeEnabled: Type.Optional(Type.Boolean()),
     devSpecFirstEnabled: Type.Optional(Type.Boolean()),
+    changeReviewModeEnabled: Type.Optional(Type.Boolean()),
     originatingChannel: Type.Optional(Type.String()),
     originatingTo: Type.Optional(Type.String()),
     originatingAccountId: Type.Optional(Type.String()),
@@ -95,6 +96,59 @@ export const ChatEventSchema = Type.Object(
     ),
     usage: Type.Optional(Type.Unknown()),
     stopReason: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+const NullableString = Type.Union([Type.String(), Type.Null()]);
+
+const ChangeReviewFileSchema = Type.Object(
+  {
+    path: NonEmptyString,
+    status: NonEmptyString,
+    changeType: Type.Optional(NonEmptyString),
+    beforeContent: Type.Optional(NullableString),
+    afterContent: Type.Optional(NullableString),
+  },
+  { additionalProperties: false },
+);
+
+export const ChangeReviewSessionParamsSchema = Type.Object(
+  {
+    sessionKey: NonEmptyString,
+    runId: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+export const ChangeReviewIdParamsSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    path: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+export const ChangeReviewResultSchema = Type.Object(
+  {
+    pending: Type.Boolean(),
+    id: Type.Optional(NonEmptyString),
+    sessionKey: Type.Optional(NonEmptyString),
+    sourceRunId: Type.Optional(NonEmptyString),
+    stagedOnly: Type.Optional(Type.Boolean()),
+    createdAt: Type.Optional(Type.Integer({ minimum: 0 })),
+    updatedAt: Type.Optional(Type.Integer({ minimum: 0 })),
+    files: Type.Optional(Type.Array(ChangeReviewFileSchema)),
+    diffText: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+export const ChangeReviewActionResultSchema = Type.Object(
+  {
+    ok: Type.Boolean(),
+    applied: Type.Optional(Type.Boolean()),
+    reverted: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );

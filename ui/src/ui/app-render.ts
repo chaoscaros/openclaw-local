@@ -34,7 +34,6 @@ import {
 } from "./controllers/agents.ts";
 import { loadChannels } from "./controllers/channels.ts";
 import { loadChatHistory } from "./controllers/chat.ts";
-import { resolveSessionTask, type TaskItem } from "./controllers/tasks.ts";
 import {
   applyConfig,
   ensureAgentConfigEntry,
@@ -116,6 +115,7 @@ import {
   updateSkillEdit,
   updateSkillEnabled,
 } from "./controllers/skills.ts";
+import { resolveSessionTask, type TaskItem } from "./controllers/tasks.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
 import "./components/dashboard-header.ts";
 import { icons } from "./icons.ts";
@@ -419,7 +419,8 @@ export function renderApp(state: AppViewState) {
   const presenceCount = state.presenceEntries.length;
   const sessionsCount = state.sessionsResult?.count ?? null;
   const cronNext = state.cronStatus?.nextWakeAtMs ?? null;
-  const currentSession = state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey) ?? null;
+  const currentSession =
+    state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey) ?? null;
   const currentTask = resolveSessionTask(
     state.sessionKey,
     currentSession?.taskId ?? null,
@@ -440,14 +441,17 @@ export function renderApp(state: AppViewState) {
       existing.push(run);
       runsByJobId.set(run.jobId, existing);
     }
-    const summary: Record<string, {
-      jobCount: number;
-      latestAt?: number;
-      latestJobName?: string;
-      latestStatus?: string;
-      latestSummary?: string;
-      hasErrors?: boolean;
-    }> = {};
+    const summary: Record<
+      string,
+      {
+        jobCount: number;
+        latestAt?: number;
+        latestJobName?: string;
+        latestStatus?: string;
+        latestSummary?: string;
+        hasErrors?: boolean;
+      }
+    > = {};
     for (const job of state.cronJobs) {
       const taskId = parseTaskIdFromCronDescription(job.description);
       if (!taskId) {
@@ -456,7 +460,8 @@ export function renderApp(state: AppViewState) {
       const runs = (runsByJobId.get(job.id) ?? []).toSorted((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
       const latestRun = runs[0];
       const latestAt = latestRun?.ts ?? job.state?.lastRunAtMs ?? undefined;
-      const latestStatus = latestRun?.status ?? job.state?.lastStatus ?? job.state?.lastRunStatus ?? undefined;
+      const latestStatus =
+        latestRun?.status ?? job.state?.lastStatus ?? job.state?.lastRunStatus ?? undefined;
       const latestSummary = latestRun?.summary ?? undefined;
       const hasErrors =
         latestStatus === "error" ||
@@ -483,7 +488,7 @@ export function renderApp(state: AppViewState) {
         existing.latestStatus = latestStatus;
         existing.latestSummary = latestSummary;
       }
-      existing.hasErrors = Boolean(existing.hasErrors || hasErrors);
+      existing.hasErrors = existing.hasErrors || hasErrors;
     }
     return summary;
   };
@@ -1194,7 +1199,9 @@ export function renderApp(state: AppViewState) {
                   : state.tab === "tasks" || state.tab === "archives"
                     ? nothing
                     : html`<div class="page-title">${titleForTab(state.tab)}</div>`}
-                ${isChat || state.tab === "tasks" || state.tab === "archives" ? nothing : html`<div class="page-sub">${subtitleForTab(state.tab)}</div>`}
+                ${isChat || state.tab === "tasks" || state.tab === "archives"
+                  ? nothing
+                  : html`<div class="page-sub">${subtitleForTab(state.tab)}</div>`}
               </div>
               <div class="page-meta">
                 ${state.tab === "dreams"
@@ -2072,7 +2079,8 @@ export function renderApp(state: AppViewState) {
               onSyncProgress: (taskId) => state.syncTaskModeTaskProgress(taskId, { reload: true }),
               onCreateTodo: (taskId, input) => state.createTaskTodo(taskId, input),
               onUpdateTodo: (taskId, todoId, patch) => state.updateTaskTodo(taskId, todoId, patch),
-              onSetTodoStatus: (taskId, todoId, status) => state.setTaskTodoStatus(taskId, todoId, status),
+              onSetTodoStatus: (taskId, todoId, status) =>
+                state.setTaskTodoStatus(taskId, todoId, status),
               onDeleteTodo: (taskId, todoId) => state.deleteTaskTodo(taskId, todoId),
               onEditTask: () => undefined,
               onCreateAutomationDraft: (task) => openCronDraftFromTask(task),
@@ -2148,3 +2156,287 @@ export function renderApp(state: AppViewState) {
           : nothing}
         ${state.tab === "chat"
           ? renderChat({
+              sessionKey: state.sessionKey,
+              onSessionKeyChange: (next) => {
+                switchChatSession(state, next);
+              },
+              thinkingLevel: state.chatThinkingLevel,
+              dreamingAssistApplied: state.dreamingAssistApplied,
+              dreamingAssistReason: state.dreamingAssistReason,
+              dreamingAssistEnabled: state.settings.dreamingAssistEnabled,
+              planModeEnabled: state.settings.planModeEnabled,
+              devSpecFirstEnabled: state.settings.devSpecFirstEnabled,
+              changeReviewModeEnabled: state.settings.changeReviewModeEnabled,
+              showThinking,
+              showToolCalls,
+              loading: state.chatLoading,
+              sending: state.chatSending,
+              compactionStatus: state.compactionStatus,
+              fallbackStatus: state.fallbackStatus,
+              assistantAvatarUrl: chatAvatarUrl,
+              messages: state.chatMessages,
+              sideResult: state.chatSideResult,
+              toolMessages: state.chatToolMessages,
+              streamSegments: state.chatStreamSegments,
+              stream: state.chatStream,
+              streamStartedAt: state.chatStreamStartedAt,
+              pendingRunId: state.chatRunId,
+              draft: state.chatMessage,
+              queue: state.chatQueue,
+              pendingChangeReview: state.chatChangeReview,
+              pendingChangeReviewOpen: state.chatChangeReviewOpen,
+              pendingChangeReviewSelectedPath: state.chatChangeReviewSelectedPath,
+              pendingChangeReviewAction: state.chatChangeReviewAction,
+              connected: state.connected,
+              canSend:
+                state.connected &&
+                !state.tasksBusy &&
+                !(currentSession?.mode === "task" && !currentTask),
+              disabledReason: chatDisabledReason,
+              error: state.lastError,
+              sessions: state.sessionsResult,
+              focusMode: chatFocus,
+              sessionMode: currentSession?.mode ?? "normal",
+              currentTaskId: currentTask?.taskId ?? null,
+              currentTaskTitle: currentTask?.title ?? null,
+              currentTaskStatus: currentTask
+                ? (currentTask.effectiveStatus ?? currentTask.status)
+                : null,
+              currentTaskStep: currentTask?.flowCurrentStep ?? currentTask?.description ?? null,
+              currentTask,
+              taskItems: state.tasksItems,
+              taskOptions: state.tasksItems.map((task) => ({
+                id: task.taskId,
+                title: task.title,
+                status: task.effectiveStatus ?? task.status,
+              })),
+              onSetSessionMode: (mode) => state.setCurrentSessionMode(mode),
+              onSelectTask: (taskId) => state.setCurrentTaskForSession(taskId),
+              onOpenTasksTab: () => state.setTab("tasks"),
+              autoExpandToolCalls: false,
+              onRefresh: () => {
+                state.chatSideResult = null;
+                state.resetToolStream();
+                return Promise.all([loadChatHistory(state), refreshChatAvatar(state)]);
+              },
+              onToggleFocusMode: () => {
+                if (state.onboarding) {
+                  return;
+                }
+                state.applySettings({
+                  ...state.settings,
+                  chatFocusMode: !state.settings.chatFocusMode,
+                });
+              },
+              onToggleDreamingAssist: () => {
+                state.applySettings({
+                  ...state.settings,
+                  dreamingAssistEnabled: !state.settings.dreamingAssistEnabled,
+                });
+              },
+              onTogglePlanMode: () => {
+                state.applySettings({
+                  ...state.settings,
+                  planModeEnabled: !state.settings.planModeEnabled,
+                });
+              },
+              onToggleDevSpecFirst: () => {
+                state.applySettings({
+                  ...state.settings,
+                  devSpecFirstEnabled: !state.settings.devSpecFirstEnabled,
+                });
+              },
+              onToggleChangeReviewMode: () => {
+                state.applySettings({
+                  ...state.settings,
+                  changeReviewModeEnabled: !state.settings.changeReviewModeEnabled,
+                });
+              },
+              onChatScroll: (event) => state.handleChatScroll(event),
+              getDraft: () => state.chatMessage,
+              onDraftChange: (next) => (state.chatMessage = next),
+              onRequestUpdate: requestHostUpdate,
+              attachments: state.chatAttachments,
+              onAttachmentsChange: (next) => (state.chatAttachments = next),
+              onSend: async () => {
+                await state.handleSendChat();
+                await Promise.all([loadSessions(state), state.loadTaskModeData()]);
+              },
+              onOpenChangeReview: () => state.openChangeReview(),
+              onCloseChangeReview: () => state.closeChangeReview(),
+              onSelectChangeReviewFile: (path) => state.selectChangeReviewFile(path),
+              onApplyChangeReview: (id, path) => void state.applyChangeReview(id, path),
+              onRevertChangeReview: (id, path) => void state.revertChangeReview(id, path),
+              canAbort: Boolean(state.chatRunId),
+              onAbort: () => void state.handleAbortChat(),
+              onQueueRemove: (id) => state.removeQueuedMessage(id),
+              onDismissSideResult: () => {
+                state.chatSideResult = null;
+              },
+              onNewSession: () => state.handleSendChat("/new", { restoreDraft: true }),
+              onClearHistory: async () => {
+                if (!state.client || !state.connected) {
+                  return;
+                }
+                try {
+                  await state.client.request("sessions.reset", { key: state.sessionKey });
+                  state.chatMessages = [];
+                  state.chatSideResult = null;
+                  state.chatStream = null;
+                  state.chatRunId = null;
+                  await loadChatHistory(state);
+                } catch (err) {
+                  state.lastError = String(err);
+                }
+              },
+              agentsList: state.agentsList,
+              currentAgentId: resolvedAgentId ?? "main",
+              onAgentChange: (agentId: string) => {
+                switchChatSession(state, buildAgentMainSessionKey({ agentId }));
+              },
+              onNavigateToAgent: () => {
+                state.agentsSelectedId = resolvedAgentId;
+                state.setTab("agents" as import("./navigation.ts").Tab);
+              },
+              onSessionSelect: (key: string) => {
+                switchChatSession(state, key);
+              },
+              showNewMessages: state.chatNewMessagesBelow && !state.chatManualRefreshInFlight,
+              onScrollToBottom: () => state.scrollToBottom(),
+              // Sidebar props for tool output viewing
+              sidebarOpen: state.sidebarOpen,
+              sidebarContent: state.sidebarContent,
+              sidebarError: state.sidebarError,
+              splitRatio: state.splitRatio,
+              canvasHostUrl: state.hello?.canvasHostUrl ?? null,
+              onOpenSidebar: (content) => state.handleOpenSidebar(content),
+              onCloseSidebar: () => state.handleCloseSidebar(),
+              onSplitRatioChange: (ratio: number) => state.handleSplitRatioChange(ratio),
+              assistantName: state.assistantName,
+              assistantAvatar: state.assistantAvatar,
+              localMediaPreviewRoots: state.localMediaPreviewRoots,
+              embedSandboxMode: state.embedSandboxMode,
+              allowExternalEmbedUrls: state.allowExternalEmbedUrls,
+              assistantAttachmentAuthToken: resolveAssistantAttachmentAuthToken(state),
+              basePath: state.basePath ?? "",
+            })
+          : nothing}
+        ${renderConfigTabForActiveTab()}
+        ${state.tab === "debug"
+          ? lazyRender(lazyDebug, (m) =>
+              m.renderDebug({
+                loading: state.debugLoading,
+                status: state.debugStatus,
+                health: state.debugHealth,
+                models: state.debugModels,
+                heartbeat: state.debugHeartbeat,
+                eventLog: state.eventLog,
+                methods: (state.hello?.features?.methods ?? []).toSorted(),
+                callMethod: state.debugCallMethod,
+                callParams: state.debugCallParams,
+                callResult: state.debugCallResult,
+                callError: state.debugCallError,
+                onCallMethodChange: (next) => (state.debugCallMethod = next),
+                onCallParamsChange: (next) => (state.debugCallParams = next),
+                onRefresh: () => loadDebug(state),
+                onCall: () => callDebugMethod(state),
+              }),
+            )
+          : nothing}
+        ${state.tab === "logs"
+          ? lazyRender(lazyLogs, (m) =>
+              m.renderLogs({
+                loading: state.logsLoading,
+                error: state.logsError,
+                file: state.logsFile,
+                entries: state.logsEntries,
+                filterText: state.logsFilterText,
+                levelFilters: state.logsLevelFilters,
+                autoFollow: state.logsAutoFollow,
+                truncated: state.logsTruncated,
+                onFilterTextChange: (next) => (state.logsFilterText = next),
+                onLevelToggle: (level, enabled) => {
+                  state.logsLevelFilters = { ...state.logsLevelFilters, [level]: enabled };
+                },
+                onToggleAutoFollow: (next) => (state.logsAutoFollow = next),
+                onRefresh: () => loadLogs(state, { reset: true }),
+                onExport: (lines, label) => state.exportLogs(lines, label),
+                onScroll: (event) => state.handleLogsScroll(event),
+              }),
+            )
+          : nothing}
+        ${state.tab === "dreams"
+          ? renderDreaming({
+              active: dreamingOn,
+              shortTermCount: state.dreamingStatus?.shortTermCount ?? 0,
+              groundedSignalCount: state.dreamingStatus?.groundedSignalCount ?? 0,
+              totalSignalCount: state.dreamingStatus?.totalSignalCount ?? 0,
+              promotedCount: state.dreamingStatus?.promotedToday ?? 0,
+              phases: state.dreamingStatus?.phases ?? undefined,
+              shortTermEntries: state.dreamingStatus?.shortTermEntries ?? [],
+              promotedEntries: state.dreamingStatus?.promotedEntries ?? [],
+              latestRun: state.dreamingStatus?.lastRun ?? null,
+              dreamingOf: null,
+              nextCycle: dreamingNextCycle,
+              timezone: state.dreamingStatus?.timezone ?? null,
+              statusLoading: state.dreamingStatusLoading,
+              statusError: state.dreamingStatusError,
+              modeSaving: state.dreamingModeSaving,
+              dreamDiaryLoading: state.dreamDiaryLoading,
+              dreamDiaryActionLoading: state.dreamDiaryActionLoading,
+              dreamDiaryActionMessage: state.dreamDiaryActionMessage,
+              dreamDiaryActionArchivePath: state.dreamDiaryActionArchivePath,
+              dreamDiaryError: state.dreamDiaryError,
+              dreamDiaryPath: state.dreamDiaryPath,
+              dreamDiaryContent: state.dreamDiaryContent,
+              dreamingAssistEnabled: state.settings.dreamingAssistEnabled,
+              memoryWikiEnabled: isPluginEnabledInConfigSnapshot(
+                state.configSnapshot,
+                "memory-wiki",
+                { enabledByDefault: false },
+              ),
+              wikiImportInsightsLoading: state.wikiImportInsightsLoading,
+              wikiImportInsightsError: state.wikiImportInsightsError,
+              wikiImportInsights: state.wikiImportInsights,
+              wikiMemoryPalaceLoading: state.wikiMemoryPalaceLoading,
+              wikiMemoryPalaceError: state.wikiMemoryPalaceError,
+              wikiMemoryPalace: state.wikiMemoryPalace,
+              onRefresh: refreshDreaming,
+              onRefreshDiary: () => loadDreamDiary(state),
+              onRefreshImports: () => {
+                void (async () => {
+                  await loadConfig(state);
+                  await loadWikiImportInsights(state);
+                })();
+              },
+              onToggleDreamingAssist: () => {
+                state.applySettings({
+                  ...state.settings,
+                  dreamingAssistEnabled: !state.settings.dreamingAssistEnabled,
+                });
+              },
+              onRefreshMemoryPalace: () => {
+                void (async () => {
+                  await loadConfig(state);
+                  await loadWikiMemoryPalace(state);
+                })();
+              },
+              onOpenConfig: () => openConfigFile(state),
+              onOpenWikiPage: (lookup: string) => openWikiPage(lookup),
+              onRunNow: () => runDreamingNow(state),
+              onBackfillDiary: () => backfillDreamDiary(state),
+              onCopyDreamingArchivePath: () => {
+                void copyDreamingArchivePath(state);
+              },
+              onDedupeDreamDiary: () => dedupeDreamDiary(state),
+              onResetDiary: () => resetDreamDiary(state),
+              onResetGroundedShortTerm: () => resetGroundedShortTerm(state),
+              onRepairDreamingArtifacts: () => repairDreamingArtifacts(state),
+              onRequestUpdate: requestHostUpdate,
+            })
+          : nothing}
+      </main>
+      ${renderExecApprovalPrompt(state)} ${renderGatewayUrlConfirmation(state)} ${nothing}
+    </div>
+  `;
+}

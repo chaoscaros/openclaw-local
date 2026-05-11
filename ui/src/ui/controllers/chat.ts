@@ -1,3 +1,4 @@
+import { toAgentRequestSessionKey } from "../../../../src/routing/session-key.js";
 import { resetToolStream } from "../app-tool-stream.ts";
 import { extractText } from "../chat/message-extract.ts";
 import { formatConnectError } from "../connect-error.ts";
@@ -17,6 +18,18 @@ const STARTUP_CHAT_HISTORY_RETRY_TIMEOUT_MS = 60_000;
 const STARTUP_CHAT_HISTORY_DEFAULT_RETRY_MS = 500;
 const STARTUP_CHAT_HISTORY_MAX_RETRY_MS = 5_000;
 const chatHistoryRequestVersions = new WeakMap<object, number>();
+
+function doSessionKeysMatch(a: string | undefined | null, b: string | undefined | null): boolean {
+  const left = (a ?? "").trim();
+  const right = (b ?? "").trim();
+  if (!left || !right) {
+    return left === right;
+  }
+  if (left === right) {
+    return true;
+  }
+  return toAgentRequestSessionKey(left) === toAgentRequestSessionKey(right);
+}
 
 function beginChatHistoryRequest(state: ChatState): number {
   const key = state as object;
@@ -80,7 +93,10 @@ function extractComparableMessageText(message: unknown): string {
   return typeof text === "string" ? text.trim() : "";
 }
 
-function mergeOptimisticMessages(historyMessages: unknown[], existingMessages: unknown[]): unknown[] {
+function mergeOptimisticMessages(
+  historyMessages: unknown[],
+  existingMessages: unknown[],
+): unknown[] {
   const merged = [...historyMessages];
   const existing = Array.isArray(existingMessages) ? existingMessages : [];
   for (const message of existing) {
@@ -149,6 +165,8 @@ export type ChatState = {
   dreamingAssistEnabled?: boolean;
   planModeEnabled?: boolean;
   devSpecFirstEnabled?: boolean;
+  changeReviewModeEnabled?: boolean;
+  loadChangeReviewStatus?: (sessionKey?: string) => Promise<void>;
   dreamingAssistApplied?: boolean | null;
   dreamingAssistReason?: DreamingAssistReason | null;
   chatLoading: boolean;
@@ -236,6 +254,7 @@ export async function loadChatHistory(state: ChatState) {
     state.chatStreamStartedAt = null;
     state.dreamingAssistApplied = null;
     state.dreamingAssistReason = null;
+    await state.loadChangeReviewStatus?.(sessionKey);
   } catch (err) {
     if (!shouldApplyChatHistoryResult(state, requestVersion, sessionKey)) {
       return;
@@ -290,6 +309,7 @@ async function requestChatSend(
       dreamingAssistEnabled?: boolean;
       planModeEnabled?: boolean;
       devSpecFirstEnabled?: boolean;
+      changeReviewModeEnabled?: boolean;
     };
   };
   const dreamingAssistEnabled =
@@ -297,13 +317,16 @@ async function requestChatSend(
   const planModeEnabled = state.planModeEnabled ?? settingsState.settings?.planModeEnabled ?? false;
   const devSpecFirstEnabled =
     state.devSpecFirstEnabled ?? settingsState.settings?.devSpecFirstEnabled ?? false;
+  const changeReviewModeEnabled =
+    state.changeReviewModeEnabled ?? settingsState.settings?.changeReviewModeEnabled ?? false;
   return await state.client!.request("chat.send", {
     sessionKey: state.sessionKey,
     message: params.message,
     deliver: false,
-    applyDreamingAssist: dreamingAssistEnabled !== false,
+    applyDreamingAssist: dreamingAssistEnabled,
     planModeEnabled,
     devSpecFirstEnabled,
+    changeReviewModeEnabled,
     idempotencyKey: params.runId,
     attachments: buildApiAttachments(params.attachments),
   });
@@ -415,7 +438,8 @@ export async function sendChatMessage(
   try {
     const response = await requestChatSend(state, { message: msg, attachments, runId });
     state.dreamingAssistApplied = response?.dreamingAssistApplied === true;
-    state.dreamingAssistReason = response?.dreamingAssistApplied === true ? null : (response?.dreamingAssistReason ?? null);
+    state.dreamingAssistReason =
+      response?.dreamingAssistApplied === true ? null : (response?.dreamingAssistReason ?? null);
     return runId;
   } catch (err) {
     const error = formatConnectError(err);
@@ -482,7 +506,7 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
   if (!payload) {
     return null;
   }
-  if (payload.sessionKey !== state.sessionKey) {
+  if (!doSessionKeysMatch(payload.sessionKey, state.sessionKey)) {
     return null;
   }
 

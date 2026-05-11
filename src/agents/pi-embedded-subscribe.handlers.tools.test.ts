@@ -1,5 +1,6 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resetChangeReviewStoreForTest } from "../gateway/change-review-store.js";
 import type { MessagingToolSend } from "./pi-embedded-messaging.types.js";
 import {
   handleToolExecutionEnd,
@@ -13,7 +14,7 @@ import type {
 type ToolExecutionStartEvent = Extract<AgentEvent, { type: "tool_execution_start" }>;
 type ToolExecutionEndEvent = Extract<AgentEvent, { type: "tool_execution_end" }>;
 
-function createTestContext(): {
+function createTestContext(overrides?: { sessionKey?: string; agentId?: string; runId?: string }): {
   ctx: ToolHandlerContext;
   warn: ReturnType<typeof vi.fn>;
   onBlockReplyFlush: ReturnType<typeof vi.fn>;
@@ -24,7 +25,9 @@ function createTestContext(): {
   const warn = vi.fn();
   const ctx: ToolHandlerContext = {
     params: {
-      runId: "run-test",
+      runId: overrides?.runId ?? "run-test",
+      sessionKey: overrides?.sessionKey ?? "agent:solo:main",
+      agentId: overrides?.agentId ?? "main",
       onBlockReplyFlush,
       onAgentEvent,
       onToolResult: undefined,
@@ -65,6 +68,10 @@ function createTestContext(): {
 
   return { ctx, warn, onBlockReplyFlush, onAgentEvent };
 }
+
+beforeEach(() => {
+  resetChangeReviewStoreForTest();
+});
 
 describe("handleToolExecutionStart read path checks", () => {
   it("does not warn when read tool uses file_path alias", async () => {
@@ -795,6 +802,59 @@ describe("handleToolExecutionEnd derived tool events", () => {
           modified: ["b.ts"],
           deleted: ["c.ts"],
           summary: "1 added, 1 modified, 1 deleted",
+        }),
+      }),
+    );
+  });
+
+  it("emits change_review ready when write/edit return staged preview results", async () => {
+    const { ctx, onAgentEvent } = createTestContext();
+
+    await handleToolExecutionStart(
+      ctx as never,
+      {
+        type: "tool_execution_start",
+        toolName: "write",
+        toolCallId: "tool-preview-1",
+        args: { path: "supply_vue/.gitignore", content: ".ai/\n# staged\n" },
+      } as never,
+    );
+
+    await handleToolExecutionEnd(
+      ctx as never,
+      {
+        type: "tool_execution_end",
+        toolName: "write",
+        toolCallId: "tool-preview-1",
+        isError: false,
+        result: {
+          details: {
+            changeReviewPreview: {
+              toolName: "write",
+              files: [
+                {
+                  path: "supply_vue/.gitignore",
+                  absolutePath: "/tmp/supply_vue/.gitignore",
+                  changeType: "modified",
+                  beforeContent: ".ai/\n",
+                  afterContent: ".ai/\n# staged\n",
+                  diffText: "diff --git a/supply_vue/.gitignore b/supply_vue/.gitignore",
+                },
+              ],
+            },
+          },
+        },
+      } as never,
+    );
+
+    expect(onAgentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stream: "change_review",
+        data: expect.objectContaining({
+          phase: "ready",
+          files: [
+            expect.objectContaining({ path: "supply_vue/.gitignore", changeType: "modified" }),
+          ],
         }),
       }),
     );

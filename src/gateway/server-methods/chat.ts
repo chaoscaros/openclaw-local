@@ -35,6 +35,7 @@ import {
   isWebchatClient,
   normalizeMessageChannel,
 } from "../../utils/message-channel.js";
+import { setChangeReviewRunMode } from "../change-review-run-mode.js";
 import {
   abortChatRunById,
   type ChatAbortControllerEntry,
@@ -1407,7 +1408,10 @@ type DreamingAssistanceResolution = {
 type PlanningModeResolution = {
   planModeEnabled?: boolean;
   devSpecFirstEnabled?: boolean;
+  changeReviewModeEnabled?: boolean;
 };
+
+type PlanningModeIntent = "conversation" | "planning" | "dev_spec" | "dev_execute";
 
 function resolveDreamingAssistance(params: {
   cfg: ReturnType<typeof loadConfig>;
@@ -1429,22 +1433,26 @@ function resolveDreamingAssistance(params: {
       at?: unknown;
       learningSummary?: { assistanceStrategy?: unknown; sessionKey?: unknown; taskId?: unknown };
     };
-    const strategy = typeof raw.learningSummary?.assistanceStrategy === "string"
-      ? raw.learningSummary.assistanceStrategy.trim()
-      : "";
+    const strategy =
+      typeof raw.learningSummary?.assistanceStrategy === "string"
+        ? raw.learningSummary.assistanceStrategy.trim()
+        : "";
     if (!strategy) {
       return { reason: "no_strategy" };
     }
     const runAtMs = typeof raw.at === "string" ? Date.parse(raw.at) : Number.NaN;
-    if (!Number.isFinite(runAtMs) || Date.now() - runAtMs > DREAMING_ASSISTANCE_STRATEGY_MAX_AGE_MS) {
+    if (
+      !Number.isFinite(runAtMs) ||
+      Date.now() - runAtMs > DREAMING_ASSISTANCE_STRATEGY_MAX_AGE_MS
+    ) {
       return { reason: "expired" };
     }
-    const scopedSessionKey = typeof raw.learningSummary?.sessionKey === "string"
-      ? raw.learningSummary.sessionKey.trim()
-      : "";
-    const scopedTaskId = typeof raw.learningSummary?.taskId === "string"
-      ? raw.learningSummary.taskId.trim()
-      : "";
+    const scopedSessionKey =
+      typeof raw.learningSummary?.sessionKey === "string"
+        ? raw.learningSummary.sessionKey.trim()
+        : "";
+    const scopedTaskId =
+      typeof raw.learningSummary?.taskId === "string" ? raw.learningSummary.taskId.trim() : "";
     const matchesSession = !scopedSessionKey || scopedSessionKey === params.sessionKey;
     const matchesTask = !scopedTaskId || (params.taskId?.trim() ?? "") === scopedTaskId;
     if (!matchesSession || !matchesTask) {
@@ -1502,6 +1510,64 @@ function isLikelyDevelopmentRequest(message: string): boolean {
   return developmentHints.some((hint) => normalized.includes(hint));
 }
 
+function hasExplicitExecutionDirective(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  const executionHints = [
+    "直接开发",
+    "直接改代码",
+    "直接改",
+    "应用修改",
+    "应用补丁",
+    "开始写",
+    "发送给执行层",
+    "apply modification",
+    "apply patch",
+    "start coding",
+    "just do it",
+  ];
+  return executionHints.some((hint) => normalized.includes(hint));
+}
+
+function isLikelyPlanningRequest(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  const planningHints = [
+    "给方案",
+    "先分析",
+    "分析一下",
+    "帮我规划",
+    "给步骤",
+    "先整理",
+    "怎么做",
+    "先不要改",
+    "先别改",
+    "plan this",
+    "analyze",
+    "analysis",
+    "steps",
+    "proposal",
+  ];
+  return planningHints.some((hint) => normalized.includes(hint));
+}
+
+function classifyPlanningModeIntent(message: string): PlanningModeIntent {
+  if (!message.trim()) {
+    return "conversation";
+  }
+  if (isLikelyDevelopmentRequest(message)) {
+    return hasExplicitExecutionDirective(message) ? "dev_execute" : "dev_spec";
+  }
+  if (isLikelyPlanningRequest(message)) {
+    return "planning";
+  }
+  return "conversation";
+}
+
 function injectPlanningModeGuidance(message: string, resolution: PlanningModeResolution): string {
   const normalizedMessage = message.trim();
   if (!normalizedMessage || normalizedMessage.startsWith("/")) {
@@ -1509,16 +1575,25 @@ function injectPlanningModeGuidance(message: string, resolution: PlanningModeRes
   }
   const planModeEnabled = resolution.planModeEnabled === true;
   const devSpecFirstEnabled = resolution.devSpecFirstEnabled === true;
-  if (!planModeEnabled && !devSpecFirstEnabled) {
-    return message;
+  const changeReviewModeEnabled = resolution.changeReviewModeEnabled === true;
+  const intent = classifyPlanningModeIntent(normalizedMessage);
+  let next = message;
+  if (devSpecFirstEnabled && intent === "dev_spec") {
+    next = `${next}
+
+[规格优先模式已开启：这是开发类请求。先进入规格整理模式，不要直接开发、不要假设已修改文件。先输出完整规格，至少包含：任务描述、文件路径、改动范围、禁改区域、复用要求、实现约束、输出要求、验收标准。输出完规格后，明确要求用户回复“直接开发”或“应用修改”后才进入执行。]`;
   }
-  if (devSpecFirstEnabled && isLikelyDevelopmentRequest(normalizedMessage)) {
-    return `${message}\n\n[规格优先模式已开启：这是开发类请求。先进入规格整理模式，不要直接开发、不要假设已修改文件。先输出完整规格，至少包含：任务描述、文件路径、改动范围、禁改区域、复用要求、实现约束、输出要求、验收标准。输出完规格后，明确要求用户回复“直接开发”或“应用修改”后才进入执行。]`;
+  if (planModeEnabled && (intent === "planning" || intent === "dev_spec")) {
+    next = `${next}
+
+[计划模式已开启：优先先给出简洁、可执行的计划或分析，不要直接声称已经执行完成。若这是开发请求，优先先整理步骤、边界与验证方式，再决定是否进入执行。]`;
   }
-  if (planModeEnabled) {
-    return `${message}\n\n[计划模式已开启：优先先给出简洁、可执行的计划或分析，不要直接声称已经执行完成。若这是开发请求，优先先整理步骤、边界与验证方式，再决定是否进入执行。]`;
+  if (changeReviewModeEnabled && intent === "dev_execute") {
+    next = `${next}
+
+[改动确认模式已开启：仅当本轮发生项目文件修改时，才进入待确认改动流程。完成本轮最小修改后立即停止；不要继续扩展改动，不要执行 git add / commit / push。由界面展示本轮改动摘要，等待用户决定“应用”或“还原”。]`;
   }
-  return message;
+  return next;
 }
 
 function normalizeExplicitChatSendOrigin(
@@ -1910,6 +1985,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       applyDreamingAssist?: boolean;
       planModeEnabled?: boolean;
       devSpecFirstEnabled?: boolean;
+      changeReviewModeEnabled?: boolean;
       originatingChannel?: string;
       originatingTo?: string;
       originatingAccountId?: string;
@@ -2071,7 +2147,9 @@ export const chatHandlers: GatewayRequestHandlers = {
         imageOrder = routeImageOffloadsAsMediaPaths ? [] : parsed.imageOrder;
         offloadedRefs = parsed.offloadedRefs;
         if (routeImageOffloadsAsMediaPaths) {
-          const imageOffloadedRefs = parsed.offloadedRefs.filter((ref) => ref.mimeType.startsWith("image/"));
+          const imageOffloadedRefs = parsed.offloadedRefs.filter((ref) =>
+            ref.mimeType.startsWith("image/"),
+          );
           mediaPathOffloadPaths = imageOffloadedRefs.map((ref) => ref.path);
           mediaPathOffloadTypes = imageOffloadedRefs.map((ref) => ref.mimeType);
           parsedImages = [];
@@ -2108,6 +2186,13 @@ export const chatHandlers: GatewayRequestHandlers = {
         applyDreamingAssist: p.applyDreamingAssist,
       });
       const dreamingAssistStrategy = dreamingAssist.strategy;
+      setChangeReviewRunMode({
+        runId: clientRunId,
+        enabled:
+          p.changeReviewModeEnabled === true &&
+          classifyPlanningModeIntent(parsedMessage) === "dev_execute",
+        sessionKey,
+      });
       const ackPayload = {
         runId: clientRunId,
         status: "started" as const,
@@ -2131,12 +2216,14 @@ export const chatHandlers: GatewayRequestHandlers = {
       const baseMessageForAgent = systemProvenanceReceipt
         ? [systemProvenanceReceipt, parsedMessage].filter(Boolean).join("\n\n")
         : parsedMessage;
-      const messageWithDreamingAssist = p.applyDreamingAssist === false
-        ? baseMessageForAgent
-        : injectDreamingAssistanceStrategy(baseMessageForAgent, dreamingAssistStrategy);
+      const messageWithDreamingAssist =
+        p.applyDreamingAssist === false
+          ? baseMessageForAgent
+          : injectDreamingAssistanceStrategy(baseMessageForAgent, dreamingAssistStrategy);
       const messageForAgent = injectPlanningModeGuidance(messageWithDreamingAssist, {
         planModeEnabled: p.planModeEnabled,
         devSpecFirstEnabled: p.devSpecFirstEnabled,
+        changeReviewModeEnabled: p.changeReviewModeEnabled,
       });
       const clientInfo = client?.connect?.client;
       const {
@@ -2328,6 +2415,9 @@ export const chatHandlers: GatewayRequestHandlers = {
         dispatcher,
         replyOptions: {
           runId: clientRunId,
+          changeReviewModeEnabled:
+            p.changeReviewModeEnabled === true &&
+            classifyPlanningModeIntent(parsedMessage) === "dev_execute",
           abortSignal: abortController.signal,
           images: parsedImages.length > 0 ? parsedImages : undefined,
           imageOrder: imageOrder.length > 0 ? imageOrder : undefined,
