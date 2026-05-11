@@ -275,4 +275,60 @@ describe("OpenClawApp change review methods", () => {
     );
     expect(loadChangeReviewStatus).toHaveBeenCalledTimes(1);
   });
+
+  it("applyChangeReviewHunk sends the hunk request and refreshes review status", async () => {
+    const request = vi.fn().mockResolvedValue({ ok: true, applied: true });
+    const loadChangeReviewStatus = vi.fn().mockResolvedValue(undefined);
+    const host = {
+      client: { request },
+      connected: true,
+      sessionKey: "main",
+      lastError: null,
+      loadChangeReviewStatus,
+      chatChangeReviewAction: null,
+    } as unknown as OpenClawApp;
+
+    await OpenClawApp.prototype.applyChangeReviewHunk.call(
+      host,
+      "review-1",
+      "src/demo.ts",
+      "hunk-1-1-1",
+    );
+
+    expect(request).toHaveBeenCalledWith("changeReview.applyHunk", {
+      id: "review-1",
+      path: "src/demo.ts",
+      hunkId: "hunk-1-1-1",
+    });
+    expect(loadChangeReviewStatus).toHaveBeenCalledTimes(1);
+    expect((host as unknown as { chatChangeReviewAction: unknown }).chatChangeReviewAction).toBeNull();
+  });
+
+  it("revertChangeReviewHunk reloads chat history after reverting a hunk", async () => {
+    const request = vi.fn().mockResolvedValue({ ok: true, reverted: true });
+    const loadChangeReviewStatus = vi.fn().mockResolvedValue(undefined);
+    const host = {
+      client: { request },
+      connected: true,
+      sessionKey: "main",
+      lastError: null,
+      loadChangeReviewStatus,
+      chatChangeReviewAction: null,
+    } as unknown as OpenClawApp;
+
+    await OpenClawApp.prototype.revertChangeReviewHunk.call(
+      host,
+      "review-1",
+      "src/demo.ts",
+      "hunk-1-1-1",
+    );
+
+    expect(request).toHaveBeenCalledWith("changeReview.revertHunk", {
+      id: "review-1",
+      path: "src/demo.ts",
+      hunkId: "hunk-1-1-1",
+    });
+    expect(loadChangeReviewStatus).toHaveBeenCalledTimes(1);
+    expect(loadChatHistoryMock).toHaveBeenCalledWith(host);
+  });
 });

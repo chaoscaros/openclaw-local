@@ -104,6 +104,11 @@ type GatewayHost = {
   chatRunId: string | null;
   refreshSessionsAfterChat: Set<string>;
   taskCarryoverAfterChatByRun: Map<string, { taskId: string; sourceSessionKey: string }>;
+  devExecuteCarryoverAfterChatByRun: Map<
+    string,
+    { changeReviewModeEnabled: boolean; sourceSessionKey: string; allowSameSession?: boolean }
+  >;
+  resumedDevExecuteBySessionKey: Map<string, { changeReviewModeEnabled: boolean; remainingTurns: number }>;
   execApprovalQueue: ExecApprovalRequest[];
   execApprovalError: string | null;
   updateAvailable: UpdateAvailable | null;
@@ -416,6 +421,31 @@ export async function continueTaskBindingAfterSessionRefresh(
   void loadTaskModeData(host as unknown as TasksState);
 }
 
+export function continueDevExecuteAfterSessionRefresh(
+  host: GatewayHost,
+  runId: string,
+  eventSessionKey: string | undefined,
+) {
+  const carry = host.devExecuteCarryoverAfterChatByRun.get(runId);
+  if (!carry) {
+    return;
+  }
+  const normalizedEventSessionKey = eventSessionKey?.trim() || "";
+  const targetSessionKey =
+    normalizedEventSessionKey &&
+    (normalizedEventSessionKey !== carry.sourceSessionKey || carry.allowSameSession === true)
+      ? normalizedEventSessionKey
+      : "";
+  host.devExecuteCarryoverAfterChatByRun.delete(runId);
+  if (!targetSessionKey || carry.changeReviewModeEnabled !== true) {
+    return;
+  }
+  host.resumedDevExecuteBySessionKey.set(targetSessionKey, {
+    changeReviewModeEnabled: true,
+    remainingTurns: 1,
+  });
+}
+
 function maybeCaptureChangeReview(
   host: GatewayHost,
   payload: ChatEventPayload | undefined,
@@ -456,9 +486,13 @@ function handleTerminalChatEvent(
     if (state === "final") {
       void loadSessions(host as unknown as SessionsState, {
         activeMinutes: CHAT_SESSIONS_ACTIVE_MINUTES,
-      }).then(() => continueTaskBindingAfterSessionRefresh(host, runId, payload?.sessionKey));
+      }).then(() => {
+        continueDevExecuteAfterSessionRefresh(host, runId, payload?.sessionKey);
+        return continueTaskBindingAfterSessionRefresh(host, runId, payload?.sessionKey);
+      });
     } else {
       host.taskCarryoverAfterChatByRun.delete(runId);
+      host.devExecuteCarryoverAfterChatByRun.delete(runId);
     }
   }
   if (payload?.sessionKey === host.sessionKey) {

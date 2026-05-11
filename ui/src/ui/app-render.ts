@@ -2267,6 +2267,10 @@ export function renderApp(state: AppViewState) {
               onSelectChangeReviewFile: (path) => state.selectChangeReviewFile(path),
               onApplyChangeReview: (id, path) => void state.applyChangeReview(id, path),
               onRevertChangeReview: (id, path) => void state.revertChangeReview(id, path),
+              onApplyChangeReviewHunk: (id, path, hunkId) =>
+                void state.applyChangeReviewHunk(id, path, hunkId),
+              onRevertChangeReviewHunk: (id, path, hunkId) =>
+                void state.revertChangeReviewHunk(id, path, hunkId),
               canAbort: Boolean(state.chatRunId),
               onAbort: () => void state.handleAbortChat(),
               onQueueRemove: (id) => state.removeQueuedMessage(id),

@@ -56,6 +56,10 @@ export type ChatHost = {
   updateComplete?: Promise<unknown>;
   refreshSessionsAfterChat: Set<string>;
   taskCarryoverAfterChatByRun: Map<string, { taskId: string; sourceSessionKey: string }>;
+  devExecuteCarryoverAfterChatByRun: Map<
+    string,
+    { changeReviewModeEnabled: boolean; sourceSessionKey: string; allowSameSession?: boolean }
+  >;
   chatSubmitGuards?: Map<string, Promise<void>>;
   /** Callback for slash-command side effects that need app-level access. */
   onSlashAction?: (action: string) => void;
@@ -202,6 +206,20 @@ async function sendChatMessageNow(
       const map = host.taskCarryoverAfterChatByRun ?? new Map<string, { taskId: string; sourceSessionKey: string }>();
       map.set(runId, { taskId: currentTaskId, sourceSessionKey: host.sessionKey });
       host.taskCarryoverAfterChatByRun = map;
+    }
+    if (host.settings.changeReviewModeEnabled) {
+      const map =
+        host.devExecuteCarryoverAfterChatByRun ??
+        new Map<
+          string,
+          { changeReviewModeEnabled: boolean; sourceSessionKey: string; allowSameSession?: boolean }
+        >();
+      map.set(runId, {
+        changeReviewModeEnabled: true,
+        sourceSessionKey: host.sessionKey,
+        allowSameSession: true,
+      });
+      host.devExecuteCarryoverAfterChatByRun = map;
     }
   }
   return ok;

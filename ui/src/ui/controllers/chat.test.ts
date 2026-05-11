@@ -718,6 +718,28 @@ describe("sendChatMessage", () => {
     expect(state.chatMessages).toHaveLength(1);
   });
 
+  it("sends resumeDevExecute when the session has one carried-over dev execute turn", async () => {
+    const request = vi.fn().mockResolvedValue({});
+    const consumeResumedDevExecuteForSession = vi.fn().mockReturnValue(true);
+    const state = createState({
+      connected: true,
+      client: { request } as unknown as ChatState["client"],
+      changeReviewModeEnabled: true,
+      consumeResumedDevExecuteForSession,
+    });
+
+    await sendChatMessage(state, "继续修这个问题");
+
+    expect(consumeResumedDevExecuteForSession).toHaveBeenCalledWith("main", "继续修这个问题");
+    expect(request).toHaveBeenCalledWith(
+      "chat.send",
+      expect.objectContaining({
+        changeReviewModeEnabled: true,
+        resumeDevExecute: true,
+      }),
+    );
+  });
+
   it("stores whether dreaming assistance was applied from chat.send ack", async () => {
     const request = vi.fn().mockResolvedValue({ dreamingAssistApplied: true });
     const state = createState({

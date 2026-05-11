@@ -1409,6 +1409,7 @@ type PlanningModeResolution = {
   planModeEnabled?: boolean;
   devSpecFirstEnabled?: boolean;
   changeReviewModeEnabled?: boolean;
+  resumeDevExecute?: boolean;
 };
 
 type PlanningModeIntent = "conversation" | "planning" | "dev_spec" | "dev_execute";
@@ -1568,6 +1569,21 @@ function classifyPlanningModeIntent(message: string): PlanningModeIntent {
   return "conversation";
 }
 
+function resolvePlanningModeIntent(
+  message: string,
+  resolution: PlanningModeResolution,
+): PlanningModeIntent {
+  const intent = classifyPlanningModeIntent(message);
+  if (
+    intent === "dev_spec" &&
+    resolution.changeReviewModeEnabled === true &&
+    resolution.resumeDevExecute === true
+  ) {
+    return "dev_execute";
+  }
+  return intent;
+}
+
 function injectPlanningModeGuidance(message: string, resolution: PlanningModeResolution): string {
   const normalizedMessage = message.trim();
   if (!normalizedMessage || normalizedMessage.startsWith("/")) {
@@ -1576,7 +1592,7 @@ function injectPlanningModeGuidance(message: string, resolution: PlanningModeRes
   const planModeEnabled = resolution.planModeEnabled === true;
   const devSpecFirstEnabled = resolution.devSpecFirstEnabled === true;
   const changeReviewModeEnabled = resolution.changeReviewModeEnabled === true;
-  const intent = classifyPlanningModeIntent(normalizedMessage);
+  const intent = resolvePlanningModeIntent(normalizedMessage, resolution);
   let next = message;
   if (devSpecFirstEnabled && intent === "dev_spec") {
     next = `${next}
@@ -1986,6 +2002,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       planModeEnabled?: boolean;
       devSpecFirstEnabled?: boolean;
       changeReviewModeEnabled?: boolean;
+      resumeDevExecute?: boolean;
       originatingChannel?: string;
       originatingTo?: string;
       originatingAccountId?: string;
@@ -2186,11 +2203,17 @@ export const chatHandlers: GatewayRequestHandlers = {
         applyDreamingAssist: p.applyDreamingAssist,
       });
       const dreamingAssistStrategy = dreamingAssist.strategy;
+      const planningModeResolution: PlanningModeResolution = {
+        planModeEnabled: p.planModeEnabled,
+        devSpecFirstEnabled: p.devSpecFirstEnabled,
+        changeReviewModeEnabled: p.changeReviewModeEnabled,
+        resumeDevExecute: p.resumeDevExecute,
+      };
       setChangeReviewRunMode({
         runId: clientRunId,
         enabled:
           p.changeReviewModeEnabled === true &&
-          classifyPlanningModeIntent(parsedMessage) === "dev_execute",
+          resolvePlanningModeIntent(parsedMessage, planningModeResolution) === "dev_execute",
         sessionKey,
       });
       const ackPayload = {
@@ -2220,11 +2243,10 @@ export const chatHandlers: GatewayRequestHandlers = {
         p.applyDreamingAssist === false
           ? baseMessageForAgent
           : injectDreamingAssistanceStrategy(baseMessageForAgent, dreamingAssistStrategy);
-      const messageForAgent = injectPlanningModeGuidance(messageWithDreamingAssist, {
-        planModeEnabled: p.planModeEnabled,
-        devSpecFirstEnabled: p.devSpecFirstEnabled,
-        changeReviewModeEnabled: p.changeReviewModeEnabled,
-      });
+      const messageForAgent = injectPlanningModeGuidance(
+        messageWithDreamingAssist,
+        planningModeResolution,
+      );
       const clientInfo = client?.connect?.client;
       const {
         originatingChannel,

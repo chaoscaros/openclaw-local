@@ -42,6 +42,7 @@ export const ChatSendParamsSchema = Type.Object(
     planModeEnabled: Type.Optional(Type.Boolean()),
     devSpecFirstEnabled: Type.Optional(Type.Boolean()),
     changeReviewModeEnabled: Type.Optional(Type.Boolean()),
+    resumeDevExecute: Type.Optional(Type.Boolean()),
     originatingChannel: Type.Optional(Type.String()),
     originatingTo: Type.Optional(Type.String()),
     originatingAccountId: Type.Optional(Type.String()),
@@ -102,6 +103,20 @@ export const ChatEventSchema = Type.Object(
 
 const NullableString = Type.Union([Type.String(), Type.Null()]);
 
+const ChangeReviewHunkSchema = Type.Object(
+  {
+    hunkId: NonEmptyString,
+    changeType: NonEmptyString,
+    beforeStartLine: Type.Integer({ minimum: 0 }),
+    beforeEndLine: Type.Integer({ minimum: 0 }),
+    afterStartLine: Type.Integer({ minimum: 0 }),
+    afterEndLine: Type.Integer({ minimum: 0 }),
+    beforeLines: Type.Array(Type.String()),
+    afterLines: Type.Array(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
 const ChangeReviewFileSchema = Type.Object(
   {
     path: NonEmptyString,
@@ -109,6 +124,7 @@ const ChangeReviewFileSchema = Type.Object(
     changeType: Type.Optional(NonEmptyString),
     beforeContent: Type.Optional(NullableString),
     afterContent: Type.Optional(NullableString),
+    hunks: Type.Optional(Type.Array(ChangeReviewHunkSchema)),
   },
   { additionalProperties: false },
 );
@@ -125,6 +141,15 @@ export const ChangeReviewIdParamsSchema = Type.Object(
   {
     id: NonEmptyString,
     path: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+export const ChangeReviewHunkParamsSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    path: NonEmptyString,
+    hunkId: NonEmptyString,
   },
   { additionalProperties: false },
 );

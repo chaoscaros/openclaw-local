@@ -210,6 +210,8 @@ function createProps(overrides: Partial<ChatProps> = {}): ChatProps {
     onSelectChangeReviewFile: () => undefined,
     onApplyChangeReview: () => undefined,
     onRevertChangeReview: () => undefined,
+    onApplyChangeReviewHunk: () => undefined,
+    onRevertChangeReviewHunk: () => undefined,
     onQueueRemove: () => undefined,
     onDismissSideResult: () => undefined,
     onNewSession: () => undefined,
@@ -3151,5 +3153,71 @@ describe("chat view", () => {
     expect(onSelectChangeReviewFile).toHaveBeenCalledWith("src/extra.ts");
     expect(onApplyChangeReview).not.toHaveBeenCalled();
     expect(onRevertChangeReview).not.toHaveBeenCalled();
+  });
+
+  it("renders hunk-level actions and dispatches hunk apply", async () => {
+    const container = document.createElement("div");
+    const onApplyChangeReviewHunk = vi.fn();
+    render(
+      renderChat(
+        createProps({
+          pendingChangeReview: {
+            pending: true,
+            id: "review-hunk-1",
+            updatedAt: Date.now(),
+            files: [
+              {
+                path: "src/demo.ts",
+                status: "modified",
+                changeType: "modified",
+                beforeContent: "const a = 1;\nconst b = 2;\nconst c = 3;\n",
+                afterContent: "const a = 1;\nconst b = 20;\nconst c = 30;\n",
+                hunks: [
+                  {
+                    hunkId: "hunk-1-2-2",
+                    changeType: "modified",
+                    beforeStartLine: 2,
+                    beforeEndLine: 2,
+                    afterStartLine: 2,
+                    afterEndLine: 2,
+                    beforeLines: ["const b = 2;"],
+                    afterLines: ["const b = 20;"],
+                  },
+                  {
+                    hunkId: "hunk-2-3-3",
+                    changeType: "modified",
+                    beforeStartLine: 3,
+                    beforeEndLine: 3,
+                    afterStartLine: 3,
+                    afterEndLine: 3,
+                    beforeLines: ["const c = 3;"],
+                    afterLines: ["const c = 30;"],
+                  },
+                ],
+              },
+            ],
+          },
+          pendingChangeReviewOpen: true,
+          pendingChangeReviewSelectedPath: "src/demo.ts",
+          onApplyChangeReviewHunk,
+        }),
+      ),
+      container,
+    );
+    await flushTasks();
+
+    expect(container.textContent ?? "").toContain("应用此块");
+    expect(container.textContent ?? "").toContain("改动块 #1-2-2");
+
+    const hunkApplyButton = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent?.includes("应用此块"),
+    );
+    expect(hunkApplyButton).toBeTruthy();
+    hunkApplyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onApplyChangeReviewHunk).toHaveBeenCalledWith(
+      "review-hunk-1",
+      "src/demo.ts",
+      "hunk-1-2-2",
+    );
   });
 });

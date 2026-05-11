@@ -3,6 +3,7 @@ import { GATEWAY_EVENT_UPDATE_AVAILABLE } from "../../../src/gateway/events.js";
 import { ConnectErrorDetailCodes } from "../../../src/gateway/protocol/connect-error-details.js";
 import {
   connectGateway,
+  continueDevExecuteAfterSessionRefresh,
   continueTaskBindingAfterSessionRefresh,
   resolveControlUiClientVersion,
 } from "./app-gateway.ts";
@@ -202,6 +203,14 @@ function createHost(): TestGatewayHost {
     toolStreamSyncTimer: null,
     refreshSessionsAfterChat: new Set<string>(),
     taskCarryoverAfterChatByRun: new Map<string, { taskId: string; sourceSessionKey: string }>(),
+    devExecuteCarryoverAfterChatByRun: new Map<
+      string,
+      { changeReviewModeEnabled: boolean; sourceSessionKey: string; allowSameSession?: boolean }
+    >(),
+    resumedDevExecuteBySessionKey: new Map<
+      string,
+      { changeReviewModeEnabled: boolean; remainingTurns: number }
+    >(),
     chatSideResultTerminalRuns: new Set<string>(),
     execApprovalQueue: [],
     execApprovalError: null,
@@ -1067,6 +1076,54 @@ describe("connectGateway", () => {
     await Promise.resolve();
 
     expect(host.captureChangeReview).not.toHaveBeenCalled();
+  });
+});
+
+describe("continueDevExecuteAfterSessionRefresh", () => {
+  it("marks the refreshed session for one resumed dev-execute turn", () => {
+    const host = createHost();
+    host.devExecuteCarryoverAfterChatByRun.set("run-dev-1", {
+      changeReviewModeEnabled: true,
+      sourceSessionKey: "main",
+    });
+
+    continueDevExecuteAfterSessionRefresh(host, "run-dev-1", "session-refreshed");
+
+    expect(host.devExecuteCarryoverAfterChatByRun.has("run-dev-1")).toBe(false);
+    expect(host.resumedDevExecuteBySessionKey.get("session-refreshed")).toEqual({
+      changeReviewModeEnabled: true,
+      remainingTurns: 1,
+    });
+  });
+
+  it("does not carry dev-execute onto the same source session by default", () => {
+    const host = createHost();
+    host.devExecuteCarryoverAfterChatByRun.set("run-dev-2", {
+      changeReviewModeEnabled: true,
+      sourceSessionKey: "main",
+    });
+
+    continueDevExecuteAfterSessionRefresh(host, "run-dev-2", "main");
+
+    expect(host.devExecuteCarryoverAfterChatByRun.has("run-dev-2")).toBe(false);
+    expect(host.resumedDevExecuteBySessionKey.size).toBe(0);
+  });
+
+  it("allows dev-execute carryover on reset-in-place sessions when explicitly flagged", () => {
+    const host = createHost();
+    host.devExecuteCarryoverAfterChatByRun.set("run-dev-3", {
+      changeReviewModeEnabled: true,
+      sourceSessionKey: "main",
+      allowSameSession: true,
+    });
+
+    continueDevExecuteAfterSessionRefresh(host, "run-dev-3", "main");
+
+    expect(host.devExecuteCarryoverAfterChatByRun.has("run-dev-3")).toBe(false);
+    expect(host.resumedDevExecuteBySessionKey.get("main")).toEqual({
+      changeReviewModeEnabled: true,
+      remainingTurns: 1,
+    });
   });
 });
 

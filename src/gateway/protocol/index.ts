@@ -64,6 +64,7 @@ import {
   type CommandsListResult,
   CommandsListResultSchema,
   ChangeReviewActionResultSchema,
+  ChangeReviewHunkParamsSchema,
   ChangeReviewIdParamsSchema,
   ChangeReviewResultSchema,
   ChangeReviewSessionParamsSchema,
@@ -509,6 +510,7 @@ export const validateChatAbortParams = ajv.compile<ChatAbortParams>(ChatAbortPar
 export const validateChatInjectParams = ajv.compile<ChatInjectParams>(ChatInjectParamsSchema);
 export const validateChangeReviewSessionParams = ajv.compile(ChangeReviewSessionParamsSchema);
 export const validateChangeReviewIdParams = ajv.compile(ChangeReviewIdParamsSchema);
+export const validateChangeReviewHunkParams = ajv.compile(ChangeReviewHunkParamsSchema);
 export const validateChangeReviewResult = ajv.compile(ChangeReviewResultSchema);
 export const validateChangeReviewActionResult = ajv.compile(ChangeReviewActionResultSchema);
 export const validateChatEvent = ajv.compile(ChatEventSchema);

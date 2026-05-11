@@ -76,6 +76,10 @@ function makeHost(overrides?: Partial<ChatHost>): ChatHost {
     chatModelCatalog: [],
     refreshSessionsAfterChat: new Set<string>(),
     taskCarryoverAfterChatByRun: new Map<string, { taskId: string; sourceSessionKey: string }>(),
+    devExecuteCarryoverAfterChatByRun: new Map<
+      string,
+      { changeReviewModeEnabled: boolean; sourceSessionKey: string; allowSameSession?: boolean }
+    >(),
     updateComplete: Promise.resolve(),
     toolStreamById: new Map(),
     toolStreamOrder: [],
@@ -407,6 +411,35 @@ describe("handleSendChat", () => {
       }),
     );
     expect(host.chatAttachments).toEqual([]);
+  });
+
+  it("stores reset-in-place dev-execute carryover metadata when /new succeeds in change-review mode", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "chat.send") {
+        return {};
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    const host = makeHost({
+      client: { request } as unknown as ChatHost["client"],
+      chatMessage: "/new",
+      sessionKey: "main",
+      settings: {
+        ...makeHost().settings,
+        changeReviewModeEnabled: true,
+      },
+    });
+
+    await handleSendChat(host);
+
+    expect(host.refreshSessionsAfterChat.size).toBe(1);
+    const [[runId, carry]] = Array.from(host.devExecuteCarryoverAfterChatByRun.entries());
+    expect(runId).toBeTruthy();
+    expect(carry).toEqual({
+      changeReviewModeEnabled: true,
+      sourceSessionKey: "main",
+      allowSameSession: true,
+    });
   });
 
   it("shows a visible pending item for /steer on the active run", async () => {

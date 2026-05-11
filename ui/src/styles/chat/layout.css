@@ -319,26 +319,10 @@
 }
 
 .chat-change-review-modal__compare {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
   min-height: 0;
 }
 
-.chat-change-review-modal__column {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: 0;
-}
-
-.chat-change-review-modal__column-title {
-  margin-bottom: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.chat-change-review-modal__code {
+.chat-change-review-modal__compare-grid {
   min-height: 0;
   overflow: auto;
   border: 1px solid var(--border);
@@ -347,11 +331,75 @@
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.45;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+}
+
+.chat-change-review-modal__grid-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--panel) 94%, var(--bg-elevated));
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-change-review-modal__grid-empty {
+  padding: 18px;
+  color: var(--muted);
+}
+
+.chat-change-review-modal__hunk-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel) 94%);
+}
+
+.chat-change-review-modal__hunk-title {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chat-change-review-modal__hunk-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.chat-change-review-modal__hunk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.chat-change-review-modal__grid-row {
+  display: contents;
 }
 
 .chat-change-review-modal__code-row {
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr);
+}
+
+.chat-change-review-modal__grid-row.is-in-hunk .chat-change-review-modal__code-row {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.btn--small {
+  min-height: 28px;
+  padding: 4px 10px;
+  font-size: 12px;
 }
 
 .chat-change-review-modal__line-number,

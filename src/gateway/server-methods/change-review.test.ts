@@ -67,6 +67,45 @@ describe("changeReviewHandlers V2", () => {
     });
   });
 
+  it("captures externally-targeted files instead of dropping them when they resolve outside repoRoot", async () => {
+    const workspace = await createWorkspace();
+    const detachedRoot = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-change-review-detached-"));
+    const detachedFilePath = path.join(detachedRoot, "supply_vue/.gitignore");
+    await fs.mkdir(path.dirname(detachedFilePath), { recursive: true });
+    await fs.writeFile(detachedFilePath, ".ai/\n", "utf-8");
+
+    await beginToolMutationCapture({
+      sessionKey: "agent:solo:main",
+      runId: "run-detached",
+      toolCallId: "tool-detached",
+      workspaceDir: workspace,
+      repoRoot: workspace,
+      filePaths: [detachedFilePath],
+    });
+    await fs.writeFile(detachedFilePath, ".ai/\n# detached\n", "utf-8");
+    await finishToolMutationCapture({
+      sessionKey: "agent:solo:main",
+      runId: "run-detached",
+      toolCallId: "tool-detached",
+      fileStatuses: [{ path: detachedFilePath, changeType: "modified" }],
+    });
+
+    await changeReviewHandlers["changeReview.capture"]({
+      req: { id: "req-detached" } as never,
+      params: { sessionKey: "agent:solo:main", runId: "run-detached" },
+      respond: ((ok: boolean, result?: { pending?: boolean; files?: Array<{ path?: string }> }) => {
+        expect(ok).toBe(true);
+        expect(result?.pending).toBe(true);
+        expect(result?.files).toEqual([
+          expect.objectContaining({ path: detachedFilePath.split(path.sep).join("/") }),
+        ]);
+      }) as unknown as RespondFn,
+      context: {} as never,
+      client: null,
+      isWebchatConnect: () => false,
+    });
+  });
+
   it("serializes only the changed hunk so unrelated existing lines are not shown as this-run additions", async () => {
     const workspace = await createWorkspace();
     const gitignorePath = path.join(workspace, "supply_vue/.gitignore");
@@ -307,18 +346,91 @@ describe("changeReviewHandlers V2", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(await fs.readFile(fileA, "utf-8")).toBe(".ai/\n# apply-a\n");
-    await changeReviewHandlers["changeReview.status"]({
+    await changeReviewHandlers["changeReview.capture"]({
       req: { id: "req-file-status" } as never,
-      params: { sessionKey: "agent:solo:main" },
+      params: { sessionKey: "agent:solo:main", runId: "run-file-ops" },
       respond: ((ok: boolean, result?: { files?: Array<{ path: string }> }) => {
         expect(ok).toBe(true);
-        expect(result?.files).toHaveLength(1);
-        expect(result?.files?.[0]).toMatchObject({ path: "supply_vue/review.txt" });
+        expect(result?.files).toEqual([expect.objectContaining({ path: "supply_vue/review.txt" })]);
       }) as unknown as RespondFn,
       context: {} as never,
       client: null,
       isWebchatConnect: () => false,
     });
+  });
+
+  it("applies and reverts individual hunks while leaving sibling hunks pending", async () => {
+    const workspace = await createWorkspace();
+    const filePath = path.join(workspace, "supply_vue/.gitignore");
+    await fs.writeFile(filePath, ".ai/\nbase\n", "utf-8");
+    const bundle = createVirtualReviewBundle({
+      sessionKey: "agent:solo:main",
+      runId: "run-hunk-ops",
+      workspaceDir: workspace,
+      repoRoot: workspace,
+      files: [
+        {
+          path: "supply_vue/.gitignore",
+          absolutePath: filePath,
+          changeType: "modified",
+          beforeContent: ".ai/\nbase\n",
+          afterContent: ".ai/\nbase\naccept-a\naccept-b\n",
+          diffText: "diff --git a/supply_vue/.gitignore b/supply_vue/.gitignore",
+        },
+      ],
+    });
+    const firstHunkId = bundle!.files[0]!.hunks[0]!.hunkId;
+
+    await changeReviewHandlers["changeReview.applyHunk"]({
+      req: { id: "req-hunk-apply" } as never,
+      params: { id: bundle!.reviewId, path: "supply_vue/.gitignore", hunkId: firstHunkId },
+      respond: ((ok: boolean, result?: unknown) => {
+        expect(ok).toBe(true);
+        expect(result).toEqual({ ok: true, applied: true });
+      }) as unknown as RespondFn,
+      context: {} as never,
+      client: null,
+      isWebchatConnect: () => false,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await changeReviewHandlers["changeReview.capture"]({
+      req: { id: "req-hunk-status" } as never,
+      params: { sessionKey: "agent:solo:main", runId: "run-hunk-ops" },
+      respond: ((ok: boolean, result?: { files?: Array<{ hunks?: Array<{ hunkId: string }> }> }) => {
+        expect(ok).toBe(true);
+        expect(result?.files?.[0]?.hunks).toHaveLength(1);
+      }) as unknown as RespondFn,
+      context: {} as never,
+      client: null,
+      isWebchatConnect: () => false,
+    });
+
+    const remainingHunkId = bundle!.files[0]!.hunks[0]!.hunkId;
+    await changeReviewHandlers["changeReview.revertHunk"]({
+      req: { id: "req-hunk-revert" } as never,
+      params: { id: bundle!.reviewId, path: "supply_vue/.gitignore", hunkId: remainingHunkId },
+      respond: ((ok: boolean, result?: unknown) => {
+        expect(ok).toBe(true);
+        expect(result).toEqual({ ok: true, reverted: true });
+      }) as unknown as RespondFn,
+      context: {} as never,
+      client: null,
+      isWebchatConnect: () => false,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await changeReviewHandlers["changeReview.capture"]({
+      req: { id: "req-hunk-finished" } as never,
+      params: { sessionKey: "agent:solo:main", runId: "run-hunk-ops" },
+      respond: ((ok: boolean, result?: unknown) => {
+        expect(ok).toBe(true);
+        expect(result).toEqual({ pending: false });
+      }) as unknown as RespondFn,
+      context: {} as never,
+      client: null,
+      isWebchatConnect: () => false,
+    });
+    expect(await fs.readFile(filePath, "utf-8")).toBe(".ai/\nbase\naccept-a\n");
   });
 });

@@ -50,14 +50,26 @@ import { renderMarkdownSidebar } from "./markdown-sidebar.ts";
 import "../components/resizable-divider.ts";
 
 type DreamingAssistReason = "disabled" | "no_strategy" | "scope_mismatch" | "expired";
+type ChangeReviewHunk = {
+  hunkId: string;
+  changeType: string;
+  beforeStartLine: number;
+  beforeEndLine: number;
+  afterStartLine: number;
+  afterEndLine: number;
+  beforeLines: string[];
+  afterLines: string[];
+};
+
 type ChangeReviewFile = {
   path: string;
   status: string;
   changeType?: string;
   beforeContent?: string | null;
   afterContent?: string | null;
+  hunks?: ChangeReviewHunk[];
 };
-type ChangeReviewAction = { type: "apply" | "revert"; path?: string | null };
+type ChangeReviewAction = { type: "apply" | "revert"; path?: string | null; hunkId?: string | null };
 
 function renderDreamingAssistReason(reason?: DreamingAssistReason | null): string {
   switch (reason) {
@@ -160,6 +172,8 @@ export type ChatProps = {
   onSelectChangeReviewFile?: (path: string) => void;
   onApplyChangeReview?: (id: string, path?: string) => void;
   onRevertChangeReview?: (id: string, path?: string) => void;
+  onApplyChangeReviewHunk?: (id: string, path: string, hunkId: string) => void;
+  onRevertChangeReviewHunk?: (id: string, path: string, hunkId: string) => void;
   onAbort?: () => void;
   onQueueRemove: (id: string) => void;
   onDismissSideResult?: () => void;
@@ -339,39 +353,97 @@ function buildChangeReviewCompareRows(file: ChangeReviewFile): ChangeReviewCompa
   return rows;
 }
 
-function renderChangeReviewColumn(
-  rows: ChangeReviewCompareRow[],
-  side: "left" | "right",
-  label: string,
-  emptyText: string,
-) {
-  return html`<div class="chat-change-review-modal__column">
-    <div class="chat-change-review-modal__column-title">${label}</div>
-    <div class="chat-change-review-modal__code" role="document" aria-label=${label}>
-      ${rows.length === 0
-        ? html`<div class="chat-change-review-modal__empty">${emptyText}</div>`
-        : rows.map((row) => {
-            const number = side === "left" ? row.leftNumber : row.rightNumber;
-            const text = side === "left" ? row.leftText : row.rightText;
-            const kind = side === "left" ? row.leftKind : row.rightKind;
-            return html`<div
-              class="chat-change-review-modal__code-row chat-change-review-modal__code-row--${kind}"
-            >
-              <span class="chat-change-review-modal__line-number">${number ?? ""}</span>
-              <span class="chat-change-review-modal__line-text">${text || " "}</span>
-            </div>`;
-          })}
-    </div>
-  </div>`;
+function resolveChangeReviewRowHunk(
+  file: ChangeReviewFile,
+  row: ChangeReviewCompareRow,
+): ChangeReviewHunk | null {
+  const hunks = file.hunks ?? [];
+  return (
+    hunks.find((hunk) => {
+      const inBeforeRange =
+        row.leftNumber != null &&
+        row.leftKind !== "context" &&
+        row.leftNumber >= hunk.beforeStartLine &&
+        row.leftNumber <= hunk.beforeEndLine;
+      const inAfterRange =
+        row.rightNumber != null &&
+        row.rightKind !== "context" &&
+        row.rightNumber >= hunk.afterStartLine &&
+        row.rightNumber <= hunk.afterEndLine;
+      return inBeforeRange || inAfterRange;
+    }) ?? null
+  );
 }
 
-function renderChangeReviewCompare(file: ChangeReviewFile) {
+function renderChangeReviewCompare(file: ChangeReviewFile, props: ChatProps) {
   const rows = buildChangeReviewCompareRows(file);
   const beforeEmptyText = file.changeType === "added" ? "变更前文件不存在" : "无内容";
   const afterEmptyText = file.changeType === "deleted" ? "该文件将被删除" : "无内容";
-  return html`<div class="chat-change-review-modal__compare">
-    ${renderChangeReviewColumn(rows, "left", "变更前", beforeEmptyText)}
-    ${renderChangeReviewColumn(rows, "right", "变更后", afterEmptyText)}
+  const action = props.pendingChangeReviewAction ?? null;
+  const busy = action !== null;
+  const reviewId = props.pendingChangeReview?.id ?? "";
+  let previousHunkId: string | null = null;
+  return html`<div class="chat-change-review-modal__compare-grid" role="document" aria-label="变更详情">
+    <div class="chat-change-review-modal__grid-header">变更前</div>
+    <div class="chat-change-review-modal__grid-header">变更后</div>
+    ${rows.length === 0
+      ? html`<div class="chat-change-review-modal__grid-empty">${beforeEmptyText}</div>
+          <div class="chat-change-review-modal__grid-empty">${afterEmptyText}</div>`
+      : rows.map((row) => {
+          const hunk = resolveChangeReviewRowHunk(file, row);
+          const shouldRenderHunkHeader = hunk && hunk.hunkId !== previousHunkId;
+          previousHunkId = hunk?.hunkId ?? null;
+          return html`${shouldRenderHunkHeader
+              ? html`<div class="chat-change-review-modal__hunk-header">
+                  <div>
+                    <div class="chat-change-review-modal__hunk-title">
+                      改动块 ${hunk!.hunkId.replace(/^hunk-/, "#")}
+                    </div>
+                    <div class="chat-change-review-modal__hunk-meta">
+                      ${renderChangeReviewStatusLabel(hunk!.changeType)} · 前 ${hunk!.beforeStartLine}-${hunk!
+                        .beforeEndLine || hunk!.beforeStartLine} / 后 ${hunk!.afterStartLine}-${hunk!
+                        .afterEndLine || hunk!.afterStartLine}
+                    </div>
+                  </div>
+                  <div class="chat-change-review-modal__hunk-actions">
+                    <button
+                      class="btn btn--small"
+                      type="button"
+                      ?disabled=${busy}
+                      @click=${() => props.onApplyChangeReviewHunk?.(reviewId, file.path, hunk!.hunkId)}
+                    >
+                      ${action?.type === "apply" && action.path === file.path && action.hunkId === hunk!.hunkId
+                        ? "应用中..."
+                        : "应用此块"}
+                    </button>
+                    <button
+                      class="btn btn--ghost btn--small"
+                      type="button"
+                      ?disabled=${busy}
+                      @click=${() => props.onRevertChangeReviewHunk?.(reviewId, file.path, hunk!.hunkId)}
+                    >
+                      ${action?.type === "revert" && action.path === file.path && action.hunkId === hunk!.hunkId
+                        ? "还原中..."
+                        : "还原此块"}
+                    </button>
+                  </div>
+                </div>`
+              : nothing}
+            <div class="chat-change-review-modal__grid-row ${hunk ? "is-in-hunk" : ""}">
+              <div
+                class="chat-change-review-modal__code-row chat-change-review-modal__code-row--${row.leftKind}"
+              >
+                <span class="chat-change-review-modal__line-number">${row.leftNumber ?? ""}</span>
+                <span class="chat-change-review-modal__line-text">${row.leftText || " "}</span>
+              </div>
+              <div
+                class="chat-change-review-modal__code-row chat-change-review-modal__code-row--${row.rightKind}"
+              >
+                <span class="chat-change-review-modal__line-number">${row.rightNumber ?? ""}</span>
+                <span class="chat-change-review-modal__line-text">${row.rightText || " "}</span>
+              </div>
+            </div>`;
+        })}
   </div>`;
 }
 
@@ -483,7 +555,7 @@ function renderChangeReviewModal(props: ChatProps) {
                     </button>
                   </div>
                 </div>
-                ${renderChangeReviewCompare(selectedFile)}
+                ${renderChangeReviewCompare(selectedFile, props)}
               `
             : html`<div class="chat-change-review-modal__empty">没有可查看的文件</div>`}
         </div>

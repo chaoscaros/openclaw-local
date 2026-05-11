@@ -144,6 +144,16 @@ type ChangeReviewPayload = {
     changeType?: string;
     beforeContent?: string | null;
     afterContent?: string | null;
+    hunks?: Array<{
+      hunkId: string;
+      changeType: string;
+      beforeStartLine: number;
+      beforeEndLine: number;
+      afterStartLine: number;
+      afterEndLine: number;
+      beforeLines: string[];
+      afterLines: string[];
+    }>;
   }>;
   diffText?: string;
   sourceRunId?: string;
@@ -244,23 +254,12 @@ export class OpenClawApp extends LitElement {
   @state() chatModelCatalog: ModelCatalogEntry[] = [];
   @state() chatQueue: ChatQueueItem[] = [];
   @state() chatAttachments: ChatAttachment[] = [];
-  @state() chatChangeReview: {
-    pending: boolean;
-    id?: string;
-    createdAt?: number;
-    updatedAt?: number;
-    files?: Array<{
-      path: string;
-      status: string;
-      changeType?: string;
-      beforeContent?: string | null;
-      afterContent?: string | null;
-    }>;
-    diffText?: string;
-  } | null = null;
+  @state() chatChangeReview: ChangeReviewPayload | null = null;
   @state() chatChangeReviewOpen = false;
   @state() chatChangeReviewSelectedPath: string | null = null;
-  @state() chatChangeReviewAction: { type: "apply" | "revert"; path?: string | null } | null = null;
+  @state() chatChangeReviewAction:
+    | { type: "apply" | "revert"; path?: string | null; hunkId?: string | null }
+    | null = null;
   @state() chatManualRefreshInFlight = false;
   @state() navDrawerOpen = false;
 
@@ -597,6 +596,14 @@ export class OpenClawApp extends LitElement {
   private toolStreamOrder: string[] = [];
   refreshSessionsAfterChat = new Set<string>();
   taskCarryoverAfterChatByRun = new Map<string, { taskId: string; sourceSessionKey: string }>();
+  devExecuteCarryoverAfterChatByRun = new Map<
+    string,
+    { changeReviewModeEnabled: boolean; sourceSessionKey: string }
+  >();
+  resumedDevExecuteBySessionKey = new Map<
+    string,
+    { changeReviewModeEnabled: boolean; remainingTurns: number }
+  >();
   chatSideResultTerminalRuns = new Set<string>();
   basePath = "";
   private popStateHandler = () =>
@@ -846,6 +853,19 @@ export class OpenClawApp extends LitElement {
     }
   }
 
+  consumeResumedDevExecuteForSession(sessionKey: string, _message: string): boolean {
+    const entry = this.resumedDevExecuteBySessionKey.get(sessionKey);
+    if (!entry || entry.changeReviewModeEnabled !== true) {
+      return false;
+    }
+    if (entry.remainingTurns <= 1) {
+      this.resumedDevExecuteBySessionKey.delete(sessionKey);
+    } else {
+      entry.remainingTurns -= 1;
+    }
+    return true;
+  }
+
   openChangeReview() {
     if (!this.chatChangeReview?.pending) {
       return;
@@ -886,6 +906,23 @@ export class OpenClawApp extends LitElement {
     }
   }
 
+  async applyChangeReviewHunk(id: string, path: string, hunkId: string) {
+    if (!this.client || !this.connected) {
+      return;
+    }
+    this.lastError = null;
+    this.chatChangeReviewAction = { type: "apply", path, hunkId };
+    try {
+      await this.client.request("changeReview.applyHunk", { id, path, hunkId });
+      await this.loadChangeReviewStatus();
+    } catch (err) {
+      this.lastError = `应用待确认改动块失败：${String(err)}`;
+      await this.loadChangeReviewStatus();
+    } finally {
+      this.chatChangeReviewAction = null;
+    }
+  }
+
   async revertChangeReview(id: string, path?: string) {
     if (!this.client || !this.connected) {
       return;
@@ -903,6 +940,24 @@ export class OpenClawApp extends LitElement {
       await loadChatHistory(this as unknown as Parameters<typeof loadChatHistory>[0]);
     } catch (err) {
       this.lastError = `还原待确认改动失败：${String(err)}`;
+      await this.loadChangeReviewStatus();
+    } finally {
+      this.chatChangeReviewAction = null;
+    }
+  }
+
+  async revertChangeReviewHunk(id: string, path: string, hunkId: string) {
+    if (!this.client || !this.connected) {
+      return;
+    }
+    this.lastError = null;
+    this.chatChangeReviewAction = { type: "revert", path, hunkId };
+    try {
+      await this.client.request("changeReview.revertHunk", { id, path, hunkId });
+      await this.loadChangeReviewStatus();
+      await loadChatHistory(this as unknown as Parameters<typeof loadChatHistory>[0]);
+    } catch (err) {
+      this.lastError = `还原待确认改动块失败：${String(err)}`;
       await this.loadChangeReviewStatus();
     } finally {
       this.chatChangeReviewAction = null;

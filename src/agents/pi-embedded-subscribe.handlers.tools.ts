@@ -359,7 +359,9 @@ function emitChangeReviewReadyEvent(
   });
 }
 
-function readChangeReviewPreview(result: unknown): ChangeReviewBundle["files"] | null {
+function readChangeReviewPreview(
+  result: unknown,
+): Array<Omit<ChangeReviewBundle["files"][number], "hunks"> & { hunks?: ChangeReviewBundle["files"][number]["hunks"] }> | null {
   const details =
     result && typeof result === "object" ? (result as { details?: unknown }).details : undefined;
   const preview =
@@ -398,6 +400,7 @@ function readChangeReviewPreview(result: unknown): ChangeReviewBundle["files"] |
             ? record.afterContent
             : null,
         diffText: record.diffText,
+        hunks: [],
       },
     ];
   });

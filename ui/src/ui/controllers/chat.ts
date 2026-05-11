@@ -166,6 +166,7 @@ export type ChatState = {
   planModeEnabled?: boolean;
   devSpecFirstEnabled?: boolean;
   changeReviewModeEnabled?: boolean;
+  consumeResumedDevExecuteForSession?: (sessionKey: string, message: string) => boolean;
   loadChangeReviewStatus?: (sessionKey?: string) => Promise<void>;
   dreamingAssistApplied?: boolean | null;
   dreamingAssistReason?: DreamingAssistReason | null;
@@ -319,6 +320,8 @@ async function requestChatSend(
     state.devSpecFirstEnabled ?? settingsState.settings?.devSpecFirstEnabled ?? false;
   const changeReviewModeEnabled =
     state.changeReviewModeEnabled ?? settingsState.settings?.changeReviewModeEnabled ?? false;
+  const resumeDevExecute =
+    state.consumeResumedDevExecuteForSession?.(state.sessionKey, params.message) === true;
   return await state.client!.request("chat.send", {
     sessionKey: state.sessionKey,
     message: params.message,
@@ -327,6 +330,7 @@ async function requestChatSend(
     planModeEnabled,
     devSpecFirstEnabled,
     changeReviewModeEnabled,
+    resumeDevExecute,
     idempotencyKey: params.runId,
     attachments: buildApiAttachments(params.attachments),
   });

@@ -1,6 +1,11 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resetChangeReviewStoreForTest } from "../gateway/change-review-store.js";
+import {
+  getPendingReviewBySessionAndRun,
+  resetChangeReviewStoreForTest,
+} from "../gateway/change-review-store.js";
 import type { MessagingToolSend } from "./pi-embedded-messaging.types.js";
 import {
   handleToolExecutionEnd,
@@ -858,6 +863,63 @@ describe("handleToolExecutionEnd derived tool events", () => {
         }),
       }),
     );
+  });
+
+  it("captures exec-written absolute paths outside the tool repoRoot into change review", async () => {
+    const { ctx, onAgentEvent } = createTestContext();
+    const detachedRootBase = path.join(process.cwd(), ".tmp-change-review-tests");
+    await fs.mkdir(detachedRootBase, { recursive: true });
+    const detachedRoot = await fs.mkdtemp(path.join(detachedRootBase, "openclaw-exec-review-"));
+    const detachedFile = path.join(detachedRoot, "supply_vue/.gitignore");
+    await fs.mkdir(path.dirname(detachedFile), { recursive: true });
+    await fs.writeFile(detachedFile, ".ai/\n", "utf-8");
+
+    try {
+      await handleToolExecutionStart(
+        ctx as never,
+        {
+          type: "tool_execution_start",
+          toolName: "exec",
+          toolCallId: "tool-exec-external-review",
+          args: { command: `printf '\n# external\n' >> ${JSON.stringify(detachedFile)}` },
+        } as never,
+      );
+
+      await fs.writeFile(detachedFile, ".ai/\n# external\n", "utf-8");
+
+      await handleToolExecutionEnd(
+        ctx as never,
+        {
+          type: "tool_execution_end",
+          toolName: "exec",
+          toolCallId: "tool-exec-external-review",
+          isError: false,
+          result: {
+            details: {
+              status: "completed",
+              aggregated: "ok",
+              exitCode: 0,
+              cwd: "/tmp/openclaw-agent-workspace",
+            },
+          },
+        } as never,
+      );
+
+      expect(onAgentEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stream: "change_review",
+          data: expect.objectContaining({
+            phase: "ready",
+            files: [expect.objectContaining({ path: detachedFile.split(path.sep).join("/") })],
+          }),
+        }),
+      );
+      expect(getPendingReviewBySessionAndRun("agent:solo:main", "run-test")).toMatchObject({
+        files: [expect.objectContaining({ path: detachedFile.split(path.sep).join("/") })],
+      });
+    } finally {
+      await fs.rm(detachedRoot, { recursive: true, force: true });
+    }
   });
 });
 

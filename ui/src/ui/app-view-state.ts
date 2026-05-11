@@ -429,6 +429,11 @@ export type AppViewState = {
     client: GatewayBrowserClient | null;
     refreshSessionsAfterChat: Set<string>;
     taskCarryoverAfterChatByRun: Map<string, { taskId: string; sourceSessionKey: string }>;
+    devExecuteCarryoverAfterChatByRun: Map<
+      string,
+      { changeReviewModeEnabled: boolean; sourceSessionKey: string }
+    >;
+    resumedDevExecuteBySessionKey: Map<string, { changeReviewModeEnabled: boolean; remainingTurns: number }>;
     connect: () => void;
     setTab: (tab: Tab) => void;
     setTheme: (theme: ThemeName, context?: ThemeTransitionContext) => void;
