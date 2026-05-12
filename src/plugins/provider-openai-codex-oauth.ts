@@ -1,5 +1,6 @@
 import { loginOpenAICodex, type OAuthCredentials } from "@mariozechner/pi-ai/oauth";
 import { ensureGlobalUndiciEnvProxyDispatcher } from "../infra/net/undici-global-dispatcher.js";
+import { hasEnvHttpProxyConfigured } from "../infra/net/proxy-env.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { WizardPrompter } from "../wizard/prompts.js";
 import { createVpsAwareOAuthHandlers } from "./provider-oauth-flow.js";
@@ -10,6 +11,27 @@ import {
 
 const manualInputPromptMessage = "Paste the authorization code (or full redirect URL):";
 const openAICodexOAuthOriginator = "openclaw";
+
+function isOpenAICodexTokenExchangeFailure(error: unknown): boolean {
+  const message = String(error ?? "");
+  return /token exchange failed/i.test(message) || /unsupported_country_region_territory/i.test(message);
+}
+
+function formatOpenAICodexTokenExchangeHint(env: NodeJS.ProcessEnv = process.env): string {
+  const lines = [
+    "OpenAI Codex OAuth reached the browser callback, but the token exchange failed.",
+    "This is often caused by proxy/network handling during the backend /oauth/token request rather than a real account-region restriction.",
+  ];
+  if (!hasEnvHttpProxyConfigured("https", env)) {
+    lines.push(
+      "If this machine needs a proxy, retry with NODE_USE_ENV_PROXY=1 plus HTTP_PROXY/HTTPS_PROXY set in the shell before running the login command.",
+    );
+  }
+  lines.push(
+    "If the official Codex CLI can log in on this machine, OpenClaw can import ~/.codex/auth.json as a fallback on the next login attempt.",
+  );
+  return lines.join("\n");
+}
 
 export async function loginOpenAICodexOAuth(params: {
   prompter: WizardPrompter;
@@ -74,6 +96,11 @@ export async function loginOpenAICodexOAuth(params: {
   } catch (err) {
     spin.stop("OpenAI OAuth failed");
     runtime.error(String(err));
+    if (isOpenAICodexTokenExchangeFailure(err)) {
+      const hint = formatOpenAICodexTokenExchangeHint(process.env);
+      runtime.error(hint);
+      await prompter.note(hint, "OAuth token exchange");
+    }
     await prompter.note("Trouble with OAuth? See https://docs.openclaw.ai/start/faq", "OAuth help");
     throw err;
   }

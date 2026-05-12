@@ -1,10 +1,26 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const refreshOpenAICodexTokenMock = vi.hoisted(() => vi.fn());
+const loginOpenAICodexOAuthMock = vi.hoisted(() => vi.fn());
+const readOpenAICodexCliOAuthProfileMock = vi.hoisted(() => vi.fn());
 
 vi.mock("./openai-codex-provider.runtime.js", () => ({
   refreshOpenAICodexToken: refreshOpenAICodexTokenMock,
 }));
+
+vi.mock("openclaw/plugin-sdk/provider-auth-login", () => ({
+  loginOpenAICodexOAuth: loginOpenAICodexOAuthMock,
+}));
+
+vi.mock("./openai-codex-cli-auth.js", async () => {
+  const actual = await vi.importActual<typeof import("./openai-codex-cli-auth.js")>(
+    "./openai-codex-cli-auth.js",
+  );
+  return {
+    ...actual,
+    readOpenAICodexCliOAuthProfile: readOpenAICodexCliOAuthProfileMock,
+  };
+});
 
 let buildOpenAICodexProviderPlugin: typeof import("./openai-codex-provider.js").buildOpenAICodexProviderPlugin;
 
@@ -15,6 +31,8 @@ describe("openai codex provider", () => {
 
   beforeEach(() => {
     refreshOpenAICodexTokenMock.mockReset();
+    loginOpenAICodexOAuthMock.mockReset();
+    readOpenAICodexCliOAuthProfileMock.mockReset();
   });
 
   it("falls back to the cached credential when accountId extraction fails", async () => {
@@ -84,6 +102,46 @@ describe("openai codex provider", () => {
       }),
     ).toBe(
       "Deprecated profile. Run `openclaw models auth login --provider openai-codex` or `openclaw configure`.",
+    );
+  });
+
+  it("falls back to the existing Codex CLI auth file when OAuth login fails", async () => {
+    const provider = buildOpenAICodexProviderPlugin();
+    loginOpenAICodexOAuthMock.mockRejectedValueOnce(new Error("Token exchange failed"));
+    readOpenAICodexCliOAuthProfileMock.mockReturnValueOnce({
+      profileId: "openai-codex:default",
+      credential: {
+        type: "oauth",
+        provider: "openai-codex",
+        access: "cli-access",
+        refresh: "cli-refresh",
+        expires: Date.now() + 60_000,
+        email: "cli@example.com",
+      },
+    });
+
+    const prompter = { note: vi.fn(async () => {}) };
+    const result = await provider.auth[0]?.run({
+      agentDir: "/tmp/agent",
+      env: process.env,
+      prompter,
+      runtime: { log: vi.fn(), error: vi.fn(), exit: vi.fn() },
+      isRemote: false,
+      openUrl: async () => {},
+    } as never);
+
+    expect(result).toMatchObject({
+      defaultModel: "openai/gpt-5.5",
+      profiles: [
+        {
+          profileId: "openai-codex:default",
+          credential: expect.objectContaining({ access: "cli-access", refresh: "cli-refresh" }),
+        },
+      ],
+    });
+    expect(prompter.note).toHaveBeenCalledWith(
+      expect.stringContaining("~/.codex/auth.json"),
+      "OpenAI Codex fallback",
     );
   });
 

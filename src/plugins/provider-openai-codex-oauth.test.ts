@@ -184,6 +184,31 @@ describe("loginOpenAICodexOAuth", () => {
     );
   });
 
+  it("adds actionable token-exchange guidance for the codex 403 failure", async () => {
+    mocks.loginOpenAICodex.mockRejectedValue(new Error("Token exchange failed"));
+
+    const { prompter } = createPrompter();
+    const runtime = createRuntime();
+    await expect(
+      loginOpenAICodexOAuth({
+        prompter,
+        runtime,
+        isRemote: false,
+        openUrl: async () => {},
+      }),
+    ).rejects.toThrow("Token exchange failed");
+
+    expect(runtime.error).toHaveBeenCalledWith(expect.stringContaining("Token exchange failed"));
+    expect(prompter.note).toHaveBeenCalledWith(
+      expect.stringContaining("backend /oauth/token request"),
+      "OAuth token exchange",
+    );
+    expect(prompter.note).toHaveBeenCalledWith(
+      expect.stringContaining("~/.codex/auth.json"),
+      "OAuth token exchange",
+    );
+  });
+
   it("passes manual code input hook for remote oauth flows", async () => {
     const creds = {
       provider: "openai-codex" as const,

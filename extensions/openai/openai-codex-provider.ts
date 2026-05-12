@@ -263,6 +263,36 @@ async function refreshOpenAICodexOAuthCredential(cred: OAuthCredential) {
 }
 
 async function runOpenAICodexOAuth(ctx: ProviderAuthContext) {
+  const importCodexCliFallback = async () => {
+    const store = ensureAuthProfileStore(ctx.agentDir, {
+      allowKeychainPrompt: false,
+    });
+    const imported = readOpenAICodexCliOAuthProfile({
+      env: ctx.env,
+      store,
+    });
+    if (!imported) {
+      return null;
+    }
+    await ctx.prompter.note(
+      "Imported the existing Codex CLI login from ~/.codex/auth.json after OAuth token exchange failed.",
+      "OpenAI Codex fallback",
+    );
+    return {
+      profiles: [{ profileId: imported.profileId, credential: imported.credential }],
+      configPatch: {
+        agents: {
+          defaults: {
+            models: {
+              [OPENAI_CODEX_DEFAULT_MODEL]: {},
+            },
+          },
+        },
+      },
+      defaultModel: OPENAI_CODEX_DEFAULT_MODEL,
+      notes: ["Imported existing Codex CLI OAuth credentials."],
+    };
+  };
   let creds;
   try {
     creds = await loginOpenAICodexOAuth({
@@ -273,10 +303,10 @@ async function runOpenAICodexOAuth(ctx: ProviderAuthContext) {
       localBrowserMessage: "Complete sign-in in browser…",
     });
   } catch {
-    return { profiles: [] };
+    return (await importCodexCliFallback()) ?? { profiles: [] };
   }
   if (!creds) {
-    return { profiles: [] };
+    return (await importCodexCliFallback()) ?? { profiles: [] };
   }
 
   const identity = resolveCodexAuthIdentity({
