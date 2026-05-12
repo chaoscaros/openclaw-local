@@ -51,6 +51,11 @@ function makeHost(overrides?: Partial<ChatHost>): ChatHost {
       chatFocusMode: false,
       chatShowThinking: false,
       chatShowToolCalls: true,
+      dreamingAssistEnabled: true,
+      planModeEnabled: false,
+      executionGoalModeEnabled: false,
+      devSpecFirstEnabled: false,
+      changeReviewModeEnabled: false,
     },
     applySettings(next) {
       this.settings = next;

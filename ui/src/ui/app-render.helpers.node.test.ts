@@ -408,6 +408,11 @@ describe("switchChatSession", () => {
       chatFocusMode: false,
       chatShowThinking: false,
       chatShowToolCalls: true,
+      dreamingAssistEnabled: true,
+      planModeEnabled: false,
+      executionGoalModeEnabled: false,
+      devSpecFirstEnabled: false,
+      changeReviewModeEnabled: false,
     };
     const state = {
       sessionKey: "main",
@@ -492,6 +497,11 @@ describe("switchChatSession", () => {
       chatFocusMode: false,
       chatShowThinking: false,
       chatShowToolCalls: true,
+      dreamingAssistEnabled: true,
+      planModeEnabled: false,
+      executionGoalModeEnabled: false,
+      devSpecFirstEnabled: false,
+      changeReviewModeEnabled: false,
     };
     const state = {
       sessionKey: "main",

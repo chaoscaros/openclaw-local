@@ -121,6 +121,12 @@ function createChatHeaderState(
       chatShowToolCalls: true,
       dreamingAssistEnabled: true,
       planModeEnabled: false,
+      executionGoalModeEnabled: false,
+      devSpecFirstEnabled: false,
+      changeReviewModeEnabled: false,
+      dreamingAssistEnabled: true,
+      planModeEnabled: false,
+      executionGoalModeEnabled: false,
       devSpecFirstEnabled: false,
     },
     chatMessage: "",
@@ -201,6 +207,7 @@ function createProps(overrides: Partial<ChatProps> = {}): ChatProps {
     onToggleFocusMode: () => undefined,
     onToggleDreamingAssist: () => undefined,
     onTogglePlanMode: () => undefined,
+    onToggleExecutionGoalMode: () => undefined,
     onToggleDevSpecFirst: () => undefined,
     onToggleChangeReviewMode: () => undefined,
     onDraftChange: () => undefined,
@@ -241,6 +248,12 @@ function createOverviewProps(overrides: Partial<OverviewProps> = {}): OverviewPr
       chatShowToolCalls: true,
       dreamingAssistEnabled: true,
       planModeEnabled: false,
+      executionGoalModeEnabled: false,
+      devSpecFirstEnabled: false,
+      changeReviewModeEnabled: false,
+      dreamingAssistEnabled: true,
+      planModeEnabled: false,
+      executionGoalModeEnabled: false,
       devSpecFirstEnabled: false,
       splitRatio: 0.6,
       navCollapsed: false,
@@ -3046,12 +3059,13 @@ describe("chat view", () => {
     expect(container.textContent).toContain('"status": "error"');
   });
 
-  it("renders mode menu toggles for assist, plan mode, spec-first, and change review", async () => {
+  it("renders mode menu toggles for assist, plan mode, goal mode, spec-first, and change review", async () => {
     const container = document.createElement("div");
     render(
       renderChat(
         createProps({
           planModeEnabled: true,
+          executionGoalModeEnabled: true,
           devSpecFirstEnabled: true,
           changeReviewModeEnabled: true,
           pendingRunId: null,
@@ -3065,14 +3079,16 @@ describe("chat view", () => {
 
     const text = container.textContent ?? "";
     expect(text).toContain("计划模式");
+    expect(text).toContain("目标执行");
     expect(text).toContain("规格优先");
     expect(text).toContain("协助策略");
     expect(text).toContain("改动确认");
     const switches = Array.from(container.querySelectorAll<HTMLElement>('[role="switch"]'));
-    expect(switches).toHaveLength(4);
+    expect(switches).toHaveLength(5);
     expect(switches[1]?.getAttribute("aria-checked")).toBe("true");
     expect(switches[2]?.getAttribute("aria-checked")).toBe("true");
     expect(switches[3]?.getAttribute("aria-checked")).toBe("true");
+    expect(switches[4]?.getAttribute("aria-checked")).toBe("true");
   });
 
   it("renders pending change review summary and side-by-side modal actions", async () => {
@@ -3155,6 +3171,28 @@ describe("chat view", () => {
     expect(onSelectChangeReviewFile).toHaveBeenCalledWith("src/extra.ts");
     expect(onApplyChangeReview).not.toHaveBeenCalled();
     expect(onRevertChangeReview).not.toHaveBeenCalled();
+  });
+
+  it("does not show pending change review UI while the run is still active", async () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          pendingRunId: "run-active",
+          pendingChangeReview: {
+            pending: true,
+            id: "review-active",
+            updatedAt: Date.now(),
+            files: [{ path: "src/demo.ts", status: "modified" }],
+          },
+          pendingChangeReviewOpen: true,
+        }),
+      ),
+      container,
+    );
+
+    expect(container.textContent).not.toContain("待确认改动");
+    expect(container.textContent).not.toContain("查看本次改动");
   });
 
   it("renders diff summary, minimap locator, and hunk apply without the group summary card", async () => {

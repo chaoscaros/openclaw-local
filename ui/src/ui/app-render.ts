@@ -2165,6 +2165,7 @@ export function renderApp(state: AppViewState) {
               dreamingAssistReason: state.dreamingAssistReason,
               dreamingAssistEnabled: state.settings.dreamingAssistEnabled,
               planModeEnabled: state.settings.planModeEnabled,
+              executionGoalModeEnabled: state.settings.executionGoalModeEnabled,
               devSpecFirstEnabled: state.settings.devSpecFirstEnabled,
               changeReviewModeEnabled: state.settings.changeReviewModeEnabled,
               showThinking,
@@ -2238,6 +2239,12 @@ export function renderApp(state: AppViewState) {
                 state.applySettings({
                   ...state.settings,
                   planModeEnabled: !state.settings.planModeEnabled,
+                });
+              },
+              onToggleExecutionGoalMode: () => {
+                state.applySettings({
+                  ...state.settings,
+                  executionGoalModeEnabled: !state.settings.executionGoalModeEnabled,
                 });
               },
               onToggleDevSpecFirst: () => {

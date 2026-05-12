@@ -977,6 +977,42 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("任务描述、文件路径、改动范围、禁改区域");
   });
 
+  it("injects goal-mode guidance and keeps plan-first ordering when both modes are enabled", async () => {
+    createTranscriptFixture("openclaw-chat-send-goal-mode-");
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-goal-mode",
+      message: "按照刚才的计划修复当前项目无法启动的问题",
+      requestParams: { planModeEnabled: true, executionGoalModeEnabled: true },
+    });
+
+    expect(mockState.lastDispatchCtx?.RawBody).toBe("按照刚才的计划修复当前项目无法启动的问题");
+    expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("计划模式已开启");
+    expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("目标执行模式已开启");
+    expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("每完成一个修改点就运行验证");
+  });
+
+  it("narrows goal-mode guidance to the current task when task mode is active", async () => {
+    createTranscriptFixture("openclaw-chat-send-goal-mode-task-");
+    mockState.sessionEntry = { taskId: "task-current" };
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-goal-mode-task",
+      message: "继续修复当前任务里的启动问题",
+      requestParams: { executionGoalModeEnabled: true },
+    });
+
+    expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("优先围绕当前任务持续执行");
+  });
+
   it("rejects oversized chat.send session keys before dispatch", async () => {
     createTranscriptFixture("openclaw-chat-send-session-key-too-long-");
     const respond = vi.fn();

@@ -236,15 +236,26 @@
 .chat-change-review-modal__header,
 .chat-change-review-modal__detail-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.chat-change-review-modal__detail-header > :first-child {
+  flex: 1 1 320px;
+  min-width: 0;
 }
 
 .chat-change-review-modal__title,
 .chat-change-review-modal__detail-path {
   font-size: 16px;
   font-weight: 700;
+}
+
+.chat-change-review-modal__detail-path {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .chat-change-review-modal__meta,
@@ -260,6 +271,13 @@
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.chat-change-review-modal__detail-actions .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .chat-change-review-modal__body {

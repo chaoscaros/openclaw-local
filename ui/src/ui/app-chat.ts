@@ -27,6 +27,7 @@ import { generateUUID } from "./uuid.ts";
 export type ChatHost = {
   settings: UiSettings;
   applySettings: (next: UiSettings) => void;
+  executionGoalModeEnabled?: boolean;
   client: GatewayBrowserClient | null;
   chatMessages: unknown[];
   chatStream: string | null;
@@ -458,6 +459,7 @@ async function dispatchSlashCommand(
   args: string,
   sendOpts?: { previousDraft?: string; restoreDraft?: boolean },
 ) {
+  const currentSession = host.sessionsResult?.sessions.find((row) => row.key === host.sessionKey);
   switch (name) {
     case "stop":
       await handleAbortChat(host);
@@ -485,6 +487,33 @@ async function dispatchSlashCommand(
     case "export-session":
       host.onSlashAction?.("export");
       return;
+    case "goal-run": {
+      const goal = args.trim();
+      if (!goal) {
+        injectCommandResult(host, "Usage: /goal-run <goal>");
+        return;
+      }
+      if (host.tasksBusy) {
+        host.lastError = "正在切换任务模式，请稍候…";
+        return;
+      }
+      if (currentSession?.mode === "task" && !currentSession.taskId) {
+        host.lastError = t("taskModeUi.emptyTaskModeHint");
+        return;
+      }
+      injectCommandResult(host, "已按一次性目标执行模式发送当前目标。此模式仅对本次发送生效。");
+      const previousExecutionGoalModeEnabled = host.executionGoalModeEnabled;
+      host.executionGoalModeEnabled = true;
+      try {
+        await sendChatMessageNow(host, goal, {
+          previousDraft: sendOpts?.previousDraft,
+          restoreDraft: sendOpts?.restoreDraft,
+        });
+      } finally {
+        host.executionGoalModeEnabled = previousExecutionGoalModeEnabled;
+      }
+      return;
+    }
   }
 
   if (!host.client) {

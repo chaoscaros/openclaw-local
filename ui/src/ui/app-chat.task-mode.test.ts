@@ -20,6 +20,11 @@ function buildHost(): ChatHost & { sessionsResult: SessionsListResult } {
       chatFocusMode: false,
       chatShowThinking: false,
       chatShowToolCalls: true,
+      dreamingAssistEnabled: true,
+      planModeEnabled: false,
+      executionGoalModeEnabled: false,
+      devSpecFirstEnabled: false,
+      changeReviewModeEnabled: false,
     },
     applySettings(next: import('./storage.ts').UiSettings) {
       (this as { settings: import('./storage.ts').UiSettings }).settings = next;
@@ -102,5 +107,60 @@ describe("handleSendChat task mode guard", () => {
     await handleSendChat(host as never);
 
     expect(host.lastError).toContain("正在切换任务模式，请稍候");
+  });
+
+  it("enables goal mode and sends the goal within the current task context", async () => {
+    const request = async (method: string, params?: Record<string, unknown>) => {
+      if (method === "chat.send") {
+        expect(params?.message).toBe("修复当前任务里的启动失败");
+        expect(params?.executionGoalModeEnabled).toBe(true);
+        return {};
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    };
+    const host = buildHost();
+    host.client = { request } as never;
+    host.chatMessage = "/goal-run 修复当前任务里的启动失败";
+    host.sessionsResult.sessions[0] = {
+      ...host.sessionsResult.sessions[0],
+      taskId: "task-current",
+    };
+
+    await handleSendChat(host as never);
+
+    expect(host.settings.executionGoalModeEnabled).toBe(false);
+    expect(host.executionGoalModeEnabled).toBeUndefined();
+    expect(host.chatMessages.at(-1)).toMatchObject({ role: "user" });
+    expect(host.chatMessages.some((message) => {
+      const entry = message as Record<string, unknown>;
+      return entry.role === "system" && String(entry.content ?? "").includes("一次性目标执行模式");
+    })).toBe(true);
+  });
+
+  it("supports the 中文别名 for goal-run", async () => {
+    const request = async (method: string, params?: Record<string, unknown>) => {
+      if (method === "chat.send") {
+        expect(params?.message).toBe("修复当前任务里的启动失败");
+        expect(params?.executionGoalModeEnabled).toBe(true);
+        return {};
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    };
+    const host = buildHost();
+    host.client = { request } as never;
+    host.chatMessage = "/目标执行 修复当前任务里的启动失败";
+    host.sessionsResult.sessions[0] = {
+      ...host.sessionsResult.sessions[0],
+      taskId: "task-current",
+    };
+
+    await handleSendChat(host as never);
+
+    expect(host.settings.executionGoalModeEnabled).toBe(false);
+    expect(host.executionGoalModeEnabled).toBeUndefined();
+    expect(host.chatMessages.some((message) => {
+      const entry = message as Record<string, unknown>;
+      return entry.role === "system" && String(entry.content ?? "").includes("一次性目标执行模式");
+    })).toBe(true);
   });
 });

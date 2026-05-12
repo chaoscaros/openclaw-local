@@ -1407,9 +1407,11 @@ type DreamingAssistanceResolution = {
 
 type PlanningModeResolution = {
   planModeEnabled?: boolean;
+  executionGoalModeEnabled?: boolean;
   devSpecFirstEnabled?: boolean;
   changeReviewModeEnabled?: boolean;
   resumeDevExecute?: boolean;
+  taskId?: string;
 };
 
 type PlanningModeIntent = "conversation" | "planning" | "dev_spec" | "dev_execute";
@@ -1495,6 +1497,9 @@ function isLikelyDevelopmentRequest(message: string): boolean {
     "修 bug",
     "修复bug",
     "修复 bug",
+    "修复",
+    "无法启动",
+    "启动失败",
     "调整页面",
     "改页面",
     "改组件",
@@ -1541,6 +1546,8 @@ function isLikelyPlanningRequest(message: string): boolean {
     "给方案",
     "先分析",
     "分析一下",
+    "梳理一下",
+    "梳理",
     "帮我规划",
     "给步骤",
     "先整理",
@@ -1590,11 +1597,16 @@ function injectPlanningModeGuidance(message: string, resolution: PlanningModeRes
     return message;
   }
   const planModeEnabled = resolution.planModeEnabled === true;
+  const executionGoalModeEnabled = resolution.executionGoalModeEnabled === true;
   const devSpecFirstEnabled = resolution.devSpecFirstEnabled === true;
   const changeReviewModeEnabled = resolution.changeReviewModeEnabled === true;
+  const taskModeEnabled = Boolean(resolution.taskId?.trim());
   const intent = resolvePlanningModeIntent(normalizedMessage, resolution);
   let next = message;
-  if (devSpecFirstEnabled && intent === "dev_spec") {
+  if (
+    devSpecFirstEnabled &&
+    (intent === "dev_spec" || normalizedMessage.includes("整理规格") || normalizedMessage.includes("先整理规格"))
+  ) {
     next = `${next}
 
 [规格优先模式已开启：这是开发类请求。先进入规格整理模式，不要直接开发、不要假设已修改文件。先输出完整规格，至少包含：任务描述、文件路径、改动范围、禁改区域、复用要求、实现约束、输出要求、验收标准。输出完规格后，明确要求用户回复“直接开发”或“应用修改”后才进入执行。]`;
@@ -1603,6 +1615,11 @@ function injectPlanningModeGuidance(message: string, resolution: PlanningModeRes
     next = `${next}
 
 [计划模式已开启：优先先给出简洁、可执行的计划或分析，不要直接声称已经执行完成。若这是开发请求，优先先整理步骤、边界与验证方式，再决定是否进入执行。]`;
+  }
+  if (executionGoalModeEnabled && intent !== "conversation") {
+    next = `${next}
+
+[目标执行模式已开启：${taskModeEnabled ? "优先围绕当前任务持续执行，不要偏离当前任务主线或切换到无关问题。" : "围绕当前目标持续执行。"}严格按计划或当前目标推进，不要擅自扩大范围。每完成一个修改点就运行验证；如果验证失败，继续根据错误日志修复并再次验证。若同时开启计划模式，先输出计划，再进入持续执行流程。停止条件：目标完成，或明确证明问题不是代码导致。最终请按固定结构输出：问题原因、修改了哪些文件、每个文件改了什么、验证结果、还需要人工确认的事项。]`;
   }
   if (changeReviewModeEnabled && intent === "dev_execute") {
     next = `${next}
@@ -2000,6 +2017,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       deliver?: boolean;
       applyDreamingAssist?: boolean;
       planModeEnabled?: boolean;
+      executionGoalModeEnabled?: boolean;
       devSpecFirstEnabled?: boolean;
       changeReviewModeEnabled?: boolean;
       resumeDevExecute?: boolean;
@@ -2205,9 +2223,11 @@ export const chatHandlers: GatewayRequestHandlers = {
       const dreamingAssistStrategy = dreamingAssist.strategy;
       const planningModeResolution: PlanningModeResolution = {
         planModeEnabled: p.planModeEnabled,
+        executionGoalModeEnabled: p.executionGoalModeEnabled,
         devSpecFirstEnabled: p.devSpecFirstEnabled,
         changeReviewModeEnabled: p.changeReviewModeEnabled,
         resumeDevExecute: p.resumeDevExecute,
+        taskId: entry?.taskId,
       };
       setChangeReviewRunMode({
         runId: clientRunId,
