@@ -7,7 +7,12 @@ import { resolvePnpmRunner } from "./pnpm-runner.mjs";
 const nodeBin = process.execPath;
 const WINDOWS_BUILD_MAX_OLD_SPACE_MB = 4096;
 export const BUILD_ALL_STEPS = [
-  { label: "canvas:a2ui:bundle", kind: "pnpm", pnpmArgs: ["canvas:a2ui:bundle"] },
+  {
+    label: "canvas:a2ui:bundle",
+    kind: "pnpm",
+    pnpmArgs: ["canvas:a2ui:bundle"],
+    extraEnv: { OPENCLAW_A2UI_SKIP_MISSING: "1" },
+  },
   { label: "tsdown", kind: "node", args: ["scripts/tsdown-build.mjs"] },
   { label: "runtime-postbuild", kind: "node", args: ["scripts/runtime-postbuild.mjs"] },
   {
@@ -36,6 +41,7 @@ export const BUILD_ALL_STEPS = [
     label: "canvas-a2ui-copy",
     kind: "node",
     args: ["--import", "tsx", "scripts/canvas-a2ui-copy.ts"],
+    extraEnv: { OPENCLAW_A2UI_SKIP_MISSING: "1" },
   },
   {
     label: "copy-hook-metadata",
@@ -65,15 +71,22 @@ export const BUILD_ALL_STEPS = [
 ];
 
 function resolveStepEnv(step, env, platform) {
-  if (platform !== "win32" || !step.windowsNodeOptions) {
-    return env;
+  let nextEnv = env;
+  if (step.extraEnv && typeof step.extraEnv === "object") {
+    nextEnv = {
+      ...nextEnv,
+      ...step.extraEnv,
+    };
   }
-  const currentNodeOptions = env.NODE_OPTIONS?.trim() ?? "";
+  if (platform !== "win32" || !step.windowsNodeOptions) {
+    return nextEnv;
+  }
+  const currentNodeOptions = nextEnv.NODE_OPTIONS?.trim() ?? "";
   if (currentNodeOptions.includes(step.windowsNodeOptions)) {
-    return env;
+    return nextEnv;
   }
   return {
-    ...env,
+    ...nextEnv,
     NODE_OPTIONS: currentNodeOptions
       ? `${currentNodeOptions} ${step.windowsNodeOptions}`
       : step.windowsNodeOptions,
