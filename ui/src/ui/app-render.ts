@@ -2267,6 +2267,10 @@ export function renderApp(state: AppViewState) {
               onSelectChangeReviewFile: (path) => state.selectChangeReviewFile(path),
               onApplyChangeReview: (id, path) => void state.applyChangeReview(id, path),
               onRevertChangeReview: (id, path) => void state.revertChangeReview(id, path),
+              onApplyChangeReviewGroup: (id, path, groupId) =>
+                void state.applyChangeReviewGroup(id, path, groupId),
+              onRevertChangeReviewGroup: (id, path, groupId) =>
+                void state.revertChangeReviewGroup(id, path, groupId),
               onApplyChangeReviewHunk: (id, path, hunkId) =>
                 void state.applyChangeReviewHunk(id, path, hunkId),
               onRevertChangeReviewHunk: (id, path, hunkId) =>

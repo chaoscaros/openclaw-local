@@ -210,6 +210,8 @@ function createProps(overrides: Partial<ChatProps> = {}): ChatProps {
     onSelectChangeReviewFile: () => undefined,
     onApplyChangeReview: () => undefined,
     onRevertChangeReview: () => undefined,
+    onApplyChangeReviewGroup: () => undefined,
+    onRevertChangeReviewGroup: () => undefined,
     onApplyChangeReviewHunk: () => undefined,
     onRevertChangeReviewHunk: () => undefined,
     onQueueRemove: () => undefined,
@@ -3155,8 +3157,9 @@ describe("chat view", () => {
     expect(onRevertChangeReview).not.toHaveBeenCalled();
   });
 
-  it("renders hunk-level actions and dispatches hunk apply", async () => {
+  it("renders diff summary, minimap locator, and hunk apply without the group summary card", async () => {
     const container = document.createElement("div");
+    const onApplyChangeReviewGroup = vi.fn();
     const onApplyChangeReviewHunk = vi.fn();
     render(
       renderChat(
@@ -3194,11 +3197,29 @@ describe("chat view", () => {
                     afterLines: ["const c = 30;"],
                   },
                 ],
+                groups: [
+                  {
+                    groupId: "group-1-2-2",
+                    title: "修改 2 处内容",
+                    summary: "修改 2 处内容",
+                    changeType: "modified",
+                    filePath: "src/demo.ts",
+                    hunkIds: ["hunk-1-2-2", "hunk-2-3-3"],
+                    beforeStartLine: 2,
+                    beforeEndLine: 3,
+                    afterStartLine: 2,
+                    afterEndLine: 3,
+                    beforePreview: ["const b = 2;", "const c = 3;"],
+                    afterPreview: ["const b = 20;", "const c = 30;"],
+                    hunkCount: 2,
+                  },
+                ],
               },
             ],
           },
           pendingChangeReviewOpen: true,
           pendingChangeReviewSelectedPath: "src/demo.ts",
+          onApplyChangeReviewGroup,
           onApplyChangeReviewHunk,
         }),
       ),
@@ -3206,18 +3227,252 @@ describe("chat view", () => {
     );
     await flushTasks();
 
-    expect(container.textContent ?? "").toContain("应用此块");
-    expect(container.textContent ?? "").toContain("改动块 #1-2-2");
+    const text = container.textContent ?? "";
 
-    const hunkApplyButton = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
-      (button) => button.textContent?.includes("应用此块"),
+    expect(text).not.toContain("组 #1 · 修改 2 处内容");
+    expect(text).toContain("改动定位");
+    expect(text).toContain("4 个定位点 · 共 3 行");
+    expect(text).toContain("第 1 段");
+    expect(text).toContain("第 2 段");
+    expect(text).not.toContain("应用这组");
+    expect(text).toContain("查看完整文件对比");
+    expect(text).toContain("应用此块");
+    const minimapButtons = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(".chat-change-review-modal__minimap-item"),
     );
+    expect(minimapButtons).toHaveLength(4);
+    expect(minimapButtons[0]?.textContent).toContain("第 1 段");
+    expect(minimapButtons[2]?.textContent).toContain("第 2 段");
+
+    const locateButton = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent?.includes("定位"),
+    );
+    expect(locateButton).toBeUndefined();
+
+    const groupApplyButton = Array.from(
+      container.querySelectorAll<HTMLButtonElement>("button"),
+    ).find((button) => button.textContent?.includes("应用这组"));
+    expect(groupApplyButton).toBeUndefined();
+    expect(onApplyChangeReviewGroup).not.toHaveBeenCalled();
+
+    const hunkApplyButton = Array.from(
+      container.querySelectorAll<HTMLButtonElement>("button"),
+    ).find((button) => button.textContent?.includes("应用此块"));
     expect(hunkApplyButton).toBeTruthy();
     hunkApplyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onApplyChangeReviewHunk).toHaveBeenCalledWith(
       "review-hunk-1",
       "src/demo.ts",
       "hunk-1-2-2",
+    );
+  });
+
+  it("scrolls the full diff container to the real hunk position when clicking the minimap", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const raf = vi.fn((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    vi.stubGlobal("requestAnimationFrame", raf);
+
+    render(
+      renderChat(
+        createProps({
+          pendingChangeReview: {
+            pending: true,
+            id: "review-scroll-1",
+            updatedAt: Date.now(),
+            files: [
+              {
+                path: "src/demo.ts",
+                status: "modified",
+                changeType: "modified",
+                beforeContent: "const a = 1;\nconst b = 2;\nconst c = 3;\n",
+                afterContent: "const a = 1;\nconst b = 20;\nconst c = 30;\n",
+                hunks: [
+                  {
+                    hunkId: "hunk-1-2-2",
+                    changeType: "modified",
+                    beforeStartLine: 2,
+                    beforeEndLine: 2,
+                    afterStartLine: 2,
+                    afterEndLine: 2,
+                    beforeLines: ["const b = 2;"],
+                    afterLines: ["const b = 20;"],
+                  },
+                ],
+                groups: [
+                  {
+                    groupId: "group-1-2-2",
+                    title: "修改 1 处内容",
+                    summary: "修改 1 处内容",
+                    changeType: "modified",
+                    filePath: "src/demo.ts",
+                    hunkIds: ["hunk-1-2-2"],
+                    beforeStartLine: 2,
+                    beforeEndLine: 2,
+                    afterStartLine: 2,
+                    afterEndLine: 2,
+                    beforePreview: ["const b = 2;"],
+                    afterPreview: ["const b = 20;"],
+                    hunkCount: 1,
+                  },
+                ],
+              },
+            ],
+          },
+          pendingChangeReviewOpen: true,
+          pendingChangeReviewSelectedPath: "src/demo.ts",
+        }),
+      ),
+      container,
+    );
+    await flushTasks();
+
+    const details = container.querySelector<HTMLDetailsElement>(
+      ".chat-change-review-modal__full-compare",
+    );
+    const compareGrid = container.querySelector<HTMLElement>(
+      ".chat-change-review-modal__compare-grid",
+    );
+    const hunkHeader = container.querySelector<HTMLElement>(
+      ".chat-change-review-modal__hunk-header",
+    );
+    const minimapButton = container.querySelector<HTMLButtonElement>(
+      ".chat-change-review-modal__minimap-item",
+    );
+    const scrollTo = vi.fn();
+
+    expect(details).toBeTruthy();
+    expect(compareGrid).toBeTruthy();
+    expect(hunkHeader).toBeTruthy();
+    expect(minimapButton).toBeTruthy();
+
+    details!.open = false;
+    Object.defineProperty(compareGrid!, "clientHeight", { configurable: true, value: 200 });
+    Object.defineProperty(compareGrid!, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(compareGrid!, "scrollTop", { configurable: true, value: 40 });
+    compareGrid!.getBoundingClientRect = (() => ({
+      top: 100,
+      bottom: 300,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 200,
+      x: 0,
+      y: 100,
+      toJSON() {
+        return {};
+      },
+    })) as typeof compareGrid.getBoundingClientRect;
+    hunkHeader!.getBoundingClientRect = (() => ({
+      top: 420,
+      bottom: 460,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 40,
+      x: 0,
+      y: 420,
+      toJSON() {
+        return {};
+      },
+    })) as typeof hunkHeader.getBoundingClientRect;
+    compareGrid!.scrollTo = scrollTo as typeof compareGrid.scrollTo;
+
+    minimapButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(details?.open).toBe(true);
+    expect(raf).toHaveBeenCalled();
+    expect(scrollTo).toHaveBeenCalledWith({ top: 324, behavior: "smooth" });
+  });
+
+  it("renders one minimap marker per hunk even when groups are fewer than hunks", async () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          pendingChangeReview: {
+            pending: true,
+            id: "review-hunks-8",
+            updatedAt: Date.now(),
+            files: [
+              {
+                path: "src/demo.ts",
+                status: "modified",
+                changeType: "modified",
+                beforeContent: Array.from({ length: 40 }, (_, index) => `before-${index + 1}`).join(
+                  "\n",
+                ),
+                afterContent: Array.from({ length: 40 }, (_, index) => `after-${index + 1}`).join(
+                  "\n",
+                ),
+                hunks: Array.from({ length: 8 }, (_, index) => ({
+                  hunkId: `hunk-${index + 1}-${index + 1}-${index + 1}`,
+                  changeType: "modified",
+                  beforeStartLine: index + 1,
+                  beforeEndLine: index + 1,
+                  afterStartLine: index + 1,
+                  afterEndLine: index + 1,
+                  beforeLines: [`before-${index + 1}`],
+                  afterLines: [`after-${index + 1}`],
+                })),
+                groups: [
+                  {
+                    groupId: "group-a",
+                    title: "前半组",
+                    summary: "前半组",
+                    changeType: "modified",
+                    filePath: "src/demo.ts",
+                    hunkIds: ["hunk-1-1-1", "hunk-2-2-2", "hunk-3-3-3", "hunk-4-4-4"],
+                    beforeStartLine: 1,
+                    beforeEndLine: 4,
+                    afterStartLine: 1,
+                    afterEndLine: 4,
+                    beforePreview: ["before-1"],
+                    afterPreview: ["after-1"],
+                    hunkCount: 4,
+                  },
+                  {
+                    groupId: "group-b",
+                    title: "后半组",
+                    summary: "后半组",
+                    changeType: "modified",
+                    filePath: "src/demo.ts",
+                    hunkIds: ["hunk-5-5-5", "hunk-6-6-6", "hunk-7-7-7", "hunk-8-8-8"],
+                    beforeStartLine: 5,
+                    beforeEndLine: 8,
+                    afterStartLine: 5,
+                    afterEndLine: 8,
+                    beforePreview: ["before-5"],
+                    afterPreview: ["after-5"],
+                    hunkCount: 4,
+                  },
+                ],
+              },
+            ],
+          },
+          pendingChangeReviewOpen: true,
+          pendingChangeReviewSelectedPath: "src/demo.ts",
+        }),
+      ),
+      container,
+    );
+    await flushTasks();
+
+    const minimapButtons = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(".chat-change-review-modal__minimap-item"),
+    );
+    expect(minimapButtons).toHaveLength(16);
+    expect(container.textContent).toContain("16 个定位点");
+    expect(minimapButtons.some((button) => button.textContent?.includes("#7-7-7"))).toBe(true);
+    expect(minimapButtons.some((button) => button.textContent?.includes("改动块 #7-7-7"))).toBe(
+      true,
+    );
+    expect(minimapButtons.some((button) => button.textContent?.includes("#8-8-8"))).toBe(true);
+    expect(minimapButtons.some((button) => button.textContent?.includes("改动块 #8-8-8"))).toBe(
+      true,
     );
   });
 });

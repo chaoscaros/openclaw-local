@@ -14,6 +14,22 @@ export type ChangeReviewHunkRecord = {
   afterLines: string[];
 };
 
+export type ChangeReviewGroupRecord = {
+  groupId: string;
+  title: string;
+  summary: string;
+  changeType: ChangeReviewChangeType | "mixed";
+  filePath: string;
+  hunkIds: string[];
+  beforeStartLine: number;
+  beforeEndLine: number;
+  afterStartLine: number;
+  afterEndLine: number;
+  beforePreview: string[];
+  afterPreview: string[];
+  hunkCount: number;
+};
+
 export type ChangeReviewFileRecord = {
   path: string;
   absolutePath: string;
@@ -22,6 +38,7 @@ export type ChangeReviewFileRecord = {
   afterContent: string | null;
   diffText: string;
   hunks: ChangeReviewHunkRecord[];
+  groups: ChangeReviewGroupRecord[];
 };
 
 export type ChangeReviewBundle = {
@@ -85,7 +102,11 @@ function normalizeRelativePath(repoRoot: string, absolutePath: string): string {
   return relative.split(path.sep).join("/");
 }
 
-function normalizeDisplayPath(originalPath: string, absolutePath: string, repoRoot: string): string {
+function normalizeDisplayPath(
+  originalPath: string,
+  absolutePath: string,
+  repoRoot: string,
+): string {
   const relativeToRepoRoot = normalizeRelativePath(repoRoot, absolutePath);
   if (relativeToRepoRoot && !relativeToRepoRoot.startsWith("../")) {
     return relativeToRepoRoot;
@@ -294,11 +315,7 @@ function buildChangeReviewHunks(
     const nextRow = rows[index + 1];
     const isSingleLineRemoval = row.leftKind === "removed" && row.rightKind === "empty";
     const isSingleLineAddition = row.leftKind === "empty" && row.rightKind === "added";
-    if (
-      isSingleLineRemoval &&
-      nextRow?.leftKind === "empty" &&
-      nextRow.rightKind === "added"
-    ) {
+    if (isSingleLineRemoval && nextRow?.leftKind === "empty" && nextRow.rightKind === "added") {
       pushRows([row, nextRow]);
       index += 1;
       continue;
@@ -323,6 +340,107 @@ function deriveChangeType(
       : "modified";
 }
 
+function buildGroupTitle(changeType: ChangeReviewGroupRecord["changeType"], count: number): string {
+  if (changeType === "added") {
+    return `新增 ${count} 处内容`;
+  }
+  if (changeType === "deleted") {
+    return `删除 ${count} 处内容`;
+  }
+  if (changeType === "modified") {
+    return `修改 ${count} 处内容`;
+  }
+  return `调整 ${count} 处内容`;
+}
+
+function buildGroupSummary(
+  changeType: ChangeReviewGroupRecord["changeType"],
+  count: number,
+): string {
+  if (changeType === "added") {
+    return `新增 ${count} 处内容`;
+  }
+  if (changeType === "deleted") {
+    return `删除 ${count} 处内容`;
+  }
+  if (changeType === "modified") {
+    return `修改 ${count} 处内容`;
+  }
+  return `混合调整 ${count} 处内容`;
+}
+
+function buildChangeReviewGroups(
+  filePath: string,
+  hunks: ChangeReviewHunkRecord[],
+): ChangeReviewGroupRecord[] {
+  if (hunks.length === 0) {
+    return [];
+  }
+  const groups: ChangeReviewGroupRecord[] = [];
+  const maxGap = 6;
+  let pending: ChangeReviewHunkRecord[] = [];
+  const flush = () => {
+    if (pending.length === 0) {
+      return;
+    }
+    const first = pending[0];
+    const last = pending[pending.length - 1];
+    const typeSet = new Set(pending.map((hunk) => hunk.changeType));
+    const changeType =
+      typeSet.size === 1
+        ? (pending[0].changeType as ChangeReviewGroupRecord["changeType"])
+        : "mixed";
+    const count = pending.length;
+    groups.push({
+      groupId: `group-${groups.length + 1}-${first.beforeStartLine}-${first.afterStartLine}`,
+      title: buildGroupTitle(changeType, count),
+      summary: buildGroupSummary(changeType, count),
+      changeType,
+      filePath,
+      hunkIds: pending.map((hunk) => hunk.hunkId),
+      beforeStartLine: first.beforeStartLine,
+      beforeEndLine: last.beforeEndLine,
+      afterStartLine: first.afterStartLine,
+      afterEndLine: last.afterEndLine,
+      beforePreview: pending.flatMap((hunk) => hunk.beforeLines).slice(0, 3),
+      afterPreview: pending.flatMap((hunk) => hunk.afterLines).slice(0, 3),
+      hunkCount: count,
+    });
+    pending = [];
+  };
+
+  const sortedHunks = [...hunks].toSorted((left, right) => {
+    const leftLine = left.afterStartLine || left.beforeStartLine;
+    const rightLine = right.afterStartLine || right.beforeStartLine;
+    return leftLine - rightLine;
+  });
+
+  for (const hunk of sortedHunks) {
+    if (pending.length === 0) {
+      pending.push(hunk);
+      continue;
+    }
+    const previous = pending[pending.length - 1];
+    const beforeGap = Math.abs(
+      (hunk.beforeStartLine || previous.beforeEndLine) - previous.beforeEndLine,
+    );
+    const afterGap = Math.abs(
+      (hunk.afterStartLine || previous.afterEndLine) - previous.afterEndLine,
+    );
+    const sameType = previous.changeType === hunk.changeType;
+    const shouldMerge =
+      (beforeGap <= maxGap || afterGap <= maxGap) && (sameType || beforeGap <= 2 || afterGap <= 2);
+    if (shouldMerge) {
+      pending.push(hunk);
+      continue;
+    }
+    flush();
+    pending.push(hunk);
+  }
+  flush();
+  return groups;
+}
+
 function buildFileRecord(params: {
   path: string;
   absolutePath: string;
@@ -330,6 +448,7 @@ function buildFileRecord(params: {
   afterContent: string | null;
 }): ChangeReviewFileRecord {
   const changeType = deriveChangeType(params.beforeContent, params.afterContent);
+  const hunks = buildChangeReviewHunks(params.beforeContent, params.afterContent);
   return {
     path: params.path,
     absolutePath: params.absolutePath,
@@ -337,7 +456,8 @@ function buildFileRecord(params: {
     beforeContent: params.beforeContent,
     afterContent: params.afterContent,
     diffText: buildSimpleDiff(params.path, params.beforeContent, params.afterContent),
-    hunks: buildChangeReviewHunks(params.beforeContent, params.afterContent),
+    hunks,
+    groups: buildChangeReviewGroups(params.path, hunks),
   };
 }
 
@@ -440,6 +560,18 @@ function resolveFileHunkOrThrow(
   return hunk;
 }
 
+function resolveFileGroupOrThrow(
+  file: ChangeReviewFileRecord,
+  groupId: string,
+): ChangeReviewGroupRecord {
+  const normalized = groupId.trim();
+  const group = file.groups.find((entry) => entry.groupId === normalized);
+  if (!group) {
+    throw new Error(`group not found in review file: ${normalized}`);
+  }
+  return group;
+}
+
 function spliceContentLines(params: {
   targetContent: string | null;
   startIndex: number;
@@ -483,12 +615,12 @@ function resolveNextFileAfterHunkAction(params: {
               deleteCount: hunk.beforeLines.length,
               replacementLines: hunk.afterLines,
             });
-      return buildFileRecord({
-        path: file.path,
-        absolutePath: file.absolutePath,
-        beforeContent: nextBeforeContent,
-        afterContent: file.afterContent,
-      });
+    return buildFileRecord({
+      path: file.path,
+      absolutePath: file.absolutePath,
+      beforeContent: nextBeforeContent,
+      afterContent: file.afterContent,
+    });
   }
   const nextAfterContent =
     hunk.changeType === "added"
@@ -519,7 +651,10 @@ function resolveNextFileAfterHunkAction(params: {
   });
 }
 
-async function writeEffectiveFileContent(file: ChangeReviewFileRecord, stagedOnly: boolean): Promise<void> {
+async function writeEffectiveFileContent(
+  file: ChangeReviewFileRecord,
+  stagedOnly: boolean,
+): Promise<void> {
   const effectiveContent = stagedOnly ? file.beforeContent : file.afterContent;
   if (effectiveContent == null) {
     await fs.rm(file.absolutePath, { force: true });
@@ -527,6 +662,72 @@ async function writeEffectiveFileContent(file: ChangeReviewFileRecord, stagedOnl
   }
   await ensureParentDir(file.absolutePath);
   await fs.writeFile(file.absolutePath, effectiveContent, "utf-8");
+}
+
+function sortHunksForApply(hunks: ChangeReviewHunkRecord[]): ChangeReviewHunkRecord[] {
+  return [...hunks].toSorted((left, right) => {
+    const leftIndex = left.changeType === "added" ? left.afterStartLine : left.beforeStartLine;
+    const rightIndex = right.changeType === "added" ? right.afterStartLine : right.beforeStartLine;
+    return rightIndex - leftIndex;
+  });
+}
+
+function sortHunksForRevert(hunks: ChangeReviewHunkRecord[]): ChangeReviewHunkRecord[] {
+  return [...hunks].toSorted((left, right) => {
+    const leftIndex = left.changeType === "deleted" ? left.beforeStartLine : left.afterStartLine;
+    const rightIndex =
+      right.changeType === "deleted" ? right.beforeStartLine : right.afterStartLine;
+    return rightIndex - leftIndex;
+  });
+}
+
+function resolveNextFileAfterGroupAction(params: {
+  file: ChangeReviewFileRecord;
+  group: ChangeReviewGroupRecord;
+  action: "apply" | "revert";
+}): ChangeReviewFileRecord {
+  const { file, group, action } = params;
+  const groupHunks = group.hunkIds.map((hunkId) => resolveFileHunkOrThrow(file, hunkId));
+  if (action === "apply") {
+    let nextBeforeContent = file.beforeContent;
+    for (const hunk of sortHunksForApply(groupHunks)) {
+      nextBeforeContent = resolveNextFileAfterHunkAction({
+        file: buildFileRecord({
+          path: file.path,
+          absolutePath: file.absolutePath,
+          beforeContent: nextBeforeContent,
+          afterContent: file.afterContent,
+        }),
+        hunk,
+        action,
+      }).beforeContent;
+    }
+    return buildFileRecord({
+      path: file.path,
+      absolutePath: file.absolutePath,
+      beforeContent: nextBeforeContent,
+      afterContent: file.afterContent,
+    });
+  }
+  let nextAfterContent = file.afterContent;
+  for (const hunk of sortHunksForRevert(groupHunks)) {
+    nextAfterContent = resolveNextFileAfterHunkAction({
+      file: buildFileRecord({
+        path: file.path,
+        absolutePath: file.absolutePath,
+        beforeContent: file.beforeContent,
+        afterContent: nextAfterContent,
+      }),
+      hunk,
+      action,
+    }).afterContent;
+  }
+  return buildFileRecord({
+    path: file.path,
+    absolutePath: file.absolutePath,
+    beforeContent: file.beforeContent,
+    afterContent: nextAfterContent,
+  });
 }
 
 export async function beginToolMutationCapture(params: {
@@ -623,7 +824,12 @@ export function createVirtualReviewBundle(params: {
   runId: string;
   workspaceDir: string;
   repoRoot: string;
-  files: Array<Omit<ChangeReviewFileRecord, "hunks"> & { hunks?: ChangeReviewHunkRecord[] }>;
+  files: Array<
+    Omit<ChangeReviewFileRecord, "hunks" | "groups"> & {
+      hunks?: ChangeReviewHunkRecord[];
+      groups?: ChangeReviewGroupRecord[];
+    }
+  >;
 }) {
   if (!params.files.length) {
     return null;
@@ -644,7 +850,10 @@ export function createVirtualReviewBundle(params: {
     });
     return {
       ...normalized,
-      hunks: file.hunks && file.hunks.length > 0 ? file.hunks.map((hunk) => ({ ...hunk })) : normalized.hunks,
+      hunks:
+        file.hunks && file.hunks.length > 0
+          ? file.hunks.map((hunk) => ({ ...hunk }))
+          : normalized.hunks,
     };
   });
   bundle.updatedAt = Date.now();
@@ -790,6 +999,60 @@ export async function revertReviewBundleFile(
   return finalizeBundleAfterPartialAction(bundle, reviewId, "reverted");
 }
 
+export async function applyReviewBundleGroup(
+  reviewId: string,
+  filePath: string,
+  groupId: string,
+): Promise<ChangeReviewBundle | null> {
+  const bundle = bundlesByReviewId.get(reviewId) ?? null;
+  if (!bundle) {
+    return null;
+  }
+  const file = resolveBundleFileOrThrow(bundle, filePath);
+  if (!bundle.stagedOnly) {
+    const currentContent = await readFileMaybe(file.absolutePath);
+    if (currentContent !== file.afterContent) {
+      throw new Error(`file changed after review capture: ${file.path}`);
+    }
+  }
+  const group = resolveFileGroupOrThrow(file, groupId);
+  const nextFile = resolveNextFileAfterGroupAction({ file, group, action: "apply" });
+  if (bundle.stagedOnly) {
+    await writeEffectiveFileContent(nextFile, true);
+  }
+  bundle.files = bundle.files
+    .map((entry) => (entry.path === file.path ? nextFile : entry))
+    .filter((entry) => entry.beforeContent !== entry.afterContent);
+  return finalizeBundleAfterPartialAction(bundle, reviewId, "applied");
+}
+
+export async function revertReviewBundleGroup(
+  reviewId: string,
+  filePath: string,
+  groupId: string,
+): Promise<ChangeReviewBundle | null> {
+  const bundle = bundlesByReviewId.get(reviewId) ?? null;
+  if (!bundle) {
+    return null;
+  }
+  const file = resolveBundleFileOrThrow(bundle, filePath);
+  if (!bundle.stagedOnly) {
+    const currentContent = await readFileMaybe(file.absolutePath);
+    if (currentContent !== file.afterContent) {
+      throw new Error(`file changed after review capture: ${file.path}`);
+    }
+  }
+  const group = resolveFileGroupOrThrow(file, groupId);
+  const nextFile = resolveNextFileAfterGroupAction({ file, group, action: "revert" });
+  if (!bundle.stagedOnly) {
+    await writeEffectiveFileContent(nextFile, false);
+  }
+  bundle.files = bundle.files
+    .map((entry) => (entry.path === file.path ? nextFile : entry))
+    .filter((entry) => entry.beforeContent !== entry.afterContent);
+  return finalizeBundleAfterPartialAction(bundle, reviewId, "reverted");
+}
+
 export async function applyReviewBundleHunk(
   reviewId: string,
   filePath: string,
@@ -871,6 +1134,21 @@ export function serializeReviewBundle(bundle: ChangeReviewBundle | null) {
         afterEndLine: hunk.afterEndLine,
         beforeLines: [...hunk.beforeLines],
         afterLines: [...hunk.afterLines],
+      })),
+      groups: file.groups.map((group) => ({
+        groupId: group.groupId,
+        title: group.title,
+        summary: group.summary,
+        changeType: group.changeType,
+        filePath: group.filePath,
+        hunkIds: [...group.hunkIds],
+        beforeStartLine: group.beforeStartLine,
+        beforeEndLine: group.beforeEndLine,
+        afterStartLine: group.afterStartLine,
+        afterEndLine: group.afterEndLine,
+        beforePreview: [...group.beforePreview],
+        afterPreview: [...group.afterPreview],
+        hunkCount: group.hunkCount,
       })),
     })),
     diffText: bundle.files

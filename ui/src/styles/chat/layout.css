@@ -221,7 +221,7 @@
 
 .chat-change-review-modal__panel {
   position: relative;
-  width: min(1240px, calc(100vw - 48px));
+  width: min(1320px, calc(100vw - 40px));
   height: min(82vh, 860px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -264,7 +264,7 @@
 
 .chat-change-review-modal__body {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
   gap: 14px;
   min-height: 0;
 }
@@ -311,11 +311,182 @@
   overflow-wrap: anywhere;
 }
 
+.chat-change-review-modal__detail-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  align-items: stretch;
+}
+
 .chat-change-review-modal__detail {
   padding: 12px;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+.chat-change-review-modal__minimap {
+  padding: 6px 4px 6px 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  min-height: 0;
+}
+
+.chat-change-review-modal__minimap-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.chat-change-review-modal__minimap-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.chat-change-review-modal__minimap-item:hover,
+.chat-change-review-modal__minimap-item:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent);
+  outline: none;
+}
+
+.chat-change-review-modal__minimap-item-index {
+  min-width: 30px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.chat-change-review-modal__minimap-item-body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.chat-change-review-modal__minimap-item-label {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.chat-change-review-modal__minimap-item-segment {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.chat-change-review-modal__minimap-item-meta {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.chat-change-review-modal__minimap-item--added {
+  background: color-mix(in srgb, #4ade80 10%, var(--panel) 90%);
+}
+
+.chat-change-review-modal__minimap-item--deleted {
+  background: color-mix(in srgb, #fb7185 10%, var(--panel) 90%);
+}
+
+.chat-change-review-modal__minimap-item--modified,
+.chat-change-review-modal__minimap-item--mixed {
+  background: color-mix(in srgb, #f59e0b 12%, var(--panel) 88%);
+}
+
+.chat-change-review-modal__minimap-header {
+  display: grid;
+  gap: 2px;
+}
+
+.chat-change-review-modal__minimap-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.chat-change-review-modal__minimap-meta {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.chat-change-review-modal__file-summary {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+}
+
+.chat-change-review-modal__full-compare {
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+}
+
+.chat-change-review-modal__full-compare[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  max-height: min(56vh, 560px);
+}
+
+.chat-change-review-modal__full-compare > summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.chat-change-review-modal__full-compare[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-change-review-modal__full-compare .chat-change-review-modal__compare-grid {
+  border: 0;
+  border-radius: 0;
+  min-height: 0;
+  overflow: auto;
+  max-height: min(48vh, 500px);
 }
 
 .chat-change-review-modal__compare {
@@ -363,11 +534,28 @@
   border-top: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
   background: color-mix(in srgb, var(--accent) 6%, var(--panel) 94%);
+  transition: box-shadow 160ms ease, background 160ms ease;
 }
 
 .chat-change-review-modal__hunk-title {
   font-size: 12px;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chat-change-review-modal__hunk-segment {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .chat-change-review-modal__hunk-meta {

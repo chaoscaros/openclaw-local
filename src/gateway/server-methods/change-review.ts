@@ -1,12 +1,14 @@
 import {
   applyReviewBundle,
   applyReviewBundleFile,
+  applyReviewBundleGroup,
   applyReviewBundleHunk,
   getPendingReviewBySession,
   getPendingReviewBySessionAndRun,
   getReviewById,
   revertReviewBundle,
   revertReviewBundleFile,
+  revertReviewBundleGroup,
   revertReviewBundleHunk,
   serializeReviewBundle,
 } from "../change-review-store.js";
@@ -14,6 +16,7 @@ import {
   ErrorCodes,
   errorShape,
   formatValidationErrors,
+  validateChangeReviewGroupParams,
   validateChangeReviewHunkParams,
   validateChangeReviewIdParams,
   validateChangeReviewSessionParams,
@@ -49,6 +52,21 @@ function validateReviewHunkParams(
     return null;
   }
   return { id, path, hunkId };
+}
+
+function validateReviewGroupParams(
+  params: Record<string, unknown>,
+): { id: string; path: string; groupId: string } | null {
+  if (!validateChangeReviewGroupParams(params)) {
+    return null;
+  }
+  const id = typeof params.id === "string" ? params.id.trim() : "";
+  const path = typeof params.path === "string" ? params.path.trim() : "";
+  const groupId = typeof params.groupId === "string" ? params.groupId.trim() : "";
+  if (!id || !path || !groupId) {
+    return null;
+  }
+  return { id, path, groupId };
 }
 
 export const changeReviewHandlers: GatewayRequestHandlers = {
@@ -92,7 +110,7 @@ export const changeReviewHandlers: GatewayRequestHandlers = {
     }
     respond(true, serializeReviewBundle(getPendingReviewBySession(sessionKey)), undefined);
   },
-  "changeReview.apply": ({ params, respond }) => {
+  "changeReview.apply": async ({ params, respond }) => {
     const id = validateReviewId(params);
     const filePath = typeof params.path === "string" ? params.path.trim() : "";
     if (!id) {
@@ -115,17 +133,16 @@ export const changeReviewHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    (filePath ? applyReviewBundleFile(id, filePath) : applyReviewBundle(id))
-      .then(() => {
-        respond(true, { ok: true, applied: true }, undefined);
-      })
-      .catch((err) => {
-        respond(
-          false,
-          undefined,
-          errorShape(ErrorCodes.UNAVAILABLE, `change review apply failed: ${String(err)}`),
-        );
-      });
+    try {
+      await (filePath ? applyReviewBundleFile(id, filePath) : applyReviewBundle(id));
+      respond(true, { ok: true, applied: true }, undefined);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `change review apply failed: ${String(err)}`),
+      );
+    }
   },
   "changeReview.revert": async ({ params, respond }) => {
     const id = validateReviewId(params);
@@ -158,6 +175,78 @@ export const changeReviewHandlers: GatewayRequestHandlers = {
         false,
         undefined,
         errorShape(ErrorCodes.UNAVAILABLE, `change review revert failed: ${String(err)}`),
+      );
+    }
+  },
+  "changeReview.applyGroup": async ({ params, respond }) => {
+    const validated = validateReviewGroupParams(params);
+    if (!validated) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          formatValidationErrors(validateChangeReviewGroupParams.errors ?? []),
+        ),
+      );
+      return;
+    }
+    const review = getReviewById(validated.id);
+    if (!review) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "invalid changeReview.applyGroup params: unknown id",
+        ),
+      );
+      return;
+    }
+    try {
+      await applyReviewBundleGroup(validated.id, validated.path, validated.groupId);
+      respond(true, { ok: true, applied: true }, undefined);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `change review applyGroup failed: ${String(err)}`),
+      );
+    }
+  },
+  "changeReview.revertGroup": async ({ params, respond }) => {
+    const validated = validateReviewGroupParams(params);
+    if (!validated) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          formatValidationErrors(validateChangeReviewGroupParams.errors ?? []),
+        ),
+      );
+      return;
+    }
+    const review = getReviewById(validated.id);
+    if (!review) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "invalid changeReview.revertGroup params: unknown id",
+        ),
+      );
+      return;
+    }
+    try {
+      await revertReviewBundleGroup(validated.id, validated.path, validated.groupId);
+      respond(true, { ok: true, reverted: true }, undefined);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `change review revertGroup failed: ${String(err)}`),
       );
     }
   },
@@ -212,7 +301,10 @@ export const changeReviewHandlers: GatewayRequestHandlers = {
       respond(
         false,
         undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "invalid changeReview.revertHunk params: unknown id"),
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "invalid changeReview.revertHunk params: unknown id",
+        ),
       );
       return;
     }

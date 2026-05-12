@@ -117,6 +117,25 @@ const ChangeReviewHunkSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const ChangeReviewGroupSchema = Type.Object(
+  {
+    groupId: NonEmptyString,
+    title: NonEmptyString,
+    summary: NonEmptyString,
+    changeType: NonEmptyString,
+    filePath: NonEmptyString,
+    hunkIds: Type.Array(NonEmptyString),
+    beforeStartLine: Type.Integer({ minimum: 0 }),
+    beforeEndLine: Type.Integer({ minimum: 0 }),
+    afterStartLine: Type.Integer({ minimum: 0 }),
+    afterEndLine: Type.Integer({ minimum: 0 }),
+    beforePreview: Type.Array(Type.String()),
+    afterPreview: Type.Array(Type.String()),
+    hunkCount: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
 const ChangeReviewFileSchema = Type.Object(
   {
     path: NonEmptyString,
@@ -125,6 +144,7 @@ const ChangeReviewFileSchema = Type.Object(
     beforeContent: Type.Optional(NullableString),
     afterContent: Type.Optional(NullableString),
     hunks: Type.Optional(Type.Array(ChangeReviewHunkSchema)),
+    groups: Type.Optional(Type.Array(ChangeReviewGroupSchema)),
   },
   { additionalProperties: false },
 );
@@ -150,6 +170,15 @@ export const ChangeReviewHunkParamsSchema = Type.Object(
     id: NonEmptyString,
     path: NonEmptyString,
     hunkId: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+export const ChangeReviewGroupParamsSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    path: NonEmptyString,
+    groupId: NonEmptyString,
   },
   { additionalProperties: false },
 );

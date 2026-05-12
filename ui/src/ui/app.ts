@@ -154,6 +154,21 @@ type ChangeReviewPayload = {
       beforeLines: string[];
       afterLines: string[];
     }>;
+    groups?: Array<{
+      groupId: string;
+      title: string;
+      summary: string;
+      changeType: string;
+      filePath: string;
+      hunkIds: string[];
+      beforeStartLine: number;
+      beforeEndLine: number;
+      afterStartLine: number;
+      afterEndLine: number;
+      beforePreview: string[];
+      afterPreview: string[];
+      hunkCount: number;
+    }>;
   }>;
   diffText?: string;
   sourceRunId?: string;
@@ -257,9 +272,12 @@ export class OpenClawApp extends LitElement {
   @state() chatChangeReview: ChangeReviewPayload | null = null;
   @state() chatChangeReviewOpen = false;
   @state() chatChangeReviewSelectedPath: string | null = null;
-  @state() chatChangeReviewAction:
-    | { type: "apply" | "revert"; path?: string | null; hunkId?: string | null }
-    | null = null;
+  @state() chatChangeReviewAction: {
+    type: "apply" | "revert";
+    path?: string | null;
+    hunkId?: string | null;
+    groupId?: string | null;
+  } | null = null;
   @state() chatManualRefreshInFlight = false;
   @state() navDrawerOpen = false;
 
@@ -855,7 +873,7 @@ export class OpenClawApp extends LitElement {
 
   consumeResumedDevExecuteForSession(sessionKey: string, _message: string): boolean {
     const entry = this.resumedDevExecuteBySessionKey.get(sessionKey);
-    if (!entry || entry.changeReviewModeEnabled !== true) {
+    if (!entry || !entry.changeReviewModeEnabled) {
       return false;
     }
     if (entry.remainingTurns <= 1) {
@@ -906,6 +924,23 @@ export class OpenClawApp extends LitElement {
     }
   }
 
+  async applyChangeReviewGroup(id: string, path: string, groupId: string) {
+    if (!this.client || !this.connected) {
+      return;
+    }
+    this.lastError = null;
+    this.chatChangeReviewAction = { type: "apply", path, groupId };
+    try {
+      await this.client.request("changeReview.applyGroup", { id, path, groupId });
+      await this.loadChangeReviewStatus();
+    } catch (err) {
+      this.lastError = `应用待确认改动组失败：${String(err)}`;
+      await this.loadChangeReviewStatus();
+    } finally {
+      this.chatChangeReviewAction = null;
+    }
+  }
+
   async applyChangeReviewHunk(id: string, path: string, hunkId: string) {
     if (!this.client || !this.connected) {
       return;
@@ -940,6 +975,24 @@ export class OpenClawApp extends LitElement {
       await loadChatHistory(this as unknown as Parameters<typeof loadChatHistory>[0]);
     } catch (err) {
       this.lastError = `还原待确认改动失败：${String(err)}`;
+      await this.loadChangeReviewStatus();
+    } finally {
+      this.chatChangeReviewAction = null;
+    }
+  }
+
+  async revertChangeReviewGroup(id: string, path: string, groupId: string) {
+    if (!this.client || !this.connected) {
+      return;
+    }
+    this.lastError = null;
+    this.chatChangeReviewAction = { type: "revert", path, groupId };
+    try {
+      await this.client.request("changeReview.revertGroup", { id, path, groupId });
+      await this.loadChangeReviewStatus();
+      await loadChatHistory(this as unknown as Parameters<typeof loadChatHistory>[0]);
+    } catch (err) {
+      this.lastError = `还原待确认改动组失败：${String(err)}`;
       await this.loadChangeReviewStatus();
     } finally {
       this.chatChangeReviewAction = null;
