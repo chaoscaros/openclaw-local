@@ -92,6 +92,7 @@ const LOCAL_COMMANDS = new Set([
   "kill",
   "steer",
   "redirect",
+  "goal-run",
 ]);
 
 function buildUiOnlyCommands(): SlashCommandDef[] {
@@ -111,6 +112,16 @@ function buildUiOnlyCommands(): SlashCommandDef[] {
       args: "[id] <message>",
       icon: "refresh",
       category: "agents",
+      executeLocal: true,
+    },
+    {
+      key: "goal-run",
+      name: "goal-run",
+      aliases: ["目标执行"],
+      description: "一次性开启目标执行并发送当前目标（仅本次生效）",
+      args: "<goal>",
+      icon: "checkSquare",
+      category: "session",
       executeLocal: true,
     },
   ];

@@ -40,6 +40,11 @@ type SettingsHost = {
     chatFocusMode: boolean;
     chatShowThinking: boolean;
     chatShowToolCalls: boolean;
+    dreamingAssistEnabled: boolean;
+    planModeEnabled: boolean;
+    executionGoalModeEnabled: boolean;
+    devSpecFirstEnabled: boolean;
+    changeReviewModeEnabled: boolean;
     splitRatio: number;
     navCollapsed: boolean;
     navWidth: number;

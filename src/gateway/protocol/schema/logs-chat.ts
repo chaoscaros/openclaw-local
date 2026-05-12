@@ -40,6 +40,7 @@ export const ChatSendParamsSchema = Type.Object(
     deliver: Type.Optional(Type.Boolean()),
     applyDreamingAssist: Type.Optional(Type.Boolean()),
     planModeEnabled: Type.Optional(Type.Boolean()),
+    executionGoalModeEnabled: Type.Optional(Type.Boolean()),
     devSpecFirstEnabled: Type.Optional(Type.Boolean()),
     changeReviewModeEnabled: Type.Optional(Type.Boolean()),
     resumeDevExecute: Type.Optional(Type.Boolean()),

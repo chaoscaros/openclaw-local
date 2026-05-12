@@ -164,6 +164,7 @@ export type ChatState = {
   sessionKey: string;
   dreamingAssistEnabled?: boolean;
   planModeEnabled?: boolean;
+  executionGoalModeEnabled?: boolean;
   devSpecFirstEnabled?: boolean;
   changeReviewModeEnabled?: boolean;
   consumeResumedDevExecuteForSession?: (sessionKey: string, message: string) => boolean;
@@ -309,6 +310,7 @@ async function requestChatSend(
     settings?: {
       dreamingAssistEnabled?: boolean;
       planModeEnabled?: boolean;
+      executionGoalModeEnabled?: boolean;
       devSpecFirstEnabled?: boolean;
       changeReviewModeEnabled?: boolean;
     };
@@ -316,6 +318,8 @@ async function requestChatSend(
   const dreamingAssistEnabled =
     state.dreamingAssistEnabled ?? settingsState.settings?.dreamingAssistEnabled ?? true;
   const planModeEnabled = state.planModeEnabled ?? settingsState.settings?.planModeEnabled ?? false;
+  const executionGoalModeEnabled =
+    state.executionGoalModeEnabled ?? settingsState.settings?.executionGoalModeEnabled ?? false;
   const devSpecFirstEnabled =
     state.devSpecFirstEnabled ?? settingsState.settings?.devSpecFirstEnabled ?? false;
   const changeReviewModeEnabled =
@@ -328,6 +332,7 @@ async function requestChatSend(
     deliver: false,
     applyDreamingAssist: dreamingAssistEnabled,
     planModeEnabled,
+    executionGoalModeEnabled,
     devSpecFirstEnabled,
     changeReviewModeEnabled,
     resumeDevExecute,

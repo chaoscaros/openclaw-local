@@ -54,6 +54,7 @@ export type UiSettings = {
   chatShowToolCalls: boolean;
   dreamingAssistEnabled: boolean;
   planModeEnabled: boolean;
+  executionGoalModeEnabled: boolean;
   devSpecFirstEnabled: boolean;
   changeReviewModeEnabled: boolean;
   splitRatio: number; // Sidebar split ratio (0.4 to 0.7, default 0.6)
@@ -196,6 +197,7 @@ export function loadSettings(): UiSettings {
     chatShowToolCalls: true,
     dreamingAssistEnabled: true,
     planModeEnabled: false,
+    executionGoalModeEnabled: false,
     devSpecFirstEnabled: false,
     changeReviewModeEnabled: false,
     splitRatio: 0.6,
@@ -249,6 +251,11 @@ export function loadSettings(): UiSettings {
         typeof (parsed as { planModeEnabled?: unknown }).planModeEnabled === "boolean"
           ? Boolean((parsed as { planModeEnabled?: unknown }).planModeEnabled)
           : defaults.planModeEnabled,
+      executionGoalModeEnabled:
+        typeof (parsed as { executionGoalModeEnabled?: unknown }).executionGoalModeEnabled ===
+        "boolean"
+          ? Boolean((parsed as { executionGoalModeEnabled?: unknown }).executionGoalModeEnabled)
+          : defaults.executionGoalModeEnabled,
       devSpecFirstEnabled:
         typeof (parsed as { devSpecFirstEnabled?: unknown }).devSpecFirstEnabled === "boolean"
           ? Boolean((parsed as { devSpecFirstEnabled?: unknown }).devSpecFirstEnabled)
@@ -337,6 +344,7 @@ function persistSettings(next: UiSettings) {
     chatShowToolCalls: next.chatShowToolCalls,
     dreamingAssistEnabled: next.dreamingAssistEnabled,
     planModeEnabled: next.planModeEnabled,
+    executionGoalModeEnabled: next.executionGoalModeEnabled,
     devSpecFirstEnabled: next.devSpecFirstEnabled,
     changeReviewModeEnabled: next.changeReviewModeEnabled,
     splitRatio: next.splitRatio,

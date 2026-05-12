@@ -116,6 +116,7 @@ export type ChatProps = {
   dreamingAssistReason?: DreamingAssistReason | null;
   dreamingAssistEnabled?: boolean;
   planModeEnabled?: boolean;
+  executionGoalModeEnabled?: boolean;
   devSpecFirstEnabled?: boolean;
   changeReviewModeEnabled?: boolean;
   showThinking: boolean;
@@ -183,6 +184,7 @@ export type ChatProps = {
   onToggleFocusMode: () => void;
   onToggleDreamingAssist?: () => void;
   onTogglePlanMode?: () => void;
+  onToggleExecutionGoalMode?: () => void;
   onToggleDevSpecFirst?: () => void;
   onToggleChangeReviewMode?: () => void;
   getDraft?: () => string;
@@ -1927,6 +1929,7 @@ export function renderChat(props: ChatProps) {
   const isBusy = props.sending || props.stream !== null;
   const canAbort = Boolean(props.canAbort && props.onAbort);
   const activeSession = props.sessions?.sessions?.find((row) => row.key === props.sessionKey);
+  const visiblePendingChangeReview = props.pendingRunId ? null : props.pendingChangeReview;
   const reasoningLevel = activeSession?.reasoningLevel ?? "off";
   const showReasoning = props.showThinking && reasoningLevel !== "off";
   const assistantIdentity = {
@@ -2232,6 +2235,7 @@ export function renderChat(props: ChatProps) {
       props.dreamingAssistApplied !== undefined) ||
     props.onToggleDreamingAssist ||
     props.onTogglePlanMode ||
+    props.onToggleExecutionGoalMode ||
     props.onToggleDevSpecFirst ||
     props.onToggleChangeReviewMode;
 
@@ -2239,6 +2243,7 @@ export function renderChat(props: ChatProps) {
     ? html`<div class="chat-mode-switches__panel">
         ${props.onToggleDreamingAssist ||
         props.onTogglePlanMode ||
+        props.onToggleExecutionGoalMode ||
         props.onToggleDevSpecFirst ||
         props.onToggleChangeReviewMode
           ? html`<div class="chat-mode-switches__list">
@@ -2281,6 +2286,29 @@ export function renderChat(props: ChatProps) {
                     </span>
                     <span
                       class="chat-mode-switch__control ${props.planModeEnabled === true
+                        ? "is-on"
+                        : "is-off"}"
+                    >
+                      <span class="chat-mode-switch__thumb"></span>
+                    </span>
+                  </button>`
+                : nothing}
+              ${props.onToggleExecutionGoalMode
+                ? html`<button
+                    class="chat-mode-switch"
+                    type="button"
+                    role="switch"
+                    aria-checked=${props.executionGoalModeEnabled === true}
+                    @click=${() => props.onToggleExecutionGoalMode?.()}
+                  >
+                    <span class="chat-mode-switch__meta">
+                      <span class="chat-mode-switch__icon">${icons.flag}</span>
+                      <span class="chat-mode-switch__text">
+                        <span class="chat-mode-switch__label">目标执行</span>
+                      </span>
+                    </span>
+                    <span
+                      class="chat-mode-switch__control ${props.executionGoalModeEnabled === true
                         ? "is-on"
                         : "is-off"}"
                     >
@@ -2455,15 +2483,15 @@ export function renderChat(props: ChatProps) {
       ${renderFallbackIndicator(props.fallbackStatus)}
       ${renderCompactionIndicator(props.compactionStatus)}
       ${renderContextNotice(activeSession, props.sessions?.defaults?.contextTokens ?? null)}
-      ${props.pendingChangeReview?.pending
+      ${visiblePendingChangeReview?.pending
         ? html`<div class="callout warning chat-change-review" role="status">
             <div class="chat-change-review__header">
               <div>
                 <strong>待确认改动</strong>
                 <div class="chat-change-review__meta">
-                  ${props.pendingChangeReview.files?.length ?? 0} 个文件 ·
-                  ${props.pendingChangeReview.updatedAt
-                    ? new Date(props.pendingChangeReview.updatedAt).toLocaleTimeString("zh-CN", {
+                  ${visiblePendingChangeReview.files?.length ?? 0} 个文件 ·
+                  ${visiblePendingChangeReview.updatedAt
+                    ? new Date(visiblePendingChangeReview.updatedAt).toLocaleTimeString("zh-CN", {
                         hour: "2-digit",
                         minute: "2-digit",
                       })
@@ -2477,7 +2505,7 @@ export function renderChat(props: ChatProps) {
               </div>
             </div>
             <div class="chat-change-review__files">
-              ${(props.pendingChangeReview.files ?? [])
+              ${(visiblePendingChangeReview.files ?? [])
                 .slice(0, 3)
                 .map(
                   (file) =>
@@ -2672,7 +2700,11 @@ export function renderChat(props: ChatProps) {
     }
   });
 
-  return html`${section}${renderChangeReviewModal(props)}`;
+  return html`${section}${renderChangeReviewModal({
+    ...props,
+    pendingChangeReview: visiblePendingChangeReview,
+    pendingChangeReviewOpen: visiblePendingChangeReview ? props.pendingChangeReviewOpen : false,
+  })}`;
 }
 
 const CHAT_HISTORY_RENDER_LIMIT = 200;
