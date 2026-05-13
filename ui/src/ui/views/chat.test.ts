@@ -3189,7 +3189,6 @@ describe("chat view", () => {
 
   it("renders diff summary, minimap locator, and hunk apply without the group summary card", async () => {
     const container = document.createElement("div");
-    const onApplyChangeReviewGroup = vi.fn();
     const onApplyChangeReviewHunk = vi.fn();
     render(
       renderChat(
@@ -3249,7 +3248,6 @@ describe("chat view", () => {
           },
           pendingChangeReviewOpen: true,
           pendingChangeReviewSelectedPath: "src/demo.ts",
-          onApplyChangeReviewGroup,
           onApplyChangeReviewHunk,
         }),
       ),
@@ -3259,10 +3257,9 @@ describe("chat view", () => {
 
     const text = container.textContent ?? "";
 
-    expect(text).toContain("组 #1 · 修改 2 处内容");
+    expect(text).not.toContain("应用这组");
     expect(text).toContain("改动定位");
     expect(text).toContain("1 个定位点 · 共 3 行");
-    expect(text).toContain("应用这组");
     expect(text).toContain("查看完整文件对比");
     expect(text).toContain("应用此块");
     const minimapButtons = Array.from(
@@ -3270,22 +3267,6 @@ describe("chat view", () => {
     );
     expect(minimapButtons).toHaveLength(1);
     expect(minimapButtons[0]?.textContent).toContain("组 #1 · 修改 2 处内容");
-
-    const locateButton = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
-      (button) => button.textContent?.includes("定位"),
-    );
-    expect(locateButton).toBeTruthy();
-
-    const groupApplyButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>("button"),
-    ).find((button) => button.textContent?.includes("应用这组"));
-    expect(groupApplyButton).toBeTruthy();
-    groupApplyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(onApplyChangeReviewGroup).toHaveBeenCalledWith(
-      "review-hunk-1",
-      "src/demo.ts",
-      "group-1-2-2",
-    );
 
     const hunkApplyButton = Array.from(
       container.querySelectorAll<HTMLButtonElement>("button"),
@@ -3377,6 +3358,7 @@ describe("chat view", () => {
     const scrollTo = vi.fn();
 
     expect(details).toBeTruthy();
+    expect(details?.open).toBe(true);
     expect(compareGrid).toBeTruthy();
     expect(hunkHeader).toBeTruthy();
     expect(minimapButton).toBeTruthy();

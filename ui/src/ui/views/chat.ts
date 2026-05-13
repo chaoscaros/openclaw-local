@@ -684,82 +684,6 @@ function handleLocateChangeReviewGroup(file: ChangeReviewFile, groupId: string) 
   });
 }
 
-function renderChangeReviewGroupCards(file: ChangeReviewFile, props: ChatProps) {
-  const groups = file.groups ?? [];
-  if (groups.length === 0) {
-    return nothing;
-  }
-  const reviewId = props.pendingChangeReview?.id ?? "";
-  const action = props.pendingChangeReviewAction ?? null;
-  const busy = action !== null;
-  return html`<div class="chat-change-review-modal__groups">
-    ${groups.map(
-      (group, index) => html`<section
-        id=${buildChangeReviewGroupAnchorId(file.path, group.groupId)}
-        class="chat-change-review-modal__group-card"
-      >
-        <div class="chat-change-review-modal__group-card-header">
-          <div>
-            <div class="chat-change-review-modal__group-card-title">
-              组 #${index + 1} · ${group.title}
-            </div>
-            <div class="chat-change-review-modal__group-card-meta">
-              ${renderChangeReviewStatusLabel(group.changeType)} · 前
-              ${group.beforeStartLine}-${group.beforeEndLine || group.beforeStartLine} / 后
-              ${group.afterStartLine}-${group.afterEndLine || group.afterStartLine} ·
-              ${group.hunkCount} 个改动块
-            </div>
-          </div>
-          <div class="chat-change-review-modal__group-card-actions">
-            <button
-              class="btn btn--ghost btn--small"
-              type="button"
-              ?disabled=${busy}
-              @click=${() => handleLocateChangeReviewGroup(file, group.groupId)}
-            >
-              定位
-            </button>
-            <button
-              class="btn btn--small"
-              type="button"
-              ?disabled=${busy}
-              @click=${() => props.onApplyChangeReviewGroup?.(reviewId, file.path, group.groupId)}
-            >
-              ${action?.type === "apply" &&
-              action.path === file.path &&
-              action.groupId === group.groupId
-                ? "应用中..."
-                : "应用这组"}
-            </button>
-            <button
-              class="btn btn--ghost btn--small"
-              type="button"
-              ?disabled=${busy}
-              @click=${() => props.onRevertChangeReviewGroup?.(reviewId, file.path, group.groupId)}
-            >
-              ${action?.type === "revert" &&
-              action.path === file.path &&
-              action.groupId === group.groupId
-                ? "还原中..."
-                : "还原这组"}
-            </button>
-          </div>
-        </div>
-        <div class="chat-change-review-modal__group-card-preview-shell">
-          <div class="chat-change-review-modal__group-card-preview">
-            <div class="chat-change-review-modal__group-card-preview-title">变更前</div>
-            <pre>${group.beforePreview.join("\n") || "无"}</pre>
-          </div>
-          <div class="chat-change-review-modal__group-card-preview">
-            <div class="chat-change-review-modal__group-card-preview-title">变更后</div>
-            <pre>${group.afterPreview.join("\n") || "无"}</pre>
-          </div>
-        </div>
-      </section>`,
-    )}
-  </div>`;
-}
-
 function renderChangeReviewMiniMap(file: ChangeReviewFile) {
   const entries = buildChangeReviewMinimapEntries(file);
   if (entries.length === 0) {
@@ -1025,8 +949,7 @@ function renderChangeReviewModal(props: ChatProps) {
                     0}
                     行
                   </div>
-                  ${renderChangeReviewGroupCards(selectedFile, props)}
-                  <details class="chat-change-review-modal__full-compare">
+                  <details class="chat-change-review-modal__full-compare" open>
                     <summary>查看完整文件对比</summary>
                     ${renderChangeReviewCompare(selectedFile, props)}
                   </details>
