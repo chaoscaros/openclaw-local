@@ -124,10 +124,6 @@ function createChatHeaderState(
       executionGoalModeEnabled: false,
       devSpecFirstEnabled: false,
       changeReviewModeEnabled: false,
-      dreamingAssistEnabled: true,
-      planModeEnabled: false,
-      executionGoalModeEnabled: false,
-      devSpecFirstEnabled: false,
     },
     chatMessage: "",
     chatStream: null,
@@ -251,10 +247,6 @@ function createOverviewProps(overrides: Partial<OverviewProps> = {}): OverviewPr
       executionGoalModeEnabled: false,
       devSpecFirstEnabled: false,
       changeReviewModeEnabled: false,
-      dreamingAssistEnabled: true,
-      planModeEnabled: false,
-      executionGoalModeEnabled: false,
-      devSpecFirstEnabled: false,
       splitRatio: 0.6,
       navCollapsed: false,
       navWidth: 220,
@@ -3267,31 +3259,33 @@ describe("chat view", () => {
 
     const text = container.textContent ?? "";
 
-    expect(text).not.toContain("组 #1 · 修改 2 处内容");
+    expect(text).toContain("组 #1 · 修改 2 处内容");
     expect(text).toContain("改动定位");
-    expect(text).toContain("4 个定位点 · 共 3 行");
-    expect(text).toContain("第 1 段");
-    expect(text).toContain("第 2 段");
-    expect(text).not.toContain("应用这组");
+    expect(text).toContain("1 个定位点 · 共 3 行");
+    expect(text).toContain("应用这组");
     expect(text).toContain("查看完整文件对比");
     expect(text).toContain("应用此块");
     const minimapButtons = Array.from(
       container.querySelectorAll<HTMLButtonElement>(".chat-change-review-modal__minimap-item"),
     );
-    expect(minimapButtons).toHaveLength(4);
-    expect(minimapButtons[0]?.textContent).toContain("第 1 段");
-    expect(minimapButtons[2]?.textContent).toContain("第 2 段");
+    expect(minimapButtons).toHaveLength(1);
+    expect(minimapButtons[0]?.textContent).toContain("组 #1 · 修改 2 处内容");
 
     const locateButton = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
       (button) => button.textContent?.includes("定位"),
     );
-    expect(locateButton).toBeUndefined();
+    expect(locateButton).toBeTruthy();
 
     const groupApplyButton = Array.from(
       container.querySelectorAll<HTMLButtonElement>("button"),
     ).find((button) => button.textContent?.includes("应用这组"));
-    expect(groupApplyButton).toBeUndefined();
-    expect(onApplyChangeReviewGroup).not.toHaveBeenCalled();
+    expect(groupApplyButton).toBeTruthy();
+    groupApplyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onApplyChangeReviewGroup).toHaveBeenCalledWith(
+      "review-hunk-1",
+      "src/demo.ts",
+      "group-1-2-2",
+    );
 
     const hunkApplyButton = Array.from(
       container.querySelectorAll<HTMLButtonElement>("button"),
@@ -3426,7 +3420,7 @@ describe("chat view", () => {
     expect(scrollTo).toHaveBeenCalledWith({ top: 324, behavior: "smooth" });
   });
 
-  it("renders one minimap marker per hunk even when groups are fewer than hunks", async () => {
+  it("renders one minimap marker per group when groups are available", async () => {
     const container = document.createElement("div");
     render(
       renderChat(
@@ -3502,15 +3496,9 @@ describe("chat view", () => {
     const minimapButtons = Array.from(
       container.querySelectorAll<HTMLButtonElement>(".chat-change-review-modal__minimap-item"),
     );
-    expect(minimapButtons).toHaveLength(16);
-    expect(container.textContent).toContain("16 个定位点");
-    expect(minimapButtons.some((button) => button.textContent?.includes("#7-7-7"))).toBe(true);
-    expect(minimapButtons.some((button) => button.textContent?.includes("改动块 #7-7-7"))).toBe(
-      true,
-    );
-    expect(minimapButtons.some((button) => button.textContent?.includes("#8-8-8"))).toBe(true);
-    expect(minimapButtons.some((button) => button.textContent?.includes("改动块 #8-8-8"))).toBe(
-      true,
-    );
+    expect(minimapButtons).toHaveLength(2);
+    expect(container.textContent).toContain("2 个定位点");
+    expect(minimapButtons[0]?.textContent).toContain("组 #1 · 前半组");
+    expect(minimapButtons[1]?.textContent).toContain("组 #2 · 后半组");
   });
 });

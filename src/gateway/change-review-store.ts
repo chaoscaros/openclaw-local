@@ -306,26 +306,24 @@ function buildChangeReviewHunks(
     });
   };
 
-  for (let index = 0; index < rows.length; index += 1) {
-    const row = rows[index];
+  let pendingRows: ChangeReviewCompareRow[] = [];
+  const flushPendingRows = () => {
+    if (pendingRows.length === 0) {
+      return;
+    }
+    pushRows(pendingRows);
+    pendingRows = [];
+  };
+
+  for (const row of rows) {
     const changed = row.leftKind !== "context" || row.rightKind !== "context";
     if (!changed) {
+      flushPendingRows();
       continue;
     }
-    const nextRow = rows[index + 1];
-    const isSingleLineRemoval = row.leftKind === "removed" && row.rightKind === "empty";
-    const isSingleLineAddition = row.leftKind === "empty" && row.rightKind === "added";
-    if (isSingleLineRemoval && nextRow?.leftKind === "empty" && nextRow.rightKind === "added") {
-      pushRows([row, nextRow]);
-      index += 1;
-      continue;
-    }
-    if (isSingleLineAddition || isSingleLineRemoval) {
-      pushRows([row]);
-      continue;
-    }
-    pushRows([row]);
+    pendingRows.push(row);
   }
+  flushPendingRows();
   return hunks;
 }
 

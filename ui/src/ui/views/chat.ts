@@ -406,12 +406,12 @@ type ChangeReviewMinimapEntry = {
   anchorId: string;
   displayIndex: string;
   label: string;
-  segmentLabel: string | null;
   changeType: string;
   startLine: number;
   endLine: number;
   sortLine: number;
   hunkId?: string;
+  groupId?: string;
   lane: number;
 };
 
@@ -440,6 +440,14 @@ function buildChangeReviewHunkAnchorId(filePath: string, hunkId: string): string
   return `change-review-hunk-${fileSlug}-${hunkId}`;
 }
 
+function buildChangeReviewGroupAnchorId(filePath: string, groupId: string): string {
+  const fileSlug = filePath
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(-48);
+  return `change-review-group-${fileSlug}-${groupId}`;
+}
+
 function buildChangeReviewRenderedBlockAnchorId(
   filePath: string,
   hunkId: string,
@@ -456,6 +464,29 @@ function buildChangeReviewSegmentLabel(
     return null;
   }
   return `第 ${occurrence} 段`;
+}
+
+function resolveChangeReviewGroup(
+  file: ChangeReviewFile,
+  groupId?: string,
+): ChangeReviewGroup | null {
+  if (!groupId) {
+    return (file.groups ?? [])[0] ?? null;
+  }
+  return (file.groups ?? []).find((group) => group.groupId === groupId) ?? null;
+}
+
+function resolveChangeReviewGroupFirstHunk(
+  file: ChangeReviewFile,
+  group: ChangeReviewGroup,
+): ChangeReviewHunk | null {
+  for (const hunkId of group.hunkIds) {
+    const hunk = resolveChangeReviewHunk(file, hunkId);
+    if (hunk) {
+      return hunk;
+    }
+  }
+  return null;
 }
 
 function getChangeReviewFileTotalLines(file: ChangeReviewFile): number {
@@ -479,8 +510,42 @@ function getChangeReviewFileTotalLines(file: ChangeReviewFile): number {
 }
 
 function buildChangeReviewMinimapEntries(file: ChangeReviewFile): ChangeReviewMinimapEntry[] {
-  const rows = buildChangeReviewCompareRows(file);
+  const groups = file.groups ?? [];
   const laneEndLines = [-Infinity, -Infinity, -Infinity, -Infinity, -Infinity];
+  if (groups.length > 0) {
+    return groups
+      .map((group, index) => {
+        const visualRange = resolveChangeReviewVisualRange(
+          group.beforeStartLine,
+          group.beforeEndLine,
+          group.afterStartLine,
+          group.afterEndLine,
+        );
+        let lane = laneEndLines.findIndex((endLine) => visualRange.startLine > endLine + 1);
+        if (lane === -1) {
+          lane = laneEndLines.indexOf(Math.min(...laneEndLines));
+        }
+        laneEndLines[lane] = Math.max(laneEndLines[lane], visualRange.endLine);
+        const firstHunk = resolveChangeReviewGroupFirstHunk(file, group);
+        return {
+          key: group.groupId,
+          anchorId: firstHunk
+            ? buildChangeReviewRenderedBlockAnchorId(file.path, firstHunk.hunkId, 1)
+            : buildChangeReviewGroupAnchorId(file.path, group.groupId),
+          displayIndex: `#${index + 1}`,
+          label: `组 #${index + 1} · ${group.summary}`,
+          changeType: group.changeType,
+          startLine: visualRange.startLine,
+          endLine: visualRange.endLine,
+          sortLine: visualRange.startLine,
+          hunkId: firstHunk?.hunkId,
+          groupId: group.groupId,
+          lane,
+        };
+      })
+      .toSorted((left, right) => left.sortLine - right.sortLine);
+  }
+  const rows = buildChangeReviewCompareRows(file);
   const occurrenceCounts = new Map<string, number>();
   const totalOccurrences = new Map<string, number>();
   const entries: ChangeReviewMinimapEntry[] = [];
@@ -492,8 +557,8 @@ function buildChangeReviewMinimapEntries(file: ChangeReviewFile): ChangeReviewMi
       previousHunkId = currentHunkId;
       continue;
     }
-    totalOccurrences.set(currentHunkId, (totalOccurrences.get(currentHunkId) ?? 0) + 1);
-    previousHunkId = currentHunkId;
+    totalOccurrences.set(hunk.hunkId, (totalOccurrences.get(hunk.hunkId) ?? 0) + 1);
+    previousHunkId = hunk.hunkId;
   }
   previousHunkId = null;
   for (const row of rows) {
@@ -505,10 +570,6 @@ function buildChangeReviewMinimapEntries(file: ChangeReviewFile): ChangeReviewMi
     }
     const occurrence = (occurrenceCounts.get(currentHunkId) ?? 0) + 1;
     occurrenceCounts.set(currentHunkId, occurrence);
-    const segmentLabel = buildChangeReviewSegmentLabel(
-      occurrence,
-      totalOccurrences.get(currentHunkId) ?? 1,
-    );
     const visualRange = resolveChangeReviewVisualRange(
       hunk.beforeStartLine,
       hunk.beforeEndLine,
@@ -525,7 +586,6 @@ function buildChangeReviewMinimapEntries(file: ChangeReviewFile): ChangeReviewMi
       anchorId: buildChangeReviewRenderedBlockAnchorId(file.path, currentHunkId, occurrence),
       displayIndex: hunk.hunkId.replace(/^hunk-/, "#"),
       label: `改动块 ${hunk.hunkId.replace(/^hunk-/, "#")}`,
-      segmentLabel,
       changeType: hunk.changeType,
       startLine: visualRange.startLine,
       endLine: visualRange.endLine,
@@ -603,6 +663,103 @@ function scrollToChangeReviewDiff(file: ChangeReviewFile, entry: ChangeReviewMin
   run();
 }
 
+function handleLocateChangeReviewGroup(file: ChangeReviewFile, groupId: string) {
+  const group = resolveChangeReviewGroup(file, groupId);
+  const firstHunk = group ? resolveChangeReviewGroupFirstHunk(file, group) : null;
+  if (!group || !firstHunk) {
+    return;
+  }
+  scrollToChangeReviewDiff(file, {
+    key: group.groupId,
+    anchorId: buildChangeReviewRenderedBlockAnchorId(file.path, firstHunk.hunkId, 1),
+    displayIndex: group.groupId,
+    label: group.title,
+    changeType: group.changeType,
+    startLine: group.afterStartLine || group.beforeStartLine || 1,
+    endLine: group.afterEndLine || group.beforeEndLine || group.afterStartLine || 1,
+    sortLine: group.afterStartLine || group.beforeStartLine || 1,
+    hunkId: firstHunk.hunkId,
+    groupId,
+    lane: 0,
+  });
+}
+
+function renderChangeReviewGroupCards(file: ChangeReviewFile, props: ChatProps) {
+  const groups = file.groups ?? [];
+  if (groups.length === 0) {
+    return nothing;
+  }
+  const reviewId = props.pendingChangeReview?.id ?? "";
+  const action = props.pendingChangeReviewAction ?? null;
+  const busy = action !== null;
+  return html`<div class="chat-change-review-modal__groups">
+    ${groups.map(
+      (group, index) => html`<section
+        id=${buildChangeReviewGroupAnchorId(file.path, group.groupId)}
+        class="chat-change-review-modal__group-card"
+      >
+        <div class="chat-change-review-modal__group-card-header">
+          <div>
+            <div class="chat-change-review-modal__group-card-title">
+              组 #${index + 1} · ${group.title}
+            </div>
+            <div class="chat-change-review-modal__group-card-meta">
+              ${renderChangeReviewStatusLabel(group.changeType)} · 前
+              ${group.beforeStartLine}-${group.beforeEndLine || group.beforeStartLine} / 后
+              ${group.afterStartLine}-${group.afterEndLine || group.afterStartLine} ·
+              ${group.hunkCount} 个改动块
+            </div>
+          </div>
+          <div class="chat-change-review-modal__group-card-actions">
+            <button
+              class="btn btn--ghost btn--small"
+              type="button"
+              ?disabled=${busy}
+              @click=${() => handleLocateChangeReviewGroup(file, group.groupId)}
+            >
+              定位
+            </button>
+            <button
+              class="btn btn--small"
+              type="button"
+              ?disabled=${busy}
+              @click=${() => props.onApplyChangeReviewGroup?.(reviewId, file.path, group.groupId)}
+            >
+              ${action?.type === "apply" &&
+              action.path === file.path &&
+              action.groupId === group.groupId
+                ? "应用中..."
+                : "应用这组"}
+            </button>
+            <button
+              class="btn btn--ghost btn--small"
+              type="button"
+              ?disabled=${busy}
+              @click=${() => props.onRevertChangeReviewGroup?.(reviewId, file.path, group.groupId)}
+            >
+              ${action?.type === "revert" &&
+              action.path === file.path &&
+              action.groupId === group.groupId
+                ? "还原中..."
+                : "还原这组"}
+            </button>
+          </div>
+        </div>
+        <div class="chat-change-review-modal__group-card-preview-shell">
+          <div class="chat-change-review-modal__group-card-preview">
+            <div class="chat-change-review-modal__group-card-preview-title">变更前</div>
+            <pre>${group.beforePreview.join("\n") || "无"}</pre>
+          </div>
+          <div class="chat-change-review-modal__group-card-preview">
+            <div class="chat-change-review-modal__group-card-preview-title">变更后</div>
+            <pre>${group.afterPreview.join("\n") || "无"}</pre>
+          </div>
+        </div>
+      </section>`,
+    )}
+  </div>`;
+}
+
 function renderChangeReviewMiniMap(file: ChangeReviewFile) {
   const entries = buildChangeReviewMinimapEntries(file);
   if (entries.length === 0) {
@@ -621,18 +778,13 @@ function renderChangeReviewMiniMap(file: ChangeReviewFile) {
         (entry) => html`<button
           class="chat-change-review-modal__minimap-item chat-change-review-modal__minimap-item--${entry.changeType}"
           type="button"
-          title=${`${entry.label}${entry.segmentLabel ? ` · ${entry.segmentLabel}` : ""} · ${entry.startLine}-${entry.endLine} 行`}
+          title=${`${entry.label} · ${entry.startLine}-${entry.endLine} 行`}
           aria-label=${`定位到${entry.label}`}
           @click=${() => scrollToChangeReviewDiff(file, entry)}
         >
           <span class="chat-change-review-modal__minimap-item-index">${entry.displayIndex}</span>
           <span class="chat-change-review-modal__minimap-item-body">
             <span class="chat-change-review-modal__minimap-item-label">${entry.label}</span>
-            ${entry.segmentLabel
-              ? html`<span class="chat-change-review-modal__minimap-item-segment"
-                  >${entry.segmentLabel}</span
-                >`
-              : nothing}
             <span class="chat-change-review-modal__minimap-item-meta"
               >${renderChangeReviewStatusLabel(entry.changeType)} ·
               ${entry.startLine}-${entry.endLine} 行</span
@@ -661,8 +813,8 @@ function renderChangeReviewCompare(file: ChangeReviewFile, props: ChatProps) {
       previousHunkId = currentHunkId;
       continue;
     }
-    totalOccurrences.set(currentHunkId, (totalOccurrences.get(currentHunkId) ?? 0) + 1);
-    previousHunkId = currentHunkId;
+    totalOccurrences.set(hunk.hunkId, (totalOccurrences.get(hunk.hunkId) ?? 0) + 1);
+    previousHunkId = hunk.hunkId;
   }
   previousHunkId = null;
   return html`<div
@@ -873,7 +1025,8 @@ function renderChangeReviewModal(props: ChatProps) {
                     0}
                     行
                   </div>
-                  <details class="chat-change-review-modal__full-compare" open>
+                  ${renderChangeReviewGroupCards(selectedFile, props)}
+                  <details class="chat-change-review-modal__full-compare">
                     <summary>查看完整文件对比</summary>
                     ${renderChangeReviewCompare(selectedFile, props)}
                   </details>

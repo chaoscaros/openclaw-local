@@ -472,6 +472,78 @@
   background: color-mix(in srgb, var(--panel) 96%, transparent);
 }
 
+.chat-change-review-modal__groups {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-change-review-modal__group-card {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 10%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  scroll-margin-top: 16px;
+}
+
+.chat-change-review-modal__group-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.chat-change-review-modal__group-card-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chat-change-review-modal__group-card-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.chat-change-review-modal__group-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.chat-change-review-modal__group-card-preview-shell {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.chat-change-review-modal__group-card-preview {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.chat-change-review-modal__group-card-preview-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.chat-change-review-modal__group-card-preview pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .chat-change-review-modal__full-compare {
   min-height: 0;
   overflow: hidden;

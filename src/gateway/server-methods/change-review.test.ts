@@ -69,7 +69,9 @@ describe("changeReviewHandlers V2", () => {
 
   it("captures externally-targeted files instead of dropping them when they resolve outside repoRoot", async () => {
     const workspace = await createWorkspace();
-    const detachedRoot = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-change-review-detached-"));
+    const detachedRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "openclaw-change-review-detached-"),
+    );
     const detachedFilePath = path.join(detachedRoot, "supply_vue/.gitignore");
     await fs.mkdir(path.dirname(detachedFilePath), { recursive: true });
     await fs.writeFile(detachedFilePath, ".ai/\n", "utf-8");
@@ -362,7 +364,7 @@ describe("changeReviewHandlers V2", () => {
   it("applies and reverts individual hunks while leaving sibling hunks pending", async () => {
     const workspace = await createWorkspace();
     const filePath = path.join(workspace, "supply_vue/.gitignore");
-    await fs.writeFile(filePath, ".ai/\nbase\n", "utf-8");
+    await fs.writeFile(filePath, ".ai/\nbase\nkeep\n", "utf-8");
     const bundle = createVirtualReviewBundle({
       sessionKey: "agent:solo:main",
       runId: "run-hunk-ops",
@@ -373,13 +375,13 @@ describe("changeReviewHandlers V2", () => {
           path: "supply_vue/.gitignore",
           absolutePath: filePath,
           changeType: "modified",
-          beforeContent: ".ai/\nbase\n",
-          afterContent: ".ai/\nbase\naccept-a\naccept-b\n",
+          beforeContent: ".ai/\nbase\nkeep\n",
+          afterContent: ".ai/\nbase\naccept-a\nkeep\naccept-b\n",
           diffText: "diff --git a/supply_vue/.gitignore b/supply_vue/.gitignore",
         },
       ],
     });
-    const firstHunkId = bundle!.files[0]!.hunks[0]!.hunkId;
+    const firstHunkId = bundle!.files[0].hunks[0].hunkId;
 
     await changeReviewHandlers["changeReview.applyHunk"]({
       req: { id: "req-hunk-apply" } as never,
@@ -397,7 +399,10 @@ describe("changeReviewHandlers V2", () => {
     await changeReviewHandlers["changeReview.capture"]({
       req: { id: "req-hunk-status" } as never,
       params: { sessionKey: "agent:solo:main", runId: "run-hunk-ops" },
-      respond: ((ok: boolean, result?: { files?: Array<{ hunks?: Array<{ hunkId: string }> }> }) => {
+      respond: ((
+        ok: boolean,
+        result?: { files?: Array<{ hunks?: Array<{ hunkId: string }> }> },
+      ) => {
         expect(ok).toBe(true);
         expect(result?.files?.[0]?.hunks).toHaveLength(1);
       }) as unknown as RespondFn,
@@ -406,7 +411,7 @@ describe("changeReviewHandlers V2", () => {
       isWebchatConnect: () => false,
     });
 
-    const remainingHunkId = bundle!.files[0]!.hunks[0]!.hunkId;
+    const remainingHunkId = bundle!.files[0].hunks[0].hunkId;
     await changeReviewHandlers["changeReview.revertHunk"]({
       req: { id: "req-hunk-revert" } as never,
       params: { id: bundle!.reviewId, path: "supply_vue/.gitignore", hunkId: remainingHunkId },
@@ -431,6 +436,6 @@ describe("changeReviewHandlers V2", () => {
       client: null,
       isWebchatConnect: () => false,
     });
-    expect(await fs.readFile(filePath, "utf-8")).toBe(".ai/\nbase\naccept-a\n");
+    expect(await fs.readFile(filePath, "utf-8")).toBe(".ai/\nbase\naccept-a\nkeep\n");
   });
 });
