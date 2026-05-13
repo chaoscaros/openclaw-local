@@ -91,4 +91,8 @@ describe("sanitizeForPlainText", () => {
   it("collapses excessive newlines", () => {
     expect(sanitizeForPlainText("a<br><br><br><br>b")).toBe("a\n\nb");
   });
+
+  it("preserves bracketed command placeholders", () => {
+    expect(sanitizeForPlainText("Usage: /btw [side question]")).toBe("Usage: /btw [side question]");
+  });
 });

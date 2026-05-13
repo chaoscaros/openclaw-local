@@ -44,7 +44,7 @@ describe("handleBtwCommand", () => {
 
     expect(result).toEqual({
       shouldContinue: false,
-      reply: { text: "Usage: /btw <side question>" },
+      reply: { text: "Usage: /btw [side question]" },
     });
   });
 
