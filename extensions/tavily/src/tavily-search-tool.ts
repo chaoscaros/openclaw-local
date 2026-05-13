@@ -1,4 +1,6 @@
 import { Type } from "@sinclair/typebox";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
+import type { OpenClawPluginToolContext } from "openclaw/plugin-sdk/core";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-runtime";
 import {
   jsonResult,
@@ -18,6 +20,18 @@ function optionalStringEnum<const T extends readonly string[]>(
       ...options,
     }),
   );
+}
+
+type TavilyToolConfigContext = Pick<
+  OpenClawPluginToolContext,
+  "config" | "runtimeConfig" | "getRuntimeConfig"
+>;
+
+function resolveTavilyToolConfig(
+  api: OpenClawPluginApi,
+  ctx?: TavilyToolConfigContext,
+): OpenClawConfig {
+  return ctx?.getRuntimeConfig?.() ?? ctx?.runtimeConfig ?? ctx?.config ?? api.config;
 }
 
 const TavilySearchToolSchema = Type.Object(
@@ -58,7 +72,7 @@ const TavilySearchToolSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export function createTavilySearchTool(api: OpenClawPluginApi) {
+export function createTavilySearchTool(api: OpenClawPluginApi, ctx?: TavilyToolConfigContext) {
   return {
     name: "tavily_search",
     label: "Tavily Search",
@@ -81,7 +95,7 @@ export function createTavilySearchTool(api: OpenClawPluginApi) {
 
       return jsonResult(
         await runTavilySearch({
-          cfg: api.config,
+          cfg: resolveTavilyToolConfig(api, ctx),
           query,
           searchDepth,
           topic,
