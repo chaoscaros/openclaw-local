@@ -359,7 +359,8 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
     normalizeOptionalString(currentTask?.title) ??
     normalizeOptionalString(fallbackDisplayTask?.title) ??
     null;
-  const quickSwitcherLabel = currentTaskDisplayTitle ?? "当前未绑定任务";
+  const quickSwitcherLabel =
+    currentTaskDisplayTitle ?? (currentTask ? "当前任务详情同步中" : "当前未绑定任务");
   const lastSwitchFeedback =
     chatTaskHeaderUi.switchedTaskId &&
     currentSession?.taskId === chatTaskHeaderUi.switchedTaskId &&

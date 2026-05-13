@@ -505,7 +505,7 @@ describe("renderTasks", () => {
     expect(pendingTexts()).toEqual(["低优先级但最近更新", "普通优先级", "高优先级但较早更新"]);
   });
 
-  it("shows the linked titled task in the current-task section when the bound task title is empty", async () => {
+  it("keeps the bound current task instead of falling back to another task title", async () => {
     const container = document.createElement("div");
     const baseNow = Date.now();
     render(
@@ -549,7 +549,10 @@ describe("renderTasks", () => {
     await Promise.resolve();
     const text = container.textContent ?? "";
     expect(text).toContain("当前会话任务");
-    expect(text).toContain("supply_vue项目新增获取商品规格库区列表和获取商品规格库存明细列表接口");
+    const currentSectionCard = container.querySelector(".task-section-card .task-list-item");
+    expect(currentSectionCard?.textContent ?? "").not.toContain(
+      "supply_vue项目新增获取商品规格库区列表和获取商品规格库存明细列表接口",
+    );
   });
 
   it("supports sorting the main task list by recency and title", async () => {

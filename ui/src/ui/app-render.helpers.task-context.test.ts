@@ -194,7 +194,9 @@ describe("renderChatTaskHeaderBar", () => {
       ?.click();
     await Promise.resolve();
 
-    const search = container.querySelector<HTMLInputElement>('input[placeholder="按任务名称或描述搜索"]');
+    const search = container.querySelector<HTMLInputElement>(
+      'input[placeholder="按任务名称或描述搜索"]',
+    );
     search!.value = "已完成任务";
     search!.dispatchEvent(new Event("input", { bubbles: true }));
     await Promise.resolve();
@@ -227,7 +229,7 @@ describe("renderChatTaskHeaderBar", () => {
     expect(text).toContain("完成最近完成项展示");
   });
 
-  it("falls back to the linked titled task when the bound task has no title", async () => {
+  it("does not fall back to another task title when the bound task title is empty", async () => {
     const container = document.createElement("div");
     const state = buildState({
       tasksItems: [
@@ -278,7 +280,10 @@ describe("renderChatTaskHeaderBar", () => {
     await Promise.resolve();
 
     const headerText = container.textContent ?? "";
-    expect(headerText).toContain("supply_vue项目新增获取商品规格库区列表和获取商品规格库存明细列表接口");
+    expect(headerText).toContain("当前任务详情同步中");
+    expect(headerText).not.toContain(
+      "supply_vue项目新增获取商品规格库区列表和获取商品规格库存明细列表接口",
+    );
     expect(headerText).not.toContain("当前未绑定任务");
   });
 

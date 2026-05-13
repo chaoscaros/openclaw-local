@@ -1,15 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
 
 const { patchSessionMock, loadSessionsMock } = vi.hoisted(() => ({
-  patchSessionMock: vi.fn<
-    (state: unknown, key: string, patch: { mode?: "normal" | "task" | null; taskId?: string | null }) => Promise<void>
-  >(),
-  loadSessionsMock: vi.fn<
-    (
-      state: unknown,
-      overrides?: { activeMinutes?: number; limit?: number; includeGlobal?: boolean; includeUnknown?: boolean },
-    ) => Promise<void>
-  >(),
+  patchSessionMock:
+    vi.fn<
+      (
+        state: unknown,
+        key: string,
+        patch: { mode?: "normal" | "task" | null; taskId?: string | null },
+      ) => Promise<void>
+    >(),
+  loadSessionsMock:
+    vi.fn<
+      (
+        state: unknown,
+        overrides?: {
+          activeMinutes?: number;
+          limit?: number;
+          includeGlobal?: boolean;
+          includeUnknown?: boolean;
+        },
+      ) => Promise<void>
+    >(),
 }));
 
 vi.mock("./sessions.ts", async () => {
@@ -99,12 +110,15 @@ describe("setCurrentTaskForSession", () => {
     await pending;
 
     expect(state.tasksBusy).toBe(false);
-    expect(patchSessionMock).toHaveBeenCalledWith(state, "main", { mode: "task", taskId: "task-new" });
+    expect(patchSessionMock).toHaveBeenCalledWith(state, "main", {
+      mode: "task",
+      taskId: "task-new",
+    });
   });
 });
 
 describe("resolveSessionTask", () => {
-  it("prefers a session-linked titled task when the bound task has an empty title", () => {
+  it("keeps the bound task as the only current-task fact source", () => {
     const result = resolveSessionTask(
       "agent:solo:main",
       "task-empty",
@@ -137,8 +151,8 @@ describe("resolveSessionTask", () => {
     );
 
     expect(result.boundTask?.taskId).toBe("task-empty");
-    expect(result.displayTask?.taskId).toBe("task-real");
-    expect(result.derivedFromSessionLink).toBe(true);
+    expect(result.displayTask?.taskId).toBe("task-empty");
+    expect(result.derivedFromSessionLink).toBe(false);
   });
 });
 
@@ -317,7 +331,9 @@ describe("task todos", () => {
 
     await setTaskTodoStatus(state, "task-1", "todo-2", "in_progress");
 
-    expect(state.tasksItems[0]?.todoItems?.filter((item) => item.status === "in_progress")).toHaveLength(1);
+    expect(
+      state.tasksItems[0]?.todoItems?.filter((item) => item.status === "in_progress"),
+    ).toHaveLength(1);
     expect(state.tasksItems[0]?.nextStep).toBe("新的进行中");
   });
 });

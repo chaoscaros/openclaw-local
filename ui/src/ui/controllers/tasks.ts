@@ -108,7 +108,10 @@ function normalizeTaskTodoItems(raw: unknown): TaskTodoItem[] | undefined {
         !id ||
         !taskId ||
         !content ||
-        (status !== "pending" && status !== "in_progress" && status !== "completed" && status !== "cancelled") ||
+        (status !== "pending" &&
+          status !== "in_progress" &&
+          status !== "completed" &&
+          status !== "cancelled") ||
         (priority !== "low" && priority !== "normal" && priority !== "high") ||
         (source !== "user" && source !== "agent" && source !== "system")
       ) {
@@ -121,8 +124,12 @@ function normalizeTaskTodoItems(raw: unknown): TaskTodoItem[] | undefined {
         status,
         priority,
         source,
-        ...(typeof record.note === "string" && record.note.trim() ? { note: record.note.trim() } : {}),
-        ...(typeof record.verification === "string" && record.verification.trim() ? { verification: record.verification.trim() } : {}),
+        ...(typeof record.note === "string" && record.note.trim()
+          ? { note: record.note.trim() }
+          : {}),
+        ...(typeof record.verification === "string" && record.verification.trim()
+          ? { verification: record.verification.trim() }
+          : {}),
         createdAt: Number.isFinite(record.createdAt) ? Number(record.createdAt) : Date.now(),
         updatedAt: Number.isFinite(record.updatedAt) ? Number(record.updatedAt) : Date.now(),
         order: Number.isFinite(record.order) ? Number(record.order) : 0,
@@ -134,7 +141,10 @@ function normalizeTaskTodoItems(raw: unknown): TaskTodoItem[] | undefined {
   return items.length ? items : undefined;
 }
 
-function deriveTaskNextStep(task: { todoItems?: TaskTodoItem[]; nextStep?: string }): string | undefined {
+function deriveTaskNextStep(task: {
+  todoItems?: TaskTodoItem[];
+  nextStep?: string;
+}): string | undefined {
   const items = task.todoItems ?? [];
   const inProgress = items.find((item) => item.status === "in_progress");
   if (inProgress) {
@@ -144,19 +154,9 @@ function deriveTaskNextStep(task: { todoItems?: TaskTodoItem[]; nextStep?: strin
   if (pending) {
     return pending.content;
   }
-  return typeof task.nextStep === "string" && task.nextStep.trim() ? task.nextStep.trim() : undefined;
-}
-
-function hasMeaningfulTaskTitle(task: Pick<TaskItem, "title"> | null | undefined): boolean {
-  return typeof task?.title === "string" && task.title.trim().length > 0;
-}
-
-function compareSessionLinkedTaskCandidates(left: TaskItem, right: TaskItem) {
-  const titleDelta = Number(hasMeaningfulTaskTitle(right)) - Number(hasMeaningfulTaskTitle(left));
-  if (titleDelta !== 0) {
-    return titleDelta;
-  }
-  return (right.updatedAt ?? right.createdAt) - (left.updatedAt ?? left.createdAt);
+  return typeof task.nextStep === "string" && task.nextStep.trim()
+    ? task.nextStep.trim()
+    : undefined;
 }
 
 export function resolveSessionTask(
@@ -166,26 +166,20 @@ export function resolveSessionTask(
   archivedTaskItems: TaskItem[] = [],
   opts?: { mode?: "normal" | "task" | null },
 ): ResolvedSessionTask {
-  const normalizedTaskId = typeof sessionTaskId === "string" && sessionTaskId.trim() ? sessionTaskId.trim() : null;
+  void sessionKey;
+  void opts;
+  const normalizedTaskId =
+    typeof sessionTaskId === "string" && sessionTaskId.trim() ? sessionTaskId.trim() : null;
   const boundTask = normalizedTaskId
-    ? taskItems.find((task) => task.taskId === normalizedTaskId) ??
+    ? (taskItems.find((task) => task.taskId === normalizedTaskId) ??
       archivedTaskItems.find((task) => task.taskId === normalizedTaskId) ??
-      null
+      null)
     : null;
-  const sessionLinkedCandidates = taskItems
-    .filter((task) => task.lastSessionKey === sessionKey)
-    .toSorted(compareSessionLinkedTaskCandidates);
-  const preferredSessionLinkedTask = sessionLinkedCandidates.find((task) => hasMeaningfulTaskTitle(task)) ?? sessionLinkedCandidates[0] ?? null;
-  const canUseSessionLinkedFallback =
-    Boolean(preferredSessionLinkedTask) &&
-    (!normalizedTaskId || !boundTask || !hasMeaningfulTaskTitle(boundTask)) &&
-    (opts?.mode === "task" || normalizedTaskId !== null);
-  const displayTask = canUseSessionLinkedFallback ? preferredSessionLinkedTask : boundTask;
   return {
     boundTask,
-    displayTask,
-    unresolvedBoundTaskId: normalizedTaskId && !displayTask ? normalizedTaskId : null,
-    derivedFromSessionLink: canUseSessionLinkedFallback && Boolean(displayTask),
+    displayTask: boundTask,
+    unresolvedBoundTaskId: normalizedTaskId && !boundTask ? normalizedTaskId : null,
+    derivedFromSessionLink: false,
   };
 }
 
@@ -205,7 +199,9 @@ function mapTask(raw: Record<string, unknown>): TaskItem {
       ? { completedSummary: raw.completedSummary.trim() }
       : {}),
     ...(todoItems ? { todoItems } : {}),
-    ...(typeof raw.nextStep === "string" && raw.nextStep.trim() ? { nextStep: raw.nextStep.trim() } : {}),
+    ...(typeof raw.nextStep === "string" && raw.nextStep.trim()
+      ? { nextStep: raw.nextStep.trim() }
+      : {}),
     ...(Array.isArray(raw.resourceContext)
       ? {
           resourceContext: raw.resourceContext
@@ -227,12 +223,16 @@ function mapTask(raw: Record<string, unknown>): TaskItem {
               const detail = typeof record.detail === "string" ? record.detail.trim() : "";
               return Number.isFinite(at) && label && detail ? { at, label, detail } : null;
             })
-            .filter((entry): entry is { at: number; label: string; detail: string } => Boolean(entry))
+            .filter((entry): entry is { at: number; label: string; detail: string } =>
+              Boolean(entry),
+            )
             .slice(0, 12),
         }
       : {}),
     ...(Number.isFinite(raw.lastSyncedAt) ? { lastSyncedAt: Number(raw.lastSyncedAt) } : {}),
-    ...(typeof raw.effectiveStatus === 'string' ? { effectiveStatus: raw.effectiveStatus as TaskStatus } : {}),
+    ...(typeof raw.effectiveStatus === "string"
+      ? { effectiveStatus: raw.effectiveStatus as TaskStatus }
+      : {}),
     ...(typeof raw.runtimeHealth === "string"
       ? { runtimeHealth: raw.runtimeHealth as TaskRuntimeHealth }
       : {}),
@@ -247,7 +247,9 @@ function mapTask(raw: Record<string, unknown>): TaskItem {
     ...(typeof raw.latestRuntimeTaskId === "string" && raw.latestRuntimeTaskId.trim()
       ? { latestRuntimeTaskId: raw.latestRuntimeTaskId.trim() }
       : {}),
-    ...(typeof raw.latestRunId === "string" && raw.latestRunId.trim() ? { latestRunId: raw.latestRunId.trim() } : {}),
+    ...(typeof raw.latestRunId === "string" && raw.latestRunId.trim()
+      ? { latestRunId: raw.latestRunId.trim() }
+      : {}),
     ...(Array.isArray(raw.runtimeTaskSummaries)
       ? {
           runtimeTaskSummaries: raw.runtimeTaskSummaries
@@ -261,7 +263,10 @@ function mapTask(raw: Record<string, unknown>): TaskItem {
               const status = record.status;
               if (
                 !taskId ||
-                (runtime !== "subagent" && runtime !== "acp" && runtime !== "cli" && runtime !== "cron") ||
+                (runtime !== "subagent" &&
+                  runtime !== "acp" &&
+                  runtime !== "cli" &&
+                  runtime !== "cron") ||
                 (status !== "queued" &&
                   status !== "running" &&
                   status !== "succeeded" &&
@@ -276,11 +281,19 @@ function mapTask(raw: Record<string, unknown>): TaskItem {
                 taskId,
                 runtime,
                 status,
-                ...(typeof record.runId === "string" && record.runId.trim() ? { runId: record.runId.trim() } : {}),
-                ...(Number.isFinite(record.startedAt) ? { startedAt: Number(record.startedAt) } : {}),
+                ...(typeof record.runId === "string" && record.runId.trim()
+                  ? { runId: record.runId.trim() }
+                  : {}),
+                ...(Number.isFinite(record.startedAt)
+                  ? { startedAt: Number(record.startedAt) }
+                  : {}),
                 ...(Number.isFinite(record.endedAt) ? { endedAt: Number(record.endedAt) } : {}),
-                ...(Number.isFinite(record.lastEventAt) ? { lastEventAt: Number(record.lastEventAt) } : {}),
-                ...(typeof record.error === "string" && record.error.trim() ? { error: record.error.trim() } : {}),
+                ...(Number.isFinite(record.lastEventAt)
+                  ? { lastEventAt: Number(record.lastEventAt) }
+                  : {}),
+                ...(typeof record.error === "string" && record.error.trim()
+                  ? { error: record.error.trim() }
+                  : {}),
                 ...(typeof record.progressSummary === "string" && record.progressSummary.trim()
                   ? { progressSummary: record.progressSummary.trim() }
                   : {}),
@@ -297,12 +310,14 @@ function mapTask(raw: Record<string, unknown>): TaskItem {
     createdAt: Number(raw.createdAt ?? Date.now()),
     updatedAt: Number(raw.updatedAt ?? Date.now()),
     archivedAt:
-      raw.archivedAt == null || Number.isFinite(raw.archivedAt) ? Number(raw.archivedAt ?? 0) || null : null,
+      raw.archivedAt == null || Number.isFinite(raw.archivedAt)
+        ? Number(raw.archivedAt ?? 0) || null
+        : null,
     ...(typeof raw.lastSessionKey === "string" && raw.lastSessionKey.trim()
       ? { lastSessionKey: raw.lastSessionKey.trim() }
       : {}),
     ...(typeof raw.flowId === "string" && raw.flowId.trim() ? { flowId: raw.flowId.trim() } : {}),
-    ...((raw.flow && typeof raw.flow === "object")
+    ...(raw.flow && typeof raw.flow === "object"
       ? {
           ...(typeof (raw.flow as Record<string, unknown>).status === "string"
             ? { flowStatus: String((raw.flow as Record<string, unknown>).status) }
@@ -327,10 +342,11 @@ function mapTask(raw: Record<string, unknown>): TaskItem {
 }
 
 async function requestTasks(client: GatewayBrowserClient) {
-  return client.request<{ ok: true; tasks?: Array<Record<string, unknown>>; archivedTasks?: Array<Record<string, unknown>> }>(
-    "taskmode.list",
-    {},
-  );
+  return client.request<{
+    ok: true;
+    tasks?: Array<Record<string, unknown>>;
+    archivedTasks?: Array<Record<string, unknown>>;
+  }>("taskmode.list", {});
 }
 
 function applyTaskIntoStateCollections(state: TasksState, task: TaskItem) {
@@ -357,7 +373,11 @@ export async function syncTaskModeTaskProgress(
     state.tasksBusy = true;
   }
   try {
-    const result = await state.client.request<{ ok: true; task?: Record<string, unknown>; synced?: boolean }>("taskmode.sync", {
+    const result = await state.client.request<{
+      ok: true;
+      task?: Record<string, unknown>;
+      synced?: boolean;
+    }>("taskmode.sync", {
       id: taskId,
       sessionKey: state.sessionKey,
     });
@@ -380,7 +400,8 @@ export async function syncTaskModeTaskProgress(
 }
 
 async function ensureCurrentSessionVisible(state: TasksState) {
-  const hasCurrentSession = state.sessionsResult?.sessions.some((row) => row.key === state.sessionKey) ?? false;
+  const hasCurrentSession =
+    state.sessionsResult?.sessions.some((row) => row.key === state.sessionKey) ?? false;
   if (hasCurrentSession) {
     return;
   }
@@ -392,7 +413,10 @@ async function ensureCurrentSessionVisible(state: TasksState) {
   });
 }
 
-export async function loadTaskModeData(state: TasksState, opts?: { autoSyncCurrentTask?: boolean }) {
+export async function loadTaskModeData(
+  state: TasksState,
+  opts?: { autoSyncCurrentTask?: boolean },
+) {
   if (!state.client || !state.connected) {
     return;
   }
@@ -407,7 +431,9 @@ export async function loadTaskModeData(state: TasksState, opts?: { autoSyncCurre
       : [];
     const selected = state.tasksSelectedId;
     if (selected) {
-      const stillExists = [...state.tasksItems, ...state.archivedTaskItems].some((task) => task.taskId === selected);
+      const stillExists = [...state.tasksItems, ...state.archivedTaskItems].some(
+        (task) => task.taskId === selected,
+      );
       if (!stillExists) {
         state.tasksSelectedId = null;
       }
@@ -415,7 +441,8 @@ export async function loadTaskModeData(state: TasksState, opts?: { autoSyncCurre
     const currentTaskId =
       opts?.autoSyncCurrentTask === false
         ? null
-        : (state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey)?.taskId ?? null);
+        : (state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey)?.taskId ??
+          null);
     if (currentTaskId) {
       await syncTaskModeTaskProgress(state, currentTaskId, { silent: true, reload: false });
     }
@@ -435,11 +462,14 @@ export async function createTaskForCurrentSession(
   }
   state.tasksBusy = true;
   try {
-    const created = await state.client.request<{ ok: true; task?: Record<string, unknown> }>("taskmode.create", {
-      title: input.title,
-      description: input.description,
-      sessionKey: state.sessionKey,
-    });
+    const created = await state.client.request<{ ok: true; task?: Record<string, unknown> }>(
+      "taskmode.create",
+      {
+        title: input.title,
+        description: input.description,
+        sessionKey: state.sessionKey,
+      },
+    );
     const task = created.task ? mapTask(created.task) : null;
     if (task) {
       await patchSession(state, state.sessionKey, { mode: "task", taskId: task.taskId });
@@ -470,7 +500,11 @@ function applyOptimisticSessionTaskBinding(
       }
       const nextMode = patch.mode ?? row.mode ?? "normal";
       const nextTaskId =
-        patch.taskId !== undefined ? patch.taskId : nextMode === "normal" ? null : (row.taskId ?? null);
+        patch.taskId !== undefined
+          ? patch.taskId
+          : nextMode === "normal"
+            ? null
+            : (row.taskId ?? null);
       return {
         ...row,
         mode: nextMode,
@@ -497,7 +531,7 @@ export async function setCurrentSessionMode(state: TasksState, mode: "normal" | 
   try {
     await patchSession(state, state.sessionKey, {
       mode,
-      taskId: mode === "normal" ? null : currentSession?.taskId ?? null,
+      taskId: mode === "normal" ? null : (currentSession?.taskId ?? null),
     });
     if (mode === "task") {
       await loadTaskModeData(state);
@@ -517,11 +551,14 @@ export async function updateTaskModeTask(
   }
   state.tasksBusy = true;
   try {
-    const result = await state.client.request<{ ok: true; task?: Record<string, unknown> }>("taskmode.update", {
-      id: taskId,
-      ...patch,
-      sessionKey: state.sessionKey,
-    });
+    const result = await state.client.request<{ ok: true; task?: Record<string, unknown> }>(
+      "taskmode.update",
+      {
+        id: taskId,
+        ...patch,
+        sessionKey: state.sessionKey,
+      },
+    );
     await loadTaskModeData(state);
     await state.client.request("sessions.list", {});
     return result.task ? mapTask(result.task) : null;
@@ -535,7 +572,11 @@ export async function updateTaskModeTask(
 
 async function mutateTaskTodo(
   state: TasksState,
-  method: "taskmode.todo.create" | "taskmode.todo.update" | "taskmode.todo.setStatus" | "taskmode.todo.delete",
+  method:
+    | "taskmode.todo.create"
+    | "taskmode.todo.update"
+    | "taskmode.todo.setStatus"
+    | "taskmode.todo.delete",
   params: Record<string, unknown>,
 ) {
   if (!state.client || !state.connected) {
@@ -543,7 +584,10 @@ async function mutateTaskTodo(
   }
   state.tasksBusy = true;
   try {
-    const result = await state.client.request<{ ok: true; task?: Record<string, unknown> }>(method, params);
+    const result = await state.client.request<{ ok: true; task?: Record<string, unknown> }>(
+      method,
+      params,
+    );
     const task = result.task ? mapTask(result.task) : null;
     if (task) {
       applyTaskIntoStateCollections(state, task);
@@ -575,7 +619,12 @@ export async function updateTaskTodo(
   state: TasksState,
   taskId: string,
   todoId: string,
-  patch: { content?: string; priority?: TaskTodoPriority; note?: string | null; verification?: string | null },
+  patch: {
+    content?: string;
+    priority?: TaskTodoPriority;
+    note?: string | null;
+    verification?: string | null;
+  },
 ) {
   return mutateTaskTodo(state, "taskmode.todo.update", {
     taskId,
@@ -604,7 +653,9 @@ export async function archiveTaskForSession(state: TasksState, taskId: string) {
   state.tasksBusy = true;
   try {
     await state.client.request("taskmode.archive", { id: taskId });
-    const currentSession = state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey);
+    const currentSession = state.sessionsResult?.sessions.find(
+      (row) => row.key === state.sessionKey,
+    );
     if (currentSession?.taskId === taskId) {
       await patchSession(state, state.sessionKey, { taskId: null });
     }
@@ -638,7 +689,9 @@ export async function deleteTaskForSession(state: TasksState, taskId: string) {
   state.tasksBusy = true;
   try {
     await state.client.request("taskmode.delete", { id: taskId });
-    const currentSession = state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey);
+    const currentSession = state.sessionsResult?.sessions.find(
+      (row) => row.key === state.sessionKey,
+    );
     if (currentSession?.taskId === taskId) {
       await patchSession(state, state.sessionKey, { taskId: null, mode: "normal" });
     }
