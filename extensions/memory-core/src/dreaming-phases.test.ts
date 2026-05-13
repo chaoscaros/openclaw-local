@@ -127,6 +127,21 @@ function createMockNarrativeSubagent(response = "The archive hummed softly.") {
   };
 }
 
+async function waitForFileText(filePath: string, needle: string, attempts = 40) {
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      const text = await fs.readFile(filePath, "utf-8");
+      if (text.includes(needle)) {
+        return text;
+      }
+    } catch {
+      // detached narratives may not have written the file yet
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error(`timed out waiting for ${filePath} to contain ${needle}`);
+}
+
 function setDreamingTestTime(offsetMinutes = 0) {
   vi.setSystemTime(new Date(DREAMING_TEST_BASE_TIME.getTime() + offsetMinutes * 60_000));
 }
@@ -1502,9 +1517,12 @@ describe("memory-core dreaming phases", () => {
     const firstRun = subagent.run.mock.calls[0]?.[0];
     expect(firstRun?.message).toContain("Move backups to S3 Glacier.");
     expect(firstRun?.message).toContain("Keep retention at 365 days.");
-    await expect(fs.readFile(path.join(workspaceDir, "DREAMS.md"), "utf-8")).resolves.toContain(
-      "The backup plan glowed like cold storage.",
-    );
+    await expect(
+      waitForFileText(
+        path.join(workspaceDir, "DREAMS.md"),
+        "The backup plan glowed like cold storage.",
+      ),
+    ).resolves.toContain("The backup plan glowed like cold storage.");
   });
 
   it("passes rem-dreaming snippets into the narrative pipeline", async () => {
@@ -1556,8 +1574,11 @@ describe("memory-core dreaming phases", () => {
     const firstRun = subagent.run.mock.calls[0]?.[0];
     expect(firstRun?.message).toContain("Move backups to S3 Glacier.");
     expect(firstRun?.message).toContain("Keep retention at 365 days.");
-    await expect(fs.readFile(path.join(workspaceDir, "DREAMS.md"), "utf-8")).resolves.toContain(
-      "The traces braided themselves into a map.",
-    );
+    await expect(
+      waitForFileText(
+        path.join(workspaceDir, "DREAMS.md"),
+        "The traces braided themselves into a map.",
+      ),
+    ).resolves.toContain("The traces braided themselves into a map.");
   });
 });

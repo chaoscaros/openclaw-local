@@ -19,7 +19,11 @@ import {
   type MemoryRemDreamingConfig,
 } from "openclaw/plugin-sdk/memory-core-host-status";
 import { writeDailyDreamingPhaseBlock } from "./dreaming-markdown.js";
-import { generateAndAppendDreamNarrative, type NarrativePhaseData } from "./dreaming-narrative.js";
+import {
+  generateAndAppendDreamNarrative,
+  type NarrativePhaseData,
+  runDetachedDreamNarrative,
+} from "./dreaming-narrative.js";
 import { asRecord, formatErrorMessage, normalizeTrimmedString } from "./dreaming-shared.js";
 import {
   readShortTermRecallEntries,
@@ -1525,7 +1529,7 @@ async function runLightDreaming(params: {
       snippets: capped.map((e) => e.snippet).filter(Boolean),
       ...(themes.length > 0 ? { themes } : {}),
     };
-    await generateAndAppendDreamNarrative({
+    runDetachedDreamNarrative({
       subagent: params.subagent,
       workspaceDir: params.workspaceDir,
       data,
@@ -1607,7 +1611,7 @@ async function runRemDreaming(params: {
               .filter(Boolean),
       ...(themes.length > 0 ? { themes } : {}),
     };
-    await generateAndAppendDreamNarrative({
+    runDetachedDreamNarrative({
       subagent: params.subagent,
       workspaceDir: params.workspaceDir,
       data,

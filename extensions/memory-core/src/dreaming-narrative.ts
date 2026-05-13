@@ -86,6 +86,7 @@ const NARRATIVE_SYSTEM_PROMPT = [
 
 const NARRATIVE_TIMEOUT_MS = 60_000;
 const NARRATIVE_DELETE_SETTLE_TIMEOUT_MS = 120_000;
+const DETACHED_NARRATIVE_CONCURRENCY = 3;
 const DREAMING_SESSION_KEY_PREFIX = "dreaming-narrative-";
 const DREAMING_TRANSCRIPT_RUN_MARKER = '"runId":"dreaming-narrative-';
 const DREAMING_ORPHAN_MIN_AGE_MS = 300_000;
@@ -102,6 +103,23 @@ type DreamsFileLockEntry = {
 };
 
 const dreamsFileLocks = resolveGlobalMap<string, DreamsFileLockEntry>(DREAMS_FILE_LOCKS_KEY);
+
+let activeDetachedNarratives = 0;
+const detachedNarrativeQueue: Array<() => void> = [];
+
+function releaseDetachedNarrativeSlot(): void {
+  activeDetachedNarratives -= 1;
+  detachedNarrativeQueue.shift()?.();
+}
+
+async function acquireDetachedNarrativeSlot(): Promise<void> {
+  if (activeDetachedNarratives >= DETACHED_NARRATIVE_CONCURRENCY) {
+    await new Promise<void>((resolve) => {
+      detachedNarrativeQueue.push(resolve);
+    });
+  }
+  activeDetachedNarratives += 1;
+}
 
 function isRequestScopedSubagentRuntimeError(err: unknown): boolean {
   return (
@@ -689,13 +707,17 @@ function isDreamingSessionStoreKey(sessionKey: string): boolean {
   return resolveSessionStoreKeySessionSegment(sessionKey).startsWith(DREAMING_SESSION_KEY_PREFIX);
 }
 
-function matchesDreamingTargetSessionKey(params: { sessionKey: string; targetSessionKey?: string }): boolean {
+function matchesDreamingTargetSessionKey(params: {
+  sessionKey: string;
+  targetSessionKey?: string;
+}): boolean {
   const target = params.targetSessionKey?.trim();
   if (!target) {
     return false;
   }
   return (
-    params.sessionKey === target || resolveSessionStoreKeySessionSegment(params.sessionKey) === target
+    params.sessionKey === target ||
+    resolveSessionStoreKeySessionSegment(params.sessionKey) === target
   );
 }
 
@@ -767,7 +789,12 @@ async function scrubDreamingNarrativeArtifacts(
       if (!isDreamingSessionStoreKey(key)) {
         continue;
       }
-      if (matchesDreamingTargetSessionKey({ sessionKey: key, targetSessionKey: opts?.targetSessionKey })) {
+      if (
+        matchesDreamingTargetSessionKey({
+          sessionKey: key,
+          targetSessionKey: opts?.targetSessionKey,
+        })
+      ) {
         needsStoreUpdate = true;
         continue;
       }
@@ -791,7 +818,12 @@ async function scrubDreamingNarrativeArtifacts(
           if (!isDreamingSessionStoreKey(key)) {
             continue;
           }
-          if (matchesDreamingTargetSessionKey({ sessionKey: key, targetSessionKey: opts?.targetSessionKey })) {
+          if (
+            matchesDreamingTargetSessionKey({
+              sessionKey: key,
+              targetSessionKey: opts?.targetSessionKey,
+            })
+          ) {
             delete lockedStore[key];
             prunedForAgent += 1;
             continue;
@@ -977,4 +1009,21 @@ export async function generateAndAppendDreamNarrative(params: {
       );
     });
   }
+}
+
+export function runDetachedDreamNarrative(
+  params: Parameters<typeof generateAndAppendDreamNarrative>[0],
+): void {
+  queueMicrotask(() => {
+    void (async () => {
+      await acquireDetachedNarrativeSlot();
+      try {
+        await generateAndAppendDreamNarrative(params);
+      } catch {
+        // best-effort detached narrative
+      } finally {
+        releaseDetachedNarrativeSlot();
+      }
+    })();
+  });
 }

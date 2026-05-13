@@ -82,8 +82,10 @@ describe("sessions view", () => {
     );
     await Promise.resolve();
 
-    const selects = container.querySelectorAll("select");
-    const verbose = selects[2] as HTMLSelectElement | undefined;
+    const selects = Array.from(container.querySelectorAll("select"));
+    const verbose = selects.find((select) =>
+      Array.from(select.options).some((option) => option.value === "full"),
+    );
     expect(verbose?.value).toBe("full");
     expect(Array.from(verbose?.options ?? []).some((option) => option.value === "full")).toBe(true);
   });
@@ -105,8 +107,10 @@ describe("sessions view", () => {
     );
     await Promise.resolve();
 
-    const selects = container.querySelectorAll("select");
-    const reasoning = selects[3] as HTMLSelectElement | undefined;
+    const selects = Array.from(container.querySelectorAll("select"));
+    const reasoning = selects.find((select) =>
+      Array.from(select.options).some((option) => option.value === "custom-mode"),
+    );
     expect(reasoning?.value).toBe("custom-mode");
     expect(
       Array.from(reasoning?.options ?? []).some((option) => option.value === "custom-mode"),
@@ -130,8 +134,11 @@ describe("sessions view", () => {
     );
     await Promise.resolve();
 
-    const selects = container.querySelectorAll("select");
-    const fast = selects[1] as HTMLSelectElement | undefined;
+    const selects = Array.from(container.querySelectorAll("select"));
+    const fast = selects.find((select) => {
+      const values = new Set(Array.from(select.options).map((option) => option.value));
+      return values.has("on") && values.has("off") && !values.has("full");
+    });
     expect(fast?.value).toBe("on");
   });
 
@@ -172,5 +179,33 @@ describe("sessions view", () => {
     expect(onDeselectPage).toHaveBeenCalledWith(["page-0"]);
     expect(onDeselectAll).not.toHaveBeenCalled();
     expect(onSelectPage).not.toHaveBeenCalled();
+  });
+
+  it("hides internal dreaming narrative sessions from the sessions table", async () => {
+    const container = document.createElement("div");
+    render(
+      renderSessions(
+        buildProps(
+          buildMultiResult([
+            {
+              key: "agent:solo:dreaming-narrative-light-abc",
+              kind: "direct",
+              updatedAt: 20,
+            },
+            {
+              key: "agent:solo:main",
+              kind: "direct",
+              updatedAt: 10,
+            },
+          ]),
+        ),
+      ),
+      container,
+    );
+    await Promise.resolve();
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("agent:solo:main");
+    expect(text).not.toContain("agent:solo:dreaming-narrative-light-abc");
   });
 });

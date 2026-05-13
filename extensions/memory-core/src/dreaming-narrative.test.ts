@@ -20,6 +20,7 @@ import {
   formatBackfillDiaryDate,
   generateAndAppendDreamNarrative,
   removeBackfillDiaryEntries,
+  runDetachedDreamNarrative,
   type NarrativePhaseData,
   writeBackfillDiaryEntries,
 } from "./dreaming-narrative.js";
@@ -579,6 +580,20 @@ describe("generateAndAppendDreamNarrative", () => {
     };
   }
 
+  async function waitForCondition(predicate: () => void, attempts = 40) {
+    for (let index = 0; index < attempts; index += 1) {
+      try {
+        predicate();
+        return;
+      } catch (error) {
+        if (index === attempts - 1) {
+          throw error;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
   it("generates narrative and writes diary entry", async () => {
     const workspaceDir = await createTempWorkspace("openclaw-dreaming-narrative-");
     const subagent = createMockSubagent("The repository whispered of forgotten endpoints.");
@@ -869,7 +884,11 @@ describe("generateAndAppendDreamNarrative", () => {
       })}\n`,
       "utf-8",
     );
-    await fs.writeFile(path.join(sessionsDir, "still-live.jsonl"), '{"runId":"dreaming-narrative-light-live"}\n', "utf-8");
+    await fs.writeFile(
+      path.join(sessionsDir, "still-live.jsonl"),
+      '{"runId":"dreaming-narrative-light-live"}\n',
+      "utf-8",
+    );
     await fs.writeFile(path.join(sessionsDir, "kept.jsonl"), '{"runId":"normal-run"}\n', "utf-8");
 
     vi.spyOn(configRuntimeModule, "loadConfig").mockReturnValue({ session: {} } as never);
@@ -891,12 +910,15 @@ describe("generateAndAppendDreamNarrative", () => {
       logger,
     });
 
-    const updatedStore = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<string, unknown>;
+    const updatedStore = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
+      string,
+      unknown
+    >;
     expect(updatedStore).not.toHaveProperty(namespacedSessionKey);
     expect(updatedStore).toHaveProperty("agent:main:kept-session");
   });
 
-  it("isolates narrative sessions across workspaces even at the same timestamp", async () => {
+  it("uses different narrative session keys for different workspaces", async () => {
     const firstWorkspaceDir = await createTempWorkspace("openclaw-dreaming-narrative-");
     const secondWorkspaceDir = await createTempWorkspace("openclaw-dreaming-narrative-");
     const subagent = createMockSubagent("A quiet memory took shape.");
@@ -927,5 +949,52 @@ describe("generateAndAppendDreamNarrative", () => {
     expect(secondSessionKey).toContain("dreaming-narrative-light-");
     expect(subagent.deleteSession.mock.calls[0]?.[0]?.sessionKey).toBe(firstSessionKey);
     expect(subagent.deleteSession.mock.calls[1]?.[0]?.sessionKey).toBe(secondSessionKey);
+  });
+
+  it("caps detached narratives and queues excess work", async () => {
+    const workspaces = await Promise.all(
+      Array.from({ length: 4 }, () => createTempWorkspace("openclaw-dreaming-narrative-")),
+    );
+    const gates = Array.from({ length: 4 }, () => Promise.withResolvers<{ status: string }>());
+    let runCount = 0;
+    let waitCount = 0;
+    const subagent = {
+      run: vi.fn().mockImplementation(async () => ({ runId: `run-${++runCount}` })),
+      waitForRun: vi.fn().mockImplementation(async () => await gates[waitCount++]!.promise),
+      getSessionMessages: vi.fn().mockResolvedValue({
+        messages: [
+          { role: "user", content: "prompt" },
+          { role: "assistant", content: "A quiet memory took shape." },
+        ],
+      }),
+      deleteSession: vi.fn().mockResolvedValue(undefined),
+    };
+    const logger = createMockLogger();
+    const nowMs = Date.parse("2026-04-05T03:00:00Z");
+
+    for (const workspaceDir of workspaces) {
+      runDetachedDreamNarrative({
+        subagent,
+        workspaceDir,
+        data: { phase: "light", snippets: [workspaceDir] },
+        nowMs,
+        logger,
+      });
+    }
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(subagent.run).toHaveBeenCalledTimes(3);
+
+    gates[0]!.resolve({ status: "ok" });
+    await waitForCondition(() => {
+      expect(subagent.run).toHaveBeenCalledTimes(4);
+    });
+    gates[1]!.resolve({ status: "ok" });
+    gates[2]!.resolve({ status: "ok" });
+    gates[3]!.resolve({ status: "ok" });
+    await waitForCondition(() => {
+      expect(subagent.deleteSession).toHaveBeenCalledTimes(4);
+    });
   });
 });

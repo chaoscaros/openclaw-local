@@ -146,6 +146,17 @@ function resolveThinkLevelPatchValue(value: string, isBinary: boolean): string |
   return value;
 }
 
+function isDreamingNarrativeSessionKey(key: string): boolean {
+  const normalized = normalizeLowercaseStringOrEmpty(key);
+  if (!normalized) {
+    return false;
+  }
+  const scoped = normalized.startsWith("agent:")
+    ? normalized.split(":").slice(2).join(":")
+    : normalized;
+  return scoped.startsWith("dreaming-narrative-");
+}
+
 function filterRows(rows: GatewaySessionRow[], query: string): GatewaySessionRow[] {
   const q = normalizeLowercaseStringOrEmpty(query);
   if (!q) {
@@ -237,7 +248,9 @@ function formatCheckpointDelta(checkpoint: SessionCompactionCheckpoint): string 
 }
 
 export function renderSessions(props: SessionsProps) {
-  const rawRows = props.result?.sessions ?? [];
+  const rawRows = (props.result?.sessions ?? []).filter(
+    (row) => !isDreamingNarrativeSessionKey(row.key),
+  );
   const filtered = filterRows(rawRows, props.searchQuery);
   const sorted = sortRows(filtered, props.sortColumn, props.sortDir);
   const totalRows = sorted.length;
@@ -561,7 +574,10 @@ function renderRows(row: GatewaySessionRow, props: SessionsProps) {
           style="padding: 6px 10px; font-size: 13px; border: 1px solid var(--border); border-radius: var(--radius-sm); min-width: 90px;"
           @change=${(e: Event) => {
             const value = (e.target as HTMLSelectElement).value as "normal" | "task";
-            props.onPatch(row.key, { mode: value, taskId: value === "normal" ? null : row.taskId ?? null });
+            props.onPatch(row.key, {
+              mode: value,
+              taskId: value === "normal" ? null : (row.taskId ?? null),
+            });
           }}
         >
           <option value="normal" ?selected=${(row.mode ?? "normal") === "normal"}>normal</option>
@@ -572,7 +588,9 @@ function renderRows(row: GatewaySessionRow, props: SessionsProps) {
         <div style="display:grid; gap:4px;">
           <span class="mono" style="font-size:12px;">${row.taskId ?? "—"}</span>
           ${row.mode === "task" && !row.taskId
-            ? html`<span class="muted" style="font-size:11px; color: var(--danger-color, #ff8080);">needs task selection</span>`
+            ? html`<span class="muted" style="font-size:11px; color: var(--danger-color, #ff8080);"
+                >needs task selection</span
+              >`
             : nothing}
         </div>
       </td>
