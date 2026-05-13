@@ -203,15 +203,30 @@ export async function fetchWithTimeoutGuarded(
 
 type GuardedPostRequestOptions = NonNullable<Parameters<typeof fetchWithTimeoutGuarded>[4]>;
 
+function resolveMergedSsrFPolicy(params: {
+  allowPrivateNetwork?: boolean;
+  ssrfPolicy?: SsrFPolicy;
+}): SsrFPolicy | undefined {
+  if (!params.allowPrivateNetwork && !params.ssrfPolicy) {
+    return undefined;
+  }
+  return {
+    ...(params.ssrfPolicy ?? {}),
+    ...(params.allowPrivateNetwork ? { allowPrivateNetwork: true } : {}),
+  };
+}
+
 function resolveGuardedPostRequestOptions(params: {
   pinDns?: boolean;
   allowPrivateNetwork?: boolean;
+  ssrfPolicy?: SsrFPolicy;
   dispatcherPolicy?: PinnedDispatcherPolicy;
   auditContext?: string;
   mode?: GuardedFetchMode;
 }): GuardedPostRequestOptions | undefined {
+  const ssrfPolicy = resolveMergedSsrFPolicy(params);
   if (
-    !params.allowPrivateNetwork &&
+    !ssrfPolicy &&
     !params.dispatcherPolicy &&
     params.pinDns === undefined &&
     !params.auditContext &&
@@ -220,7 +235,7 @@ function resolveGuardedPostRequestOptions(params: {
     return undefined;
   }
   return {
-    ...(params.allowPrivateNetwork ? { ssrfPolicy: { allowPrivateNetwork: true } } : {}),
+    ...(ssrfPolicy ? { ssrfPolicy } : {}),
     ...(params.pinDns !== undefined ? { pinDns: params.pinDns } : {}),
     ...(params.dispatcherPolicy ? { dispatcherPolicy: params.dispatcherPolicy } : {}),
     ...(params.auditContext ? { auditContext: params.auditContext } : {}),
@@ -236,6 +251,7 @@ export async function postTranscriptionRequest(params: {
   fetchFn: typeof fetch;
   pinDns?: boolean;
   allowPrivateNetwork?: boolean;
+  ssrfPolicy?: SsrFPolicy;
   dispatcherPolicy?: PinnedDispatcherPolicy;
   auditContext?: string;
   /**
@@ -266,6 +282,7 @@ export async function postJsonRequest(params: {
   fetchFn: typeof fetch;
   pinDns?: boolean;
   allowPrivateNetwork?: boolean;
+  ssrfPolicy?: SsrFPolicy;
   dispatcherPolicy?: PinnedDispatcherPolicy;
   auditContext?: string;
   /**

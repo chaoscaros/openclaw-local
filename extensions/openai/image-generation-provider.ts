@@ -27,6 +27,25 @@ const OPENAI_SUPPORTED_SIZES = ["1024x1024", "1024x1536", "1536x1024", "1024x179
 const OPENAI_LEGACY_IMAGE_SIZES = ["1024x1024", "1536x1024", "1024x1536"] as const;
 const OPENAI_MAX_INPUT_IMAGES = 5;
 const MOCK_OPENAI_PROVIDER_ID = "mock-openai";
+const OPENAI_TRUSTED_BENCHMARK_HOSTS = new Set(["api.openai.com", "chatgpt.com"]);
+
+function resolveTrustedOpenAISsrfPolicy(baseUrl: string): {
+  hostnameAllowlist: string[];
+  allowRfc2544BenchmarkRange: true;
+} | undefined {
+  try {
+    const hostname = new URL(baseUrl).hostname.trim().toLowerCase();
+    if (!OPENAI_TRUSTED_BENCHMARK_HOSTS.has(hostname)) {
+      return undefined;
+    }
+    return {
+      hostnameAllowlist: [hostname],
+      allowRfc2544BenchmarkRange: true,
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 function shouldAllowPrivateImageEndpoint(req: {
   provider: string;
@@ -245,6 +264,7 @@ async function generateOpenAICodexImage(req: Parameters<ImageGenerationProvider[
       capability: "image",
       transport: "http",
     });
+  const ssrfPolicy = resolveTrustedOpenAISsrfPolicy(baseUrl);
   headers.set("Content-Type", "application/json");
   const content = [{ type: "input_text", text: req.prompt }];
   const results = [] as Array<{ images: Array<{ buffer: Buffer; mimeType: string; fileName: string; revisedPrompt?: string }>; model: string }>;
@@ -264,6 +284,7 @@ async function generateOpenAICodexImage(req: Parameters<ImageGenerationProvider[
       timeoutMs: req.timeoutMs,
       fetchFn: fetch,
       allowPrivateNetwork,
+      ssrfPolicy,
       dispatcherPolicy,
     });
     const { response, release } = requestResult;
@@ -356,6 +377,7 @@ export function buildOpenAIImageGenerationProvider(): ImageGenerationProvider {
           capability: "image",
           transport: "http",
         });
+      const ssrfPolicy = resolveTrustedOpenAISsrfPolicy(baseUrl);
 
       const model = req.model || DEFAULT_OPENAI_IMAGE_MODEL;
       const count = req.count ?? 1;
@@ -387,6 +409,7 @@ export function buildOpenAIImageGenerationProvider(): ImageGenerationProvider {
               timeoutMs: req.timeoutMs,
               fetchFn: fetch,
               allowPrivateNetwork,
+              ssrfPolicy,
               dispatcherPolicy,
             });
           })()
@@ -405,6 +428,7 @@ export function buildOpenAIImageGenerationProvider(): ImageGenerationProvider {
               timeoutMs: req.timeoutMs,
               fetchFn: fetch,
               allowPrivateNetwork,
+              ssrfPolicy,
               dispatcherPolicy,
             });
           })();

@@ -273,6 +273,10 @@ describe("openai image generation provider", () => {
     expect(postJsonRequestMock).toHaveBeenCalledWith(
       expect.objectContaining({
         url: "https://chatgpt.com/backend-api/codex/responses",
+        ssrfPolicy: {
+          hostnameAllowlist: ["chatgpt.com"],
+          allowRfc2544BenchmarkRange: true,
+        },
         body: expect.objectContaining({
           model: "gpt-5.5",
           tool_choice: { type: "image_generation" },
@@ -355,6 +359,10 @@ describe("openai image generation provider", () => {
     expect(postJsonRequestMock).toHaveBeenCalledWith(
       expect.objectContaining({
         url: "https://api.openai.com/v1/images/generations",
+        ssrfPolicy: {
+          hostnameAllowlist: ["api.openai.com"],
+          allowRfc2544BenchmarkRange: true,
+        },
         body: expect.objectContaining({
           model: "gpt-image-1",
           size: "1536x1024",

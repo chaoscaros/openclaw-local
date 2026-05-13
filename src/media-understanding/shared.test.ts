@@ -289,6 +289,36 @@ describe("fetchWithTimeoutGuarded", () => {
     );
   });
 
+  it("merges explicit ssrfPolicy with allowPrivateNetwork when posting JSON", async () => {
+    fetchWithSsrFGuardMock.mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      finalUrl: "https://chatgpt.com/backend-api/codex/responses",
+      release: async () => {},
+    });
+
+    await postJsonRequest({
+      url: "https://chatgpt.com/backend-api/codex/responses",
+      headers: new Headers({ authorization: "Bearer test" }),
+      body: { hello: "world" },
+      fetchFn: fetch,
+      allowPrivateNetwork: true,
+      ssrfPolicy: {
+        hostnameAllowlist: ["chatgpt.com"],
+        allowRfc2544BenchmarkRange: true,
+      },
+    });
+
+    expect(fetchWithSsrFGuardMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        policy: {
+          allowPrivateNetwork: true,
+          hostnameAllowlist: ["chatgpt.com"],
+          allowRfc2544BenchmarkRange: true,
+        },
+      }),
+    );
+  });
+
   it("does not set a guarded fetch mode when no HTTP proxy env is configured", async () => {
     hasEnvHttpProxyConfiguredMock.mockReturnValue(false);
     fetchWithSsrFGuardMock.mockResolvedValue({
