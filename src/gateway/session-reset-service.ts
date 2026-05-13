@@ -638,7 +638,8 @@ export async function performGatewaySessionReset(params: {
       lastTo: currentEntry?.lastTo,
       lastAccountId: currentEntry?.lastAccountId,
       lastThreadId: currentEntry?.lastThreadId,
-      skillsSnapshot: currentEntry?.skillsSnapshot,
+      // Do not carry the cached skills catalog across /new. Long-lived channel
+      // sessions otherwise keep advertising a stale <available_skills> block.
       acp: currentEntry?.acp,
       inputTokens: 0,
       outputTokens: 0,

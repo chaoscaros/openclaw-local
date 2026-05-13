@@ -1658,8 +1658,53 @@ describe("gateway server sessions", () => {
     ws.close();
   });
 
-  test("sessions.reset preserves legacy explicit model overrides without modelOverrideSource", async () => {
-    const { storePath } = await createSessionStoreDir();
+test("sessions.reset drops cached skills snapshot so /new rebuilds visible skills", async () => {
+  const { storePath } = await createSessionStoreDir();
+  testState.agentConfig = {
+    model: {
+      primary: "openai/gpt-test-a",
+    },
+  };
+
+  await writeSessionStore({
+    entries: {
+      main: {
+        sessionId: "sess-stale-skills",
+        updatedAt: Date.now(),
+        skillsSnapshot: {
+          prompt: "<available_skills><skill><name>stale</name></skill></available_skills>",
+          skills: [{ name: "stale" }],
+          version: 0,
+        },
+      },
+    },
+  });
+
+  const { ws } = await openClient();
+  const reset = await rpcReq<{
+    ok: true;
+    key: string;
+    entry: {
+      sessionId: string;
+      skillsSnapshot?: unknown;
+    };
+  }>(ws, "sessions.reset", { key: "main" });
+
+  expect(reset.ok).toBe(true);
+  expect(reset.payload?.entry.sessionId).not.toBe("sess-stale-skills");
+  expect(reset.payload?.entry.skillsSnapshot).toBeUndefined();
+
+  const store = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
+    string,
+    { skillsSnapshot?: unknown }
+  >;
+  expect(store["agent:main:main"]?.skillsSnapshot).toBeUndefined();
+
+  ws.close();
+});
+
+test("sessions.reset preserves legacy explicit model overrides without modelOverrideSource", async () => {
+  const { storePath } = await createSessionStoreDir();
     testState.agentConfig = {
       model: {
         primary: "openai/gpt-test-a",
