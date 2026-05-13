@@ -26,6 +26,34 @@ export function printCronJson(value: unknown) {
   defaultRuntime.writeJson(value);
 }
 
+export function enrichCronJsonWithStatus(value: unknown): unknown {
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  const obj = value as Record<string, unknown>;
+  if ("state" in obj && "enabled" in obj) {
+    return { ...obj, status: computeCronJobStatus(obj as unknown as CronJob) };
+  }
+  if ("jobs" in obj && Array.isArray(obj.jobs)) {
+    return {
+      ...obj,
+      jobs: (obj.jobs as CronJob[]).map((job) => ({ ...job, status: computeCronJobStatus(job) })),
+    };
+  }
+  return value;
+}
+
+function computeCronJobStatus(job: CronJob): string {
+  if (!job.enabled) {
+    return "disabled";
+  }
+  const state = job.state ?? {};
+  if (state.runningAtMs) {
+    return "running";
+  }
+  return state.lastRunStatus ?? state.lastStatus ?? "idle";
+}
+
 export function handleCronCliError(err: unknown) {
   defaultRuntime.error(danger(String(err)));
   defaultRuntime.exit(1);

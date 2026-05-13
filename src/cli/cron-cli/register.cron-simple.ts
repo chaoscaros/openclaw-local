@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 import { defaultRuntime } from "../../runtime.js";
 import { addGatewayClientOptions, callGatewayFromCli } from "../gateway-rpc.js";
-import { handleCronCliError, printCronJson, warnIfCronSchedulerDisabled } from "./shared.js";
+import { enrichCronJsonWithStatus, handleCronCliError, printCronJson, warnIfCronSchedulerDisabled } from "./shared.js";
 
 function registerCronToggleCommand(params: {
   cron: Command;

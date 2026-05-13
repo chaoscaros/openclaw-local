@@ -11,6 +11,7 @@ import { addGatewayClientOptions, callGatewayFromCli } from "../gateway-rpc.js";
 import { parsePositiveIntOrUndefined } from "../program/helpers.js";
 import { resolveCronCreateSchedule } from "./schedule-options.js";
 import {
+  enrichCronJsonWithStatus,
   getCronChannelOptions,
   handleCronCliError,
   printCronJson,
@@ -49,7 +50,7 @@ export function registerCronListCommand(cron: Command) {
             includeDisabled: Boolean(opts.all),
           });
           if (opts.json) {
-            printCronJson(res);
+            printCronJson(enrichCronJsonWithStatus(res));
             return;
           }
           const jobs = (res as { jobs?: CronJob[] } | null)?.jobs ?? [];

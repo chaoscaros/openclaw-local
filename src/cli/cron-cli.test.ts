@@ -1023,4 +1023,38 @@ describe("cron cli", () => {
     expect(patch?.patch?.failureAlert?.mode).toBe("webhook");
     expect(patch?.patch?.failureAlert?.accountId).toBe("bot-a");
   });
+
+  it("adds computed status to cron list --json output", async () => {
+    resetGatewayMock();
+    callGatewayFromCli.mockImplementation(async (method: string, _opts: unknown, params?: unknown) => {
+      if (method === "cron.status") {
+        return { enabled: true };
+      }
+      if (method === "cron.list") {
+        return {
+          ok: true,
+          params,
+          jobs: [
+            { id: "job-running", enabled: true, state: { runningAtMs: 123 } },
+            { id: "job-disabled", enabled: false, state: {} },
+            { id: "job-legacy", enabled: true, state: { lastStatus: "error" } },
+          ],
+        };
+      }
+      return { ok: true, params };
+    });
+
+    const program = buildProgram();
+    await program.parseAsync(["cron", "list", "--json"], { from: "user" });
+
+    expect(defaultRuntime.writeJson).toHaveBeenCalledWith({
+      ok: true,
+      params: { includeDisabled: false },
+      jobs: [
+        { id: "job-running", enabled: true, state: { runningAtMs: 123 }, status: "running" },
+        { id: "job-disabled", enabled: false, state: {}, status: "disabled" },
+        { id: "job-legacy", enabled: true, state: { lastStatus: "error" }, status: "error" },
+      ],
+    });
+  });
 });
