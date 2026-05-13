@@ -15,6 +15,7 @@ export type GenerateImageParams = {
   prompt: string;
   agentDir?: string;
   authStore?: AuthProfileStore;
+  timeoutMs?: number;
   modelOverride?: string;
   count?: number;
   size?: string;

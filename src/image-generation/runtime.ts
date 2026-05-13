@@ -78,6 +78,7 @@ export async function generateImage(
         cfg: params.cfg,
         agentDir: params.agentDir,
         authStore: params.authStore,
+        timeoutMs: params.timeoutMs,
         count: params.count,
         size: sanitized.size,
         aspectRatio: sanitized.aspectRatio,

@@ -673,10 +673,12 @@ async function runModelAuthLogout(provider: string) {
     removedProfiles: profileIds,
   };
 }
+const IMAGE_GENERATION_TIMEOUT_MS = 300_000;
 
 async function runImageGenerate(params: {
   capability: "image.generate" | "image.edit";
   prompt: string;
+  transport: CapabilityTransport;
   model?: string;
   count?: number;
   size?: string;
@@ -702,6 +704,7 @@ async function runImageGenerate(params: {
     cfg,
     agentDir,
     prompt: params.prompt,
+    timeoutMs: IMAGE_GENERATION_TIMEOUT_MS,
     modelOverride: params.model,
     count: params.count,
     size: params.size,
