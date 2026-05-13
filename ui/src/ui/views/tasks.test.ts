@@ -12,8 +12,10 @@ function buildProps(overrides: Partial<TasksViewProps> = {}): TasksViewProps {
       {
         taskId: "task-1",
         title: "Task 1",
-        description: "Ship the refreshed task center and improve task lookup. /Admin/inventory/storehouse-areas /Admin/inventory/storehouse-detail /Admin/inventory/storehouse-bind 传参 storehouse_id goods_spu_id area_id page per_page",
-        progressSummary: "已完成任务进度自动同步链路，补齐 session history 聚合，并把任务详情默认展示改成摘要优先。",
+        description:
+          "Ship the refreshed task center and improve task lookup. /Admin/inventory/storehouse-areas /Admin/inventory/storehouse-detail /Admin/inventory/storehouse-bind 传参 storehouse_id goods_spu_id area_id page per_page",
+        progressSummary:
+          "已完成任务进度自动同步链路，补齐 session history 聚合，并把任务详情默认展示改成摘要优先。",
         completedSummary: "补齐了历史同步、按钮入口和 runtime 详情预览。",
         nextStep: "继续验证真实 UI 场景，并确认抽屉里的完整记录与当前任务保持一致。",
         todoItems: [
@@ -82,7 +84,8 @@ function buildProps(overrides: Partial<TasksViewProps> = {}): TasksViewProps {
             status: "running",
             runId: "run-1",
             lastEventAt: Date.now(),
-            progressSummary: "正在整理任务中心上下文，并补齐完整记录抽屉里的摘要与详情切换，避免详情页直接堆满全部信息。同时还在核对时间线预览、任务切换后的抽屉内容以及完整记录浏览体验是否一致。",
+            progressSummary:
+              "正在整理任务中心上下文，并补齐完整记录抽屉里的摘要与详情切换，避免详情页直接堆满全部信息。同时还在核对时间线预览、任务切换后的抽屉内容以及完整记录浏览体验是否一致。",
           },
           {
             taskId: "runtime-task-2",
@@ -91,7 +94,8 @@ function buildProps(overrides: Partial<TasksViewProps> = {}): TasksViewProps {
             runId: "run-2",
             lastEventAt: Date.now() - 1000,
             error: "sandbox denied",
-            terminalSummary: "命令执行被沙箱拒绝，CLI 退出前已经输出了完整错误上下文和恢复建议，需要在抽屉里查看完整记录，并进一步确认沙箱权限、重试路径和恢复步骤说明是否完整。",
+            terminalSummary:
+              "命令执行被沙箱拒绝，CLI 退出前已经输出了完整错误上下文和恢复建议，需要在抽屉里查看完整记录，并进一步确认沙箱权限、重试路径和恢复步骤说明是否完整。",
           },
         ],
         lastSessionKey: "agent:solo:main",
@@ -108,7 +112,13 @@ function buildProps(overrides: Partial<TasksViewProps> = {}): TasksViewProps {
       },
     ],
     error: null,
-    currentSession: { key: "main", kind: "direct", updatedAt: Date.now(), mode: "task", taskId: "task-1" },
+    currentSession: {
+      key: "main",
+      kind: "direct",
+      updatedAt: Date.now(),
+      mode: "task",
+      taskId: "task-1",
+    },
     createOpen: false,
     createTitle: "",
     createDescription: "",
@@ -259,20 +269,34 @@ describe("renderTasks", () => {
     expect(text).toContain("是否异常：否");
     expect(text).toContain("查看完整进展摘要");
     expect(text).not.toContain("查看完整状态轨迹");
-    expect(text).toContain("progressSummary：正在整理任务中心上下文，并补齐完整记录抽屉里的摘要与详情切换".slice(0, 40));
-    const runtimeRows = Array.from(container.querySelectorAll('.task-preview-pane__detail-list .task-runtime-row')) as HTMLElement[];
-    const latestRowIndex = runtimeRows.findIndex((node) => (node.textContent ?? '').includes('runtime-task-1'));
-    const exceptionRowIndex = runtimeRows.findIndex((node) => (node.textContent ?? '').includes('runtime-task-2'));
+    expect(text).toContain(
+      "progressSummary：正在整理任务中心上下文，并补齐完整记录抽屉里的摘要与详情切换".slice(0, 40),
+    );
+    const runtimeRows = Array.from(
+      container.querySelectorAll(".task-preview-pane__detail-list .task-runtime-row"),
+    ) as HTMLElement[];
+    const latestRowIndex = runtimeRows.findIndex((node) =>
+      (node.textContent ?? "").includes("runtime-task-1"),
+    );
+    const exceptionRowIndex = runtimeRows.findIndex((node) =>
+      (node.textContent ?? "").includes("runtime-task-2"),
+    );
     expect(latestRowIndex).toBeGreaterThanOrEqual(0);
     expect(exceptionRowIndex).toBeGreaterThan(latestRowIndex);
-    expect(runtimeRows[latestRowIndex]?.className).toContain('task-runtime-row--latest');
-    expect(runtimeRows[exceptionRowIndex]?.className).toContain('task-runtime-row--exception');
-    const runtimeActionButtons = Array.from(container.querySelectorAll('.task-runtime-row__actions button')) as HTMLButtonElement[];
+    expect(runtimeRows[latestRowIndex]?.className).toContain("task-runtime-row--latest");
+    expect(runtimeRows[exceptionRowIndex]?.className).toContain("task-runtime-row--exception");
+    const runtimeActionButtons = Array.from(
+      container.querySelectorAll(".task-runtime-row__actions button"),
+    ) as HTMLButtonElement[];
     expect(runtimeActionButtons.length).toBeGreaterThanOrEqual(3);
-    const detailButtons = runtimeActionButtons.filter((button) => button.textContent?.includes('查看详情'));
-    const nonDetailButtons = runtimeActionButtons.filter((button) => !button.textContent?.includes('查看详情'));
+    const detailButtons = runtimeActionButtons.filter((button) =>
+      button.textContent?.includes("查看详情"),
+    );
+    const nonDetailButtons = runtimeActionButtons.filter(
+      (button) => !button.textContent?.includes("查看详情"),
+    );
     expect(detailButtons.length).toBeGreaterThanOrEqual(1);
-    expect(detailButtons.every((button) => ! button.disabled)).toBe(true);
+    expect(detailButtons.every((button) => !button.disabled)).toBe(true);
     expect(nonDetailButtons.every((button) => button.disabled)).toBe(true);
     detailButtons[detailButtons.length - 1]?.click();
     await Promise.resolve();
@@ -284,10 +308,17 @@ describe("renderTasks", () => {
     expect(updatedText).toContain("terminalSummary：命令执行被沙箱拒绝");
     expect(updatedText).toContain("还有 1 条轨迹");
     expect(updatedText).toContain("查看完整状态轨迹");
-    const runtimeDetailPanel = Array.from(container.querySelectorAll('.task-preview-pane__detail-list'))
-      .find((node) => (node.textContent ?? '').includes('Runtime task 详情')) as HTMLElement | undefined;
-    const terminalRecordButton = Array.from(runtimeDetailPanel?.querySelectorAll('button') ?? []).find(
-      (button) => button.textContent?.includes('查看完整终端摘要') && button.parentElement?.textContent?.includes('terminalSummary'),
+    const runtimeDetailPanel = Array.from(
+      container.querySelectorAll(".task-preview-pane__detail-list"),
+    ).find((node) => (node.textContent ?? "").includes("Runtime task 详情")) as
+      | HTMLElement
+      | undefined;
+    const terminalRecordButton = Array.from(
+      runtimeDetailPanel?.querySelectorAll("button") ?? [],
+    ).find(
+      (button) =>
+        button.textContent?.includes("查看完整终端摘要") &&
+        button.parentElement?.textContent?.includes("terminalSummary"),
     );
     expect(terminalRecordButton).toBeTruthy();
     terminalRecordButton?.click();
@@ -300,10 +331,11 @@ describe("renderTasks", () => {
     expect(drawerText).toContain("字段：terminalSummary");
     expect(drawerText).toContain("字符数：");
     expect(drawerText).toContain("恢复步骤说明是否完整");
-    const resourceBlock = Array.from(container.querySelectorAll('.task-preview-pane__block'))
-      .find((node) => (node.textContent ?? '').includes('资源上下文')) as HTMLElement | undefined;
-    const resourceButton = Array.from(resourceBlock?.querySelectorAll('button') ?? []).find(
-      (button) => button.textContent?.includes('查看完整资源上下文'),
+    const resourceBlock = Array.from(container.querySelectorAll(".task-preview-pane__block")).find(
+      (node) => (node.textContent ?? "").includes("资源上下文"),
+    ) as HTMLElement | undefined;
+    const resourceButton = Array.from(resourceBlock?.querySelectorAll("button") ?? []).find(
+      (button) => button.textContent?.includes("查看完整资源上下文"),
     );
     expect(resourceButton).toBeTruthy();
     resourceButton?.click();
@@ -315,10 +347,13 @@ describe("renderTasks", () => {
     expect(resourceDrawerText).toContain("接口数：3");
     expect(resourceDrawerText).toContain("参数数：5");
     expect(resourceDrawerText).toContain("src/gateway/task-mode-store.ts");
-    const technicalDetailsBlock = Array.from(container.querySelectorAll('.task-technical-details'))
-      .find((node) => (node.textContent ?? '').includes('技术细节')) as HTMLElement | undefined;
-    const detailsButton = Array.from(technicalDetailsBlock?.querySelectorAll('button') ?? []).find(
-      (button) => button.textContent?.includes('查看完整技术细节') || button.textContent?.includes('查看技术细节'),
+    const technicalDetailsBlock = Array.from(
+      container.querySelectorAll(".task-technical-details"),
+    ).find((node) => (node.textContent ?? "").includes("技术细节")) as HTMLElement | undefined;
+    const detailsButton = Array.from(technicalDetailsBlock?.querySelectorAll("button") ?? []).find(
+      (button) =>
+        button.textContent?.includes("查看完整技术细节") ||
+        button.textContent?.includes("查看技术细节"),
     );
     expect(detailsButton).toBeTruthy();
     detailsButton?.click();
@@ -330,7 +365,9 @@ describe("renderTasks", () => {
     expect(technicalDrawerText).toContain("参数数：5");
     expect(technicalDrawerText).toContain("/Admin/inventory/storehouse-bind");
     expect(technicalDrawerText).toContain("per_page");
-    const timelineButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('查看完整时间线'));
+    const timelineButton = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("查看完整时间线"),
+    );
     timelineButton?.click();
     await Promise.resolve();
     const timelineDrawerText = container.textContent ?? "";
@@ -380,7 +417,13 @@ describe("renderTasks", () => {
     const container = document.createElement("div");
     const baseNow = Date.now();
     const props = buildProps({
-      currentSession: { key: "main", kind: "direct", updatedAt: baseNow, mode: "task", taskId: "task-sort" },
+      currentSession: {
+        key: "main",
+        kind: "direct",
+        updatedAt: baseNow,
+        mode: "task",
+        taskId: "task-sort",
+      },
       items: [
         {
           taskId: "task-sort",
@@ -435,28 +478,31 @@ describe("renderTasks", () => {
     render(renderTasks(props), container);
     await Promise.resolve();
 
-    const sortSelect = container.querySelector('.task-todo-toolbar select') as HTMLSelectElement | null;
+    const sortSelect = container.querySelector(
+      ".task-todo-toolbar select",
+    ) as HTMLSelectElement | null;
     expect(sortSelect).toBeTruthy();
-    expect(container.textContent ?? '').toContain('清单排序');
+    expect(container.textContent ?? "").toContain("清单排序");
 
     const pendingOrder = () =>
-      Array.from(container.querySelectorAll('.task-preview-pane__detail-list--todos'))
-        .find((section) => (section.textContent ?? '').includes('待做'))
-        ?.querySelectorAll('.task-todo-row__content');
+      Array.from(container.querySelectorAll(".task-preview-pane__detail-list--todos"))
+        .find((section) => (section.textContent ?? "").includes("待做"))
+        ?.querySelectorAll(".task-todo-row__content");
 
-    const pendingTexts = () => Array.from(pendingOrder() ?? []).map((node) => node.textContent?.trim() ?? '');
+    const pendingTexts = () =>
+      Array.from(pendingOrder() ?? []).map((node) => node.textContent?.trim() ?? "");
 
-    expect(pendingTexts()).toEqual(['低优先级但最近更新', '高优先级但较早更新', '普通优先级']);
+    expect(pendingTexts()).toEqual(["低优先级但最近更新", "高优先级但较早更新", "普通优先级"]);
 
-    sortSelect!.value = 'priority';
-    sortSelect!.dispatchEvent(new Event('change'));
+    sortSelect!.value = "priority";
+    sortSelect!.dispatchEvent(new Event("change"));
     await Promise.resolve();
-    expect(pendingTexts()).toEqual(['高优先级但较早更新', '普通优先级', '低优先级但最近更新']);
+    expect(pendingTexts()).toEqual(["高优先级但较早更新", "普通优先级", "低优先级但最近更新"]);
 
-    sortSelect!.value = 'updated_desc';
-    sortSelect!.dispatchEvent(new Event('change'));
+    sortSelect!.value = "updated_desc";
+    sortSelect!.dispatchEvent(new Event("change"));
     await Promise.resolve();
-    expect(pendingTexts()).toEqual(['低优先级但最近更新', '普通优先级', '高优先级但较早更新']);
+    expect(pendingTexts()).toEqual(["低优先级但最近更新", "普通优先级", "高优先级但较早更新"]);
   });
 
   it("shows the linked titled task in the current-task section when the bound task title is empty", async () => {
@@ -465,7 +511,13 @@ describe("renderTasks", () => {
     render(
       renderTasks(
         buildProps({
-          currentSession: { key: "main", kind: "direct", updatedAt: baseNow, mode: "task", taskId: "task-empty" },
+          currentSession: {
+            key: "main",
+            kind: "direct",
+            updatedAt: baseNow,
+            mode: "task",
+            taskId: "task-empty",
+          },
           items: [
             {
               taskId: "task-empty",
@@ -544,39 +596,58 @@ describe("renderTasks", () => {
     render(renderTasks(props), container);
     await Promise.resolve();
 
-    const mainSort = Array.from(container.querySelectorAll('.task-toolbar select'))
-      .find((node) => (node.parentElement?.textContent ?? '').includes('主列表排序')) as HTMLSelectElement | null;
+    const mainSort = Array.from(container.querySelectorAll(".task-toolbar select")).find((node) =>
+      (node.parentElement?.textContent ?? "").includes("主列表排序"),
+    ) as HTMLSelectElement | null;
     expect(mainSort).toBeTruthy();
-    expect(container.textContent ?? '').toContain('主列表排序');
+    expect(container.textContent ?? "").toContain("主列表排序");
 
     const activeTitles = () =>
-      Array.from(container.querySelectorAll('.task-section-card'))
-        .find((section) => (section.textContent ?? '').includes('仍需继续推进的任务。'))
-        ?.querySelectorAll('.task-list-item__title');
+      Array.from(container.querySelectorAll(".task-section-card"))
+        .find((section) => (section.textContent ?? "").includes("仍需继续推进的任务。"))
+        ?.querySelectorAll(".task-list-item__title");
 
-    const activeTexts = () => Array.from(activeTitles() ?? []).map((node) => node.textContent?.trim() ?? '');
+    const activeTexts = () =>
+      Array.from(activeTitles() ?? []).map((node) => node.textContent?.trim() ?? "");
 
-    expect(activeTexts()).toEqual(['Zeta task', 'Alpha task', 'Middle task']);
+    expect(activeTexts()).toEqual(["Zeta task", "Alpha task", "Middle task"]);
 
-    mainSort!.value = 'title_asc';
-    mainSort!.dispatchEvent(new Event('change'));
+    mainSort!.value = "title_asc";
+    mainSort!.dispatchEvent(new Event("change"));
     await Promise.resolve();
-    expect(activeTexts()).toEqual(['Alpha task', 'Middle task', 'Zeta task']);
+    expect(activeTexts()).toEqual(["Alpha task", "Middle task", "Zeta task"]);
 
-    mainSort!.value = 'created_desc';
-    mainSort!.dispatchEvent(new Event('change'));
+    mainSort!.value = "created_desc";
+    mainSort!.dispatchEvent(new Event("change"));
     await Promise.resolve();
-    expect(activeTexts()).toEqual(['Middle task', 'Alpha task', 'Zeta task']);
+    expect(activeTexts()).toEqual(["Middle task", "Alpha task", "Zeta task"]);
   });
 
-  it("shows create drawer when task creation is open", async () => {
+  it("opens create drawer after clicking create task", async () => {
     const container = document.createElement("div");
-    render(renderTasks(buildProps({ createOpen: true, createTitle: "New task" })), container);
+    const props = buildProps({
+      onToggleCreate: () => {
+        props.createOpen = !props.createOpen;
+      },
+      onRequestUpdate: () => {
+        render(renderTasks(props), container);
+      },
+    });
+    render(renderTasks(props), container);
     await Promise.resolve();
+
+    const openButton = Array.from(container.querySelectorAll("button")).find(
+      (button) =>
+        button.textContent?.includes("创建任务") || button.textContent?.includes("Create task"),
+    );
+    expect(openButton).toBeTruthy();
+    openButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+
     const text = container.textContent ?? "";
     expect(text).toContain("新增任务");
     expect(text).toContain("Create");
-    expect(container.querySelector('textarea')).toBeTruthy();
+    expect(container.querySelector("textarea")).toBeTruthy();
   });
 
   it("shows edit drawer when a task is being edited", async () => {
@@ -620,8 +691,8 @@ describe("renderTasks", () => {
       container,
     );
     await Promise.resolve();
-    const select = Array.from(container.querySelectorAll("select")).find(
-      (node) => (node.parentElement?.textContent ?? "").includes("Status"),
+    const select = Array.from(container.querySelectorAll("select")).find((node) =>
+      (node.parentElement?.textContent ?? "").includes("Status"),
     );
     expect(select).toBeTruthy();
     select!.value = "completed";
@@ -639,9 +710,14 @@ describe("renderTasks", () => {
     buttons.find((button) => button.textContent?.includes("Delete"))?.click();
     expect(onChangeStatus).toHaveBeenCalledWith("task-1", "completed");
     expect(onSelectCurrent).toHaveBeenCalledWith("task-2");
-    expect(onCreateAutomationDraft).toHaveBeenCalledWith(expect.objectContaining({ taskId: "task-1" }));
+    expect(onCreateAutomationDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: "task-1" }),
+    );
     expect(onOpenAutomationPanel).toHaveBeenCalledTimes(1);
-    expect(onToggleAutomationJob).toHaveBeenCalledWith(expect.objectContaining({ id: "cron-job-1" }), false);
+    expect(onToggleAutomationJob).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "cron-job-1" }),
+      false,
+    );
     expect(onRunAutomationJob).toHaveBeenCalledWith(expect.objectContaining({ id: "cron-job-1" }));
     expect(onEditAutomationJob).toHaveBeenCalledWith(expect.objectContaining({ id: "cron-job-1" }));
     expect(onSyncProgress).toHaveBeenCalledWith("task-1");

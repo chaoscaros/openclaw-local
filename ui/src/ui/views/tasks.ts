@@ -1,6 +1,5 @@
 import { html, nothing, type TemplateResult } from "lit";
 import { t } from "../../i18n/index.ts";
-import { formatRelativeTimestamp } from "../format.ts";
 import {
   resolveSessionTask,
   type TaskItem,
@@ -10,6 +9,7 @@ import {
   type TaskTodoPriority,
   type TaskTodoStatus,
 } from "../controllers/tasks.ts";
+import { formatRelativeTimestamp } from "../format.ts";
 import type { CronJob, GatewaySessionRow } from "../types.ts";
 
 export type TasksViewProps = {
@@ -40,11 +40,19 @@ export type TasksViewProps = {
   onRestore: (taskId: string) => void;
   onDelete: (taskId: string) => void;
   onSyncProgress?: (taskId: string) => void;
-  onCreateTodo: (taskId: string, input: { content: string; priority?: TaskTodoPriority; note?: string; verification?: string }) => Promise<unknown>;
+  onCreateTodo: (
+    taskId: string,
+    input: { content: string; priority?: TaskTodoPriority; note?: string; verification?: string },
+  ) => Promise<unknown>;
   onUpdateTodo: (
     taskId: string,
     todoId: string,
-    patch: { content?: string; priority?: TaskTodoPriority; note?: string | null; verification?: string | null },
+    patch: {
+      content?: string;
+      priority?: TaskTodoPriority;
+      note?: string | null;
+      verification?: string | null;
+    },
   ) => Promise<unknown>;
   onSetTodoStatus: (taskId: string, todoId: string, status: TaskTodoStatus) => Promise<unknown>;
   onDeleteTodo: (taskId: string, todoId: string) => Promise<unknown>;
@@ -83,7 +91,11 @@ type FullRecordDrawerState =
   | { kind: "resource-context" }
   | { kind: "technical-details" }
   | { kind: "runtime-trajectory"; runtimeTaskId: string }
-  | { kind: "runtime-text"; runtimeTaskId: string; field: "progressSummary" | "terminalSummary" | "error" };
+  | {
+      kind: "runtime-text";
+      runtimeTaskId: string;
+      field: "progressSummary" | "terminalSummary" | "error";
+    };
 
 type TaskListSort = "recommended" | "updated_desc" | "created_desc" | "title_asc";
 type TaskTodoSort = "manual" | "updated_desc" | "priority";
@@ -257,7 +269,9 @@ function extractTaskHighlights(task: TaskItem | null | undefined) {
   const cleanTitle = humanizeTaskTitle(title);
   const cleanDescription = stripTechnicalNoise(description);
   const cleanFlowStep = stripTechnicalNoise(flowStep);
-  const clauses = Array.from(new Set([cleanFlowStep, cleanDescription, ...splitTaskClauses(cleanDescription)])).filter(Boolean);
+  const clauses = Array.from(
+    new Set([cleanFlowStep, cleanDescription, ...splitTaskClauses(cleanDescription)]),
+  ).filter(Boolean);
   const summary = clampText(
     normalizeTaskBody(task?.progressSummary) ||
       clauses[0] ||
@@ -276,14 +290,21 @@ function extractTaskHighlights(task: TaskItem | null | undefined) {
     78,
   );
   const fallbackTitle = humanizeTaskTitle(
-    cleanTitle || title || cleanFlowStep || clauses[0] || normalizeTaskBody(task?.progressSummary) || normalizeTaskBody(task?.nextStep),
+    cleanTitle ||
+      title ||
+      cleanFlowStep ||
+      clauses[0] ||
+      normalizeTaskBody(task?.progressSummary) ||
+      normalizeTaskBody(task?.nextStep),
   );
   return {
     title: fallbackTitle || t("taskModeUi.empty"),
     summary,
     nextStep,
     completedSummary: clampText(
-      normalizeTaskBody(task?.completedSummary) || clauses.slice(0, 2).join(" · ") || t("taskWorkspace.noneYet"),
+      normalizeTaskBody(task?.completedSummary) ||
+        clauses.slice(0, 2).join(" · ") ||
+        t("taskWorkspace.noneYet"),
       96,
     ),
     fullDescription: clampText(cleanDescription || cleanTitle || t("taskModeUi.empty"), 160),
@@ -293,8 +314,14 @@ function extractTaskHighlights(task: TaskItem | null | undefined) {
 
 function extractTechnicalContext(task: TaskItem | null | undefined): string[] {
   const source = `${task?.title ?? ""}\n${task?.description ?? ""}`;
-  const matches = source.match(/(?:\/[A-Za-z0-9_./-]+|[A-Za-z0-9_./-]+\.(?:vue|js|ts|tsx|jsx|json|md))/g) ?? [];
-  return Array.from(new Set([...(task?.resourceContext ?? []), ...matches.map((item) => item.trim()).filter(Boolean)])).slice(0, 8);
+  const matches =
+    source.match(/(?:\/[A-Za-z0-9_./-]+|[A-Za-z0-9_./-]+\.(?:vue|js|ts|tsx|jsx|json|md))/g) ?? [];
+  return Array.from(
+    new Set([
+      ...(task?.resourceContext ?? []),
+      ...matches.map((item) => item.trim()).filter(Boolean),
+    ]),
+  ).slice(0, 8);
 }
 
 function renderTechnicalDetails(task: TaskItem | null | undefined, props: TasksViewProps) {
@@ -312,20 +339,28 @@ function renderTechnicalDetails(task: TaskItem | null | undefined, props: TasksV
     <div class="task-technical-details">
       <div class="task-preview-pane__block-title">
         <span>技术细节</span>
-        <button type="button" class="btn btn--ghost" @click=${() => openFullRecordDrawer(props, { kind: "technical-details" })}>
+        <button
+          type="button"
+          class="btn btn--ghost"
+          @click=${() => openFullRecordDrawer(props, { kind: "technical-details" })}
+        >
           ${hasMore ? "查看完整技术细节" : "查看技术细节"}
         </button>
       </div>
       ${endpointPreview.length
         ? html`<div class="task-technical-details__group">
             <div class="task-technical-details__label">接口</div>
-            <div class="task-chip-row">${endpointPreview.map((item) => html`<span class="task-chip">${item}</span>`)}</div>
+            <div class="task-chip-row">
+              ${endpointPreview.map((item) => html`<span class="task-chip">${item}</span>`)}
+            </div>
           </div>`
         : nothing}
       ${paramsPreview.length
         ? html`<div class="task-technical-details__group">
             <div class="task-technical-details__label">参数</div>
-            <div class="task-chip-row">${paramsPreview.map((item) => html`<span class="task-chip">${item}</span>`)}</div>
+            <div class="task-chip-row">
+              ${paramsPreview.map((item) => html`<span class="task-chip">${item}</span>`)}
+            </div>
           </div>`
         : nothing}
       ${renderOverflowHint(
@@ -350,11 +385,17 @@ function closeFullRecordDrawer(props: TasksViewProps) {
   requestTaskViewUpdate(props);
 }
 
-function renderBlockTitle(title: string, props: TasksViewProps, action?: { label: string; onClick: () => void }) {
+function renderBlockTitle(
+  title: string,
+  props: TasksViewProps,
+  action?: { label: string; onClick: () => void },
+) {
   return html`<div class="task-preview-pane__block-title">
     <span>${title}</span>
     ${action
-      ? html`<button type="button" class="btn btn--ghost" @click=${action.onClick}>${action.label}</button>`
+      ? html`<button type="button" class="btn btn--ghost" @click=${action.onClick}>
+          ${action.label}
+        </button>`
       : nothing}
   </div>`;
 }
@@ -363,10 +404,15 @@ function renderOverflowHint(label: string | null | undefined) {
   if (!label) {
     return nothing;
   }
-  return html`<div class="task-preview-pane__detail-list task-preview-pane__hint"><span>${label}</span></div>`;
+  return html`<div class="task-preview-pane__detail-list task-preview-pane__hint">
+    <span>${label}</span>
+  </div>`;
 }
 
-function runtimeSummaryPriority(entry: NonNullable<TaskItem["runtimeTaskSummaries"]>[number], latestTaskId: string) {
+function runtimeSummaryPriority(
+  entry: NonNullable<TaskItem["runtimeTaskSummaries"]>[number],
+  latestTaskId: string,
+) {
   const isLatest = entry.taskId === latestTaskId;
   const isException =
     entry.status === "failed" ||
@@ -380,15 +426,31 @@ function runtimeSummaryPriority(entry: NonNullable<TaskItem["runtimeTaskSummarie
   };
 }
 
-function buildRuntimeTrajectory(task: TaskItem, entry: NonNullable<TaskItem["runtimeTaskSummaries"]>[number], latestTaskId: string) {
+function buildRuntimeTrajectory(
+  task: TaskItem,
+  entry: NonNullable<TaskItem["runtimeTaskSummaries"]>[number],
+  latestTaskId: string,
+) {
   const isLatest = entry.taskId === latestTaskId;
   const isException = runtimeSummaryPriority(entry, latestTaskId).isException;
   return [
     ...(entry.startedAt
-      ? [{ label: "启动", detail: `${runtimeLabel(entry.runtime)} 已启动`, timestamp: entry.startedAt }]
+      ? [
+          {
+            label: "启动",
+            detail: `${runtimeLabel(entry.runtime)} 已启动`,
+            timestamp: entry.startedAt,
+          },
+        ]
       : []),
     ...(entry.progressSummary
-      ? [{ label: "进展", detail: entry.progressSummary, timestamp: entry.lastEventAt ?? entry.startedAt ?? null }]
+      ? [
+          {
+            label: "进展",
+            detail: entry.progressSummary,
+            timestamp: entry.lastEventAt ?? entry.startedAt ?? null,
+          },
+        ]
       : []),
     {
       label: "状态",
@@ -396,9 +458,23 @@ function buildRuntimeTrajectory(task: TaskItem, entry: NonNullable<TaskItem["run
       timestamp: entry.lastEventAt ?? entry.endedAt ?? entry.startedAt ?? null,
     },
     ...(entry.terminalSummary
-      ? [{ label: "结束摘要", detail: entry.terminalSummary, timestamp: entry.endedAt ?? entry.lastEventAt ?? null }]
+      ? [
+          {
+            label: "结束摘要",
+            detail: entry.terminalSummary,
+            timestamp: entry.endedAt ?? entry.lastEventAt ?? null,
+          },
+        ]
       : []),
-    ...(entry.error ? [{ label: "错误", detail: entry.error, timestamp: entry.lastEventAt ?? entry.endedAt ?? null }] : []),
+    ...(entry.error
+      ? [
+          {
+            label: "错误",
+            detail: entry.error,
+            timestamp: entry.lastEventAt ?? entry.endedAt ?? null,
+          },
+        ]
+      : []),
     {
       label: "任务健康",
       detail: task.runtimeHealth ? runtimeHealthLabel(task.runtimeHealth) : "未记录",
@@ -431,7 +507,12 @@ function renderExpandableRuntimeText(
       ? html`<button
           type="button"
           class="btn btn--ghost"
-          @click=${() => openFullRecordDrawer(props, { kind: "runtime-text", runtimeTaskId: entry.taskId, field })}
+          @click=${() =>
+            openFullRecordDrawer(props, {
+              kind: "runtime-text",
+              runtimeTaskId: entry.taskId,
+              field,
+            })}
         >
           ${actionLabel}
         </button>`
@@ -461,15 +542,21 @@ function renderRuntimeTaskLinks(task: TaskItem | null | undefined, props: TasksV
   }
   const ordered = latest ? [latest, ...linked.filter((item) => item !== latest)] : linked;
   const selectedRuntimeTask =
-    summaries.find((entry) => entry.taskId === hubUiState.selectedRuntimeTaskId) ?? summaries[0] ?? null;
-  const runtimeTrajectory = task && selectedRuntimeTask ? buildRuntimeTrajectory(task, selectedRuntimeTask, latest) : [];
+    summaries.find((entry) => entry.taskId === hubUiState.selectedRuntimeTaskId) ??
+    summaries[0] ??
+    null;
+  const runtimeTrajectory =
+    task && selectedRuntimeTask ? buildRuntimeTrajectory(task, selectedRuntimeTask, latest) : [];
   const runtimeTrajectoryPreview = runtimeTrajectory.slice(0, RUNTIME_TRAJECTORY_PREVIEW_LIMIT);
   const remainingRuntimeTrajectory = runtimeTrajectory.length - runtimeTrajectoryPreview.length;
   return html`
     <div class="task-preview-pane__block">
       ${renderBlockTitle("关联 runtime tasks", props)}
       <div class="task-chip-row">
-        ${ordered.map((item) => html`<span class="task-chip">${item}${item === latest ? " · latest" : ""}</span>`) }
+        ${ordered.map(
+          (item) =>
+            html`<span class="task-chip">${item}${item === latest ? " · latest" : ""}</span>`,
+        )}
       </div>
       ${summaries.length
         ? html`<div class="task-preview-pane__detail-list">
@@ -489,7 +576,9 @@ function renderRuntimeTaskLinks(task: TaskItem | null | undefined, props: TasksV
                   ${meta.isException ? html`<span> · 异常</span>` : nothing}
                   <span> · ${runtimeLabel(entry.runtime)} · ${statusLabel(entry.status)}</span>
                   ${entry.runId ? html`<span> · ${entry.runId}</span>` : nothing}
-                  ${entry.lastEventAt ? html`<span> · ${formatRelativeTimestamp(entry.lastEventAt)}</span>` : nothing}
+                  ${entry.lastEventAt
+                    ? html`<span> · ${formatRelativeTimestamp(entry.lastEventAt)}</span>`
+                    : nothing}
                   ${entry.error ? html`<span> · ${entry.error}</span>` : nothing}
                 </div>
                 <div class="task-runtime-row__actions">
@@ -504,28 +593,77 @@ function renderRuntimeTaskLinks(task: TaskItem | null | undefined, props: TasksV
                   >
                     查看详情
                   </button>
-                  <button type="button" class="btn btn--ghost" disabled title="占位，后续接重试接口">重试</button>
-                  <button type="button" class="btn btn--ghost" disabled title="占位，后续接取消接口">取消</button>
+                  <button
+                    type="button"
+                    class="btn btn--ghost"
+                    disabled
+                    title="占位，后续接重试接口"
+                  >
+                    重试
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn--ghost"
+                    disabled
+                    title="占位，后续接取消接口"
+                  >
+                    取消
+                  </button>
                 </div>
               </div>`;
             })}
           </div>`
         : nothing}
       ${selectedRuntimeTask
-        ? html`<div class="task-preview-pane__detail-list task-preview-pane__detail-list--runtime-detail">
+        ? html`<div
+            class="task-preview-pane__detail-list task-preview-pane__detail-list--runtime-detail"
+          >
             <div><strong>Runtime task 详情</strong></div>
             <div><strong>taskId：</strong>${selectedRuntimeTask.taskId}</div>
             <div><strong>runtime：</strong>${runtimeLabel(selectedRuntimeTask.runtime)}</div>
             <div><strong>status：</strong>${statusLabel(selectedRuntimeTask.status)}</div>
             <div><strong>runId：</strong>${selectedRuntimeTask.runId ?? "未记录"}</div>
-            <div><strong>startedAt：</strong>${selectedRuntimeTask.startedAt ? formatRelativeTimestamp(selectedRuntimeTask.startedAt) : "未记录"}</div>
-            <div><strong>endedAt：</strong>${selectedRuntimeTask.endedAt ? formatRelativeTimestamp(selectedRuntimeTask.endedAt) : "未记录"}</div>
-            <div><strong>lastEventAt：</strong>${selectedRuntimeTask.lastEventAt ? formatRelativeTimestamp(selectedRuntimeTask.lastEventAt) : "未记录"}</div>
-            <div><strong>runtimeHealth：</strong>${task?.runtimeHealth ? runtimeHealthLabel(task.runtimeHealth) : "未记录"}</div>
-            <div><strong>是否 latest：</strong>${selectedRuntimeTask.taskId === latest ? "是" : "否"}</div>
-            <div><strong>是否异常：</strong>${runtimeSummaryPriority(selectedRuntimeTask, latest).isException ? "是" : "否"}</div>
-            ${renderExpandableRuntimeText(selectedRuntimeTask, "progressSummary", "progressSummary", props)}
-            ${renderExpandableRuntimeText(selectedRuntimeTask, "terminalSummary", "terminalSummary", props)}
+            <div>
+              <strong>startedAt：</strong>${selectedRuntimeTask.startedAt
+                ? formatRelativeTimestamp(selectedRuntimeTask.startedAt)
+                : "未记录"}
+            </div>
+            <div>
+              <strong>endedAt：</strong>${selectedRuntimeTask.endedAt
+                ? formatRelativeTimestamp(selectedRuntimeTask.endedAt)
+                : "未记录"}
+            </div>
+            <div>
+              <strong>lastEventAt：</strong>${selectedRuntimeTask.lastEventAt
+                ? formatRelativeTimestamp(selectedRuntimeTask.lastEventAt)
+                : "未记录"}
+            </div>
+            <div>
+              <strong>runtimeHealth：</strong>${task?.runtimeHealth
+                ? runtimeHealthLabel(task.runtimeHealth)
+                : "未记录"}
+            </div>
+            <div>
+              <strong>是否 latest：</strong>${selectedRuntimeTask.taskId === latest ? "是" : "否"}
+            </div>
+            <div>
+              <strong>是否异常：</strong>${runtimeSummaryPriority(selectedRuntimeTask, latest)
+                .isException
+                ? "是"
+                : "否"}
+            </div>
+            ${renderExpandableRuntimeText(
+              selectedRuntimeTask,
+              "progressSummary",
+              "progressSummary",
+              props,
+            )}
+            ${renderExpandableRuntimeText(
+              selectedRuntimeTask,
+              "terminalSummary",
+              "terminalSummary",
+              props,
+            )}
             ${renderExpandableRuntimeText(selectedRuntimeTask, "error", "error", props)}
             ${runtimeTrajectoryPreview.length
               ? html`<div><strong>状态轨迹：</strong></div>
@@ -547,7 +685,11 @@ function renderRuntimeTaskLinks(task: TaskItem | null | undefined, props: TasksV
                   <div class="task-timeline-mini">
                     ${runtimeTrajectoryPreview.map(
                       (entry) => html`<div class="task-timeline-mini__item">
-                        <div class="task-timeline-mini__time">${entry.timestamp ? formatRelativeTimestamp(entry.timestamp) : t("common.na")}</div>
+                        <div class="task-timeline-mini__time">
+                          ${entry.timestamp
+                            ? formatRelativeTimestamp(entry.timestamp)
+                            : t("common.na")}
+                        </div>
                         <div class="task-timeline-mini__body">
                           <strong>${entry.label}</strong>
                           <span>${entry.detail}</span>
@@ -555,7 +697,11 @@ function renderRuntimeTaskLinks(task: TaskItem | null | undefined, props: TasksV
                       </div>`,
                     )}
                   </div>
-                  ${renderOverflowHint(remainingRuntimeTrajectory > 0 ? `还有 ${remainingRuntimeTrajectory} 条轨迹` : null)}`
+                  ${renderOverflowHint(
+                    remainingRuntimeTrajectory > 0
+                      ? `还有 ${remainingRuntimeTrajectory} 条轨迹`
+                      : null,
+                  )}`
               : nothing}
           </div>`
         : nothing}
@@ -568,7 +714,9 @@ function buildTaskTimeline(task: TaskItem | null | undefined) {
     return [] as Array<{ label: string; detail: string; timestamp: number | null }>;
   }
   const effectiveStatus = task.effectiveStatus ?? task.status;
-  const progressLabel = normalizeTaskBody(task.progressSummary ?? task.flowCurrentStep ?? task.description) || statusLabel(effectiveStatus);
+  const progressLabel =
+    normalizeTaskBody(task.progressSummary ?? task.flowCurrentStep ?? task.description) ||
+    statusLabel(effectiveStatus);
   return [
     ...(task.timeline ?? []).map((entry) => ({
       label: entry.label,
@@ -606,37 +754,80 @@ function buildTaskTimeline(task: TaskItem | null | undefined) {
   ].toSorted((left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0));
 }
 
-function resolveFullRecordDrawer(task: TaskItem | null | undefined, latestRuntimeTaskId: string | null) {
+function resolveFullRecordDrawer(
+  task: TaskItem | null | undefined,
+  latestRuntimeTaskId: string | null,
+) {
   const state = hubUiState.fullRecordDrawer;
   if (!task || state.kind === null) {
-    return { state: { kind: null } as FullRecordDrawerState, runtimeEntry: null, runtimeTrajectory: [] as ReturnType<typeof buildRuntimeTrajectory> };
+    return {
+      state: { kind: null } as FullRecordDrawerState,
+      runtimeEntry: null,
+      runtimeTrajectory: [] as ReturnType<typeof buildRuntimeTrajectory>,
+    };
   }
-  if (state.kind === "timeline" || state.kind === "resource-context" || state.kind === "technical-details") {
-    return { state, runtimeEntry: null, runtimeTrajectory: [] as ReturnType<typeof buildRuntimeTrajectory> };
+  if (
+    state.kind === "timeline" ||
+    state.kind === "resource-context" ||
+    state.kind === "technical-details"
+  ) {
+    return {
+      state,
+      runtimeEntry: null,
+      runtimeTrajectory: [] as ReturnType<typeof buildRuntimeTrajectory>,
+    };
   }
   const runtimeEntry =
-    task.runtimeTaskSummaries?.find((entry) => entry.taskId === state.runtimeTaskId) ?? task.runtimeTaskSummaries?.[0] ?? null;
+    task.runtimeTaskSummaries?.find((entry) => entry.taskId === state.runtimeTaskId) ??
+    task.runtimeTaskSummaries?.[0] ??
+    null;
   if (!runtimeEntry) {
-    return { state: { kind: null } as FullRecordDrawerState, runtimeEntry: null, runtimeTrajectory: [] as ReturnType<typeof buildRuntimeTrajectory> };
+    return {
+      state: { kind: null } as FullRecordDrawerState,
+      runtimeEntry: null,
+      runtimeTrajectory: [] as ReturnType<typeof buildRuntimeTrajectory>,
+    };
   }
-  const runtimeTrajectory = buildRuntimeTrajectory(task, runtimeEntry, latestRuntimeTaskId ?? task.latestRuntimeTaskId ?? "");
+  const runtimeTrajectory = buildRuntimeTrajectory(
+    task,
+    runtimeEntry,
+    latestRuntimeTaskId ?? task.latestRuntimeTaskId ?? "",
+  );
   if (state.kind === "runtime-trajectory") {
-    return { state: { kind: "runtime-trajectory", runtimeTaskId: runtimeEntry.taskId } as FullRecordDrawerState, runtimeEntry, runtimeTrajectory };
+    return {
+      state: {
+        kind: "runtime-trajectory",
+        runtimeTaskId: runtimeEntry.taskId,
+      } as FullRecordDrawerState,
+      runtimeEntry,
+      runtimeTrajectory,
+    };
   }
   return {
-    state: { kind: "runtime-text", runtimeTaskId: runtimeEntry.taskId, field: state.field } as FullRecordDrawerState,
+    state: {
+      kind: "runtime-text",
+      runtimeTaskId: runtimeEntry.taskId,
+      field: state.field,
+    } as FullRecordDrawerState,
     runtimeEntry,
     runtimeTrajectory,
   };
 }
 
 function renderDrawerMeta(items: Array<[string, string | number | null | undefined]>) {
-  const visible = items.filter(([, value]) => value !== null && value !== undefined && String(value).trim());
+  const visible = items.filter(
+    ([, value]) => value !== null && value !== undefined && String(value).trim(),
+  );
   if (!visible.length) {
     return nothing;
   }
   return html`<div class="task-preview-pane__detail-list task-preview-pane__detail-list--meta">
-    ${visible.map(([label, value]) => html`<div class="task-preview-pane__meta-item"><strong>${label}：</strong>${String(value)}</div>`) }
+    ${visible.map(
+      ([label, value]) =>
+        html`<div class="task-preview-pane__meta-item">
+          <strong>${label}：</strong>${String(value)}
+        </div>`,
+    )}
   </div>`;
 }
 
@@ -663,7 +854,9 @@ function renderFullRecordDrawer(task: TaskItem | null, props: TasksViewProps) {
       ? html`<div class="task-timeline-mini">
           ${timeline.map(
             (entry) => html`<div class="task-timeline-mini__item">
-              <div class="task-timeline-mini__time">${entry.timestamp ? formatRelativeTimestamp(entry.timestamp) : t("common.na")}</div>
+              <div class="task-timeline-mini__time">
+                ${entry.timestamp ? formatRelativeTimestamp(entry.timestamp) : t("common.na")}
+              </div>
               <div class="task-timeline-mini__body">
                 <strong>${entry.label}</strong>
                 <span>${entry.detail}</span>
@@ -685,28 +878,35 @@ function renderFullRecordDrawer(task: TaskItem | null, props: TasksViewProps) {
       ["接口数", endpoints.length],
       ["参数数", params.length],
     ]);
-    body = resourceContext.length || endpoints.length || params.length
-      ? html`
-          ${resourceContext.length
-            ? html`<div class="task-technical-details__group">
-                <div class="task-technical-details__label">文件 / 路径</div>
-                <div class="task-chip-row">${resourceContext.map((item) => html`<span class="task-chip">${item}</span>`)}</div>
-              </div>`
-            : nothing}
-          ${endpoints.length
-            ? html`<div class="task-technical-details__group">
-                <div class="task-technical-details__label">接口</div>
-                <div class="task-chip-row">${endpoints.map((item) => html`<span class="task-chip">${item}</span>`)}</div>
-              </div>`
-            : nothing}
-          ${params.length
-            ? html`<div class="task-technical-details__group">
-                <div class="task-technical-details__label">参数</div>
-                <div class="task-chip-row">${params.map((item) => html`<span class="task-chip">${item}</span>`)}</div>
-              </div>`
-            : nothing}
-        `
-      : html`<div class="task-empty-inline">当前没有可查看的资源上下文。</div>`;
+    body =
+      resourceContext.length || endpoints.length || params.length
+        ? html`
+            ${resourceContext.length
+              ? html`<div class="task-technical-details__group">
+                  <div class="task-technical-details__label">文件 / 路径</div>
+                  <div class="task-chip-row">
+                    ${resourceContext.map((item) => html`<span class="task-chip">${item}</span>`)}
+                  </div>
+                </div>`
+              : nothing}
+            ${endpoints.length
+              ? html`<div class="task-technical-details__group">
+                  <div class="task-technical-details__label">接口</div>
+                  <div class="task-chip-row">
+                    ${endpoints.map((item) => html`<span class="task-chip">${item}</span>`)}
+                  </div>
+                </div>`
+              : nothing}
+            ${params.length
+              ? html`<div class="task-technical-details__group">
+                  <div class="task-technical-details__label">参数</div>
+                  <div class="task-chip-row">
+                    ${params.map((item) => html`<span class="task-chip">${item}</span>`)}
+                  </div>
+                </div>`
+              : nothing}
+          `
+        : html`<div class="task-empty-inline">当前没有可查看的资源上下文。</div>`;
   }
   if (state.kind === "technical-details") {
     const endpoints = extractEndpointPaths(task);
@@ -718,22 +918,27 @@ function renderFullRecordDrawer(task: TaskItem | null, props: TasksViewProps) {
       ["接口数", endpoints.length],
       ["参数数", params.length],
     ]);
-    body = endpoints.length || params.length
-      ? html`
-          ${endpoints.length
-            ? html`<div class="task-technical-details__group">
-                <div class="task-technical-details__label">接口</div>
-                <div class="task-chip-row">${endpoints.map((item) => html`<span class="task-chip">${item}</span>`)}</div>
-              </div>`
-            : nothing}
-          ${params.length
-            ? html`<div class="task-technical-details__group">
-                <div class="task-technical-details__label">参数</div>
-                <div class="task-chip-row">${params.map((item) => html`<span class="task-chip">${item}</span>`)}</div>
-              </div>`
-            : nothing}
-        `
-      : html`<div class="task-empty-inline">当前没有可查看的技术细节。</div>`;
+    body =
+      endpoints.length || params.length
+        ? html`
+            ${endpoints.length
+              ? html`<div class="task-technical-details__group">
+                  <div class="task-technical-details__label">接口</div>
+                  <div class="task-chip-row">
+                    ${endpoints.map((item) => html`<span class="task-chip">${item}</span>`)}
+                  </div>
+                </div>`
+              : nothing}
+            ${params.length
+              ? html`<div class="task-technical-details__group">
+                  <div class="task-technical-details__label">参数</div>
+                  <div class="task-chip-row">
+                    ${params.map((item) => html`<span class="task-chip">${item}</span>`)}
+                  </div>
+                </div>`
+              : nothing}
+          `
+        : html`<div class="task-empty-inline">当前没有可查看的技术细节。</div>`;
   }
   if (state.kind === "runtime-trajectory") {
     eyebrow = "Runtime 状态轨迹";
@@ -748,7 +953,9 @@ function renderFullRecordDrawer(task: TaskItem | null, props: TasksViewProps) {
       ? html`<div class="task-timeline-mini">
           ${resolved.runtimeTrajectory.map(
             (entry) => html`<div class="task-timeline-mini__item">
-              <div class="task-timeline-mini__time">${entry.timestamp ? formatRelativeTimestamp(entry.timestamp) : t("common.na")}</div>
+              <div class="task-timeline-mini__time">
+                ${entry.timestamp ? formatRelativeTimestamp(entry.timestamp) : t("common.na")}
+              </div>
               <div class="task-timeline-mini__body">
                 <strong>${entry.label}</strong>
                 <span>${entry.detail}</span>
@@ -775,7 +982,9 @@ function renderFullRecordDrawer(task: TaskItem | null, props: TasksViewProps) {
       ["字符数", fullText.length],
     ]);
     body = fullText
-      ? html`<div class="task-preview-pane__detail-list"><strong>${labelMap[state.field]}：</strong>${fullText}</div>`
+      ? html`<div class="task-preview-pane__detail-list">
+          <strong>${labelMap[state.field]}：</strong>${fullText}
+        </div>`
       : html`<div class="task-empty-inline">当前字段没有可查看的完整记录。</div>`;
   }
   return html`
@@ -841,7 +1050,11 @@ function compareTaskRecommended(left: TaskItem, right: TaskItem, currentTaskId: 
   return compareTaskUpdatedDesc(left, right);
 }
 
-function sortTasks(items: TaskItem[], currentTaskId: string | null | undefined, sort: TaskListSort) {
+function sortTasks(
+  items: TaskItem[],
+  currentTaskId: string | null | undefined,
+  sort: TaskListSort,
+) {
   const normalizedCurrentTaskId = currentTaskId ?? null;
   return [...items].toSorted((left, right) => {
     if (sort === "updated_desc") {
@@ -861,7 +1074,9 @@ function matchesTaskQuery(task: TaskItem, query: string) {
   if (!query) {
     return true;
   }
-  const haystack = normalizeTaskBody(`${task.title} ${task.description ?? ""} ${task.flowCurrentStep ?? ""}`).toLowerCase();
+  const haystack = normalizeTaskBody(
+    `${task.title} ${task.description ?? ""} ${task.flowCurrentStep ?? ""}`,
+  ).toLowerCase();
   return query
     .toLowerCase()
     .split(/\s+/)
@@ -879,19 +1094,38 @@ function taskIsActive(task: TaskItem) {
   return status === "active" || status === "paused" || status === "interrupted";
 }
 
-function taskSectionItems(items: TaskItem[], currentTask: TaskItem | null, currentTaskId: string | null, sort: TaskListSort) {
+function taskSectionItems(
+  items: TaskItem[],
+  currentTask: TaskItem | null,
+  currentTaskId: string | null,
+  sort: TaskListSort,
+) {
   const sorted = sortTasks(items, currentTaskId, sort);
-  const resolvedCurrentTask = currentTask ? sorted.find((task) => task.taskId === currentTask.taskId) ?? currentTask : null;
-  const active = sorted.filter((task) => taskIsActive(task) && task.taskId !== resolvedCurrentTask?.taskId);
-  const completed = sorted.filter((task) => taskIsCompleted(task) && task.taskId !== resolvedCurrentTask?.taskId);
+  const resolvedCurrentTask = currentTask
+    ? (sorted.find((task) => task.taskId === currentTask.taskId) ?? currentTask)
+    : null;
+  const active = sorted.filter(
+    (task) => taskIsActive(task) && task.taskId !== resolvedCurrentTask?.taskId,
+  );
+  const completed = sorted.filter(
+    (task) => taskIsCompleted(task) && task.taskId !== resolvedCurrentTask?.taskId,
+  );
   return { currentTask: resolvedCurrentTask, active, completed };
 }
 
-function selectedTask(items: TaskItem[], currentTaskId: string | null, currentTask: TaskItem | null) {
+function selectedTask(
+  items: TaskItem[],
+  currentTaskId: string | null,
+  currentTask: TaskItem | null,
+) {
   const selectedId = hubUiState.selectedTaskId;
   const selected = (selectedId ? items.find((task) => task.taskId === selectedId) : null) ?? null;
-  const resolvedCurrent = currentTask ? items.find((task) => task.taskId === currentTask.taskId) ?? currentTask : null;
-  const current = resolvedCurrent ?? (currentTaskId ? items.find((task) => task.taskId === currentTaskId) ?? null : null);
+  const resolvedCurrent = currentTask
+    ? (items.find((task) => task.taskId === currentTask.taskId) ?? currentTask)
+    : null;
+  const current =
+    resolvedCurrent ??
+    (currentTaskId ? (items.find((task) => task.taskId === currentTaskId) ?? null) : null);
   return selected ?? current ?? items[0] ?? null;
 }
 
@@ -908,22 +1142,31 @@ function renderStatusMenu(task: TaskItem, props: TasksViewProps) {
     <span class="task-field__label">${t("taskModeUi.labels.status")}</span>
     <select
       .value=${effectiveStatus}
-      @change=${(event: Event) => props.onChangeStatus(task.taskId, (event.target as HTMLSelectElement).value as TaskStatus)}
+      @change=${(event: Event) =>
+        props.onChangeStatus(task.taskId, (event.target as HTMLSelectElement).value as TaskStatus)}
     >
       ${ACTIVE_STATUSES.map(
-        (status) => html`<option value=${status} ?selected=${effectiveStatus === status}>${statusLabel(status)}</option>`,
+        (status) =>
+          html`<option value=${status} ?selected=${effectiveStatus === status}>
+            ${statusLabel(status)}
+          </option>`,
       )}
     </select>
   </label>`;
 }
 
-function renderTaskCompactRow(task: TaskItem, props: TasksViewProps, opts?: { archive?: boolean; selectable?: boolean }) {
+function renderTaskCompactRow(
+  task: TaskItem,
+  props: TasksViewProps,
+  opts?: { archive?: boolean; selectable?: boolean },
+) {
   const isCurrent = props.currentSession?.taskId === task.taskId;
   const highlights = extractTaskHighlights(task);
   const effectiveStatus = task.effectiveStatus ?? task.status;
-  const selected = hubUiState.selectedTaskId === task.taskId || (!hubUiState.selectedTaskId && isCurrent);
+  const selected =
+    hubUiState.selectedTaskId === task.taskId || (!hubUiState.selectedTaskId && isCurrent);
   return html`
-        <article class="task-list-item ${selected ? "task-list-item--selected" : ""}">
+    <article class="task-list-item ${selected ? "task-list-item--selected" : ""}">
       <div class="task-list-item__row">
         ${opts?.archive
           ? html`<label class="task-list-item__check">
@@ -952,19 +1195,28 @@ function renderTaskCompactRow(task: TaskItem, props: TasksViewProps, opts?: { ar
         >
           <div class="task-list-item__title-row">
             <span class="task-list-item__title">${highlights.title}</span>
-            <span class="task-status-pill task-status-pill--${effectiveStatus}">${statusLabel(effectiveStatus)}</span>
-            ${isCurrent ? html`<span class="task-relation-badge">${t("taskModeUi.current")}</span>` : nothing}
+            <span class="task-status-pill task-status-pill--${effectiveStatus}"
+              >${statusLabel(effectiveStatus)}</span
+            >
+            ${isCurrent
+              ? html`<span class="task-relation-badge">${t("taskModeUi.current")}</span>`
+              : nothing}
           </div>
           <div class="task-list-item__summary">${highlights.summary}</div>
           <div class="task-list-item__meta-row">
-            <span>${opts?.archive ? t("taskModeUi.archivedAt") : t("taskModeUi.updatedAt")} ${formatRelativeTimestamp(
-              opts?.archive ? task.archivedAt ?? task.updatedAt : task.updatedAt,
-            )}</span>
+            <span
+              >${opts?.archive ? t("taskModeUi.archivedAt") : t("taskModeUi.updatedAt")}
+              ${formatRelativeTimestamp(
+                opts?.archive ? (task.archivedAt ?? task.updatedAt) : task.updatedAt,
+              )}</span
+            >
             ${task.runtimeHealth
               ? html`<span>执行层 ${runtimeHealthLabel(task.runtimeHealth)}</span>`
               : nothing}
             ${task.latestRunId ? html`<span>Run ${task.latestRunId}</span>` : nothing}
-            ${task.lastSessionKey ? html`<span>${t("taskWorkspace.lastLinkedSession")} ${task.lastSessionKey}</span>` : nothing}
+            ${task.lastSessionKey
+              ? html`<span>${t("taskWorkspace.lastLinkedSession")} ${task.lastSessionKey}</span>`
+              : nothing}
           </div>
         </button>
       </div>
@@ -974,19 +1226,43 @@ function renderTaskCompactRow(task: TaskItem, props: TasksViewProps, opts?: { ar
           ${!opts?.archive
             ? html`
                 ${!isCurrent
-                  ? html`<button type="button" class="btn btn--ghost" @click=${() => props.onSelectCurrent(task.taskId)}>
+                  ? html`<button
+                      type="button"
+                      class="btn btn--ghost"
+                      @click=${() => props.onSelectCurrent(task.taskId)}
+                    >
                       ${t("taskModeUi.actions.setCurrent")}
                     </button>`
                   : nothing}
-                <button type="button" class="btn btn--ghost" @click=${() => props.onToggleEdit?.(task)}>${t("taskModeUi.actions.edit")}</button>
-                <button type="button" class="btn btn--ghost" @click=${() => props.onArchive(task.taskId)}>${t("taskModeUi.actions.archive")}</button>
+                <button
+                  type="button"
+                  class="btn btn--ghost"
+                  @click=${() => props.onToggleEdit?.(task)}
+                >
+                  ${t("taskModeUi.actions.edit")}
+                </button>
+                <button
+                  type="button"
+                  class="btn btn--ghost"
+                  @click=${() => props.onArchive(task.taskId)}
+                >
+                  ${t("taskModeUi.actions.archive")}
+                </button>
               `
-            : html`<button type="button" class="btn btn--ghost" @click=${() => props.onRestore(task.taskId)}>${t("taskModeUi.actions.restore")}</button>`}
-          <button type="button" class="btn btn--ghost" @click=${() => props.onDelete(task.taskId)}>${t("taskModeUi.actions.delete")}</button>
+            : html`<button
+                type="button"
+                class="btn btn--ghost"
+                @click=${() => props.onRestore(task.taskId)}
+              >
+                ${t("taskModeUi.actions.restore")}
+              </button>`}
+          <button type="button" class="btn btn--ghost" @click=${() => props.onDelete(task.taskId)}>
+            ${t("taskModeUi.actions.delete")}
+          </button>
         </div>
       </div>
     </article>
-`;
+  `;
 }
 
 function renderTaskSection(section: TaskSection, props: TasksViewProps) {
@@ -1000,7 +1276,9 @@ function renderTaskSection(section: TaskSection, props: TasksViewProps) {
         <div class="task-section-card__count">${section.items.length}</div>
       </div>
       ${section.items.length
-        ? html`<div class="task-section-card__list">${section.items.map((task) => renderTaskCompactRow(task, props))}</div>`
+        ? html`<div class="task-section-card__list">
+            ${section.items.map((task) => renderTaskCompactRow(task, props))}
+          </div>`
         : html`<div class="task-empty-inline">${section.emptyLabel}</div>`}
     </section>
   `;
@@ -1113,34 +1391,60 @@ function renderTodoRow(task: TaskItem, todo: TaskTodoItem, props: TasksViewProps
                   hubUiState.todoEditContent = "";
                   requestTaskViewUpdate(props);
                 }}
-              >取消</button>
+              >
+                取消
+              </button>
               <button
                 type="button"
                 class="btn"
                 ?disabled=${!hubUiState.todoEditContent.trim()}
                 @click=${async () => {
-                  await props.onUpdateTodo(task.taskId, todo.id, { content: hubUiState.todoEditContent.trim() });
+                  await props.onUpdateTodo(task.taskId, todo.id, {
+                    content: hubUiState.todoEditContent.trim(),
+                  });
                   hubUiState.todoEditTaskId = null;
                   hubUiState.todoEditId = null;
                   hubUiState.todoEditContent = "";
                   requestTaskViewUpdate(props);
                 }}
-              >保存</button>
+              >
+                保存
+              </button>
             </div>
           </div>`
         : html`<div class="task-todo-row__content">${todo.content}</div>`}
       ${todo.note ? html`<div class="task-todo-row__meta">说明：${todo.note}</div>` : nothing}
-      ${todo.verification ? html`<div class="task-todo-row__meta">验收：${todo.verification}</div>` : nothing}
+      ${todo.verification
+        ? html`<div class="task-todo-row__meta">验收：${todo.verification}</div>`
+        : nothing}
     </div>
     <div class="task-todo-row__actions">
       ${todo.status !== "in_progress"
-        ? html`<button type="button" class="btn btn--ghost" @click=${() => props.onSetTodoStatus(task.taskId, todo.id, "in_progress")}>进行中</button>`
+        ? html`<button
+            type="button"
+            class="btn btn--ghost"
+            @click=${() => props.onSetTodoStatus(task.taskId, todo.id, "in_progress")}
+          >
+            进行中
+          </button>`
         : nothing}
       ${todo.status !== "completed"
-        ? html`<button type="button" class="btn btn--ghost" @click=${() => props.onSetTodoStatus(task.taskId, todo.id, "completed")}>完成</button>`
+        ? html`<button
+            type="button"
+            class="btn btn--ghost"
+            @click=${() => props.onSetTodoStatus(task.taskId, todo.id, "completed")}
+          >
+            完成
+          </button>`
         : nothing}
       ${todo.status !== "cancelled"
-        ? html`<button type="button" class="btn btn--ghost" @click=${() => props.onSetTodoStatus(task.taskId, todo.id, "cancelled")}>取消</button>`
+        ? html`<button
+            type="button"
+            class="btn btn--ghost"
+            @click=${() => props.onSetTodoStatus(task.taskId, todo.id, "cancelled")}
+          >
+            取消
+          </button>`
         : nothing}
       <button
         type="button"
@@ -1151,16 +1455,34 @@ function renderTodoRow(task: TaskItem, todo: TaskTodoItem, props: TasksViewProps
           hubUiState.todoEditContent = todo.content;
           requestTaskViewUpdate(props);
         }}
-      >编辑</button>
-      <button type="button" class="btn btn--ghost" @click=${() => props.onDeleteTodo(task.taskId, todo.id)}>删除</button>
+      >
+        编辑
+      </button>
+      <button
+        type="button"
+        class="btn btn--ghost"
+        @click=${() => props.onDeleteTodo(task.taskId, todo.id)}
+      >
+        删除
+      </button>
     </div>
   </div>`;
 }
 
-function renderTodoSection(title: string, items: TaskTodoItem[], task: TaskItem, props: TasksViewProps, empty: string) {
+function renderTodoSection(
+  title: string,
+  items: TaskTodoItem[],
+  task: TaskItem,
+  props: TasksViewProps,
+  empty: string,
+) {
   return html`<div class="task-preview-pane__detail-list task-preview-pane__detail-list--todos">
-    <div class="task-preview-pane__block-title"><span>${title}</span><span class="task-preview-pane__meta-inline">${items.length}</span></div>
-    ${items.length ? items.map((item) => renderTodoRow(task, item, props)) : html`<div class="task-empty-inline">${empty}</div>`}
+    <div class="task-preview-pane__block-title">
+      <span>${title}</span><span class="task-preview-pane__meta-inline">${items.length}</span>
+    </div>
+    ${items.length
+      ? items.map((item) => renderTodoRow(task, item, props))
+      : html`<div class="task-empty-inline">${empty}</div>`}
   </div>`;
 }
 
@@ -1172,10 +1494,14 @@ function renderTaskTodoBlock(task: TaskItem, props: TasksViewProps) {
   return html`<div class="task-preview-pane__block">
     ${renderBlockTitle("执行清单", props)}
     <div class="task-preview-pane__detail-list">
-      <div><strong>当前进行中：</strong>${todos.inProgress[0]?.content ?? "暂无进行中的执行项"}</div>
+      <div>
+        <strong>当前进行中：</strong>${todos.inProgress[0]?.content ?? "暂无进行中的执行项"}
+      </div>
       <div><strong>下一步：</strong>${task.nextStep ?? "暂无下一步，建议补充执行清单"}</div>
       ${recentCompleted.length
-        ? html`<div><strong>最近完成：</strong>${recentCompleted.map((item) => item.content).join(" · ")}</div>`
+        ? html`<div>
+            <strong>最近完成：</strong>${recentCompleted.map((item) => item.content).join(" · ")}
+          </div>`
         : nothing}
     </div>
     <div class="task-todo-toolbar">
@@ -1201,7 +1527,9 @@ function renderTaskTodoBlock(task: TaskItem, props: TasksViewProps) {
           hubUiState.todoDraftContent = showDraft ? "" : hubUiState.todoDraftContent;
           requestTaskViewUpdate(props);
         }}
-      >${showDraft ? "收起新增" : "添加清单项"}</button>
+      >
+        ${showDraft ? "收起新增" : "添加清单项"}
+      </button>
     </div>
     ${showDraft
       ? html`<div class="task-todo-draft">
@@ -1218,19 +1546,23 @@ function renderTaskTodoBlock(task: TaskItem, props: TasksViewProps) {
             class="btn"
             ?disabled=${!hubUiState.todoDraftContent.trim()}
             @click=${async () => {
-              await props.onCreateTodo(task.taskId, { content: hubUiState.todoDraftContent.trim() });
+              await props.onCreateTodo(task.taskId, {
+                content: hubUiState.todoDraftContent.trim(),
+              });
               hubUiState.todoDraftContent = "";
               hubUiState.todoDraftTaskId = null;
               requestTaskViewUpdate(props);
             }}
-          >添加</button>
+          >
+            添加
+          </button>
         </div>`
       : nothing}
     ${hasTodos
       ? html`${renderTodoSection("进行中", todos.inProgress, task, props, "暂无进行中的执行项")}
-          ${renderTodoSection("待做", todos.pending, task, props, "暂无待做项")}
-          ${renderTodoSection("已完成", todos.completed, task, props, "暂无已完成项")}
-          ${renderTodoSection("已取消", todos.cancelled, task, props, "暂无已取消项")}`
+        ${renderTodoSection("待做", todos.pending, task, props, "暂无待做项")}
+        ${renderTodoSection("已完成", todos.completed, task, props, "暂无已完成项")}
+        ${renderTodoSection("已取消", todos.cancelled, task, props, "暂无已取消项")}`
       : html`<div class="task-empty-inline">暂无执行清单，建议先补一条 next step。</div>`}
   </div>`;
 }
@@ -1242,8 +1574,20 @@ function renderTaskAutomationBlock(task: TaskItem, props: TasksViewProps) {
     <div class="task-preview-pane__block-title">
       <span>自动化跟进</span>
       <div class="row" style="gap: 8px; flex-wrap: wrap;">
-        <button type="button" class="btn btn--ghost" @click=${() => props.onCreateAutomationDraft?.(task)}>生成自动化</button>
-        <button type="button" class="btn btn--ghost" @click=${() => props.onOpenAutomationPanel?.()}>查看定时任务</button>
+        <button
+          type="button"
+          class="btn btn--ghost"
+          @click=${() => props.onCreateAutomationDraft?.(task)}
+        >
+          生成自动化
+        </button>
+        <button
+          type="button"
+          class="btn btn--ghost"
+          @click=${() => props.onOpenAutomationPanel?.()}
+        >
+          查看定时任务
+        </button>
       </div>
     </div>
     ${summary
@@ -1251,31 +1595,66 @@ function renderTaskAutomationBlock(task: TaskItem, props: TasksViewProps) {
           <div><strong>关联任务数：</strong>${summary.jobCount}</div>
           <div><strong>最近任务：</strong>${summary.latestJobName ?? "未命名任务"}</div>
           <div><strong>最近状态：</strong>${summary.latestStatus ?? "未知"}</div>
-          <div><strong>最近运行：</strong>${summary.latestAt ? formatRelativeTimestamp(summary.latestAt) : "暂无运行记录"}</div>
-          <div><strong>最近摘要：</strong>${summary.latestSummary?.trim() || "暂无摘要，可能尚未运行或未返回总结。"}</div>
-          ${summary.hasErrors ? html`<div><strong>注意：</strong>最近关联自动化里存在失败或异常记录。</div>` : nothing}
+          <div>
+            <strong>最近运行：</strong>${summary.latestAt
+              ? formatRelativeTimestamp(summary.latestAt)
+              : "暂无运行记录"}
+          </div>
+          <div>
+            <strong>最近摘要：</strong>${summary.latestSummary?.trim() ||
+            "暂无摘要，可能尚未运行或未返回总结。"}
+          </div>
+          ${summary.hasErrors
+            ? html`<div><strong>注意：</strong>最近关联自动化里存在失败或异常记录。</div>`
+            : nothing}
         </div>`
-      : html`<div class="task-empty-inline">当前任务还没有关联的自动化。可先生成一条自动化草稿用于持续跟进。</div>`}
+      : html`<div class="task-empty-inline">
+          当前任务还没有关联的自动化。可先生成一条自动化草稿用于持续跟进。
+        </div>`}
     ${jobs.length
       ? html`<div class="task-preview-pane__detail-list">
           <div><strong>关联自动化列表</strong></div>
-          ${jobs.map((job) => html`
-            <div class="task-automation-row">
-              <div class="task-automation-row__main">
-                <div class="task-automation-row__title">${job.name}</div>
-                <div class="task-automation-row__meta">
-                  <span>${job.enabled ? "已启用" : "已停用"}</span>
-                  <span>${job.state?.lastStatus ?? job.state?.lastRunStatus ?? "未知"}</span>
-                  <span>${job.state?.lastRunAtMs ? formatRelativeTimestamp(job.state.lastRunAtMs) : "未运行"}</span>
+          ${jobs.map(
+            (job) => html`
+              <div class="task-automation-row">
+                <div class="task-automation-row__main">
+                  <div class="task-automation-row__title">${job.name}</div>
+                  <div class="task-automation-row__meta">
+                    <span>${job.enabled ? "已启用" : "已停用"}</span>
+                    <span>${job.state?.lastStatus ?? job.state?.lastRunStatus ?? "未知"}</span>
+                    <span
+                      >${job.state?.lastRunAtMs
+                        ? formatRelativeTimestamp(job.state.lastRunAtMs)
+                        : "未运行"}</span
+                    >
+                  </div>
+                </div>
+                <div class="task-automation-row__actions">
+                  <button
+                    type="button"
+                    class="btn btn--ghost"
+                    @click=${() => props.onToggleAutomationJob?.(job, !job.enabled)}
+                  >
+                    ${job.enabled ? "停用" : "启用"}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn--ghost"
+                    @click=${() => props.onRunAutomationJob?.(job)}
+                  >
+                    运行一次
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn--ghost"
+                    @click=${() => props.onEditAutomationJob?.(job)}
+                  >
+                    编辑
+                  </button>
                 </div>
               </div>
-              <div class="task-automation-row__actions">
-                <button type="button" class="btn btn--ghost" @click=${() => props.onToggleAutomationJob?.(job, !job.enabled)}>${job.enabled ? "停用" : "启用"}</button>
-                <button type="button" class="btn btn--ghost" @click=${() => props.onRunAutomationJob?.(job)}>运行一次</button>
-                <button type="button" class="btn btn--ghost" @click=${() => props.onEditAutomationJob?.(job)}>编辑</button>
-              </div>
-            </div>
-          `)}
+            `,
+          )}
         </div>`
       : nothing}
   </div>`;
@@ -1285,9 +1664,13 @@ function renderTaskPreview(task: TaskItem | null, props: TasksViewProps, archive
   if (!task) {
     return html`
       <aside class="task-preview-pane">
-        <div class="task-preview-pane__empty-title">${archiveMode ? "未选择归档任务" : "未选择任务"}</div>
+        <div class="task-preview-pane__empty-title">
+          ${archiveMode ? "未选择归档任务" : "未选择任务"}
+        </div>
         <div class="task-preview-pane__empty-copy">
-          ${archiveMode ? "选择一条归档任务，查看最后快照并决定恢复或删除。" : "选择一条任务，查看摘要、下一步和最近进展。"}
+          ${archiveMode
+            ? "选择一条归档任务，查看最后快照并决定恢复或删除。"
+            : "选择一条任务，查看摘要、下一步和最近进展。"}
         </div>
       </aside>
     `;
@@ -1306,7 +1689,9 @@ function renderTaskPreview(task: TaskItem | null, props: TasksViewProps, archive
         <div class="task-preview-pane__eyebrow">${archiveMode ? "归档预览" : "任务预览"}</div>
         <h3 class="task-preview-pane__title">${highlights.title}</h3>
         <div class="task-preview-pane__status-row">
-          <span class="task-status-pill task-status-pill--${effectiveStatus}">${statusLabel(effectiveStatus)}</span>
+          <span class="task-status-pill task-status-pill--${effectiveStatus}"
+            >${statusLabel(effectiveStatus)}</span
+          >
           ${props.currentSession?.taskId === task.taskId && !archiveMode
             ? html`<span class="task-relation-badge">${t("taskModeUi.current")}</span>`
             : nothing}
@@ -1337,21 +1722,34 @@ function renderTaskPreview(task: TaskItem | null, props: TasksViewProps, archive
           technical.length > RESOURCE_CONTEXT_PREVIEW_LIMIT ||
             endpoints.length > TECHNICAL_DETAIL_PREVIEW_LIMIT ||
             params.length > TECHNICAL_DETAIL_PREVIEW_LIMIT
-            ? { label: "查看完整资源上下文", onClick: () => openFullRecordDrawer(props, { kind: "resource-context" }) }
+            ? {
+                label: "查看完整资源上下文",
+                onClick: () => openFullRecordDrawer(props, { kind: "resource-context" }),
+              }
             : undefined,
         )}
-        ${(technical.length || endpoints.length || params.length)
+        ${technical.length || endpoints.length || params.length
           ? html`
               ${technical.length
-                ? html`<div class="task-chip-row">${technical
-                    .slice(0, RESOURCE_CONTEXT_PREVIEW_LIMIT)
-                    .map((item) => html`<span class="task-chip">${item}</span>`)}</div>`
+                ? html`<div class="task-chip-row">
+                    ${technical
+                      .slice(0, RESOURCE_CONTEXT_PREVIEW_LIMIT)
+                      .map((item) => html`<span class="task-chip">${item}</span>`)}
+                  </div>`
                 : nothing}
               ${endpoints.length
-                ? html`<div class="task-preview-pane__detail-list"><strong>接口：</strong>${endpoints.slice(0, TECHNICAL_DETAIL_PREVIEW_LIMIT).join("、")}</div>`
+                ? html`<div class="task-preview-pane__detail-list">
+                    <strong>接口：</strong>${endpoints
+                      .slice(0, TECHNICAL_DETAIL_PREVIEW_LIMIT)
+                      .join("、")}
+                  </div>`
                 : nothing}
               ${params.length
-                ? html`<div class="task-preview-pane__detail-list"><strong>参数：</strong>${params.slice(0, TECHNICAL_DETAIL_PREVIEW_LIMIT).join("、")}</div>`
+                ? html`<div class="task-preview-pane__detail-list">
+                    <strong>参数：</strong>${params
+                      .slice(0, TECHNICAL_DETAIL_PREVIEW_LIMIT)
+                      .join("、")}
+                  </div>`
                 : nothing}
               ${renderOverflowHint(
                 [
@@ -1373,9 +1771,7 @@ function renderTaskPreview(task: TaskItem | null, props: TasksViewProps, archive
       </div>
 
       ${renderRuntimeTaskLinks(task, props)}
-
       ${!archiveMode ? renderTaskAutomationBlock(task, props) : nothing}
-
       ${!archiveMode ? renderTaskTodoBlock(task, props) : nothing}
 
       <div class="task-preview-pane__block">
@@ -1383,14 +1779,19 @@ function renderTaskPreview(task: TaskItem | null, props: TasksViewProps, archive
           "时间线",
           props,
           timeline.length > timelinePreview.length
-            ? { label: "查看完整时间线", onClick: () => openFullRecordDrawer(props, { kind: "timeline" }) }
+            ? {
+                label: "查看完整时间线",
+                onClick: () => openFullRecordDrawer(props, { kind: "timeline" }),
+              }
             : undefined,
         )}
         <div class="task-timeline-mini">
           ${timelinePreview.map(
             (entry) => html`
               <div class="task-timeline-mini__item">
-                <div class="task-timeline-mini__time">${entry.timestamp ? formatRelativeTimestamp(entry.timestamp) : t("common.na")}</div>
+                <div class="task-timeline-mini__time">
+                  ${entry.timestamp ? formatRelativeTimestamp(entry.timestamp) : t("common.na")}
+                </div>
                 <div class="task-timeline-mini__body">
                   <strong>${entry.label}</strong>
                   <span>${entry.detail}</span>
@@ -1399,23 +1800,63 @@ function renderTaskPreview(task: TaskItem | null, props: TasksViewProps, archive
             `,
           )}
         </div>
-        ${renderOverflowHint(remainingTimeline > 0 ? `还有 ${remainingTimeline} 条时间线记录` : null)}
+        ${renderOverflowHint(
+          remainingTimeline > 0 ? `还有 ${remainingTimeline} 条时间线记录` : null,
+        )}
       </div>
 
       <div class="task-preview-pane__actions">
         ${archiveMode
           ? html`
-              <button type="button" class="btn" @click=${() => props.onRestore(task.taskId)}>${t("taskModeUi.actions.restore")}</button>
-              <button type="button" class="btn btn--ghost" @click=${() => props.onDelete(task.taskId)}>${t("taskModeUi.actions.delete")}</button>
+              <button type="button" class="btn" @click=${() => props.onRestore(task.taskId)}>
+                ${t("taskModeUi.actions.restore")}
+              </button>
+              <button
+                type="button"
+                class="btn btn--ghost"
+                @click=${() => props.onDelete(task.taskId)}
+              >
+                ${t("taskModeUi.actions.delete")}
+              </button>
             `
           : html`
               ${props.currentSession?.taskId !== task.taskId
-                ? html`<button type="button" class="btn" @click=${() => props.onSelectCurrent(task.taskId)}>${t("taskModeUi.actions.setCurrent")}</button>`
+                ? html`<button
+                    type="button"
+                    class="btn"
+                    @click=${() => props.onSelectCurrent(task.taskId)}
+                  >
+                    ${t("taskModeUi.actions.setCurrent")}
+                  </button>`
                 : nothing}
-              <button type="button" class="btn btn--ghost" @click=${() => props.onCreateAutomationDraft?.(task)}>生成自动化</button>
-              <button type="button" class="btn btn--ghost" @click=${() => props.onSyncProgress?.(task.taskId)}>同步历史进度</button>
-              <button type="button" class="btn btn--ghost" @click=${() => props.onToggleEdit?.(task)}>${t("taskModeUi.actions.edit")}</button>
-              <button type="button" class="btn btn--ghost" @click=${() => props.onArchive(task.taskId)}>${t("taskModeUi.actions.archive")}</button>
+              <button
+                type="button"
+                class="btn btn--ghost"
+                @click=${() => props.onCreateAutomationDraft?.(task)}
+              >
+                生成自动化
+              </button>
+              <button
+                type="button"
+                class="btn btn--ghost"
+                @click=${() => props.onSyncProgress?.(task.taskId)}
+              >
+                同步历史进度
+              </button>
+              <button
+                type="button"
+                class="btn btn--ghost"
+                @click=${() => props.onToggleEdit?.(task)}
+              >
+                ${t("taskModeUi.actions.edit")}
+              </button>
+              <button
+                type="button"
+                class="btn btn--ghost"
+                @click=${() => props.onArchive(task.taskId)}
+              >
+                ${t("taskModeUi.actions.archive")}
+              </button>
             `}
       </div>
     </aside>
@@ -1428,14 +1869,27 @@ function renderCreateDrawer(props: TasksViewProps) {
   }
   return html`
     <div class="task-side-sheet">
-      <div class="task-side-sheet__scrim" @click=${() => props.onToggleCreate?.()}></div>
+      <div
+        class="task-side-sheet__scrim"
+        @click=${() => {
+          props.onToggleCreate?.();
+          requestTaskViewUpdate(props);
+        }}
+      ></div>
       <div class="task-side-sheet__panel">
         <div class="task-side-sheet__header">
           <div>
             <div class="task-side-sheet__eyebrow">创建任务</div>
             <h3 class="task-side-sheet__title">新增任务</h3>
           </div>
-          <button type="button" class="btn btn--ghost" @click=${() => props.onToggleCreate?.()}>
+          <button
+            type="button"
+            class="btn btn--ghost"
+            @click=${() => {
+              props.onToggleCreate?.();
+              requestTaskViewUpdate(props);
+            }}
+          >
             ${t("common.cancel")}
           </button>
         </div>
@@ -1446,7 +1900,10 @@ function renderCreateDrawer(props: TasksViewProps) {
               type="text"
               placeholder=${t("taskModeUi.placeholders.title")}
               .value=${props.createTitle ?? ""}
-              @input=${(event: Event) => props.onCreateTitleChange?.((event.target as HTMLInputElement).value)}
+              @input=${(event: Event) => {
+                props.onCreateTitleChange?.((event.target as HTMLInputElement).value);
+                requestTaskViewUpdate(props);
+              }}
             />
           </label>
           <label class="field">
@@ -1455,12 +1912,20 @@ function renderCreateDrawer(props: TasksViewProps) {
               placeholder=${t("taskModeUi.placeholders.description")}
               rows="6"
               .value=${props.createDescription ?? ""}
-              @input=${(event: Event) => props.onCreateDescriptionChange?.((event.target as HTMLTextAreaElement).value)}
+              @input=${(event: Event) => {
+                props.onCreateDescriptionChange?.((event.target as HTMLTextAreaElement).value);
+                requestTaskViewUpdate(props);
+              }}
             ></textarea>
           </label>
         </div>
         <div class="task-side-sheet__footer">
-          <button type="button" class="btn" @click=${props.onCreateTask} ?disabled=${!(props.createTitle ?? "").trim()}>
+          <button
+            type="button"
+            class="btn"
+            @click=${props.onCreateTask}
+            ?disabled=${!(props.createTitle ?? "").trim()}
+          >
             ${t("taskModeUi.actions.create")}
           </button>
         </div>
@@ -1493,7 +1958,8 @@ function renderEditDrawer(props: TasksViewProps) {
               type="text"
               placeholder=${t("taskModeUi.placeholders.title")}
               .value=${props.editTitle ?? ""}
-              @input=${(event: Event) => props.onEditTitleChange?.((event.target as HTMLInputElement).value)}
+              @input=${(event: Event) =>
+                props.onEditTitleChange?.((event.target as HTMLInputElement).value)}
             />
           </label>
           <label class="field">
@@ -1502,12 +1968,18 @@ function renderEditDrawer(props: TasksViewProps) {
               placeholder=${t("taskModeUi.placeholders.description")}
               rows="6"
               .value=${props.editDescription ?? ""}
-              @input=${(event: Event) => props.onEditDescriptionChange?.((event.target as HTMLTextAreaElement).value)}
+              @input=${(event: Event) =>
+                props.onEditDescriptionChange?.((event.target as HTMLTextAreaElement).value)}
             ></textarea>
           </label>
         </div>
         <div class="task-side-sheet__footer">
-          <button type="button" class="btn" @click=${() => props.onSaveEdit?.()} ?disabled=${!(props.editTitle ?? "").trim()}>
+          <button
+            type="button"
+            class="btn"
+            @click=${() => props.onSaveEdit?.()}
+            ?disabled=${!(props.editTitle ?? "").trim()}
+          >
             ${t("common.save")}
           </button>
         </div>
@@ -1536,7 +2008,12 @@ function renderTaskHub(props: TasksViewProps) {
     }
     return taskIsCompleted(task);
   });
-  const sectionsSource = taskSectionItems(filteredByMode, resolvedCurrentTask, currentTaskId, hubUiState.taskSort);
+  const sectionsSource = taskSectionItems(
+    filteredByMode,
+    resolvedCurrentTask,
+    currentTaskId,
+    hubUiState.taskSort,
+  );
   const sections: TaskSection[] = [
     {
       id: "current",
@@ -1566,16 +2043,33 @@ function renderTaskHub(props: TasksViewProps) {
       <div class="task-page__header task-page__header--hero">
         <div class="task-page__intro">
           <div class="task-page__eyebrow">任务中心</div>
-          <p class="task-page__sub">任务中心聚合当前会话任务、进行中任务与已完成任务，方便快速继续当前主线。</p>
+          <p class="task-page__sub">
+            任务中心聚合当前会话任务、进行中任务与已完成任务，方便快速继续当前主线。
+          </p>
           <div class="task-page__stats">
-            <span class="task-page__stat"><strong>${sectionsSource.currentTask ? 1 : 0}</strong><span>当前会话</span></span>
-            <span class="task-page__stat"><strong>${sectionsSource.active.length}</strong><span>进行中</span></span>
-            <span class="task-page__stat"><strong>${sectionsSource.completed.length}</strong><span>已完成</span></span>
+            <span class="task-page__stat"
+              ><strong>${sectionsSource.currentTask ? 1 : 0}</strong><span>当前会话</span></span
+            >
+            <span class="task-page__stat"
+              ><strong>${sectionsSource.active.length}</strong><span>进行中</span></span
+            >
+            <span class="task-page__stat"
+              ><strong>${sectionsSource.completed.length}</strong><span>已完成</span></span
+            >
           </div>
         </div>
         <div class="task-page__actions">
-          <button type="button" class="btn btn--ghost" @click=${props.onRefresh}>${t("common.refresh")}</button>
-          <button type="button" class="btn" @click=${() => props.onToggleCreate?.()}>
+          <button type="button" class="btn btn--ghost" @click=${props.onRefresh}>
+            ${t("common.refresh")}
+          </button>
+          <button
+            type="button"
+            class="btn"
+            @click=${() => {
+              props.onToggleCreate?.();
+              requestTaskViewUpdate(props);
+            }}
+          >
             ${t("taskModeUi.actions.createTask")}
           </button>
         </div>
@@ -1618,7 +2112,9 @@ function renderTaskHub(props: TasksViewProps) {
             ([id, label]) => html`
               <button
                 type="button"
-                class="task-filter-chip ${hubUiState.taskFilter === id ? "task-filter-chip--active" : ""}"
+                class="task-filter-chip ${hubUiState.taskFilter === id
+                  ? "task-filter-chip--active"
+                  : ""}"
                 @click=${() => {
                   hubUiState.taskFilter = id as typeof hubUiState.taskFilter;
                   requestTaskViewUpdate(props);
@@ -1648,8 +2144,7 @@ function renderTaskHub(props: TasksViewProps) {
         </div>
         ${renderTaskPreview(previewTask, props)}
       </div>
-      ${renderCreateDrawer(props)}
-      ${renderEditDrawer(props)}
+      ${renderCreateDrawer(props)} ${renderEditDrawer(props)}
       ${renderFullRecordDrawer(previewTask, props)}
     </section>
   `;
@@ -1704,7 +2199,11 @@ function renderArchivePage(props: TasksViewProps) {
     }
     return Boolean(task.archivedAt && Date.now() - task.archivedAt >= 1000 * 60 * 60 * 24 * 30);
   });
-  const sorted = sortTasks(filteredByMode, props.currentSession?.taskId ?? null, hubUiState.taskSort);
+  const sorted = sortTasks(
+    filteredByMode,
+    props.currentSession?.taskId ?? null,
+    hubUiState.taskSort,
+  );
   const previewTask = selectedTask(sorted, props.currentSession?.taskId ?? null, null);
   const selectedItems = sorted.filter((task) => hubUiState.selectedArchiveIds.has(task.taskId));
   return html`
@@ -1712,14 +2211,22 @@ function renderArchivePage(props: TasksViewProps) {
       <div class="task-page__header task-page__header--hero">
         <div class="task-page__intro">
           <div class="task-page__eyebrow">独立归档</div>
-          <p class="task-page__sub">归档区用于存放低频任务，避免任务中心被历史内容淹没；需要时可恢复，确定无用后可删除。</p>
+          <p class="task-page__sub">
+            归档区用于存放低频任务，避免任务中心被历史内容淹没；需要时可恢复，确定无用后可删除。
+          </p>
           <div class="task-page__stats">
-            <span class="task-page__stat"><strong>${sorted.length}</strong><span>当前归档</span></span>
-            <span class="task-page__stat"><strong>${selectedItems.length}</strong><span>已选中</span></span>
+            <span class="task-page__stat"
+              ><strong>${sorted.length}</strong><span>当前归档</span></span
+            >
+            <span class="task-page__stat"
+              ><strong>${selectedItems.length}</strong><span>已选中</span></span
+            >
           </div>
         </div>
         <div class="task-page__actions">
-          <button type="button" class="btn btn--ghost" @click=${props.onRefresh}>${t("common.refresh")}</button>
+          <button type="button" class="btn btn--ghost" @click=${props.onRefresh}>
+            ${t("common.refresh")}
+          </button>
         </div>
       </div>
 
@@ -1746,7 +2253,9 @@ function renderArchivePage(props: TasksViewProps) {
             ([id, label]) => html`
               <button
                 type="button"
-                class="task-filter-chip ${hubUiState.archiveFilter === id ? "task-filter-chip--active" : ""}"
+                class="task-filter-chip ${hubUiState.archiveFilter === id
+                  ? "task-filter-chip--active"
+                  : ""}"
                 @click=${() => {
                   hubUiState.archiveFilter = id as typeof hubUiState.archiveFilter;
                   requestTaskViewUpdate(props);
@@ -1770,7 +2279,9 @@ function renderArchivePage(props: TasksViewProps) {
                 <div class="task-section-card__header">
                   <div>
                     <h4 class="task-section-card__title">归档任务</h4>
-                    <div class="task-section-card__sub">在这里集中查看低频任务，需要时恢复；确认无用后再删除。</div>
+                    <div class="task-section-card__sub">
+                      在这里集中查看低频任务，需要时恢复；确认无用后再删除。
+                    </div>
                   </div>
                   <div class="task-section-card__count">${sorted.length}</div>
                 </div>
@@ -1779,10 +2290,14 @@ function renderArchivePage(props: TasksViewProps) {
                 </div>
               </section>`
             : html`
-                <section class="task-section-card task-section-card--empty-state task-archive-empty">
+                <section
+                  class="task-section-card task-section-card--empty-state task-archive-empty"
+                >
                   <div class="task-archive-empty__icon">🗂️</div>
                   <h4 class="task-section-card__title">当前没有归档任务</h4>
-                  <div class="task-section-card__sub">低频任务归档后会集中存放在这里，避免任务中心被历史内容打断。</div>
+                  <div class="task-section-card__sub">
+                    低频任务归档后会集中存放在这里，避免任务中心被历史内容打断。
+                  </div>
                   <ul class="task-archive-empty__list">
                     <li>不需要频繁查看的任务适合归档。</li>
                     <li>仍有参考价值的已完成任务应继续保留在任务中心。</li>
@@ -1793,8 +2308,7 @@ function renderArchivePage(props: TasksViewProps) {
         </div>
         ${renderTaskPreview(previewTask, props, true)}
       </div>
-      ${renderEditDrawer(props)}
-      ${renderFullRecordDrawer(previewTask, props)}
+      ${renderEditDrawer(props)} ${renderFullRecordDrawer(previewTask, props)}
     </section>
   `;
 }
