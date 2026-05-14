@@ -21,6 +21,9 @@
     "paths": {
       "openclaw/extension-api": ["./src/extensionAPI.ts"],
       "openclaw/plugin-sdk": ["./src/plugin-sdk/index.ts"],
+      "openclaw/plugin-sdk/memory-core-host-engine-embedding-providers": [
+        "./src/plugin-sdk/memory-core-host-engine-embedding-providers.ts"
+      ],
       "openclaw/plugin-sdk/*": ["./src/plugin-sdk/*.ts"],
       "@openclaw/plugin-sdk": ["./src/plugin-sdk/index.ts"],
       "@openclaw/plugin-sdk/*": ["./src/plugin-sdk/*.ts"],

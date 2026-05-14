@@ -183,6 +183,7 @@
   "mattermost-policy",
   "memory-core",
   "memory-core-engine-runtime",
+  "memory-core-host-engine-embedding-providers",
   "memory-core-host-engine-embeddings",
   "memory-core-host-engine-foundation",
   "memory-core-host-engine-qmd",

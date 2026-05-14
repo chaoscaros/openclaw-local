@@ -17,17 +17,16 @@ import {
   createOpenAiEmbeddingProvider,
   createVoyageEmbeddingProvider,
   hasNonTextEmbeddingParts,
-  listRegisteredMemoryEmbeddingProviderAdapters,
+  listRegisteredMemoryEmbeddingProviders,
   runGeminiEmbeddingBatches,
   runOpenAiEmbeddingBatches,
   runVoyageEmbeddingBatches,
   type MemoryEmbeddingProviderAdapter,
-} from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
+} from "openclaw/plugin-sdk/memory-core-host-engine-embedding-providers";
 import { resolveUserPath } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
 import { getProviderEnvVars } from "openclaw/plugin-sdk/provider-env-vars";
 import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/text-runtime";
 import { formatErrorMessage } from "../dreaming-shared.js";
-import { filterUnregisteredMemoryEmbeddingProviderAdapters } from "./provider-adapter-registration.js";
 
 export type BuiltinMemoryEmbeddingProviderDoctorMetadata = {
   providerId: string;
@@ -394,11 +393,13 @@ export function registerBuiltInMemoryEmbeddingProviders(register: {
   // Only inspect providers already registered in the current load. Falling back
   // to capability discovery here can recursively trigger plugin loading while
   // memory-core itself is still registering.
-  for (const adapter of filterUnregisteredMemoryEmbeddingProviderAdapters({
-    builtinAdapters: builtinMemoryEmbeddingProviderAdapters,
-    registeredAdapters: listRegisteredMemoryEmbeddingProviderAdapters(),
-  })) {
-    register.registerMemoryEmbeddingProvider(adapter);
+  const registeredIds = new Set(
+    listRegisteredMemoryEmbeddingProviders().map((entry) => entry.adapter.id),
+  );
+  for (const adapter of builtinMemoryEmbeddingProviderAdapters) {
+    if (!registeredIds.has(adapter.id)) {
+      register.registerMemoryEmbeddingProvider(adapter);
+    }
   }
 }
 

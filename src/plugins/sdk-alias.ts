@@ -375,10 +375,18 @@ export function buildPluginLoaderAliasMap(
     pluginSdkResolution,
   });
   const extensionApiAlias = resolveExtensionApiAlias({ modulePath, pluginSdkResolution });
+  const scopedPluginSdkAliases = Object.fromEntries(
+    Object.entries(
+      resolvePluginSdkScopedAliasMap({ modulePath, argv1, moduleUrl, pluginSdkResolution }),
+    ).map(([key, value]) => [key, normalizeJitiAliasTargetPath(value)]),
+  );
   return {
     ...(extensionApiAlias
       ? { "openclaw/extension-api": normalizeJitiAliasTargetPath(extensionApiAlias) }
       : {}),
+    // Put scoped aliases before the package root alias. Some loaders treat alias
+    // keys as prefixes, so the root alias can otherwise swallow new subpaths.
+    ...scopedPluginSdkAliases,
     ...(pluginSdkAlias
       ? Object.fromEntries(
           PLUGIN_SDK_PACKAGE_NAMES.map((packageName) => [
@@ -387,11 +395,6 @@ export function buildPluginLoaderAliasMap(
           ]),
         )
       : {}),
-    ...Object.fromEntries(
-      Object.entries(
-        resolvePluginSdkScopedAliasMap({ modulePath, argv1, moduleUrl, pluginSdkResolution }),
-      ).map(([key, value]) => [key, normalizeJitiAliasTargetPath(value)]),
-    ),
   };
 }
 
