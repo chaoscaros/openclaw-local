@@ -740,6 +740,28 @@ describe("sendChatMessage", () => {
     );
   });
 
+  it("does not consume or send resumed dev-execute when change review mode is off", async () => {
+    const request = vi.fn().mockResolvedValue({});
+    const consumeResumedDevExecuteForSession = vi.fn().mockReturnValue(true);
+    const state = createState({
+      connected: true,
+      client: { request } as unknown as ChatState["client"],
+      changeReviewModeEnabled: false,
+      consumeResumedDevExecuteForSession,
+    });
+
+    await sendChatMessage(state, "继续修这个问题");
+
+    expect(consumeResumedDevExecuteForSession).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledWith(
+      "chat.send",
+      expect.objectContaining({
+        changeReviewModeEnabled: false,
+        resumeDevExecute: false,
+      }),
+    );
+  });
+
   it("stores whether dreaming assistance was applied from chat.send ack", async () => {
     const request = vi.fn().mockResolvedValue({ dreamingAssistApplied: true });
     const state = createState({

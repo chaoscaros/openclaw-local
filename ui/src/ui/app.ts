@@ -876,6 +876,10 @@ export class OpenClawApp extends LitElement {
     if (!entry || !entry.changeReviewModeEnabled) {
       return false;
     }
+    if (!this.settings.changeReviewModeEnabled) {
+      this.resumedDevExecuteBySessionKey.delete(sessionKey);
+      return false;
+    }
     if (entry.remainingTurns <= 1) {
       this.resumedDevExecuteBySessionKey.delete(sessionKey);
     } else {

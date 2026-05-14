@@ -325,6 +325,7 @@ async function requestChatSend(
   const changeReviewModeEnabled =
     state.changeReviewModeEnabled ?? settingsState.settings?.changeReviewModeEnabled ?? false;
   const resumeDevExecute =
+    changeReviewModeEnabled &&
     state.consumeResumedDevExecuteForSession?.(state.sessionKey, params.message) === true;
   return await state.client!.request("chat.send", {
     sessionKey: state.sessionKey,

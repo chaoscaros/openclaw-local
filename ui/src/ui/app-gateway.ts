@@ -108,7 +108,10 @@ type GatewayHost = {
     string,
     { changeReviewModeEnabled: boolean; sourceSessionKey: string; allowSameSession?: boolean }
   >;
-  resumedDevExecuteBySessionKey: Map<string, { changeReviewModeEnabled: boolean; remainingTurns: number }>;
+  resumedDevExecuteBySessionKey: Map<
+    string,
+    { changeReviewModeEnabled: boolean; remainingTurns: number }
+  >;
   execApprovalQueue: ExecApprovalRequest[];
   execApprovalError: string | null;
   updateAvailable: UpdateAvailable | null;
@@ -437,7 +440,12 @@ export function continueDevExecuteAfterSessionRefresh(
       ? normalizedEventSessionKey
       : "";
   host.devExecuteCarryoverAfterChatByRun.delete(runId);
-  if (!targetSessionKey || carry.changeReviewModeEnabled !== true) {
+  if (
+    !targetSessionKey ||
+    !carry.changeReviewModeEnabled ||
+    !host.settings.changeReviewModeEnabled
+  ) {
+    host.resumedDevExecuteBySessionKey.delete(targetSessionKey);
     return;
   }
   host.resumedDevExecuteBySessionKey.set(targetSessionKey, {

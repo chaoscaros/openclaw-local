@@ -1082,6 +1082,7 @@ describe("connectGateway", () => {
 describe("continueDevExecuteAfterSessionRefresh", () => {
   it("marks the refreshed session for one resumed dev-execute turn", () => {
     const host = createHost();
+    host.settings.changeReviewModeEnabled = true;
     host.devExecuteCarryoverAfterChatByRun.set("run-dev-1", {
       changeReviewModeEnabled: true,
       sourceSessionKey: "main",
@@ -1111,6 +1112,7 @@ describe("continueDevExecuteAfterSessionRefresh", () => {
 
   it("allows dev-execute carryover on reset-in-place sessions when explicitly flagged", () => {
     const host = createHost();
+    host.settings.changeReviewModeEnabled = true;
     host.devExecuteCarryoverAfterChatByRun.set("run-dev-3", {
       changeReviewModeEnabled: true,
       sourceSessionKey: "main",
@@ -1124,6 +1126,24 @@ describe("continueDevExecuteAfterSessionRefresh", () => {
       changeReviewModeEnabled: true,
       remainingTurns: 1,
     });
+  });
+
+  it("does not resume dev-execute after refresh when change review has been turned off", () => {
+    const host = createHost();
+    host.settings.changeReviewModeEnabled = false;
+    host.resumedDevExecuteBySessionKey.set("session-refreshed", {
+      changeReviewModeEnabled: true,
+      remainingTurns: 1,
+    });
+    host.devExecuteCarryoverAfterChatByRun.set("run-dev-4", {
+      changeReviewModeEnabled: true,
+      sourceSessionKey: "main",
+    });
+
+    continueDevExecuteAfterSessionRefresh(host, "run-dev-4", "session-refreshed");
+
+    expect(host.devExecuteCarryoverAfterChatByRun.has("run-dev-4")).toBe(false);
+    expect(host.resumedDevExecuteBySessionKey.has("session-refreshed")).toBe(false);
   });
 });
 
