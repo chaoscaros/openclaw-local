@@ -59,9 +59,26 @@ export function rewriteUpdateFlagArgv(argv: string[]): string[] {
   return next;
 }
 
+const BARE_PARENT_DEFAULT_HELP_COMMANDS = new Set([
+  "approvals",
+  "channels",
+  "cron",
+  "devices",
+  "mcp",
+  "plugins",
+]);
+
+function isBareParentDefaultHelpArgv(argv: string[]): boolean {
+  const invocation = resolveCliArgvInvocation(argv);
+  const [primary, extra] = invocation.commandPath;
+  return !invocation.hasHelpOrVersion && primary !== undefined && extra === undefined
+    ? BARE_PARENT_DEFAULT_HELP_COMMANDS.has(primary)
+    : false;
+}
+
 export function shouldEnsureCliPath(argv: string[]): boolean {
   const invocation = resolveCliArgvInvocation(argv);
-  if (invocation.hasHelpOrVersion) {
+  if (invocation.hasHelpOrVersion || isBareParentDefaultHelpArgv(argv)) {
     return false;
   }
   return shouldEnsureCliPathForCommandPath(invocation.commandPath);

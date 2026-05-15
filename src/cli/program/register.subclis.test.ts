@@ -35,9 +35,18 @@ const { inferAction, registerCapabilityCli } = vi.hoisted(() => {
   return { inferAction: action, registerCapabilityCli: register };
 });
 
+const { registerPluginsCli, registerPluginCliCommandsFromValidatedConfig } = vi.hoisted(() => ({
+  registerPluginsCli: vi.fn((program: Command) => {
+    program.command("plugins");
+  }),
+  registerPluginCliCommandsFromValidatedConfig: vi.fn(),
+}));
+
 vi.mock("../acp-cli.js", () => ({ registerAcpCli }));
 vi.mock("../nodes-cli.js", () => ({ registerNodesCli }));
 vi.mock("../capability-cli.js", () => ({ registerCapabilityCli }));
+vi.mock("../plugins-cli.js", () => ({ registerPluginsCli }));
+vi.mock("../../plugins/cli.js", () => ({ registerPluginCliCommandsFromValidatedConfig }));
 vi.mock("../../plugin-sdk/qa-lab.js", () => ({ isQaLabCliAvailable, registerQaLabCli }));
 
 describe("registerSubCliCommands", () => {
@@ -68,6 +77,8 @@ describe("registerSubCliCommands", () => {
     registerQaLabCli.mockClear();
     registerCapabilityCli.mockClear();
     inferAction.mockClear();
+    registerPluginsCli.mockClear();
+    registerPluginCliCommandsFromValidatedConfig.mockClear();
   });
 
   afterEach(() => {
@@ -142,5 +153,15 @@ describe("registerSubCliCommands", () => {
     await program.parseAsync(["acp"], { from: "user" });
     expect(registerAcpCli).toHaveBeenCalledTimes(1);
     expect(acpAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not preload plugin CLI registrations for bare plugin parent help", async () => {
+    process.argv = ["node", "openclaw", "plugins"];
+    const program = new Command().name("openclaw");
+
+    await registerSubCliByName(program, "plugins");
+
+    expect(registerPluginsCli).toHaveBeenCalledTimes(1);
+    expect(registerPluginCliCommandsFromValidatedConfig).not.toHaveBeenCalled();
   });
 });

@@ -25,6 +25,14 @@ should be split by risk area.
   - Local impact: wrapped multiline ANSI table cells keep styling on continuation
     lines without leaking style into borders or padding.
   - Files: `src/terminal/table.ts`, `src/terminal/table.test.ts`.
+- `91a8fdd079` `fix(cli): keep plugin parent help lightweight`
+  - Local impact: bare plugin parent help no longer preloads plugin CLI
+    registrations, and bare parent help commands skip PATH bootstrap.
+  - Files: `src/cli/program/register.subclis-core.ts`,
+    `src/cli/program/register.subclis.test.ts`, `src/cli/run-main.ts`,
+    `src/cli/run-main.test.ts`.
+  - Note: the official bundled catalog sub-change was not needed because this
+    local branch already reads bundled channel package metadata directly.
 
 ## Deferred
 

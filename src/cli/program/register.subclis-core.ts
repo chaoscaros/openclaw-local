@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import { resolveCliArgvInvocation } from "../argv-invocation.js";
+import { resolveCliCommandPathPolicy } from "../command-path-policy.js";
 import {
   shouldEagerRegisterSubcommands,
   shouldRegisterPrimarySubcommandOnly,
@@ -29,12 +30,17 @@ async function registerSubCliWithPluginCommands(
   registerSubCli: () => Promise<void>,
   pluginCliPosition: "before" | "after",
 ) {
-  const { registerPluginCliCommandsFromValidatedConfig } = await import("../../plugins/cli.js");
-  if (pluginCliPosition === "before") {
+  const invocation = resolveCliArgvInvocation(process.argv);
+  const shouldRegisterPluginCommands =
+    !invocation.hasHelpOrVersion &&
+    resolveCliCommandPathPolicy(invocation.commandPath).loadPlugins !== "never";
+  if (pluginCliPosition === "before" && shouldRegisterPluginCommands) {
+    const { registerPluginCliCommandsFromValidatedConfig } = await import("../../plugins/cli.js");
     await registerPluginCliCommandsFromValidatedConfig(program);
   }
   await registerSubCli();
-  if (pluginCliPosition === "after") {
+  if (pluginCliPosition === "after" && shouldRegisterPluginCommands) {
+    const { registerPluginCliCommandsFromValidatedConfig } = await import("../../plugins/cli.js");
     await registerPluginCliCommandsFromValidatedConfig(program);
   }
 }
