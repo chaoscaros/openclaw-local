@@ -601,6 +601,13 @@ function updateActiveMemoryGlobalEnabledInConfig(
   };
 }
 
+function requiresAdminToMutateActiveMemoryGlobal(gatewayClientScopes?: readonly string[]): boolean {
+  return Array.isArray(gatewayClientScopes) && !gatewayClientScopes.includes("operator.admin");
+}
+
+const ACTIVE_MEMORY_GLOBAL_MUTATION_ADMIN_REQUIRED_TEXT =
+  "⚠️ /active-memory global enable/disable changes require operator.admin for gateway clients.";
+
 function normalizePluginConfig(pluginConfig: unknown): ResolvedActiveRecallPluginConfig {
   const raw = (
     pluginConfig && typeof pluginConfig === "object" ? pluginConfig : {}
@@ -1527,7 +1534,9 @@ function extractRecentTurns(messages: unknown[]): ActiveRecallRecentTurn[] {
     }
     const rawText = extractTextContent(typed.content);
     const text =
-      role === "assistant" ? stripRecalledContextNoise(rawText) : stripInjectedActiveMemoryPrefixOnly(rawText);
+      role === "assistant"
+        ? stripRecalledContextNoise(rawText)
+        : stripInjectedActiveMemoryPrefixOnly(rawText);
     if (!text) {
       continue;
     }
@@ -1895,6 +1904,11 @@ export default definePluginEntry({
               text: `Active Memory: ${isActiveMemoryGloballyEnabled(currentConfig) ? "on" : "off"} globally.`,
             };
           }
+          if (requiresAdminToMutateActiveMemoryGlobal(ctx.gatewayClientScopes)) {
+            return {
+              text: ACTIVE_MEMORY_GLOBAL_MUTATION_ADMIN_REQUIRED_TEXT,
+            };
+          }
           if (action === "on" || action === "enable" || action === "enabled") {
             const nextConfig = updateActiveMemoryGlobalEnabledInConfig(currentConfig, true);
             await api.runtime.config.writeConfigFile(nextConfig);
@@ -2024,7 +2038,9 @@ export default definePluginEntry({
           prependContext: promptPrefix,
         };
       } catch (error) {
-        const message = toSingleLineLogValue(error instanceof Error ? error.message : String(error));
+        const message = toSingleLineLogValue(
+          error instanceof Error ? error.message : String(error),
+        );
         api.logger.warn?.(
           `active-memory: before_prompt_build failed, skipping memory lookup: ${message}`,
         );
