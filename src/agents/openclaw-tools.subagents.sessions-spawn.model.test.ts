@@ -117,6 +117,29 @@ describe("subagent spawn model + thinking plan", () => {
     });
   });
 
+  it("prefers default subagent model over target agent primary model", () => {
+    const cfg = createConfig({
+      agents: {
+        defaults: { subagents: { model: "minimax/MiniMax-M2.7" } },
+        list: [{ id: "research", model: { primary: "opencode/claude" } }],
+      },
+    });
+    const targetAgentConfig = {
+      id: "research",
+      model: { primary: "opencode/claude" },
+    };
+    const plan = resolveSubagentModelAndThinkingPlan({
+      cfg,
+      targetAgentId: "research",
+      targetAgentConfig,
+    });
+    expect(plan).toMatchObject({
+      status: "ok",
+      resolvedModel: "minimax/MiniMax-M2.7",
+      initialSessionPatch: { model: "minimax/MiniMax-M2.7", modelOverrideSource: "auto" },
+    });
+  });
+
   it("prefers target agent primary model over global default", () => {
     const cfg = createConfig({
       agents: {

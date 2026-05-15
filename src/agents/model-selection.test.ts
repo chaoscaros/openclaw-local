@@ -1211,7 +1211,7 @@ describe("normalizeModelSelection", () => {
 });
 
 describe("resolveSubagentConfiguredModelSelection", () => {
-  it("prefers the agent primary model over agents.defaults.subagents.model", () => {
+  it("prefers agents.defaults.subagents.model over the agent primary model", () => {
     const cfg = {
       agents: {
         defaults: {
@@ -1228,7 +1228,7 @@ describe("resolveSubagentConfiguredModelSelection", () => {
     } as OpenClawConfig;
 
     expect(resolveSubagentConfiguredModelSelection({ cfg, agentId: "research" })).toBe(
-      "anthropic/claude-opus-4-6",
+      "openai/gpt-5.4",
     );
   });
 
