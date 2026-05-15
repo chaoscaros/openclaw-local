@@ -116,6 +116,44 @@ describe("agent-runner-memory fast path", () => {
     expect(readSessionMessagesMock).not.toHaveBeenCalled();
   });
 
+  it("uses tail usage metadata instead of full transcript reads for preflight fallback", async () => {
+    const sessionFile = `/tmp/openclaw-memory-fast-path-${process.pid}-${Date.now()}.jsonl`;
+    fs.writeFileSync(
+      sessionFile,
+      `${JSON.stringify({ message: { usage: { input: 90_000, output: 500 } } })}\n`,
+    );
+    const entry = {
+      sessionId: "session",
+      sessionFile,
+      totalTokensFresh: false,
+      updatedAt: Date.now(),
+    } as SessionEntry;
+
+    try {
+      await runPreflightCompactionIfNeeded({
+        cfg: {},
+        followupRun: createFollowupRun(),
+        promptForEstimate: "hello",
+        defaultModel: "claude",
+        agentCfgContextTokens: 100_000,
+        sessionEntry: entry,
+        sessionStore: { main: entry },
+        sessionKey: "main",
+        storePath: "/tmp/store.json",
+        isHeartbeat: false,
+        replyOperation: createReplyOperation(),
+      });
+
+      expect(readSessionMessagesMock).not.toHaveBeenCalled();
+      expect(compactEmbeddedPiSessionMock).toHaveBeenCalledTimes(1);
+      expect(
+        compactEmbeddedPiSessionMock.mock.calls[0]?.[0]?.currentTokenCount,
+      ).toBeGreaterThanOrEqual(90_000);
+    } finally {
+      fs.rmSync(sessionFile, { force: true });
+    }
+  });
+
   it("skips memory flush transcript reads for stale but safely low token snapshots", async () => {
     const entry = {
       sessionId: "session",

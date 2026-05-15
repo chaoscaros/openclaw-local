@@ -21,7 +21,6 @@ import {
   updateSessionStoreEntry,
 } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { readSessionMessages } from "../../gateway/session-utils.fs.js";
 import { logVerbose } from "../../globals.js";
 import { registerAgentRunContext } from "../../infra/agent-events.js";
 import { resolveMemoryFlushPlan } from "../../plugins/memory-state.js";
@@ -307,34 +306,6 @@ async function readLastNonzeroUsageFromSessionLog(logPath: string) {
   }
 }
 
-function estimatePromptTokensFromSessionTranscript(params: {
-  sessionId?: string;
-  storePath?: string;
-  sessionFile?: string;
-}): number | undefined {
-  const sessionId = normalizeOptionalString(params.sessionId);
-  if (!sessionId) {
-    return undefined;
-  }
-  try {
-    const messages = readSessionMessages(
-      sessionId,
-      params.storePath,
-      params.sessionFile,
-    ) as AgentMessage[];
-    if (messages.length === 0) {
-      return undefined;
-    }
-    const estimatedTokens = estimateMessagesTokens(messages);
-    if (!Number.isFinite(estimatedTokens) || estimatedTokens <= 0) {
-      return undefined;
-    }
-    return Math.ceil(estimatedTokens);
-  } catch {
-    return undefined;
-  }
-}
-
 export async function readPromptTokensFromSessionLog(
   sessionId?: string,
   sessionEntry?: SessionEntry,
@@ -422,14 +393,22 @@ export async function runPreflightCompactionIfNeeded(params: {
     );
     return entry ?? params.sessionEntry;
   }
-  const transcriptPromptTokens =
+  const transcriptUsageSnapshot =
     typeof freshPersistedTokens === "number"
       ? undefined
-      : estimatePromptTokensFromSessionTranscript({
-          sessionId: entry.sessionId,
-          storePath: params.storePath,
-          sessionFile: entry.sessionFile ?? params.followupRun.run.sessionFile,
-        });
+      : (
+          await readSessionLogSnapshot({
+            sessionId: entry.sessionId,
+            sessionEntry: entry.sessionFile
+              ? entry
+              : { ...entry, sessionFile: params.followupRun.run.sessionFile },
+            sessionKey: params.sessionKey ?? params.followupRun.run.sessionKey,
+            opts: { storePath: params.storePath },
+            includeByteSize: false,
+            includeUsage: true,
+          })
+        ).usage;
+  const transcriptPromptTokens = transcriptUsageSnapshot?.promptTokens;
   const projectedTokenCount =
     typeof transcriptPromptTokens === "number"
       ? resolveEffectivePromptTokens(transcriptPromptTokens, undefined, promptTokenEstimate)
