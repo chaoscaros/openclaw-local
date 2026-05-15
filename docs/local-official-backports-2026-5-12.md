@@ -33,6 +33,16 @@ should be split by risk area.
     `src/cli/run-main.test.ts`.
   - Note: the official bundled catalog sub-change was not needed because this
     local branch already reads bundled channel package metadata directly.
+- Reply payload contract batch, first slice from `86885ccc24` /
+  `e91d682b22`
+  - Local impact: outbound reply normalization, block reply dedupe, block
+    streaming, and delivery checks now preserve local rich reply fields
+    (`interactive` and `channelData`) instead of treating rich-only payloads as
+    empty text/media.
+  - Files: `src/plugin-sdk/reply-payload.ts`,
+    `src/auto-reply/reply/block-reply-pipeline.ts`,
+    `src/auto-reply/reply/reply-delivery.ts`,
+    `src/auto-reply/reply/dispatch-from-config.ts`.
 
 ## Local Hardening
 
@@ -50,12 +60,10 @@ should be split by risk area.
 - `6104c0cc79` `fix: require heartbeat tool replies`
   - Reason: the official patch depends on heartbeat response tool mode that is
     not present as a complete local contract yet.
-- `e91d682b22` `fix(replies): preserve rich coalesced block replies`
-  - Reason: the official patch depends on a broader rich `ReplyPayload` content
-    contract. The local content helper currently recognizes text and media only.
 - `86885ccc24` `fix(replies): preserve rich outbound content`
-  - Reason: larger reply-payload contract change spanning runtime plans, cron,
-    reply delivery, and plugin SDK tests.
+  - Reason: partially backported for local `interactive` / `channelData`
+    payloads. Remaining official pieces touch broader runtime-plan, cron, and
+    heartbeat surfaces that should be evaluated separately.
 - `f9652c7b09` `Fix Telegram polling ingress under event-loop stalls`
   - Reason: large Telegram ingress worker change; should be its own batch.
 - `9798e95786` `fix: reconcile managed plugin peers`

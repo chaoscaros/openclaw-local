@@ -1,4 +1,6 @@
+import type { ReplyPayload as InternalReplyPayload } from "../auto-reply/reply-payload.js";
 import type { ChannelOutboundAdapter } from "../channels/plugins/outbound.types.js";
+import { hasReplyPayloadContent } from "../interactive/payload.js";
 import { readStringValue } from "../shared/string-coerce.js";
 
 export type { MediaPayload, MediaPayloadInput } from "../channels/plugins/media-payload.js";
@@ -9,6 +11,8 @@ export type OutboundReplyPayload = {
   text?: string;
   mediaUrls?: string[];
   mediaUrl?: string;
+  interactive?: InternalReplyPayload["interactive"];
+  channelData?: InternalReplyPayload["channelData"];
   replyToId?: string;
 };
 
@@ -29,6 +33,10 @@ type SendPayloadAdapter = Pick<
   "sendMedia" | "sendText" | "chunker" | "textChunkLimit"
 >;
 
+function readObjectValue(value: unknown): object | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
+}
+
 /** Extract the supported outbound reply fields from loose tool or agent payload objects. */
 export function normalizeOutboundReplyPayload(
   payload: Record<string, unknown>,
@@ -40,11 +48,15 @@ export function normalizeOutboundReplyPayload(
       )
     : undefined;
   const mediaUrl = readStringValue(payload.mediaUrl);
+  const interactive = readObjectValue(payload.interactive) as OutboundReplyPayload["interactive"];
+  const channelData = readObjectValue(payload.channelData) as OutboundReplyPayload["channelData"];
   const replyToId = readStringValue(payload.replyToId);
   return {
     text,
     mediaUrls,
     mediaUrl,
+    interactive,
+    channelData,
     replyToId,
   };
 }
@@ -97,12 +109,18 @@ export function hasOutboundText(payload: { text?: string }, options?: { trim?: b
   return Boolean(text);
 }
 
-/** Check whether an outbound payload includes any sendable text or media. */
+/** Check whether an outbound payload includes any sendable text, media, or rich reply content. */
 export function hasOutboundReplyContent(
-  payload: { text?: string; mediaUrls?: string[]; mediaUrl?: string },
+  payload: {
+    text?: string;
+    mediaUrls?: string[];
+    mediaUrl?: string;
+    interactive?: unknown;
+    channelData?: unknown;
+  },
   options?: { trimText?: boolean },
 ): boolean {
-  return hasOutboundText(payload, { trim: options?.trimText }) || hasOutboundMedia(payload);
+  return hasReplyPayloadContent(payload, { trimText: options?.trimText });
 }
 
 /** Normalize reply payload text/media into a trimmed, sendable shape for delivery paths. */

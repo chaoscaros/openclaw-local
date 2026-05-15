@@ -1,4 +1,4 @@
-import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
+import { hasOutboundReplyContent } from "openclaw/plugin-sdk/reply-payload";
 import { isParentOwnedBackgroundAcpSession } from "../../acp/session-interaction-mode.js";
 import { resolveAgentConfig, resolveSessionAgentId } from "../../agents/agent-scope.js";
 import {
@@ -684,7 +684,7 @@ export async function dispatchReplyFromConfig(
     const sendFinalPayload = async (
       payload: ReplyPayload,
     ): Promise<{ queuedFinal: boolean; routedFinalCount: number }> => {
-      if (resolveSendableOutboundReplyParts(payload).hasContent) {
+      if (hasOutboundReplyContent(payload, { trimText: true })) {
         markInboundDedupeReplayUnsafe();
       }
       const ttsPayload = await maybeApplyTtsToReplyPayload({
@@ -921,8 +921,11 @@ export async function dispatchReplyFromConfig(
       }
       // Group/native flows intentionally suppress tool summary text, but media-only
       // tool results (for example TTS audio) must still be delivered.
-      const hasMedia = resolveSendableOutboundReplyParts(payload).hasMedia;
-      if (!hasMedia) {
+      const hasNonTextContent = hasOutboundReplyContent(
+        { ...payload, text: undefined },
+        { trimText: true },
+      );
+      if (!hasNonTextContent) {
         return null;
       }
       return { ...payload, text: undefined };
@@ -1002,7 +1005,7 @@ export async function dispatchReplyFromConfig(
           const run = async () => {
             if (
               payload.isReasoning !== true &&
-              resolveSendableOutboundReplyParts(payload).hasContent
+              hasOutboundReplyContent(payload, { trimText: true })
             ) {
               markInboundDedupeReplayUnsafe();
             }

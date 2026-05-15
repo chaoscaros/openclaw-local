@@ -80,6 +80,38 @@ describe("createBlockReplyDeliveryHandler", () => {
     expect(onBlockReply).not.toHaveBeenCalled();
   });
 
+  it("sends rich block replies even when block streaming is disabled", async () => {
+    const onBlockReply = vi.fn(async () => {});
+    const interactive = {
+      blocks: [{ type: "buttons" as const, buttons: [{ label: "Open", value: "open" }] }],
+    };
+
+    const handler = createBlockReplyDeliveryHandler({
+      onBlockReply,
+      normalizeStreamingText: (payload) => ({ text: payload.text, skip: false }),
+      applyReplyToMode: (payload) => payload,
+      typingSignals: {
+        signalTextDelta: vi.fn(async () => {}),
+      } as unknown as TypingSignaler,
+      blockStreamingEnabled: false,
+      blockReplyPipeline: null,
+      directlySentBlockKeys: new Set(),
+    });
+
+    await handler({ interactive });
+
+    expect(onBlockReply).toHaveBeenCalledWith({
+      interactive,
+      text: undefined,
+      mediaUrl: undefined,
+      replyToId: undefined,
+      replyToCurrent: undefined,
+      replyToTag: undefined,
+      audioAsVoice: false,
+      mediaUrls: undefined,
+    });
+  });
+
   it("trims leading whitespace in block-streamed replies", async () => {
     const blockReplyPipeline = {
       enqueue: vi.fn(),

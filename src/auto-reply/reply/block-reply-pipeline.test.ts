@@ -26,6 +26,20 @@ describe("createBlockReplyPayloadKey", () => {
     expect(a).not.toBe(b);
   });
 
+  it("produces different keys for payloads with different rich content", () => {
+    const a = createBlockReplyPayloadKey({
+      interactive: {
+        blocks: [{ type: "buttons", buttons: [{ label: "Approve", value: "approve" }] }],
+      },
+    });
+    const b = createBlockReplyPayloadKey({
+      interactive: {
+        blocks: [{ type: "buttons", buttons: [{ label: "Reject", value: "reject" }] }],
+      },
+    });
+    expect(a).not.toBe(b);
+  });
+
   it("trims whitespace from text for key comparison", () => {
     const a = createBlockReplyPayloadKey({ text: "  hello  " });
     const b = createBlockReplyPayloadKey({ text: "hello" });
@@ -75,5 +89,30 @@ describe("createBlockReplyPipeline dedup with threading", () => {
     // Final payload with no replyToId should be recognized as already sent
     expect(pipeline.hasSentPayload({ text: "response text" })).toBe(true);
     expect(pipeline.hasSentPayload({ text: "response text", replyToId: "other-id" })).toBe(true);
+  });
+
+  it("bypasses text coalescing for rich-only payloads", async () => {
+    const sent: Array<{ interactive?: unknown }> = [];
+    const pipeline = createBlockReplyPipeline({
+      onBlockReply: async (payload) => {
+        sent.push({ interactive: payload.interactive });
+      },
+      timeoutMs: 5000,
+      coalescing: {
+        minChars: 1,
+        maxChars: 200,
+        idleMs: 0,
+        joiner: "\n\n",
+      },
+    });
+
+    const interactive = {
+      blocks: [{ type: "buttons" as const, buttons: [{ label: "Open", value: "open" }] }],
+    };
+
+    pipeline.enqueue({ interactive });
+    await pipeline.flush({ force: true });
+
+    expect(sent).toEqual([{ interactive }]);
   });
 });

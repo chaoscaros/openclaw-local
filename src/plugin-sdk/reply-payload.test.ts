@@ -7,6 +7,7 @@ import {
   hasOutboundReplyContent,
   hasOutboundText,
   isNumericTargetId,
+  normalizeOutboundReplyPayload,
   resolveOutboundMediaUrls,
   resolveSendableOutboundReplyParts,
   resolveTextChunksWithFallback,
@@ -173,6 +174,22 @@ describe("hasOutboundReplyContent", () => {
       expected: true,
     },
     {
+      name: "detects interactive content",
+      payload: {
+        interactive: {
+          blocks: [{ type: "buttons", buttons: [{ label: "Approve", value: "approve" }] }],
+        },
+      },
+      options: undefined,
+      expected: true,
+    },
+    {
+      name: "detects channel data content",
+      payload: { channelData: { slack: { blocks: [] } } },
+      options: undefined,
+      expected: true,
+    },
+    {
       name: "returns false when text and media are both missing",
       payload: {},
       options: undefined,
@@ -192,6 +209,30 @@ describe("hasOutboundReplyContent", () => {
     },
   ])("$name", ({ payload, options, expected }) => {
     expect(hasOutboundReplyContent(payload, options)).toBe(expected);
+  });
+});
+
+describe("normalizeOutboundReplyPayload", () => {
+  it("preserves rich reply fields from loose payload objects", () => {
+    const interactive = {
+      blocks: [{ type: "buttons", buttons: [{ label: "Open", value: "open" }] }],
+    };
+    const channelData = { discord: { components: [] } };
+
+    expect(
+      normalizeOutboundReplyPayload({
+        text: "Choose",
+        interactive,
+        channelData,
+      }),
+    ).toEqual({
+      text: "Choose",
+      mediaUrl: undefined,
+      mediaUrls: undefined,
+      interactive,
+      channelData,
+      replyToId: undefined,
+    });
   });
 });
 

@@ -1,4 +1,4 @@
-import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
+import { hasOutboundReplyContent } from "openclaw/plugin-sdk/reply-payload";
 import { logVerbose } from "../../globals.js";
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
 import type { BlockReplyContext, ReplyPayload } from "../types.js";
@@ -71,7 +71,7 @@ export function createBlockReplyDeliveryHandler(params: {
 }): (payload: ReplyPayload) => Promise<void> {
   return async (payload) => {
     const { text, skip } = params.normalizeStreamingText(payload);
-    if (skip && !resolveSendableOutboundReplyParts(payload).hasMedia) {
+    if (skip && !hasOutboundReplyContent({ ...payload, text: undefined })) {
       return;
     }
 
@@ -104,13 +104,16 @@ export function createBlockReplyDeliveryHandler(params: {
       ? await params.normalizeMediaPaths(normalized.payload)
       : normalized.payload;
     const blockPayload = params.applyReplyToMode(mediaNormalizedPayload);
-    const blockHasMedia = resolveSendableOutboundReplyParts(blockPayload).hasMedia;
+    const blockHasNonTextContent = hasOutboundReplyContent({
+      ...blockPayload,
+      text: undefined,
+    });
 
     // Skip empty payloads unless they have audioAsVoice flag (need to track it).
-    if (!blockPayload.text && !blockHasMedia && !blockPayload.audioAsVoice) {
+    if (!blockPayload.text && !blockHasNonTextContent && !blockPayload.audioAsVoice) {
       return;
     }
-    if (normalized.isSilent && !blockHasMedia) {
+    if (normalized.isSilent && !blockHasNonTextContent) {
       return;
     }
 
@@ -128,12 +131,16 @@ export function createBlockReplyDeliveryHandler(params: {
       // Track sent key to avoid duplicate in final payloads.
       params.directlySentBlockKeys.add(createBlockReplyContentKey(blockPayload));
       await params.onBlockReply(blockPayload);
-    } else if (blockHasMedia) {
+    } else if (blockHasNonTextContent) {
       // When block streaming is disabled, text-only block replies are accumulated into the
       // final response. Media cannot be reconstructed later, so send it immediately and let
       // the assistant's final text arrive through the normal final-reply path.
       params.directlySentBlockKeys.add(createBlockReplyContentKey(blockPayload));
-      await params.onBlockReply({ ...blockPayload, text: undefined });
+      const deliveryPayload =
+        blockPayload.mediaUrl || blockPayload.mediaUrls
+          ? { ...blockPayload, text: undefined }
+          : blockPayload;
+      await params.onBlockReply(deliveryPayload);
     }
     // When streaming is disabled entirely, text-only blocks are accumulated in final text.
   };
