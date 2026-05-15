@@ -22,16 +22,13 @@ function optionalStringEnum<const T extends readonly string[]>(
   );
 }
 
-type TavilyToolConfigContext = Pick<
-  OpenClawPluginToolContext,
-  "config" | "runtimeConfig" | "getRuntimeConfig"
->;
+type TavilyToolConfigContext = Pick<OpenClawPluginToolContext, "config" | "runtimeConfig">;
 
 function resolveTavilyToolConfig(
   api: OpenClawPluginApi,
   ctx?: TavilyToolConfigContext,
 ): OpenClawConfig {
-  return ctx?.getRuntimeConfig?.() ?? ctx?.runtimeConfig ?? ctx?.config ?? api.config;
+  return ctx?.runtimeConfig ?? ctx?.config ?? api.config;
 }
 
 const TavilySearchToolSchema = Type.Object(

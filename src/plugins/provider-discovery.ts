@@ -16,18 +16,23 @@ function resolveProviderCatalogHook(provider: ProviderPlugin) {
   return provider.catalog ?? provider.discovery;
 }
 
-function resolveProviderCatalogOrderHook(provider: ProviderPlugin): {
-  order?: ProviderDiscoveryOrder;
-  run?: unknown;
-} | null | undefined {
+function resolveProviderCatalogOrderHook(provider: ProviderPlugin):
+  | {
+      order?: ProviderDiscoveryOrder;
+      run?: unknown;
+    }
+  | null
+  | undefined {
   return (
     resolveProviderCatalogHook(provider) ??
-    (provider as ProviderPlugin & {
-      staticCatalog?: {
-        order?: ProviderDiscoveryOrder;
-        run?: unknown;
-      };
-    }).staticCatalog
+    (
+      provider as ProviderPlugin & {
+        staticCatalog?: {
+          order?: ProviderDiscoveryOrder;
+          run?: unknown;
+        };
+      }
+    ).staticCatalog
   );
 }
 
@@ -74,7 +79,7 @@ export function groupPluginDiscoveryProvidersByOrder(
   } as Record<ProviderDiscoveryOrder, ProviderPlugin[]>;
 
   for (const provider of providers) {
-    const order = (resolveProviderCatalogOrderHook(provider)?.order ?? "late") as ProviderDiscoveryOrder;
+    const order = resolveProviderCatalogOrderHook(provider)?.order ?? "late";
     grouped[order].push(provider);
   }
 
@@ -163,20 +168,22 @@ export function runProviderStaticCatalog(params: {
   workspaceDir?: string;
   env: NodeJS.ProcessEnv;
 }) {
-  return (params.provider as ProviderPlugin & {
-    staticCatalog?: {
-      run?: (ctx: {
-        config: Record<string, never>;
-        env: Record<string, never>;
-        resolveProviderApiKey: () => { apiKey: undefined };
-        resolveProviderAuth: () => {
-          apiKey: undefined;
-          mode: "none";
-          source: "none";
-        };
-      }) => unknown;
-    };
-  }).staticCatalog?.run?.({
+  return (
+    params.provider as ProviderPlugin & {
+      staticCatalog?: {
+        run?: (ctx: {
+          config: Record<string, never>;
+          env: Record<string, never>;
+          resolveProviderApiKey: () => { apiKey: undefined };
+          resolveProviderAuth: () => {
+            apiKey: undefined;
+            mode: "none";
+            source: "none";
+          };
+        }) => unknown;
+      };
+    }
+  ).staticCatalog?.run?.({
     config: {},
     env: {},
     resolveProviderApiKey: () => ({

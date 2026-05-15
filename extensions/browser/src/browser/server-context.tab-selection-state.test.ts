@@ -304,7 +304,7 @@ describe("browser server-context tab selection state", () => {
     fetchJson.mockRejectedValueOnce(new Error("HTTP 405")).mockResolvedValueOnce({
       id: "NEW",
       title: "New Tab",
-      url: "https://example.com",
+      url: "http://93.184.216.34",
       webSocketDebuggerUrl: "ws://127.0.0.1/devtools/page/NEW",
       type: "page",
     });
@@ -314,7 +314,7 @@ describe("browser server-context tab selection state", () => {
     const ctx = createBrowserRouteContext({ getState: () => state });
     const openclaw = ctx.forProfile("openclaw");
 
-    const opened = await openclaw.openTab("https://example.com");
+    const opened = await openclaw.openTab("http://93.184.216.34");
     expect(opened.targetId).toBe("NEW");
     expect(fetchJson).toHaveBeenNthCalledWith(
       1,

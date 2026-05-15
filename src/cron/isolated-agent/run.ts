@@ -219,6 +219,7 @@ type RunCronAgentTurnParams = {
   sessionKey: string;
   agentId?: string;
   lane?: string;
+  deliveryContract?: "cron-owned" | "shared";
 };
 
 type WithRunSession = (
@@ -734,17 +735,9 @@ async function finalizeCronRun(params: {
   });
 }
 
-export async function runCronIsolatedAgentTurn(params: {
-  cfg: OpenClawConfig;
-  deps: CliDeps;
-  job: CronJob;
-  message: string;
-  abortSignal?: AbortSignal;
-  signal?: AbortSignal;
-  sessionKey: string;
-  agentId?: string;
-  lane?: string;
-}): Promise<RunCronAgentTurnResult> {
+export async function runCronIsolatedAgentTurn(
+  params: RunCronAgentTurnParams,
+): Promise<RunCronAgentTurnResult> {
   const abortSignal = params.abortSignal ?? params.signal;
   const isAborted = () => abortSignal?.aborted === true;
   const abortReason = () => {

@@ -270,7 +270,7 @@ describe("gateway hooks helpers", () => {
 
     const allowed = resolveHookSessionKey({
       hooksConfig: resolved,
-      source: "mapping",
+      source: "mapping-static",
       sessionKey: "hook:gmail:1",
     });
     expect(allowed).toEqual({ ok: true, value: "hook:gmail:1" });

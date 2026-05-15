@@ -254,6 +254,7 @@ describe("resolveReplyDirectives", () => {
         cleanup: vi.fn(),
       },
       opts: undefined,
+      resetTriggered: false,
       skillFilter: undefined,
     });
 
@@ -328,7 +329,6 @@ describe("resolveReplyDirectives", () => {
       groupResolution: undefined,
       isGroup: false,
       triggerBodyNormalized: "/trace on",
-      resetTriggered: false,
       commandAuthorized: true,
       defaultProvider: "openai",
       defaultModel: "gpt-4o-mini",
@@ -338,6 +338,7 @@ describe("resolveReplyDirectives", () => {
       hasResolvedHeartbeatModelOverride: false,
       typing: makeTypingController(),
       opts: undefined,
+      resetTriggered: false,
       skillFilter: undefined,
     });
 
@@ -397,6 +398,7 @@ describe("resolveReplyDirectives", () => {
       hasResolvedHeartbeatModelOverride: false,
       typing: makeTypingController(),
       opts: undefined,
+      resetTriggered: false,
       skillFilter: undefined,
     });
 
@@ -524,6 +526,7 @@ describe("resolveReplyDirectives", () => {
       hasResolvedHeartbeatModelOverride: false,
       typing: makeTypingController(),
       opts: undefined,
+      resetTriggered: false,
       skillFilter: undefined,
     });
 

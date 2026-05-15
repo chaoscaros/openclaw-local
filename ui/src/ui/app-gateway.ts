@@ -503,7 +503,7 @@ function handleTerminalChatEvent(
       host.devExecuteCarryoverAfterChatByRun.delete(runId);
     }
   }
-  if (payload?.sessionKey === host.sessionKey) {
+  if (payload?.sessionKey === host.sessionKey && shouldRefreshTaskModeDataForActiveSession(host)) {
     void loadTaskModeData(host as unknown as TasksState);
   }
   // Reload history when tools were used so the persisted tool results
@@ -523,6 +523,11 @@ function handleTerminalChatEvent(
   resetToolStream(toolHost);
   flushQueue();
   return false;
+}
+
+function shouldRefreshTaskModeDataForActiveSession(host: GatewayHost) {
+  const currentSession = host.sessionsResult?.sessions.find((row) => row.key === host.sessionKey);
+  return currentSession?.mode === "task" && Boolean(currentSession.taskId?.trim());
 }
 
 const MUTATING_AGENT_TOOL_NAMES = new Set([
@@ -697,7 +702,7 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
           ? { activeMinutes: 0, limit: 0, includeGlobal: true, includeUnknown: true }
           : undefined;
       await loadSessions(host as unknown as SessionsState, sessionOverrides);
-      await loadTaskModeData(host as unknown as TasksState);
+      await loadTaskModeData(host as unknown as TasksState, { autoSyncCurrentTask: false });
     })();
     return;
   }

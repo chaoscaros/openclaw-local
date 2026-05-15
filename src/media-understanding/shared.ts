@@ -211,7 +211,7 @@ function resolveMergedSsrFPolicy(params: {
     return undefined;
   }
   return {
-    ...(params.ssrfPolicy ?? {}),
+    ...params.ssrfPolicy,
     ...(params.allowPrivateNetwork ? { allowPrivateNetwork: true } : {}),
   };
 }

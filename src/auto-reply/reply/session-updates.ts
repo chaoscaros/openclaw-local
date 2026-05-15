@@ -26,8 +26,14 @@ import { normalizeOptionalString } from "../../shared/string-coerce.js";
 import { buildSessionEndHookPayload, buildSessionStartHookPayload } from "./session-hooks.js";
 export { drainFormattedSystemEvents } from "./session-system-events.js";
 
-const defaultSkillSnapshotRuntimeCache = new Map<string, NonNullable<SessionEntry["skillsSnapshot"]>>();
-const skillSnapshotRuntimeCacheByConfig = new WeakMap<OpenClawConfig, Map<string, NonNullable<SessionEntry["skillsSnapshot"]>>>();
+const defaultSkillSnapshotRuntimeCache = new Map<
+  string,
+  NonNullable<SessionEntry["skillsSnapshot"]>
+>();
+const skillSnapshotRuntimeCacheByConfig = new WeakMap<
+  OpenClawConfig,
+  Map<string, NonNullable<SessionEntry["skillsSnapshot"]>>
+>();
 
 function resolveSkillSnapshotRuntimeCache(
   cfg?: OpenClawConfig,
@@ -56,9 +62,12 @@ function resolveSkillSnapshotRuntimeCacheKey(params: {
       : normalizedFilter && normalizedFilter.length > 0
         ? normalizedFilter.join("\u001f")
         : "__empty__";
-  return [params.workspaceDir, String(params.snapshotVersion), params.sessionAgentId ?? "", filterKey].join(
-    "\u001e",
-  );
+  return [
+    params.workspaceDir,
+    String(params.snapshotVersion),
+    params.sessionAgentId ?? "",
+    filterKey,
+  ].join("\u001e");
 }
 
 function cloneSkillSnapshot(
@@ -215,8 +224,14 @@ export async function ensureSkillSnapshot(params: {
     skillFilter,
   });
   const buildSnapshot = () => {
+    const startedAt = Date.now();
     const cachedSnapshot = skillSnapshotRuntimeCache.get(skillSnapshotRuntimeCacheKey);
     if (cachedSnapshot) {
+      logVerbose(
+        `ensureSkillSnapshot cache hit: sessionKey=${sessionKey} ` +
+          `durationMs=${Date.now() - startedAt} version=${snapshotVersion} ` +
+          `skillFilterCount=${skillFilter?.length ?? 0}`,
+      );
       return cloneSkillSnapshot(cachedSnapshot);
     }
     const snapshot = buildWorkspaceSkillSnapshot(workspaceDir, {
@@ -227,6 +242,11 @@ export async function ensureSkillSnapshot(params: {
       snapshotVersion,
     });
     skillSnapshotRuntimeCache.set(skillSnapshotRuntimeCacheKey, cloneSkillSnapshot(snapshot));
+    logVerbose(
+      `ensureSkillSnapshot cache miss: sessionKey=${sessionKey} ` +
+        `durationMs=${Date.now() - startedAt} version=${snapshotVersion} ` +
+        `skillFilterCount=${skillFilter?.length ?? 0}`,
+    );
     return snapshot;
   };
 

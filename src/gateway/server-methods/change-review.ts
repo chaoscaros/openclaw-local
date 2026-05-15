@@ -3,8 +3,8 @@ import {
   applyReviewBundleFile,
   applyReviewBundleGroup,
   applyReviewBundleHunk,
-  getPendingReviewBySession,
-  getPendingReviewBySessionAndRun,
+  getFreshPendingReviewBySession,
+  getFreshPendingReviewBySessionAndRun,
   getReviewById,
   revertReviewBundle,
   revertReviewBundleFile,
@@ -85,7 +85,7 @@ export const changeReviewHandlers: GatewayRequestHandlers = {
       return;
     }
     try {
-      const bundle = getPendingReviewBySessionAndRun(sessionKey, runId || undefined);
+      const bundle = await getFreshPendingReviewBySessionAndRun(sessionKey, runId || undefined);
       respond(true, serializeReviewBundle(bundle), undefined);
     } catch (err) {
       respond(
@@ -95,7 +95,7 @@ export const changeReviewHandlers: GatewayRequestHandlers = {
       );
     }
   },
-  "changeReview.status": ({ params, respond }) => {
+  "changeReview.status": async ({ params, respond }) => {
     const sessionKey = validateSessionKey(params);
     if (!sessionKey) {
       respond(
@@ -108,7 +108,19 @@ export const changeReviewHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    respond(true, serializeReviewBundle(getPendingReviewBySession(sessionKey)), undefined);
+    try {
+      respond(
+        true,
+        serializeReviewBundle(await getFreshPendingReviewBySession(sessionKey)),
+        undefined,
+      );
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `change review status failed: ${String(err)}`),
+      );
+    }
   },
   "changeReview.apply": async ({ params, respond }) => {
     const id = validateReviewId(params);

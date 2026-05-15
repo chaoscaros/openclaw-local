@@ -40,11 +40,11 @@ describe("persistPluginInstall", () => {
       },
     } as OpenClawConfig;
 
-    enablePluginInConfig.mockImplementation((cfg: OpenClawConfig, pluginId: string) => {
+    enablePluginInConfig.mockImplementation(((cfg: OpenClawConfig, pluginId: string) => {
       expect(pluginId).toBe("alpha");
       expect(cfg.plugins?.allow).toEqual(["alpha", "memory-core"]);
       return { config: enabledConfig };
-    });
+    }) as (...args: unknown[]) => unknown);
     recordPluginInstall.mockReturnValue(persistedConfig);
 
     const next = await persistPluginInstall({

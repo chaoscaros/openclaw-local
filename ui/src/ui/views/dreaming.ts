@@ -406,13 +406,21 @@ function renderLatestRunSummary(latestRun: NonNullable<DreamingProps["latestRun"
         : `已提升 ${latestRun.applied} 条`;
   return html`
     <div class="row wrap items-center gap-2">
-      <span class="dreams__phase-next">${t("dreaming.scene.lastRunPrefix")} ${formatCompactDateTime(latestRun.at)} · ${resultSummary}</span>
+      <span class="dreams__phase-next"
+        >${t("dreaming.scene.lastRunPrefix")} ${formatCompactDateTime(latestRun.at)} ·
+        ${resultSummary}</span
+      >
     </div>
     <div class="row wrap items-center gap-2">
-      <span class="dreams__phase-next">候选 ${latestRun.candidates} 条 · 日记 ${latestRun.narrativeWritten} 条 · 工作区 ${latestRun.workspaces} 个</span>
+      <span class="dreams__phase-next"
+        >候选 ${latestRun.candidates} 条 · 日记 ${latestRun.narrativeWritten} 条 · 工作区
+        ${latestRun.workspaces} 个</span
+      >
     </div>
     <div class="row wrap items-center gap-2">
-      <span class="dreams__phase-next">失败 ${latestRun.failed} 个 · 跳过叙事 ${latestRun.narrativeSkipped} 次</span>
+      <span class="dreams__phase-next"
+        >失败 ${latestRun.failed} 个 · 跳过叙事 ${latestRun.narrativeSkipped} 次</span
+      >
     </div>
     ${latestRun.zeroAppliedReason
       ? html`
@@ -428,25 +436,35 @@ function renderLatestRunSummary(latestRun: NonNullable<DreamingProps["latestRun"
           </div>
           ${latestRun.learningSummary.temporaryFocus.length
             ? html`<div class="row wrap items-center gap-2">
-                <span class="dreams__phase-next">当前聚焦：${latestRun.learningSummary.temporaryFocus.join(" · ")}</span>
+                <span class="dreams__phase-next"
+                  >当前聚焦：${latestRun.learningSummary.temporaryFocus.join(" · ")}</span
+                >
               </div>`
             : nothing}
           <div class="row wrap items-center gap-2">
-            <span class="dreams__phase-next">改进建议：${latestRun.learningSummary.recommendation}</span>
+            <span class="dreams__phase-next"
+              >改进建议：${latestRun.learningSummary.recommendation}</span
+            >
           </div>
           <div class="row wrap items-center gap-2">
-            <span class="dreams__phase-next">协助策略：${latestRun.learningSummary.assistanceStrategy}</span>
+            <span class="dreams__phase-next"
+              >协助策略：${latestRun.learningSummary.assistanceStrategy}</span
+            >
           </div>
           ${latestRun.learningSummary.durableSignals.length
             ? html`<div class="row wrap items-center gap-2">
-                <span class="dreams__phase-next">长期信号：${latestRun.learningSummary.durableSignals.join(" · ")}</span>
+                <span class="dreams__phase-next"
+                  >长期信号：${latestRun.learningSummary.durableSignals.join(" · ")}</span
+                >
               </div>`
             : nothing}
           ${latestRun.learningSummary.sources.length
             ? html`<div class="row wrap items-center gap-2">
-                <span class="dreams__phase-next">来源：${latestRun.learningSummary.sources
-                  .map((source) => `${source.kind}:${source.label}`)
-                  .join(" · ")}</span>
+                <span class="dreams__phase-next"
+                  >来源：${latestRun.learningSummary.sources
+                    .map((source) => `${source.kind}:${source.label}`)
+                    .join(" · ")}</span
+                >
               </div>`
             : nothing}
         `
@@ -547,12 +565,11 @@ function renderScene(props: DreamingProps, idle: boolean, dreamText: string) {
             ?disabled=${props.modeSaving || props.dreamDiaryActionLoading}
             @click=${() => props.onRunNow()}
           >
-            ${props.dreamDiaryActionLoading ? t("dreaming.scene.working") : t("dreaming.scene.runNow")}
+            ${props.dreamDiaryActionLoading
+              ? t("dreaming.scene.working")
+              : t("dreaming.scene.runNow")}
           </button>
-          <button
-            class="btn btn--subtle btn--sm"
-            @click=${() => props.onToggleDreamingAssist()}
-          >
+          <button class="btn btn--subtle btn--sm" @click=${() => props.onToggleDreamingAssist()}>
             ${props.dreamingAssistEnabled ? "协助策略：开启" : "协助策略：关闭"}
           </button>
         </div>
@@ -623,9 +640,10 @@ function formatKindLabel(kind: "entity" | "concept" | "source" | "synthesis" | "
       return "综合";
     case "report":
       return "报告";
+    default:
+      return kind;
   }
 }
-
 
 function formatImportBadge(item: {
   digestStatus: "available" | "withheld";
@@ -764,7 +782,8 @@ function renderDiarySubtabExplainer() {
     case "palace":
       return html`
         <p class="dreams-diary__explainer">
-          这里是系统可搜索、可推理的记忆 Wiki 汇总面；相比原始导入对话，更适合检查真实记忆页面、结论、待解问题与矛盾点。
+          这里是系统可搜索、可推理的记忆 Wiki
+          汇总面；相比原始导入对话，更适合检查真实记忆页面、结论、待解问题与矛盾点。
         </p>
       `;
   }
@@ -1230,7 +1249,8 @@ function renderMemoryPalaceSection(props: DreamingProps) {
       <div class="dreams-diary__empty">
         <div class="dreams-diary__empty-text">记忆宫殿还没有形成内容</div>
         <div class="dreams-diary__empty-hint">
-          目前 wiki 里大多还是原始来源导入和运行报告。等综合页、实体或概念开始写入后，这个页签才会更有用。
+          目前 wiki
+          里大多还是原始来源导入和运行报告。等综合页、实体或概念开始写入后，这个页签才会更有用。
         </div>
       </div>
     `;
@@ -1265,13 +1285,12 @@ function renderMemoryPalaceSection(props: DreamingProps) {
         ${cluster.label} · ${cluster.itemCount} 页
         ${cluster.claimCount > 0 ? html`· ${cluster.claimCount} 条结论` : nothing}
         ${cluster.questionCount > 0 ? html`· ${cluster.questionCount} 个问题` : nothing}
-        ${cluster.contradictionCount > 0
-          ? html`· ${cluster.contradictionCount} 处矛盾`
-          : nothing}
+        ${cluster.contradictionCount > 0 ? html`· ${cluster.contradictionCount} 处矛盾` : nothing}
       </div>
       <div class="dreams-diary__prose">
         <p class="dreams-diary__para">
-          当前汇总到 ${cluster.label.toLowerCase()} 分类下的 Wiki 页面。${cluster.updatedAt
+          当前汇总到 ${cluster.label.toLowerCase()} 分类下的 Wiki
+          页面。${cluster.updatedAt
             ? ` 最近更新于 ${formatCompactDateTime(cluster.updatedAt)}。`
             : ""}
         </p>
@@ -1553,7 +1572,8 @@ function renderDiarySection(props: DreamingProps) {
                 导入洞察和记忆宫殿由内置的 <code>memory-wiki</code> 插件提供。
               </div>
               <div class="dreams-diary__empty-hint">
-                启用 <code>plugins.entries.memory-wiki.enabled = true</code> 后，再重新加载这个页签。
+                启用
+                <code>plugins.entries.memory-wiki.enabled = true</code> 后，再重新加载这个页签。
               </div>
               <div class="dreams-diary__empty-actions">
                 <button class="btn btn--subtle btn--sm" @click=${() => props.onOpenConfig()}>

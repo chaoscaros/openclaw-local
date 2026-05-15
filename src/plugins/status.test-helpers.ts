@@ -59,6 +59,7 @@ export function createPluginRecord(
     musicGenerationProviderIds: [],
     webFetchProviderIds: [],
     webSearchProviderIds: [],
+    migrationProviderIds: [],
     contextEngineIds: [],
     memoryEmbeddingProviderIds: [],
     agentHarnessIds: [],
@@ -114,7 +115,13 @@ export function createCustomHook(params: {
 export function createPluginLoadResult(
   overrides: Partial<PluginLoadResult> & Pick<PluginLoadResult, "plugins"> = { plugins: [] },
 ): PluginLoadResult {
-  const { plugins, realtimeTranscriptionProviders, realtimeVoiceProviders, ...rest } = overrides;
+  const {
+    plugins,
+    migrationProviders,
+    realtimeTranscriptionProviders,
+    realtimeVoiceProviders,
+    ...rest
+  } = overrides;
   return {
     plugins,
     diagnostics: [],
@@ -128,6 +135,7 @@ export function createPluginLoadResult(
     musicGenerationProviders: [],
     webFetchProviders: [],
     webSearchProviders: [],
+    migrationProviders: migrationProviders ?? [],
     memoryEmbeddingProviders: [],
     textTransforms: [],
     agentHarnesses: [],

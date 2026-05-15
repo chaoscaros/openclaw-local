@@ -52,6 +52,7 @@ export type PluginManifestContractListKey =
   | "musicGenerationProviders"
   | "memoryEmbeddingProviders"
   | "webFetchProviders"
+  | "externalAuthProviders"
   | "migrationProviders"
   | "webSearchProviders";
 

@@ -78,6 +78,10 @@ export type CronState = {
   cronRunsQuery: string;
   cronRunsSortDir: CronSortDir;
   cronBusy: boolean;
+  cronAppliedTemplateId: string | null;
+  cronTemplateQuery: string;
+  cronTemplateRiskFilter: "all" | "safe" | "review";
+  cronRecentTemplateIds: string[];
 };
 
 export type CronModelSuggestionsState = {

@@ -15,6 +15,7 @@ import {
 } from "../../config/sessions.js";
 import type { TypingMode } from "../../config/types.js";
 import { resolveSessionTranscriptCandidates } from "../../gateway/session-utils.fs.js";
+import { logVerbose } from "../../globals.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
@@ -1091,38 +1092,58 @@ export async function runReplyAgent(params: {
     }
     await typingSignals.signalRunStart();
 
-    activeSessionEntry = await runPreflightCompactionIfNeeded({
-      cfg,
-      followupRun,
-      promptForEstimate: followupRun.prompt,
-      defaultModel,
-      agentCfgContextTokens,
-      sessionEntry: activeSessionEntry,
-      sessionStore: activeSessionStore,
-      sessionKey,
-      storePath,
-      isHeartbeat,
-      replyOperation,
-    });
+    const preflightCompactionStartedAt = Date.now();
+    activeSessionEntry = await (async () => {
+      try {
+        return await runPreflightCompactionIfNeeded({
+          cfg,
+          followupRun,
+          promptForEstimate: followupRun.prompt,
+          defaultModel,
+          agentCfgContextTokens,
+          sessionEntry: activeSessionEntry,
+          sessionStore: activeSessionStore,
+          sessionKey,
+          storePath,
+          isHeartbeat,
+          replyOperation,
+        });
+      } finally {
+        logVerbose(
+          `reply pre-run preflightCompaction: sessionKey=${sessionKey} ` +
+            `durationMs=${Date.now() - preflightCompactionStartedAt} isHeartbeat=${isHeartbeat}`,
+        );
+      }
+    })();
     preflightCompactionApplied =
       (activeSessionEntry?.compactionCount ?? 0) > prePreflightCompactionCount;
 
-    activeSessionEntry = await runMemoryFlushIfNeeded({
-      cfg,
-      followupRun,
-      promptForEstimate: followupRun.prompt,
-      sessionCtx,
-      opts,
-      defaultModel,
-      agentCfgContextTokens,
-      resolvedVerboseLevel,
-      sessionEntry: activeSessionEntry,
-      sessionStore: activeSessionStore,
-      sessionKey,
-      storePath,
-      isHeartbeat,
-      replyOperation,
-    });
+    const memoryFlushStartedAt = Date.now();
+    activeSessionEntry = await (async () => {
+      try {
+        return await runMemoryFlushIfNeeded({
+          cfg,
+          followupRun,
+          promptForEstimate: followupRun.prompt,
+          sessionCtx,
+          opts,
+          defaultModel,
+          agentCfgContextTokens,
+          resolvedVerboseLevel,
+          sessionEntry: activeSessionEntry,
+          sessionStore: activeSessionStore,
+          sessionKey,
+          storePath,
+          isHeartbeat,
+          replyOperation,
+        });
+      } finally {
+        logVerbose(
+          `reply pre-run memoryFlush: sessionKey=${sessionKey} ` +
+            `durationMs=${Date.now() - memoryFlushStartedAt} isHeartbeat=${isHeartbeat}`,
+        );
+      }
+    })();
 
     runFollowupTurn = createFollowupRunner({
       opts,

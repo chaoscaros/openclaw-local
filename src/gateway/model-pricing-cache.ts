@@ -250,7 +250,7 @@ function addConfiguredWebSearchPluginModels(params: {
   aliasIndex: ReturnType<typeof buildModelAliasIndex>;
   refs: Map<string, ModelRef>;
 }): void {
-  if (normalizePluginsConfig(params.config.plugins).enabled === false) {
+  if (!normalizePluginsConfig(params.config.plugins).enabled) {
     return;
   }
   for (const pluginId of resolveManifestContractPluginIds({

@@ -331,7 +331,9 @@ describe("chrome MCP page parsing", () => {
       factoryCalls += 1;
       const session = createFakeSession();
       if (factoryCalls === 1) {
-        session.client.callTool = vi.fn(async () => new Promise<never>(() => {})) as typeof session.client.callTool;
+        session.client.callTool = vi.fn(
+          async () => new Promise<never>(() => {}),
+        ) as typeof session.client.callTool;
       }
       return session;
     };
@@ -346,7 +348,7 @@ describe("chrome MCP page parsing", () => {
 
     await vi.advanceTimersByTimeAsync(25_001);
 
-    await expect(navPromise).rejects.toThrow(/Chrome MCP \"navigate_page\".*timed out/);
+    await expect(navPromise).rejects.toThrow(/Chrome MCP "navigate_page".*timed out/);
 
     vi.useRealTimers();
     const tabs = await listChromeMcpTabs("chrome-live");

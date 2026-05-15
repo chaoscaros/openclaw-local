@@ -80,6 +80,13 @@ export const telegramMessagingForTest: ChannelMessagingAdapter = {
   },
 };
 
+export const forumMessagingForTest: ChannelMessagingAdapter = {
+  inferTargetChatType: () => "group",
+  targetResolver: {
+    hint: "<forum target>",
+  },
+};
+
 export const whatsappMessagingForTest: ChannelMessagingAdapter = {
   inferTargetChatType: ({ to }) => {
     const normalized = normalizeWhatsAppTargetForTest(to);

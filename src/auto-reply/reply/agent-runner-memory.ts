@@ -233,6 +233,7 @@ async function readSessionLogSnapshot(params: {
   includeByteSize: boolean;
   includeUsage: boolean;
 }): Promise<SessionLogSnapshot> {
+  const startedAt = Date.now();
   const logPath = resolveSessionLogPath(
     params.sessionId,
     params.sessionEntry,
@@ -263,6 +264,13 @@ async function readSessionLogSnapshot(params: {
       snapshot.usage = undefined;
     }
   }
+
+  logVerbose(
+    `memory sessionLogSnapshot: sessionKey=${params.sessionKey} ` +
+      `durationMs=${Date.now() - startedAt} includeByteSize=${params.includeByteSize} ` +
+      `includeUsage=${params.includeUsage} byteSize=${snapshot.byteSize ?? "undefined"} ` +
+      `hasUsage=${snapshot.usage ? "true" : "false"}`,
+  );
 
   return snapshot;
 }
@@ -558,6 +566,12 @@ export async function runMemoryFlushIfNeeded(params: {
   let entry =
     params.sessionEntry ??
     (params.sessionKey ? params.sessionStore?.[params.sessionKey] : undefined);
+  if (entry && hasAlreadyFlushedForCurrentCompaction(entry)) {
+    logVerbose(
+      `memoryFlush skipped: sessionKey=${params.sessionKey} already flushed for compactionCount=${entry.compactionCount ?? 0}`,
+    );
+    return entry ?? params.sessionEntry;
+  }
   const contextWindowTokens = resolveMemoryFlushContextWindowTokens({
     cfg: params.cfg,
     provider: params.followupRun.run.provider,
@@ -587,7 +601,8 @@ export async function runMemoryFlushIfNeeded(params: {
     typeof promptTokenEstimate === "number" &&
     Number.isFinite(promptTokenEstimate) &&
     flushThreshold > 0 &&
-    persistedPromptTokens + promptTokenEstimate < flushThreshold - STALE_TOKEN_FALLBACK_BUFFER_TOKENS;
+    persistedPromptTokens + promptTokenEstimate <
+      flushThreshold - STALE_TOKEN_FALLBACK_BUFFER_TOKENS;
 
   // When totals are stale/unknown, derive prompt + last output from transcript so memory
   // flush can still be evaluated against projected next-input size.
@@ -606,9 +621,9 @@ export async function runMemoryFlushIfNeeded(params: {
 
   const shouldReadTranscript = Boolean(
     canAttemptFlush &&
-      entry &&
-      !hasStalePersistedLowTokenSnapshot &&
-      (!hasFreshPersistedPromptTokens || shouldReadTranscriptForOutput),
+    entry &&
+    !hasStalePersistedLowTokenSnapshot &&
+    (!hasFreshPersistedPromptTokens || shouldReadTranscriptForOutput),
   );
 
   const forceFlushTranscriptBytes = memoryFlushPlan.forceFlushTranscriptBytes;

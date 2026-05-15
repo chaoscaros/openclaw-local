@@ -180,7 +180,6 @@ export function createCronPromptExecutor(params: {
           runId: params.cronSession.sessionEntry.sessionId,
           requireExplicitMessageTarget: params.toolPolicy.requireExplicitMessageTarget,
           disableMessageTool: params.toolPolicy.disableMessageTool,
-          forceMessageTool: params.toolPolicy.forceMessageTool,
           allowTransientCooldownProbe: runOptions?.allowTransientCooldownProbe,
           abortSignal: params.abortSignal,
           bootstrapPromptWarningSignaturesSeen,
@@ -228,6 +227,7 @@ export async function executeCronRun(params: {
   toolPolicy: {
     requireExplicitMessageTarget: boolean;
     disableMessageTool: boolean;
+    forceMessageTool?: boolean;
   };
   skillsSnapshot: SkillSnapshot;
   agentPayload: AgentTurnPayload;
@@ -265,7 +265,10 @@ export async function executeCronRun(params: {
     timeoutMs: params.timeoutMs,
     messageChannel: params.resolvedDelivery.channel,
     resolvedDelivery: params.resolvedDelivery,
-    toolPolicy: params.toolPolicy,
+    toolPolicy: {
+      ...params.toolPolicy,
+      forceMessageTool: params.toolPolicy.forceMessageTool ?? false,
+    },
     skillsSnapshot: params.skillsSnapshot,
     agentPayload: params.agentPayload,
     liveSelection: params.liveSelection,

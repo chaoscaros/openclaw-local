@@ -1,17 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
-  persistAcpTurnTranscriptMock: vi.fn(async () => undefined),
-  deliverAgentCommandResultMock: vi.fn(async () => undefined),
-  updateSessionStoreAfterAgentRunMock: vi.fn(async () => undefined),
+  persistAcpTurnTranscriptMock: vi.fn(async (_params?: unknown) => undefined),
+  deliverAgentCommandResultMock: vi.fn(async (_params?: unknown) => undefined),
+  updateSessionStoreAfterAgentRunMock: vi.fn(async (_params?: unknown) => undefined),
   runWithModelFallbackMock: vi.fn(),
-  emitAgentEventMock: vi.fn(),
-  registerAgentRunContextMock: vi.fn(),
-  clearAgentRunContextMock: vi.fn(),
-  acpRunTurnMock: vi.fn(),
-  resolveAcpDispatchPolicyErrorMock: vi.fn(() => null),
-  resolveAcpExplicitTurnPolicyErrorMock: vi.fn(() => null),
-  resolveAcpAgentPolicyErrorMock: vi.fn(() => null),
+  emitAgentEventMock: vi.fn((..._args: unknown[]) => undefined),
+  registerAgentRunContextMock: vi.fn((..._args: unknown[]) => undefined),
+  clearAgentRunContextMock: vi.fn((..._args: unknown[]) => undefined),
+  acpRunTurnMock: vi.fn((_params?: unknown) => undefined),
+  resolveAcpDispatchPolicyErrorMock: vi.fn((_cfg?: unknown): Error | null => null),
+  resolveAcpExplicitTurnPolicyErrorMock: vi.fn((_cfg?: unknown): Error | null => null),
+  resolveAcpAgentPolicyErrorMock: vi.fn((_cfg?: unknown, _agent?: unknown): Error | null => null),
 }));
 
 vi.mock("./model-fallback.js", () => ({
@@ -48,7 +48,8 @@ vi.mock("./command/delivery.runtime.js", () => ({
 }));
 
 vi.mock("./command/session-store.runtime.js", () => ({
-  updateSessionStoreAfterAgentRun: (params: unknown) => state.updateSessionStoreAfterAgentRunMock(params),
+  updateSessionStoreAfterAgentRun: (params: unknown) =>
+    state.updateSessionStoreAfterAgentRunMock(params),
 }));
 
 vi.mock("./command/session.js", () => ({
@@ -71,9 +72,7 @@ vi.mock("./command/run-context.js", () => ({
 vi.mock("../acp/control-plane/manager.js", () => ({
   getAcpSessionManager: () => ({
     resolveSession: () => ({ kind: "ready", meta: { agent: "codex", cwd: "/tmp" } }),
-    runTurn: (params: {
-      onEvent?: (event: unknown) => void;
-    }) => {
+    runTurn: (params: { onEvent?: (event: unknown) => void }) => {
       state.acpRunTurnMock(params);
       params.onEvent?.({ type: "text_delta", text: "ok", stream: "output" });
       params.onEvent?.({ type: "done", stopReason: "end_turn" });
@@ -84,7 +83,8 @@ vi.mock("../acp/control-plane/manager.js", () => ({
 
 vi.mock("../acp/policy.js", () => ({
   resolveAcpDispatchPolicyError: (cfg: unknown) => state.resolveAcpDispatchPolicyErrorMock(cfg),
-  resolveAcpExplicitTurnPolicyError: (cfg: unknown) => state.resolveAcpExplicitTurnPolicyErrorMock(cfg),
+  resolveAcpExplicitTurnPolicyError: (cfg: unknown) =>
+    state.resolveAcpExplicitTurnPolicyErrorMock(cfg),
   resolveAcpAgentPolicyError: (cfg: unknown, agent: unknown) =>
     state.resolveAcpAgentPolicyErrorMock(cfg, agent),
 }));
@@ -112,7 +112,9 @@ vi.mock("../infra/agent-events.js", () => ({
   registerAgentRunContext: (...args: unknown[]) => state.registerAgentRunContextMock(...args),
   clearAgentRunContext: (...args: unknown[]) => state.clearAgentRunContextMock(...args),
 }));
-vi.mock("../infra/outbound/session-context.js", () => ({ buildOutboundSessionContext: () => ({}) }));
+vi.mock("../infra/outbound/session-context.js", () => ({
+  buildOutboundSessionContext: () => ({}),
+}));
 vi.mock("../logging/subsystem.js", () => ({ createSubsystemLogger: () => ({ warn: vi.fn() }) }));
 vi.mock("../routing/session-key.js", () => ({
   normalizeAgentId: (v: string) => v,
@@ -120,7 +122,9 @@ vi.mock("../routing/session-key.js", () => ({
 }));
 vi.mock("../runtime.js", () => ({ defaultRuntime: {} }));
 vi.mock("../sessions/level-overrides.js", () => ({ applyVerboseOverride: vi.fn() }));
-vi.mock("../sessions/model-overrides.js", () => ({ applyModelOverrideToSessionEntry: () => ({ updated: false }) }));
+vi.mock("../sessions/model-overrides.js", () => ({
+  applyModelOverrideToSessionEntry: () => ({ updated: false }),
+}));
 vi.mock("../sessions/send-policy.js", () => ({ resolveSendPolicy: () => "allow" }));
 vi.mock("../shared/string-coerce.js", async () => {
   const actual = await vi.importActual<typeof import("../shared/string-coerce.js")>(
@@ -134,7 +138,9 @@ vi.mock("../shared/string-coerce.js", async () => {
 vi.mock("../terminal/ansi.js", () => ({ sanitizeForLog: (s: string) => s }));
 vi.mock("../trajectory/runtime.js", () => ({ createTrajectoryRuntimeRecorder: () => ({}) }));
 vi.mock("../utils/message-channel.js", () => ({ resolveMessageChannel: () => "test" }));
-vi.mock("./agent-runtime-config.js", () => ({ resolveAgentRuntimeConfig: async () => ({ cfg: {} }) }));
+vi.mock("./agent-runtime-config.js", () => ({
+  resolveAgentRuntimeConfig: async () => ({ cfg: {} }),
+}));
 vi.mock("./agent-scope.js", () => ({
   listAgentIds: () => ["codex"],
   resolveAgentDir: () => "/tmp/agent",
@@ -160,21 +166,31 @@ vi.mock("./model-selection.js", () => ({
   resolveDefaultModelForAgent: () => ({ provider: "openai", model: "gpt-5.4" }),
   resolveThinkingDefault: () => undefined,
 }));
-vi.mock("./pi-embedded-runner/result-fallback-classifier.js", () => ({ classifyEmbeddedPiRunResultForModelFallback: () => null }));
+vi.mock("./pi-embedded-runner/result-fallback-classifier.js", () => ({
+  classifyEmbeddedPiRunResultForModelFallback: () => null,
+}));
 vi.mock("./provider-auth-aliases.js", () => ({ resolveProviderIdForAuth: (v: string) => v }));
 vi.mock("./spawned-context.js", () => ({ normalizeSpawnedRunMetadata: (v: unknown) => v ?? {} }));
 vi.mock("./timeout.js", () => ({ resolveAgentTimeoutMs: () => 30000 }));
-vi.mock("./workspace.js", () => ({ ensureAgentWorkspace: async () => ({ dir: "/tmp/workspace" }) }));
+vi.mock("./workspace.js", () => ({
+  ensureAgentWorkspace: async () => ({ dir: "/tmp/workspace" }),
+}));
 
 describe("agent-command ACP bridge", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     state.deliverAgentCommandResultMock.mockResolvedValue(undefined);
     state.updateSessionStoreAfterAgentRunMock.mockResolvedValue(undefined);
-    state.runWithModelFallbackMock.mockImplementation(async (params: { run: (provider: string, model: string) => Promise<unknown>; provider: string; model: string }) => {
-      const result = await params.run(params.provider, params.model);
-      return { result, provider: params.provider, model: params.model, attempts: [] };
-    });
+    state.runWithModelFallbackMock.mockImplementation(
+      async (params: {
+        run: (provider: string, model: string) => Promise<unknown>;
+        provider: string;
+        model: string;
+      }) => {
+        const result = await params.run(params.provider, params.model);
+        return { result, provider: params.provider, model: params.model, attempts: [] };
+      },
+    );
     state.resolveAcpDispatchPolicyErrorMock.mockReturnValue(null);
     state.resolveAcpExplicitTurnPolicyErrorMock.mockReturnValue(null);
     state.resolveAcpAgentPolicyErrorMock.mockReturnValue(null);

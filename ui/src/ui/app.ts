@@ -196,6 +196,24 @@ function syncChatChangeReviewSelection(host: {
   host.chatChangeReviewSelectedPath = files[0]?.path ?? null;
 }
 
+function clearChatChangeReview(host: {
+  chatChangeReview: ChangeReviewPayload | null;
+  chatChangeReviewSelectedPath: string | null;
+  chatChangeReviewOpen: boolean;
+  chatChangeReviewAction?: unknown;
+}) {
+  host.chatChangeReview = null;
+  host.chatChangeReviewSelectedPath = null;
+  host.chatChangeReviewOpen = false;
+  host.chatChangeReviewAction = null;
+}
+
+function isChangeReviewModeDisabled(
+  settings?: Pick<UiSettings, "changeReviewModeEnabled">,
+): boolean {
+  return settings?.changeReviewModeEnabled === false;
+}
+
 function resolveOnboardingMode(): boolean {
   if (!window.location.search) {
     return false;
@@ -805,9 +823,12 @@ export class OpenClawApp extends LitElement {
   }
 
   async loadChangeReviewStatus(sessionKey = this.sessionKey) {
+    if (isChangeReviewModeDisabled(this.settings)) {
+      clearChatChangeReview(this);
+      return;
+    }
     if (!this.client || !this.connected) {
-      this.chatChangeReview = null;
-      syncChatChangeReviewSelection(this);
+      clearChatChangeReview(this);
       return;
     }
     try {
@@ -817,17 +838,24 @@ export class OpenClawApp extends LitElement {
       if (sessionKey !== this.sessionKey) {
         return;
       }
+      if (isChangeReviewModeDisabled(this.settings)) {
+        clearChatChangeReview(this);
+        return;
+      }
       this.chatChangeReview = result?.pending ? result : null;
       syncChatChangeReviewSelection(this);
     } catch {
       if (sessionKey === this.sessionKey) {
-        this.chatChangeReview = null;
-        syncChatChangeReviewSelection(this);
+        clearChatChangeReview(this);
       }
     }
   }
 
   async captureChangeReview(sessionKey = this.sessionKey, runId?: string) {
+    if (isChangeReviewModeDisabled(this.settings)) {
+      clearChatChangeReview(this);
+      return;
+    }
     if (!this.client || !this.connected) {
       return;
     }
@@ -845,7 +873,15 @@ export class OpenClawApp extends LitElement {
       if (!result?.pending && runId) {
         for (const waitMs of CHANGE_REVIEW_READY_WAIT_MS) {
           await waitForChangeReviewCaptureRetry(waitMs);
-          if (!this.client || !this.connected || sessionKey !== this.sessionKey) {
+          if (
+            !this.client ||
+            !this.connected ||
+            sessionKey !== this.sessionKey ||
+            isChangeReviewModeDisabled(this.settings)
+          ) {
+            if (sessionKey === this.sessionKey && isChangeReviewModeDisabled(this.settings)) {
+              clearChatChangeReview(this);
+            }
             return;
           }
           result = await requestCapture();
@@ -861,12 +897,15 @@ export class OpenClawApp extends LitElement {
       if (sessionKey !== this.sessionKey) {
         return;
       }
+      if (isChangeReviewModeDisabled(this.settings)) {
+        clearChatChangeReview(this);
+        return;
+      }
       this.chatChangeReview = result?.pending ? result : null;
       syncChatChangeReviewSelection(this);
     } catch {
       if (sessionKey === this.sessionKey) {
-        this.chatChangeReview = null;
-        syncChatChangeReviewSelection(this);
+        clearChatChangeReview(this);
       }
     }
   }
@@ -876,7 +915,7 @@ export class OpenClawApp extends LitElement {
     if (!entry || !entry.changeReviewModeEnabled) {
       return false;
     }
-    if (!this.settings.changeReviewModeEnabled) {
+    if (isChangeReviewModeDisabled(this.settings)) {
       this.resumedDevExecuteBySessionKey.delete(sessionKey);
       return false;
     }
@@ -898,6 +937,10 @@ export class OpenClawApp extends LitElement {
 
   closeChangeReview() {
     this.chatChangeReviewOpen = false;
+  }
+
+  clearChangeReviewCard() {
+    clearChatChangeReview(this);
   }
 
   selectChangeReviewFile(path: string) {

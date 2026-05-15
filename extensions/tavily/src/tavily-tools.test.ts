@@ -1,7 +1,7 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-runtime";
-import { createTestPluginApi } from "../../../test/helpers/plugins/plugin-api.ts";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestPluginApi } from "../../../test/helpers/plugins/plugin-api.ts";
 import {
   DEFAULT_TAVILY_BASE_URL,
   DEFAULT_TAVILY_EXTRACT_TIMEOUT_SECONDS,
@@ -182,10 +182,12 @@ describe("tavily tools", () => {
 
     tavilyPlugin.register(api);
     const searchFactory = registeredTools.find(
-      (tool, index) => registeredOptions[index]?.name === "tavily_search" && typeof tool === "function",
+      (tool, index) =>
+        registeredOptions[index]?.name === "tavily_search" && typeof tool === "function",
     );
     const extractFactory = registeredTools.find(
-      (tool, index) => registeredOptions[index]?.name === "tavily_extract" && typeof tool === "function",
+      (tool, index) =>
+        registeredOptions[index]?.name === "tavily_extract" && typeof tool === "function",
     );
     if (typeof searchFactory !== "function" || typeof extractFactory !== "function") {
       throw new Error("Expected Tavily tools to register as runtime-context factories");
@@ -197,7 +199,7 @@ describe("tavily tools", () => {
     } as never);
     const extractTool = extractFactory({
       config: rawConfig,
-      getRuntimeConfig: () => runtimeConfig,
+      runtimeConfig,
     } as never);
     if (Array.isArray(searchTool) || !searchTool || Array.isArray(extractTool) || !extractTool) {
       throw new Error("Expected single Tavily tool definitions");

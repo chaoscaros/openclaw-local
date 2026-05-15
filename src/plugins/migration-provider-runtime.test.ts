@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type { PluginRegistry } from "./registry-types.js";
+import type { ManifestContractRuntimePluginResolution } from "./manifest-contract-runtime.js";
 import { createEmptyPluginRegistry } from "./registry-empty.js";
+import type { PluginRegistry } from "./registry-types.js";
 
 const mocks = vi.hoisted(() => ({
-  resolveRuntimePluginRegistry: vi.fn<(params?: unknown) => PluginRegistry | undefined>(() => undefined),
-  resolveManifestContractRuntimePluginResolution: vi.fn(
-    () => ({ pluginIds: [], bundledCompatPluginIds: [] }),
+  resolveRuntimePluginRegistry: vi.fn<(params?: unknown) => PluginRegistry | undefined>(
+    () => undefined,
   ),
+  resolveManifestContractRuntimePluginResolution: vi.fn<
+    () => ManifestContractRuntimePluginResolution
+  >(() => ({ pluginIds: [], bundledCompatPluginIds: [] })),
   withBundledPluginAllowlistCompat: vi.fn(
     ({ config }: { config?: OpenClawConfig; pluginIds: string[] }) => config,
   ),
@@ -24,7 +27,8 @@ vi.mock("./loader.js", () => ({
 }));
 
 vi.mock("./manifest-contract-runtime.js", () => ({
-  resolveManifestContractRuntimePluginResolution: mocks.resolveManifestContractRuntimePluginResolution,
+  resolveManifestContractRuntimePluginResolution:
+    mocks.resolveManifestContractRuntimePluginResolution,
 }));
 
 vi.mock("./bundled-compat.js", () => ({

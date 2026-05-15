@@ -1,9 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { PluginManifestRecord, PluginManifestRegistry } from "./manifest-registry.js";
+import type { PluginRegistrySnapshot } from "./plugin-registry.js";
 
 const mocks = vi.hoisted(() => ({
-  loadPluginRegistrySnapshot: vi.fn(() => ({ plugins: [], diagnostics: [] })),
-  loadPluginManifestRegistry: vi.fn(() => ({ plugins: [], diagnostics: [] })),
+  loadPluginRegistrySnapshot: vi.fn<() => PluginRegistrySnapshot>(() => ({
+    plugins: [],
+    diagnostics: [],
+  })),
+  loadPluginManifestRegistry: vi.fn<() => PluginManifestRegistry>(() => ({
+    plugins: [],
+    diagnostics: [],
+  })),
 }));
 
 vi.mock("./plugin-registry.js", () => ({
@@ -16,11 +24,30 @@ vi.mock("./manifest-registry.js", () => ({
 
 let resolveManifestContractRuntimePluginResolution: typeof import("./manifest-contract-runtime.js").resolveManifestContractRuntimePluginResolution;
 
+function createManifestPlugin(
+  params: Pick<PluginManifestRecord, "id" | "origin" | "contracts">,
+): PluginManifestRecord {
+  return {
+    id: params.id,
+    channels: [],
+    providers: [],
+    cliBackends: [],
+    skills: [],
+    hooks: [],
+    origin: params.origin,
+    rootDir: `/tmp/${params.id}`,
+    source: params.origin,
+    manifestPath: `/tmp/${params.id}/openclaw.plugin.json`,
+    contracts: params.contracts,
+  };
+}
+
 describe("manifest contract runtime", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     const runtime = await import("./manifest-contract-runtime.js");
-    resolveManifestContractRuntimePluginResolution = runtime.resolveManifestContractRuntimePluginResolution;
+    resolveManifestContractRuntimePluginResolution =
+      runtime.resolveManifestContractRuntimePluginResolution;
   });
 
   it("returns bundled compat ids plus enabled contract owners", () => {
@@ -37,21 +64,21 @@ describe("manifest contract runtime", () => {
     });
     mocks.loadPluginManifestRegistry.mockReturnValue({
       plugins: [
-        {
+        createManifestPlugin({
           id: "bundledMigration",
           origin: "bundled",
           contracts: { migrationProviders: ["bundled-import"] },
-        },
-        {
+        }),
+        createManifestPlugin({
           id: "workspaceMigration",
           origin: "workspace",
           contracts: { migrationProviders: ["workspace-import"] },
-        },
-        {
+        }),
+        createManifestPlugin({
           id: "disabledMigration",
           origin: "workspace",
           contracts: { migrationProviders: ["disabled-import"] },
-        },
+        }),
       ],
       diagnostics: [],
     });
@@ -79,11 +106,11 @@ describe("manifest contract runtime", () => {
     });
     mocks.loadPluginManifestRegistry.mockReturnValue({
       plugins: [
-        {
+        createManifestPlugin({
           id: "workspaceMigration",
           origin: "workspace",
           contracts: { migrationProviders: ["workspace-import", "other-import"] },
-        },
+        }),
       ],
       diagnostics: [],
     });

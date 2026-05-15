@@ -31,6 +31,13 @@ vi.mock("../../config/sessions/paths.js", () => ({
 
 const storeRuntimeLoads = vi.hoisted(() => vi.fn());
 const updateSessionStore = vi.hoisted(() => vi.fn());
+const ensureSkillSnapshotMock = vi.hoisted(() =>
+  vi.fn().mockImplementation(async ({ sessionEntry, systemSent }) => ({
+    sessionEntry,
+    systemSent,
+    skillsSnapshot: undefined,
+  })),
+);
 
 vi.mock("../../config/sessions/store.runtime.js", () => {
   storeRuntimeLoads();
@@ -92,11 +99,8 @@ vi.mock("./route-reply.runtime.js", () => ({
 }));
 
 vi.mock("./session-updates.runtime.js", () => ({
-  ensureSkillSnapshot: vi.fn().mockImplementation(async ({ sessionEntry, systemSent }) => ({
-    sessionEntry,
-    systemSent,
-    skillsSnapshot: undefined,
-  })),
+  ensureSkillSnapshot: (...args: Parameters<typeof ensureSkillSnapshotMock>) =>
+    ensureSkillSnapshotMock(...args),
 }));
 
 vi.mock("./session-system-events.js", () => ({
@@ -219,6 +223,12 @@ describe("runPreparedReply media-only handling", () => {
   beforeEach(async () => {
     storeRuntimeLoads.mockClear();
     updateSessionStore.mockReset();
+    ensureSkillSnapshotMock.mockReset();
+    ensureSkillSnapshotMock.mockImplementation(async ({ sessionEntry, systemSent }) => ({
+      sessionEntry,
+      systemSent,
+      skillsSnapshot: undefined,
+    }));
     vi.clearAllMocks();
     replyRunTesting.resetReplyRunRegistry();
   });
@@ -227,6 +237,49 @@ describe("runPreparedReply media-only handling", () => {
     await loadFreshGetReplyRunModuleForTest();
 
     expect(storeRuntimeLoads).not.toHaveBeenCalled();
+  });
+
+  it("notifies onAgentRunStart before waiting for skill snapshot hydration and only once", async () => {
+    let releaseSkillSnapshot: (() => void) | undefined;
+    const skillSnapshotGate = new Promise<void>((resolve) => {
+      releaseSkillSnapshot = resolve;
+    });
+    ensureSkillSnapshotMock.mockImplementation(async ({ sessionEntry, systemSent }) => {
+      await skillSnapshotGate;
+      return {
+        sessionEntry,
+        systemSent,
+        skillsSnapshot: undefined,
+      };
+    });
+
+    const onAgentRunStart = vi.fn();
+    const resultPromise = runPreparedReply(
+      baseParams({
+        opts: {
+          runId: "run-early",
+          onAgentRunStart,
+        },
+      }),
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onAgentRunStart).toHaveBeenCalledTimes(1);
+    expect(onAgentRunStart).toHaveBeenCalledWith("run-early");
+    expect(runReplyAgent).not.toHaveBeenCalled();
+
+    releaseSkillSnapshot?.();
+
+    const result = await resultPromise;
+    expect(result).toEqual({ text: "ok" });
+    expect(onAgentRunStart).toHaveBeenCalledTimes(1);
+    expect(runReplyAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        opts: expect.objectContaining({ runId: "run-early" }),
+      }),
+    );
   });
 
   it("passes approved elevated defaults to the runner", async () => {

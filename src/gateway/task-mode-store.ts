@@ -993,6 +993,80 @@ function collectLinkedTaskSessions(
   );
 }
 
+function buildTaskModeSyncComparable(task: TaskModeRecord) {
+  return {
+    progressSummary: task.progressSummary ?? null,
+    completedSummary: task.completedSummary ?? null,
+    nextStep: task.nextStep ?? null,
+    todoItems: task.todoItems ?? [],
+    resourceContext: task.resourceContext ?? [],
+    timeline: task.timeline ?? [],
+    lastSessionKey: task.lastSessionKey ?? null,
+    linkedRuntimeTaskIds: task.linkedRuntimeTaskIds ?? [],
+    latestRuntimeTaskId: task.latestRuntimeTaskId ?? null,
+    latestRunId: task.latestRunId ?? null,
+  };
+}
+
+function collectDirectLinkedTaskSession(
+  directLoaded: ReturnType<typeof loadSessionEntry>,
+  fallbackSessionKey: string,
+): Array<{ sessionKey: string; entry: SessionEntry; storePath: string }> {
+  if (!directLoaded.entry?.sessionId) {
+    return [];
+  }
+  return [
+    {
+      sessionKey:
+        fallbackSessionKey.trim() ||
+        directLoaded.legacyKey?.trim() ||
+        directLoaded.canonicalKey?.trim() ||
+        fallbackSessionKey,
+      entry: directLoaded.entry,
+      storePath: directLoaded.storePath,
+    },
+  ];
+}
+
+function canSkipBroadLinkedTaskSessionScan(params: {
+  task: TaskModeRecord;
+  targetSessionKey: string;
+  directLoaded: ReturnType<typeof loadSessionEntry>;
+}) {
+  const { task, targetSessionKey, directLoaded } = params;
+  if (!task.lastSyncedAt) {
+    return false;
+  }
+  const directUpdatedAt = directLoaded.entry?.updatedAt ?? 0;
+  if (directUpdatedAt > task.lastSyncedAt) {
+    return false;
+  }
+  const knownKeys = new Set(
+    [targetSessionKey, directLoaded.canonicalKey, directLoaded.legacyKey]
+      .map((key) => key?.trim())
+      .filter(Boolean),
+  );
+  const lastSessionKey = task.lastSessionKey?.trim() ?? "";
+  if (!lastSessionKey || !knownKeys.has(lastSessionKey)) {
+    return false;
+  }
+  return true;
+}
+
+function hasLinkedTaskSessionChanges(
+  task: TaskModeRecord,
+  linkedSessions: Array<{ sessionKey: string; entry: SessionEntry; storePath: string }>,
+  lastLinkedSession: string,
+) {
+  if (!task.lastSyncedAt || linkedSessions.length === 0) {
+    return true;
+  }
+  if ((task.lastSessionKey ?? "") !== lastLinkedSession) {
+    return true;
+  }
+  return linkedSessions.some((item) => (item.entry.updatedAt ?? 0) > task.lastSyncedAt!);
+}
+
 function buildTaskProgressSyncSnapshot(messages: unknown[], task: TaskModeRecord) {
   const parsed: SyncMessageEntry[] = [];
   for (const message of messages) {
@@ -1300,11 +1374,31 @@ export async function syncTaskModeTaskProgress(params: {
       return { task: current, synced: false };
     }
     const directLoaded = loadSessionEntry(targetSessionKey);
-    const linkedSessions = collectLinkedTaskSessions(current, [
+    const preferredSessionKeys = [
       targetSessionKey,
       directLoaded.canonicalKey ?? "",
       directLoaded.legacyKey ?? "",
-    ]);
+    ];
+    const linkedSessions = canSkipBroadLinkedTaskSessionScan({
+      task: current,
+      targetSessionKey,
+      directLoaded,
+    })
+      ? collectDirectLinkedTaskSession(directLoaded, targetSessionKey)
+      : collectLinkedTaskSessions(current, preferredSessionKeys);
+    const lastLinkedSession =
+      linkedSessions.at(-1)?.sessionKey ?? directLoaded.canonicalKey ?? targetSessionKey;
+    if (!hasLinkedTaskSessionChanges(current, linkedSessions, lastLinkedSession)) {
+      const runtimeSynced = syncTaskModeRuntimeLinks(current);
+      const changed =
+        JSON.stringify(buildTaskModeSyncComparable(current)) !==
+        JSON.stringify(buildTaskModeSyncComparable(runtimeSynced));
+      store.tasks[index] = runtimeSynced;
+      if (changed) {
+        await saveTaskModeStore(store);
+      }
+      return { task: store.tasks[index] ?? null, synced: changed };
+    }
     const messages = linkedSessions.flatMap((item) =>
       readSessionMessages(item.entry.sessionId, item.storePath, item.entry.sessionFile),
     );
@@ -1312,8 +1406,6 @@ export async function syncTaskModeTaskProgress(params: {
     if (!snapshot) {
       return { task: current, synced: false };
     }
-    const lastLinkedSession =
-      linkedSessions.at(-1)?.sessionKey ?? directLoaded.canonicalKey ?? targetSessionKey;
     const now = Date.now();
     const normalizedNext = normalizeTaskRecord({
       ...current,
@@ -1335,30 +1427,8 @@ export async function syncTaskModeTaskProgress(params: {
     }).task;
     const next = syncTaskModeRuntimeLinks(reconciledNext);
     const changed =
-      JSON.stringify({
-        progressSummary: current.progressSummary ?? null,
-        completedSummary: current.completedSummary ?? null,
-        nextStep: current.nextStep ?? null,
-        todoItems: current.todoItems ?? [],
-        resourceContext: current.resourceContext ?? [],
-        timeline: current.timeline ?? [],
-        lastSessionKey: current.lastSessionKey ?? null,
-        linkedRuntimeTaskIds: current.linkedRuntimeTaskIds ?? [],
-        latestRuntimeTaskId: current.latestRuntimeTaskId ?? null,
-        latestRunId: current.latestRunId ?? null,
-      }) !==
-      JSON.stringify({
-        progressSummary: next.progressSummary ?? null,
-        completedSummary: next.completedSummary ?? null,
-        nextStep: next.nextStep ?? null,
-        todoItems: next.todoItems ?? [],
-        resourceContext: next.resourceContext ?? [],
-        timeline: next.timeline ?? [],
-        lastSessionKey: next.lastSessionKey ?? null,
-        linkedRuntimeTaskIds: next.linkedRuntimeTaskIds ?? [],
-        latestRuntimeTaskId: next.latestRuntimeTaskId ?? null,
-        latestRunId: next.latestRunId ?? null,
-      });
+      JSON.stringify(buildTaskModeSyncComparable(current)) !==
+      JSON.stringify(buildTaskModeSyncComparable(next));
     store.tasks[index] = next;
     if (changed) {
       await saveTaskModeStore(store);

@@ -270,7 +270,7 @@ describe("runReplyAgent auto-compaction token update", () => {
       },
       typing,
       sessionEntry: sessionEntry as SessionEntry,
-      sessionStore: await loadSessionStore(storePath),
+      sessionStore: loadSessionStore(storePath),
       sessionKey,
       storePath,
       defaultModel: "claude",

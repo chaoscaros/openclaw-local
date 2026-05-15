@@ -1,6 +1,10 @@
+import fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearMemoryPluginState, registerMemoryFlushPlanResolver } from "../../plugins/memory-state.js";
 import type { SessionEntry } from "../../config/sessions.js";
+import {
+  clearMemoryPluginState,
+  registerMemoryFlushPlanResolver,
+} from "../../plugins/memory-state.js";
 
 const { readSessionMessagesMock } = vi.hoisted(() => ({
   readSessionMessagesMock: vi.fn(() => []),
@@ -138,5 +142,47 @@ describe("agent-runner-memory fast path", () => {
 
     expect(result).toBe(entry);
     expect(runEmbeddedPiAgentMock).not.toHaveBeenCalled();
+  });
+
+  it("skips all session-log reads after memory already flushed for the current compaction", async () => {
+    registerMemoryFlushPlanResolver(() => ({
+      softThresholdTokens: 4000,
+      forceFlushTranscriptBytes: 1024,
+      reserveTokensFloor: 20000,
+      prompt: "flush",
+      systemPrompt: "flush-system",
+      relativePath: "memory/flush.md",
+    }));
+    const statSpy = vi.spyOn(fs.promises, "stat");
+    const openSpy = vi.spyOn(fs.promises, "open");
+    const entry = {
+      sessionId: "session",
+      totalTokens: 80_000,
+      totalTokensFresh: true,
+      compactionCount: 3,
+      memoryFlushCompactionCount: 3,
+      updatedAt: Date.now(),
+    } as SessionEntry;
+
+    const result = await runMemoryFlushIfNeeded({
+      cfg: {},
+      followupRun: createFollowupRun(),
+      promptForEstimate: "hello",
+      sessionCtx: { Provider: "webchat" } as never,
+      defaultModel: "claude",
+      resolvedVerboseLevel: "off",
+      sessionEntry: entry,
+      sessionStore: { main: entry },
+      sessionKey: "main",
+      storePath: "/tmp/store.json",
+      isHeartbeat: false,
+      replyOperation: createReplyOperation(),
+    });
+
+    expect(result).toBe(entry);
+    expect(runEmbeddedPiAgentMock).not.toHaveBeenCalled();
+    expect(readSessionMessagesMock).not.toHaveBeenCalled();
+    expect(statSpy).not.toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
   });
 });

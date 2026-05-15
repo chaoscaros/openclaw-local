@@ -85,6 +85,8 @@ export type AppViewState = {
   fallbackStatus: FallbackStatus | null;
   chatAvatarUrl: string | null;
   chatThinkingLevel: string | null;
+  dreamingAssistApplied: boolean | null;
+  dreamingAssistReason: "disabled" | "no_strategy" | "scope_mismatch" | "expired" | null;
   chatModelOverrides: Record<string, ChatModelOverride | null>;
   chatModelsLoading: boolean;
   chatModelCatalog: ModelCatalogEntry[];
@@ -97,7 +99,24 @@ export type AppViewState = {
     files?: Array<{ path: string; status: string }>;
     diffText?: string;
   } | null;
+  chatChangeReviewOpen: boolean;
+  chatChangeReviewSelectedPath: string | null;
+  chatChangeReviewAction: {
+    type: "apply" | "revert";
+    path?: string | null;
+    hunkId?: string | null;
+    groupId?: string | null;
+  } | null;
   loadChangeReviewStatus?: (sessionKey?: string) => Promise<void>;
+  openChangeReview: () => void;
+  closeChangeReview: () => void;
+  selectChangeReviewFile: (path: string) => void;
+  applyChangeReview: (id: string, path?: string | null) => Promise<void>;
+  revertChangeReview: (id: string, path?: string | null) => Promise<void>;
+  applyChangeReviewGroup: (id: string, path: string, groupId: string) => Promise<void>;
+  revertChangeReviewGroup: (id: string, path: string, groupId: string) => Promise<void>;
+  applyChangeReviewHunk: (id: string, path: string, hunkId: string) => Promise<void>;
+  revertChangeReviewHunk: (id: string, path: string, hunkId: string) => Promise<void>;
   chatManualRefreshInFlight: boolean;
   nodesLoading: boolean;
   nodes: Array<Record<string, unknown>>;
@@ -370,6 +389,10 @@ export type AppViewState = {
   | "cronRunsQuery"
   | "cronRunsSortDir"
   | "cronBusy"
+  | "cronAppliedTemplateId"
+  | "cronTemplateQuery"
+  | "cronTemplateRiskFilter"
+  | "cronRecentTemplateIds"
 > &
   Pick<CronModelSuggestionsState, "cronModelSuggestions"> & {
     skillsLoading: boolean;
@@ -433,7 +456,10 @@ export type AppViewState = {
       string,
       { changeReviewModeEnabled: boolean; sourceSessionKey: string }
     >;
-    resumedDevExecuteBySessionKey: Map<string, { changeReviewModeEnabled: boolean; remainingTurns: number }>;
+    resumedDevExecuteBySessionKey: Map<
+      string,
+      { changeReviewModeEnabled: boolean; remainingTurns: number }
+    >;
     connect: () => void;
     setTab: (tab: Tab) => void;
     setTheme: (theme: ThemeName, context?: ThemeTransitionContext) => void;
@@ -488,6 +514,7 @@ export type AppViewState = {
     handleSendChat: (messageOverride?: string, opts?: { restoreDraft?: boolean }) => Promise<void>;
     handleAbortChat: () => Promise<void>;
     removeQueuedMessage: (id: string) => void;
+    clearChangeReviewCard: () => void;
     handleChatScroll: (event: Event) => void;
     resetToolStream: () => void;
     resetChatScroll: () => void;

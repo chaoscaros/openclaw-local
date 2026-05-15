@@ -50,7 +50,7 @@ describe("createPluginJitiLoader", () => {
   it("uses the bundled plugin module path as the jiti filename", async () => {
     const jitiLoaderCalls: Array<{ modulePath: string; jitiFilename?: string }> = [];
     vi.doMock("jiti", () => ({
-      createJiti: (modulePath: string, options?: { filename?: string }) => {
+      createJiti: (modulePath: string) => {
         jitiLoaderCalls.push({
           modulePath,
           jitiFilename: modulePath,

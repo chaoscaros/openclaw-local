@@ -466,16 +466,6 @@ function buildChangeReviewSegmentLabel(
   return `第 ${occurrence} 段`;
 }
 
-function resolveChangeReviewGroup(
-  file: ChangeReviewFile,
-  groupId?: string,
-): ChangeReviewGroup | null {
-  if (!groupId) {
-    return (file.groups ?? [])[0] ?? null;
-  }
-  return (file.groups ?? []).find((group) => group.groupId === groupId) ?? null;
-}
-
 function resolveChangeReviewGroupFirstHunk(
   file: ChangeReviewFile,
   group: ChangeReviewGroup,
@@ -568,8 +558,9 @@ function buildChangeReviewMinimapEntries(file: ChangeReviewFile): ChangeReviewMi
       previousHunkId = currentHunkId;
       continue;
     }
-    const occurrence = (occurrenceCounts.get(currentHunkId) ?? 0) + 1;
-    occurrenceCounts.set(currentHunkId, occurrence);
+    const hunkId = hunk.hunkId;
+    const occurrence = (occurrenceCounts.get(hunkId) ?? 0) + 1;
+    occurrenceCounts.set(hunkId, occurrence);
     const visualRange = resolveChangeReviewVisualRange(
       hunk.beforeStartLine,
       hunk.beforeEndLine,
@@ -582,18 +573,18 @@ function buildChangeReviewMinimapEntries(file: ChangeReviewFile): ChangeReviewMi
     }
     laneEndLines[lane] = Math.max(laneEndLines[lane], visualRange.endLine);
     entries.push({
-      key: `${currentHunkId}::${occurrence}`,
-      anchorId: buildChangeReviewRenderedBlockAnchorId(file.path, currentHunkId, occurrence),
+      key: `${hunkId}::${occurrence}`,
+      anchorId: buildChangeReviewRenderedBlockAnchorId(file.path, hunkId, occurrence),
       displayIndex: hunk.hunkId.replace(/^hunk-/, "#"),
       label: `改动块 ${hunk.hunkId.replace(/^hunk-/, "#")}`,
       changeType: hunk.changeType,
       startLine: visualRange.startLine,
       endLine: visualRange.endLine,
       sortLine: visualRange.startLine,
-      hunkId: currentHunkId,
+      hunkId,
       lane,
     });
-    previousHunkId = currentHunkId;
+    previousHunkId = hunkId;
   }
   return entries;
 }
@@ -661,27 +652,6 @@ function scrollToChangeReviewDiff(file: ChangeReviewFile, entry: ChangeReviewMin
     return;
   }
   run();
-}
-
-function handleLocateChangeReviewGroup(file: ChangeReviewFile, groupId: string) {
-  const group = resolveChangeReviewGroup(file, groupId);
-  const firstHunk = group ? resolveChangeReviewGroupFirstHunk(file, group) : null;
-  if (!group || !firstHunk) {
-    return;
-  }
-  scrollToChangeReviewDiff(file, {
-    key: group.groupId,
-    anchorId: buildChangeReviewRenderedBlockAnchorId(file.path, firstHunk.hunkId, 1),
-    displayIndex: group.groupId,
-    label: group.title,
-    changeType: group.changeType,
-    startLine: group.afterStartLine || group.beforeStartLine || 1,
-    endLine: group.afterEndLine || group.beforeEndLine || group.afterStartLine || 1,
-    sortLine: group.afterStartLine || group.beforeStartLine || 1,
-    hunkId: firstHunk.hunkId,
-    groupId,
-    lane: 0,
-  });
 }
 
 function renderChangeReviewMiniMap(file: ChangeReviewFile) {

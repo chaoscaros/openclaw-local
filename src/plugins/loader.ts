@@ -1127,7 +1127,6 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     preferSetupRuntimeForChannelPlugins,
     shouldActivate,
     shouldLoadModules,
-    shouldInstallBundledRuntimeDeps,
     cacheKey,
     runtimeSubagentMode,
   } = resolvePluginLoadCacheContext(options);
@@ -1424,7 +1423,9 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
       const registrationMode = enableState.enabled
         ? !validateOnly &&
           (options.forceSetupOnlyChannelPlugins === true
-            ? includeSetupOnlyChannelPlugins && onlyPluginIdSet && manifestRecord.channels.length > 0
+            ? includeSetupOnlyChannelPlugins &&
+              onlyPluginIdSet &&
+              manifestRecord.channels.length > 0
             : shouldLoadChannelPluginInSetupRuntime({
                 manifestChannels: manifestRecord.channels,
                 setupSource: manifestRecord.setupSource,

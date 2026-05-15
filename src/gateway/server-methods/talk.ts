@@ -1,6 +1,5 @@
 import { loadConfig, readConfigFileSnapshot } from "../../config/config.js";
 import { redactConfigObject } from "../../config/redact-snapshot.js";
-import { resolveSecretInputRef } from "../../config/types.secrets.js";
 import {
   buildTalkConfigResponse,
   normalizeTalkSection,
@@ -8,6 +7,7 @@ import {
 } from "../../config/talk.js";
 import type { TalkConfigResponse, TalkProviderConfig } from "../../config/types.gateway.js";
 import type { OpenClawConfig, TtsConfig, TtsProviderConfigMap } from "../../config/types.js";
+import { resolveSecretInputRef } from "../../config/types.secrets.js";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalLowercaseString,
@@ -201,7 +201,9 @@ function buildTalkSpeakOverrides(
   };
 }
 
-function stripUnresolvedSecretApiKeyFromRecord(config: Record<string, unknown>): Record<string, unknown> {
+function stripUnresolvedSecretApiKeyFromRecord(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
   const { ref } = resolveSecretInputRef({ value: config.apiKey });
   if (!ref) {
     return config;
@@ -328,7 +330,6 @@ function resolveTalkResponseFromConfig(params: {
       : stripUnresolvedSecretInputsFromBaseTtsProviders(sourceBaseTts);
   const sourceProviderConfig = sourceResolved?.config ?? {};
   const runtimeProviderConfig = runtimeResolved?.config ?? {};
-  const talkProviderConfig = sourceResolved?.config ?? runtimeResolved?.config ?? {};
   const providerInputConfig = stripUnresolvedSecretApiKey(
     Object.keys(runtimeProviderConfig).length > 0 ? runtimeProviderConfig : sourceProviderConfig,
   );

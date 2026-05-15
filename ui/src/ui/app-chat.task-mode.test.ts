@@ -5,13 +5,13 @@ import type { SessionsListResult } from "./types.ts";
 function buildHost(): ChatHost & { sessionsResult: SessionsListResult } {
   return {
     settings: {
-      gatewayUrl: '',
-      token: '',
-      locale: 'en',
-      sessionKey: 'main',
-      lastActiveSessionKey: 'main',
-      theme: 'claw',
-      themeMode: 'dark',
+      gatewayUrl: "",
+      token: "",
+      locale: "en",
+      sessionKey: "main",
+      lastActiveSessionKey: "main",
+      theme: "claw",
+      themeMode: "dark",
       splitRatio: 0.6,
       navWidth: 280,
       navCollapsed: false,
@@ -26,8 +26,8 @@ function buildHost(): ChatHost & { sessionsResult: SessionsListResult } {
       devSpecFirstEnabled: false,
       changeReviewModeEnabled: false,
     },
-    applySettings(next: import('./storage.ts').UiSettings) {
-      (this as { settings: import('./storage.ts').UiSettings }).settings = next;
+    applySettings(next: import("./storage.ts").UiSettings) {
+      (this as { settings: import("./storage.ts").UiSettings }).settings = next;
     },
     client: {} as never,
     chatMessages: [],
@@ -67,17 +67,17 @@ function buildHost(): ChatHost & { sessionsResult: SessionsListResult } {
 describe("handleSendChat task mode guard", () => {
   it("records current task carryover when /new is sent from task mode", async () => {
     const request = async (method: string) => {
-      if (method === 'chat.send') {
+      if (method === "chat.send") {
         return {};
       }
       throw new Error(`Unexpected request: ${method}`);
     };
     const host = buildHost();
     host.client = { request } as never;
-    host.chatMessage = '/new';
+    host.chatMessage = "/new";
     host.sessionsResult.sessions[0] = {
       ...host.sessionsResult.sessions[0],
-      taskId: 'task-current',
+      taskId: "task-current",
     };
 
     await handleSendChat(host as never);
@@ -85,15 +85,17 @@ describe("handleSendChat task mode guard", () => {
     expect(host.refreshSessionsAfterChat.size).toBe(1);
     const [runId] = Array.from(host.refreshSessionsAfterChat);
     expect(host.taskCarryoverAfterChatByRun.get(runId)).toEqual({
-      taskId: 'task-current',
-      sourceSessionKey: 'main',
+      taskId: "task-current",
+      sourceSessionKey: "main",
     });
   });
 
   it("blocks send when task mode has no current task", async () => {
     const host = buildHost();
     await handleSendChat(host as never);
-    expect(host.lastError).toContain("Create a task or select an existing task before sending messages.");
+    expect(host.lastError).toContain(
+      "Create a task or select an existing task before sending messages.",
+    );
   });
 
   it("blocks send while task switching is still in progress", async () => {
@@ -131,10 +133,14 @@ describe("handleSendChat task mode guard", () => {
     expect(host.settings.executionGoalModeEnabled).toBe(false);
     expect(host.executionGoalModeEnabled).toBeUndefined();
     expect(host.chatMessages.at(-1)).toMatchObject({ role: "user" });
-    expect(host.chatMessages.some((message) => {
-      const entry = message as Record<string, unknown>;
-      return entry.role === "system" && String(entry.content ?? "").includes("一次性目标执行模式");
-    })).toBe(true);
+    expect(
+      host.chatMessages.some((message) => {
+        const entry = message as Record<string, unknown>;
+        const contentText =
+          typeof entry.content === "string" ? entry.content : JSON.stringify(entry.content ?? "");
+        return entry.role === "system" && contentText.includes("一次性目标执行模式");
+      }),
+    ).toBe(true);
   });
 
   it("supports the 中文别名 for goal-run", async () => {
@@ -158,9 +164,13 @@ describe("handleSendChat task mode guard", () => {
 
     expect(host.settings.executionGoalModeEnabled).toBe(false);
     expect(host.executionGoalModeEnabled).toBeUndefined();
-    expect(host.chatMessages.some((message) => {
-      const entry = message as Record<string, unknown>;
-      return entry.role === "system" && String(entry.content ?? "").includes("一次性目标执行模式");
-    })).toBe(true);
+    expect(
+      host.chatMessages.some((message) => {
+        const entry = message as Record<string, unknown>;
+        const contentText =
+          typeof entry.content === "string" ? entry.content : JSON.stringify(entry.content ?? "");
+        return entry.role === "system" && contentText.includes("一次性目标执行模式");
+      }),
+    ).toBe(true);
   });
 });

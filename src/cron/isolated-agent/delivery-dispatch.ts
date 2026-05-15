@@ -1,3 +1,4 @@
+import type { MessagingToolSend } from "../../agents/pi-embedded-messaging.types.js";
 import type { ReplyPayload } from "../../auto-reply/reply-payload.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.js";
 import type { CliDeps } from "../../cli/outbound-send-deps.js";
@@ -10,7 +11,6 @@ import { sleepWithAbort } from "../../infra/backoff.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import type { OutboundDeliveryResult } from "../../infra/outbound/deliver.js";
 import { normalizeTargetForProvider } from "../../infra/outbound/target-normalization.js";
-import type { MessagingToolSend } from "../../agents/pi-embedded-messaging.types.js";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalLowercaseString,
@@ -101,7 +101,9 @@ export type DispatchCronDeliveryState = {
 function normalizeMessagingToolTarget(
   target: MessagingToolSend,
   resolvedDelivery: DeliveryTargetResolution,
-): NonNullable<RunCronAgentTurnResult["delivery"]>["messageToolSentTo"][number] | undefined {
+):
+  | NonNullable<NonNullable<RunCronAgentTurnResult["delivery"]>["messageToolSentTo"]>[number]
+  | undefined {
   const channel = normalizeOptionalString(target.provider);
   if (!channel) {
     return undefined;

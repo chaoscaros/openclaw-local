@@ -11,11 +11,7 @@ function formatMigrationProviderLabel(provider: MigrationProviderPlugin): string
 }
 
 function formatMigrationProviderCapabilities(provider: MigrationProviderPlugin): string {
-  return [
-    `detect=${provider.detect ? "yes" : "no"}`,
-    `plan=${provider.plan ? "yes" : "no"}`,
-    `apply=${provider.apply ? "yes" : "no"}`,
-  ].join(" ");
+  return [`detect=${provider.detect ? "yes" : "no"}`, "plan=yes", "apply=yes"].join(" ");
 }
 
 function collectMigrationProviderPurpose(provider: MigrationProviderPlugin): string[] {
@@ -29,7 +25,9 @@ function collectMigrationProviderHints(provider: MigrationProviderPlugin): strin
   const hints: string[] = [];
   if (provider.detect) {
     hints.push("  ready: yes");
-    hints.push("  hint: detection is available; start with a plan run to inspect the source safely.");
+    hints.push(
+      "  hint: detection is available; start with a plan run to inspect the source safely.",
+    );
   } else {
     hints.push("  ready: partial");
     hints.push("  hint: detect unavailable; run migrate with an explicit source path.");
@@ -38,9 +36,11 @@ function collectMigrationProviderHints(provider: MigrationProviderPlugin): strin
   return hints;
 }
 
-export function collectMigrationProviderHealthLines(params: {
-  cfg?: OpenClawConfig;
-} = {}): string[] {
+export function collectMigrationProviderHealthLines(
+  params: {
+    cfg?: OpenClawConfig;
+  } = {},
+): string[] {
   const providers = resolvePluginMigrationProviders({ cfg: params.cfg });
   if (providers.length === 0) {
     return ["No migration providers available."];
@@ -53,9 +53,11 @@ export function collectMigrationProviderHealthLines(params: {
   ]);
 }
 
-export async function noteMigrationProviderHealth(params: {
-  cfg?: OpenClawConfig;
-} = {}): Promise<void> {
+export async function noteMigrationProviderHealth(
+  params: {
+    cfg?: OpenClawConfig;
+  } = {},
+): Promise<void> {
   try {
     note(collectMigrationProviderHealthLines(params).join("\n"), "Migration providers");
   } catch (error) {

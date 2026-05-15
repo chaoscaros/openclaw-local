@@ -51,6 +51,36 @@ describe("OpenClawApp change review methods", () => {
     expect((host as unknown as { chatChangeReview: unknown }).chatChangeReview).toBeNull();
   });
 
+  it("loadChangeReviewStatus clears the card without requesting when change review mode is disabled", async () => {
+    const request = vi.fn().mockResolvedValue({ pending: true, id: "review-1" });
+    const host = {
+      client: { request },
+      connected: true,
+      settings: { changeReviewModeEnabled: false },
+      sessionKey: "main",
+      chatChangeReviewOpen: true,
+      chatChangeReviewSelectedPath: "src/demo.ts",
+      chatChangeReviewAction: { type: "apply", path: null },
+      chatChangeReview: {
+        pending: true,
+        id: "review-old",
+      },
+    } as unknown as OpenClawApp;
+
+    await OpenClawApp.prototype.loadChangeReviewStatus.call(host, "main");
+
+    expect(request).not.toHaveBeenCalled();
+    expect((host as unknown as { chatChangeReview: unknown }).chatChangeReview).toBeNull();
+    expect((host as unknown as { chatChangeReviewOpen: boolean }).chatChangeReviewOpen).toBe(false);
+    expect(
+      (host as unknown as { chatChangeReviewSelectedPath: string | null })
+        .chatChangeReviewSelectedPath,
+    ).toBeNull();
+    expect(
+      (host as unknown as { chatChangeReviewAction: unknown }).chatChangeReviewAction,
+    ).toBeNull();
+  });
+
   it("loadChangeReviewStatus updates the card for the active session", async () => {
     const request = vi.fn().mockResolvedValue({
       pending: true,
@@ -140,6 +170,36 @@ describe("OpenClawApp change review methods", () => {
     expect(
       (host as unknown as { chatChangeReview: { id?: string } | null }).chatChangeReview?.id,
     ).toBe("review-retry");
+  });
+
+  it("captureChangeReview clears the card when mode is disabled while a retry is waiting", async () => {
+    vi.useFakeTimers();
+    const request = vi.fn().mockResolvedValue({ pending: false });
+    const host = {
+      client: { request },
+      connected: true,
+      settings: { changeReviewModeEnabled: true },
+      sessionKey: "main",
+      chatChangeReviewOpen: true,
+      chatChangeReviewSelectedPath: "src/demo.ts",
+      chatChangeReviewAction: null,
+      chatChangeReview: {
+        pending: true,
+        id: "review-old",
+      },
+    } as unknown as OpenClawApp;
+
+    const pending = OpenClawApp.prototype.captureChangeReview.call(host, "main", "run-1");
+    await Promise.resolve();
+    (
+      host as unknown as { settings: { changeReviewModeEnabled: boolean } }
+    ).settings.changeReviewModeEnabled = false;
+    await vi.advanceTimersByTimeAsync(250);
+    await pending;
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect((host as unknown as { chatChangeReview: unknown }).chatChangeReview).toBeNull();
+    expect((host as unknown as { chatChangeReviewOpen: boolean }).chatChangeReviewOpen).toBe(false);
   });
 
   it("captureChangeReview ignores stale responses after a session switch", async () => {
@@ -301,7 +361,9 @@ describe("OpenClawApp change review methods", () => {
       hunkId: "hunk-1-1-1",
     });
     expect(loadChangeReviewStatus).toHaveBeenCalledTimes(1);
-    expect((host as unknown as { chatChangeReviewAction: unknown }).chatChangeReviewAction).toBeNull();
+    expect(
+      (host as unknown as { chatChangeReviewAction: unknown }).chatChangeReviewAction,
+    ).toBeNull();
   });
 
   it("revertChangeReviewHunk reloads chat history after reverting a hunk", async () => {

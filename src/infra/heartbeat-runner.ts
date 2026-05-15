@@ -868,7 +868,9 @@ export async function runHeartbeatOnce(opts: {
     }
     cronSession.sessionEntry.heartbeatIsolatedBaseSessionKey = isolatedBaseSessionKey;
     cronSession.store[isolatedSessionKey] = cronSession.sessionEntry;
-    await saveSessionStore(cronSession.storePath, cronSession.store);
+    await saveSessionStore(cronSession.storePath, cronSession.store, {
+      activeSessionKey: isolatedSessionKey,
+    });
     if (removedSessionFiles.size > 0) {
       try {
         const referencedSessionIds = new Set(

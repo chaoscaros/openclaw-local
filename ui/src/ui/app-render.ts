@@ -7,6 +7,7 @@ import {
 import { t } from "../i18n/index.ts";
 import { getSafeLocalStorage } from "../local-storage.ts";
 import { refreshChatAvatar } from "./app-chat.ts";
+import { DEFAULT_CRON_FORM } from "./app-defaults.ts";
 import { renderUsageTab } from "./app-render-usage-tab.ts";
 import {
   renderChatControls,
@@ -2254,10 +2255,15 @@ export function renderApp(state: AppViewState) {
                 });
               },
               onToggleChangeReviewMode: () => {
+                const changeReviewModeEnabled = !state.settings.changeReviewModeEnabled;
                 state.applySettings({
                   ...state.settings,
-                  changeReviewModeEnabled: !state.settings.changeReviewModeEnabled,
+                  changeReviewModeEnabled,
                 });
+                if (!changeReviewModeEnabled) {
+                  state.clearChangeReviewCard();
+                  state.resumedDevExecuteBySessionKey.clear();
+                }
               },
               onChatScroll: (event) => state.handleChatScroll(event),
               getDraft: () => state.chatMessage,
@@ -2267,7 +2273,6 @@ export function renderApp(state: AppViewState) {
               onAttachmentsChange: (next) => (state.chatAttachments = next),
               onSend: async () => {
                 await state.handleSendChat();
-                await Promise.all([loadSessions(state), state.loadTaskModeData()]);
               },
               onOpenChangeReview: () => state.openChangeReview(),
               onCloseChangeReview: () => state.closeChangeReview(),

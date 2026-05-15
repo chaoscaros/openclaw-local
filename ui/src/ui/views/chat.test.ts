@@ -3364,10 +3364,12 @@ describe("chat view", () => {
     expect(minimapButton).toBeTruthy();
 
     details!.open = false;
-    Object.defineProperty(compareGrid!, "clientHeight", { configurable: true, value: 200 });
-    Object.defineProperty(compareGrid!, "scrollHeight", { configurable: true, value: 1200 });
-    Object.defineProperty(compareGrid!, "scrollTop", { configurable: true, value: 40 });
-    compareGrid!.getBoundingClientRect = (() => ({
+    const compareGridEl = compareGrid!;
+    const hunkHeaderEl = hunkHeader!;
+    Object.defineProperty(compareGridEl, "clientHeight", { configurable: true, value: 200 });
+    Object.defineProperty(compareGridEl, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(compareGridEl, "scrollTop", { configurable: true, value: 40 });
+    compareGridEl.getBoundingClientRect = (() => ({
       top: 100,
       bottom: 300,
       left: 0,
@@ -3379,8 +3381,8 @@ describe("chat view", () => {
       toJSON() {
         return {};
       },
-    })) as typeof compareGrid.getBoundingClientRect;
-    hunkHeader!.getBoundingClientRect = (() => ({
+    })) as typeof compareGridEl.getBoundingClientRect;
+    hunkHeaderEl.getBoundingClientRect = (() => ({
       top: 420,
       bottom: 460,
       left: 0,
@@ -3392,8 +3394,8 @@ describe("chat view", () => {
       toJSON() {
         return {};
       },
-    })) as typeof hunkHeader.getBoundingClientRect;
-    compareGrid!.scrollTo = scrollTo as typeof compareGrid.scrollTo;
+    })) as typeof hunkHeaderEl.getBoundingClientRect;
+    compareGridEl.scrollTo = scrollTo as typeof compareGridEl.scrollTo;
 
     minimapButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 

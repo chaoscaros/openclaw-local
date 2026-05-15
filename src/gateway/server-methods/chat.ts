@@ -11,6 +11,7 @@ import type { ReplyPayload } from "../../auto-reply/reply-payload.js";
 import { createReplyDispatcher } from "../../auto-reply/reply/reply-dispatcher.js";
 import type { MsgContext } from "../../auto-reply/templating.js";
 import { extractCanvasFromText } from "../../chat/canvas-render.js";
+import { loadConfig } from "../../config/config.js";
 import { resolveSessionFilePath } from "../../config/sessions.js";
 import { jsonUtf8Bytes } from "../../infra/json-utf8-bytes.js";
 import { isAudioFileName } from "../../media/mime.js";
@@ -1605,7 +1606,9 @@ function injectPlanningModeGuidance(message: string, resolution: PlanningModeRes
   let next = message;
   if (
     devSpecFirstEnabled &&
-    (intent === "dev_spec" || normalizedMessage.includes("整理规格") || normalizedMessage.includes("先整理规格"))
+    (intent === "dev_spec" ||
+      normalizedMessage.includes("整理规格") ||
+      normalizedMessage.includes("先整理规格"))
   ) {
     next = `${next}
 

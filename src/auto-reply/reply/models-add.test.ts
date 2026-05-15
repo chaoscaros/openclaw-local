@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const configMocks = vi.hoisted(() => ({
   readConfigFileSnapshot: vi.fn(),
   validateConfigObjectWithPlugins: vi.fn(),
-  writeConfigFile: vi.fn(async () => {}),
+  writeConfigFile: vi.fn(
+    async (_cfg?: {
+      models: { providers: Record<string, { models: Array<Record<string, unknown>> }> };
+      agents: { defaults: { models: Record<string, unknown> } };
+    }) => {},
+  ),
 }));
 
 const facadeMocks = vi.hoisted(() => ({
@@ -57,7 +62,10 @@ describe("addModelToConfig", () => {
         agents: { defaults: { models: {} } },
       },
     });
-    configMocks.validateConfigObjectWithPlugins.mockImplementation((cfg) => ({ ok: true, config: cfg }));
+    configMocks.validateConfigObjectWithPlugins.mockImplementation((cfg) => ({
+      ok: true,
+      config: cfg,
+    }));
     configMocks.writeConfigFile.mockResolvedValue(undefined);
   });
 
@@ -71,7 +79,7 @@ describe("addModelToConfig", () => {
       allowlistAdded: true,
     });
     expect(configMocks.writeConfigFile).toHaveBeenCalledTimes(1);
-    const written = configMocks.writeConfigFile.mock.calls[0][0];
+    const written = configMocks.writeConfigFile.mock.calls[0][0]!;
     expect(written.models.providers["openai-codex"].models[0]).toMatchObject({
       id: "gpt-5.5-pro",
       api: "openai-codex-responses",

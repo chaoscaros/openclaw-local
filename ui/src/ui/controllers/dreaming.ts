@@ -1,4 +1,3 @@
-import { t } from "../../i18n/index.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import { isPluginEnabledInConfigSnapshot } from "../plugin-activation.ts";
 import type { ConfigSnapshot } from "../types.ts";
@@ -330,7 +329,9 @@ function buildDreamDiaryActionSuccessMessage(
           ? `协助策略：${normalizeTrimmedString(learningSummary?.assistanceStrategy)}。`
           : null,
         "说明：手动运行只会做后台整理，不会创建可见会话。",
-      ].filter(Boolean).join(" ");
+      ]
+        .filter(Boolean)
+        .join(" ");
     }
   }
   return "Dream diary action complete.";
@@ -719,6 +720,9 @@ function normalizeDreamingStatus(raw: unknown): DreamingStatus | null {
   const phaseSignalPath = normalizeTrimmedString(record.phaseSignalPath);
   const storeError = normalizeTrimmedString(record.storeError);
   const phaseSignalError = normalizeTrimmedString(record.phaseSignalError);
+  const lastRun = asRecord(record.lastRun);
+  const learningSummary = asRecord(lastRun?.learningSummary);
+  const learningSummaryText = normalizeTrimmedString(learningSummary?.summary);
 
   return {
     enabled: normalizeBoolean(record.enabled, false),
@@ -743,50 +747,71 @@ function normalizeDreamingStatus(raw: unknown): DreamingStatus | null {
     shortTermEntries: normalizeDreamingEntries(record.shortTermEntries),
     signalEntries: normalizeDreamingEntries(record.signalEntries),
     promotedEntries: normalizeDreamingEntries(record.promotedEntries),
-    ...(asRecord(record.lastRun)
+    ...(lastRun
       ? {
           lastRun: {
-            at: normalizeTrimmedString(asRecord(record.lastRun)?.at) ?? "",
-            workspaces: normalizeFiniteInt(asRecord(record.lastRun)?.workspaces, 0),
-            candidates: normalizeFiniteInt(asRecord(record.lastRun)?.candidates, 0),
-            applied: normalizeFiniteInt(asRecord(record.lastRun)?.applied, 0),
-            failed: normalizeFiniteInt(asRecord(record.lastRun)?.failed, 0),
-            narrativeWritten: normalizeFiniteInt(asRecord(record.lastRun)?.narrativeWritten, 0),
-            narrativeSkipped: normalizeFiniteInt(asRecord(record.lastRun)?.narrativeSkipped, 0),
-            ...(normalizeTrimmedString(asRecord(record.lastRun)?.zeroAppliedReason)
-              ? { zeroAppliedReason: normalizeTrimmedString(asRecord(record.lastRun)?.zeroAppliedReason) }
+            at: normalizeTrimmedString(lastRun.at) ?? "",
+            workspaces: normalizeFiniteInt(lastRun.workspaces, 0),
+            candidates: normalizeFiniteInt(lastRun.candidates, 0),
+            applied: normalizeFiniteInt(lastRun.applied, 0),
+            failed: normalizeFiniteInt(lastRun.failed, 0),
+            narrativeWritten: normalizeFiniteInt(lastRun.narrativeWritten, 0),
+            narrativeSkipped: normalizeFiniteInt(lastRun.narrativeSkipped, 0),
+            ...(normalizeTrimmedString(lastRun.zeroAppliedReason)
+              ? { zeroAppliedReason: normalizeTrimmedString(lastRun.zeroAppliedReason) }
               : {}),
-            ...(asRecord(asRecord(record.lastRun)?.learningSummary) && normalizeTrimmedString(asRecord(asRecord(record.lastRun)?.learningSummary)?.summary)
+            ...(learningSummary && learningSummaryText
               ? {
                   learningSummary: {
-                    summary: normalizeTrimmedString(asRecord(asRecord(record.lastRun)?.learningSummary)?.summary) ?? "",
-                    recommendation: normalizeTrimmedString(asRecord(asRecord(record.lastRun)?.learningSummary)?.recommendation) ?? "",
-                    assistanceStrategy: normalizeTrimmedString(asRecord(asRecord(record.lastRun)?.learningSummary)?.assistanceStrategy) ?? "",
-                    durableSignals: Array.isArray(asRecord(asRecord(record.lastRun)?.learningSummary)?.durableSignals)
-                      ? asRecord(asRecord(record.lastRun)?.learningSummary)?.durableSignals
+                    summary: learningSummaryText,
+                    recommendation: normalizeTrimmedString(learningSummary.recommendation) ?? "",
+                    assistanceStrategy:
+                      normalizeTrimmedString(learningSummary.assistanceStrategy) ?? "",
+                    durableSignals: Array.isArray(learningSummary.durableSignals)
+                      ? learningSummary.durableSignals
                           .map((item: unknown) => normalizeTrimmedString(item))
                           .filter((item: string | undefined): item is string => Boolean(item))
                           .slice(0, 3)
                       : [],
-                    temporaryFocus: Array.isArray(asRecord(asRecord(record.lastRun)?.learningSummary)?.temporaryFocus)
-                      ? asRecord(asRecord(record.lastRun)?.learningSummary)?.temporaryFocus
+                    temporaryFocus: Array.isArray(learningSummary.temporaryFocus)
+                      ? learningSummary.temporaryFocus
                           .map((item: unknown) => normalizeTrimmedString(item))
                           .filter((item: string | undefined): item is string => Boolean(item))
                           .slice(0, 3)
                       : [],
-                    sources: Array.isArray(asRecord(asRecord(record.lastRun)?.learningSummary)?.sources)
-                      ? asRecord(asRecord(record.lastRun)?.learningSummary)?.sources
+                    sources: Array.isArray(learningSummary.sources)
+                      ? learningSummary.sources
                           .map((entry: unknown) => {
                             const source = asRecord(entry);
                             const kind = source?.kind;
                             const label = normalizeTrimmedString(source?.label);
                             const detail = normalizeTrimmedString(source?.detail);
-                            if ((kind !== "task" && kind !== "chat" && kind !== "memory") || !label || !detail) {
+                            if (
+                              (kind !== "task" && kind !== "chat" && kind !== "memory") ||
+                              !label ||
+                              !detail
+                            ) {
                               return null;
                             }
-                            return { kind, label, detail };
+                            return { kind, label, detail } as {
+                              kind: "task" | "chat" | "memory";
+                              label: string;
+                              detail: string;
+                            };
                           })
-                          .filter((entry: { kind: "task" | "chat" | "memory"; label: string; detail: string } | null): entry is { kind: "task" | "chat" | "memory"; label: string; detail: string } => Boolean(entry))
+                          .filter(
+                            (
+                              entry: {
+                                kind: "task" | "chat" | "memory";
+                                label: string;
+                                detail: string;
+                              } | null,
+                            ): entry is {
+                              kind: "task" | "chat" | "memory";
+                              label: string;
+                              detail: string;
+                            } => Boolean(entry),
+                          )
                           .slice(0, 3)
                       : [],
                   },

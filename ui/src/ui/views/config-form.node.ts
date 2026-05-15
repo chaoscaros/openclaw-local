@@ -1107,7 +1107,10 @@ function renderArray(params: {
           ${renderTags(tags)}
         </div>
         <span class="cfg-array__count"
-          >${t("configPage.ui.itemsCount", { count: arr.length, suffix: arr.length !== 1 ? "s" : "" })}</span
+          >${t("configPage.ui.itemsCount", {
+            count: String(arr.length),
+            suffix: arr.length !== 1 ? "s" : "",
+          })}</span
         >
         <button
           type="button"

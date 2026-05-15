@@ -1,6 +1,6 @@
 import { loginOpenAICodex, type OAuthCredentials } from "@mariozechner/pi-ai/oauth";
-import { ensureGlobalUndiciEnvProxyDispatcher } from "../infra/net/undici-global-dispatcher.js";
 import { hasEnvHttpProxyConfigured } from "../infra/net/proxy-env.js";
+import { ensureGlobalUndiciEnvProxyDispatcher } from "../infra/net/undici-global-dispatcher.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { WizardPrompter } from "../wizard/prompts.js";
 import { createVpsAwareOAuthHandlers } from "./provider-oauth-flow.js";
@@ -13,8 +13,10 @@ const manualInputPromptMessage = "Paste the authorization code (or full redirect
 const openAICodexOAuthOriginator = "openclaw";
 
 function isOpenAICodexTokenExchangeFailure(error: unknown): boolean {
-  const message = String(error ?? "");
-  return /token exchange failed/i.test(message) || /unsupported_country_region_territory/i.test(message);
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  return (
+    /token exchange failed/i.test(message) || /unsupported_country_region_territory/i.test(message)
+  );
 }
 
 function formatOpenAICodexTokenExchangeHint(env: NodeJS.ProcessEnv = process.env): string {

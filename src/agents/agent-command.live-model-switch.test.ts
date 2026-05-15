@@ -5,15 +5,15 @@ const state = vi.hoisted(() => ({
   runWithModelFallbackMock: vi.fn(),
   runAgentAttemptMock: vi.fn(),
   resolveEffectiveModelFallbacksMock: vi.fn().mockReturnValue(undefined),
-  emitAgentEventMock: vi.fn(),
-  registerAgentRunContextMock: vi.fn(),
-  clearAgentRunContextMock: vi.fn(),
+  emitAgentEventMock: vi.fn((..._args: unknown[]) => undefined),
+  registerAgentRunContextMock: vi.fn((..._args: unknown[]) => undefined),
+  clearAgentRunContextMock: vi.fn((..._args: unknown[]) => undefined),
   updateSessionStoreAfterAgentRunMock: vi.fn(),
   deliverAgentCommandResultMock: vi.fn(),
-  buildWorkspaceSkillSnapshotMock: vi.fn(() => ({
+  buildWorkspaceSkillSnapshotMock: vi.fn((..._args: unknown[]) => ({
     prompt: "",
-    skills: [],
-    resolvedSkills: [],
+    skills: [] as unknown[],
+    resolvedSkills: [] as unknown[],
     version: 0,
   })),
   sessionEntryMock: undefined as unknown,
@@ -68,7 +68,7 @@ vi.mock("./command/session.js", () => ({
     sessionEntry: state.sessionEntryMock ?? { sessionId: "session-1", updatedAt: Date.now() },
     sessionStore: state.sessionStoreMock ?? {},
     storePath: "/tmp/store.json",
-    isNewSession: state.sessionEntryMock ? false : true,
+    isNewSession: !state.sessionEntryMock,
     persistedThinking: undefined,
     persistedVerbose: undefined,
   }),
@@ -263,7 +263,8 @@ vi.mock("./model-selection.js", () => ({
 }));
 
 vi.mock("./skills.js", () => ({
-  buildWorkspaceSkillSnapshot: (...args: unknown[]) => state.buildWorkspaceSkillSnapshotMock(...args),
+  buildWorkspaceSkillSnapshot: (...args: unknown[]) =>
+    state.buildWorkspaceSkillSnapshotMock(...args),
 }));
 
 vi.mock("./skills/refresh.js", () => ({

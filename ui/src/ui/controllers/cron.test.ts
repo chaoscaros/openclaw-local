@@ -49,6 +49,10 @@ function createState(overrides: Partial<CronState> = {}): CronState {
     cronRunsStatusFilter: "all",
     cronRunsQuery: "",
     cronRunsSortDir: "desc",
+    cronAppliedTemplateId: null,
+    cronTemplateQuery: "",
+    cronTemplateRiskFilter: "all",
+    cronRecentTemplateIds: [],
     cronBusy: false,
     ...overrides,
   };

@@ -1,3 +1,5 @@
+import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
+import { loadConfig } from "../../config/config.js";
 import { resolveCronDeliveryPreviews } from "../../cron/delivery-preview.js";
 import { normalizeCronJobCreate, normalizeCronJobPatch } from "../../cron/normalize.js";
 import {
@@ -74,9 +76,10 @@ export const cronHandlers: GatewayRequestHandlers = {
       sortBy: p.sortBy,
       sortDir: p.sortDir,
     });
+    const cfg = context.getRuntimeConfig?.() ?? loadConfig();
     const deliveryPreviews = await resolveCronDeliveryPreviews({
-      cfg: loadConfig(),
-      defaultAgentId: context.cron.getDefaultAgentId(),
+      cfg,
+      defaultAgentId: resolveDefaultAgentId(cfg),
       jobs: page.jobs,
     });
     respond(true, { ...page, deliveryPreviews }, undefined);

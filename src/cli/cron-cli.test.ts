@@ -67,6 +67,7 @@ type CronUpdatePatch = {
       to?: string;
       accountId?: string;
       bestEffort?: boolean;
+      threadId?: number;
     };
   };
 };
@@ -74,7 +75,13 @@ type CronUpdatePatch = {
 type CronAddParams = {
   schedule?: { kind?: string; staggerMs?: number };
   payload?: { model?: string; thinking?: string; lightContext?: boolean };
-  delivery?: { mode?: string; accountId?: string };
+  delivery?: {
+    mode?: string;
+    channel?: string;
+    to?: string;
+    accountId?: string;
+    threadId?: number;
+  };
   deleteAfterRun?: boolean;
   agentId?: string;
   sessionTarget?: string;
@@ -877,9 +884,9 @@ describe("cron cli", () => {
     );
 
     const program = buildProgram();
-    await expect(program.parseAsync(["cron", "edit", "job-1", "--exact"], { from: "user" })).rejects.toThrow(
-      "__exit__:1",
-    );
+    await expect(
+      program.parseAsync(["cron", "edit", "job-1", "--exact"], { from: "user" }),
+    ).rejects.toThrow("__exit__:1");
 
     expect(defaultRuntime.error).toHaveBeenCalledWith(
       expect.stringContaining("cron.list pagination did not advance"),
@@ -906,9 +913,9 @@ describe("cron cli", () => {
     );
 
     const program = buildProgram();
-    await expect(program.parseAsync(["cron", "edit", "job-1", "--exact"], { from: "user" })).rejects.toThrow(
-      "__exit__:1",
-    );
+    await expect(
+      program.parseAsync(["cron", "edit", "job-1", "--exact"], { from: "user" }),
+    ).rejects.toThrow("__exit__:1");
 
     const listCalls = callGatewayFromCli.mock.calls.filter((call) => call[0] === "cron.list");
     expect(listCalls).toHaveLength(50);
@@ -1026,23 +1033,25 @@ describe("cron cli", () => {
 
   it("adds computed status to cron list --json output", async () => {
     resetGatewayMock();
-    callGatewayFromCli.mockImplementation(async (method: string, _opts: unknown, params?: unknown) => {
-      if (method === "cron.status") {
-        return { enabled: true };
-      }
-      if (method === "cron.list") {
-        return {
-          ok: true,
-          params,
-          jobs: [
-            { id: "job-running", enabled: true, state: { runningAtMs: 123 } },
-            { id: "job-disabled", enabled: false, state: {} },
-            { id: "job-legacy", enabled: true, state: { lastStatus: "error" } },
-          ],
-        };
-      }
-      return { ok: true, params };
-    });
+    callGatewayFromCli.mockImplementation(
+      async (method: string, _opts: unknown, params?: unknown) => {
+        if (method === "cron.status") {
+          return { enabled: true };
+        }
+        if (method === "cron.list") {
+          return {
+            ok: true,
+            params,
+            jobs: [
+              { id: "job-running", enabled: true, state: { runningAtMs: 123 } },
+              { id: "job-disabled", enabled: false, state: {} },
+              { id: "job-legacy", enabled: true, state: { lastStatus: "error" } },
+            ],
+          };
+        }
+        return { ok: true, params };
+      },
+    );
 
     const program = buildProgram();
     await program.parseAsync(["cron", "list", "--json"], { from: "user" });

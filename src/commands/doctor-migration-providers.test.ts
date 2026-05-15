@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  resolvePluginMigrationProviders: vi.fn(() => []),
+  resolvePluginMigrationProviders: vi.fn((): unknown[] => []),
   note: vi.fn(),
   formatCliCommand: vi.fn((command: string) => command),
 }));
@@ -25,10 +25,10 @@ let resolveDoctorHealthContributions: typeof import("../flows/doctor-health-cont
 describe("doctor migration providers", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    ({ collectMigrationProviderHealthLines, noteMigrationProviderHealth } = await import(
-      "./doctor-migration-providers.js"
-    ));
-    ({ resolveDoctorHealthContributions } = await import("../flows/doctor-health-contributions.js"));
+    ({ collectMigrationProviderHealthLines, noteMigrationProviderHealth } =
+      await import("./doctor-migration-providers.js"));
+    ({ resolveDoctorHealthContributions } =
+      await import("../flows/doctor-health-contributions.js"));
   });
 
   it("returns a stable empty-state line when no migration providers are available", () => {
@@ -117,8 +117,8 @@ describe("doctor migration providers", () => {
   });
 
   it("registers migration providers as a doctor health contribution", () => {
-    expect(resolveDoctorHealthContributions().some((entry) => entry.id === "doctor:migration-providers")).toBe(
-      true,
-    );
+    expect(
+      resolveDoctorHealthContributions().some((entry) => entry.id === "doctor:migration-providers"),
+    ).toBe(true);
   });
 });

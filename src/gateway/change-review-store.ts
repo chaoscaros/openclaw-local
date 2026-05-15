@@ -54,6 +54,13 @@ export type ChangeReviewBundle = {
   files: ChangeReviewFileRecord[];
 };
 
+export class ChangeReviewStaleError extends Error {
+  constructor(filePath: string) {
+    super(`file changed after review capture: ${filePath}`);
+    this.name = "ChangeReviewStaleError";
+  }
+}
+
 type ToolMutationSnapshot = {
   sessionKey: string;
   runId: string;
@@ -91,6 +98,50 @@ async function readFileMaybe(filePath: string): Promise<string | null> {
     }
     throw err;
   }
+}
+
+function expectedCurrentContentForReview(
+  bundle: Pick<ChangeReviewBundle, "stagedOnly">,
+  file: ChangeReviewFileRecord,
+): string | null {
+  return bundle.stagedOnly ? file.beforeContent : file.afterContent;
+}
+
+function markBundleStale(bundle: ChangeReviewBundle): ChangeReviewBundle {
+  bundle.status = "stale";
+  bundle.updatedAt = Date.now();
+  if (latestPendingReviewIdBySessionKey.get(bundle.sessionKey) === bundle.reviewId) {
+    latestPendingReviewIdBySessionKey.delete(bundle.sessionKey);
+  }
+  return bundle;
+}
+
+async function assertReviewFileCurrent(
+  bundle: ChangeReviewBundle,
+  file: ChangeReviewFileRecord,
+): Promise<void> {
+  const currentContent = await readFileMaybe(file.absolutePath);
+  if (currentContent !== expectedCurrentContentForReview(bundle, file)) {
+    markBundleStale(bundle);
+    throw new ChangeReviewStaleError(file.path);
+  }
+}
+
+async function assertReviewBundleCurrent(bundle: ChangeReviewBundle): Promise<void> {
+  for (const file of bundle.files) {
+    await assertReviewFileCurrent(bundle, file);
+  }
+}
+
+async function isReviewBundleCurrent(bundle: ChangeReviewBundle): Promise<boolean> {
+  for (const file of bundle.files) {
+    const currentContent = await readFileMaybe(file.absolutePath);
+    if (currentContent !== expectedCurrentContentForReview(bundle, file)) {
+      markBundleStale(bundle);
+      return false;
+    }
+  }
+  return true;
 }
 
 async function ensureParentDir(filePath: string): Promise<void> {
@@ -872,6 +923,16 @@ export function getPendingReviewBySession(sessionKey: string): ChangeReviewBundl
   return bundle?.status === "pending" ? bundle : null;
 }
 
+export async function getFreshPendingReviewBySession(
+  sessionKey: string,
+): Promise<ChangeReviewBundle | null> {
+  const bundle = getPendingReviewBySession(sessionKey);
+  if (!bundle) {
+    return null;
+  }
+  return (await isReviewBundleCurrent(bundle)) ? bundle : null;
+}
+
 export function getPendingReviewBySessionAndRun(
   sessionKey: string,
   runId?: string | null,
@@ -885,6 +946,17 @@ export function getPendingReviewBySessionAndRun(
     return bundle?.status === "pending" ? bundle : null;
   }
   return getPendingReviewBySession(sessionKey);
+}
+
+export async function getFreshPendingReviewBySessionAndRun(
+  sessionKey: string,
+  runId?: string | null,
+): Promise<ChangeReviewBundle | null> {
+  const bundle = getPendingReviewBySessionAndRun(sessionKey, runId);
+  if (!bundle) {
+    return null;
+  }
+  return (await isReviewBundleCurrent(bundle)) ? bundle : null;
 }
 
 export function getReviewById(reviewId: string): ChangeReviewBundle | null {
@@ -909,6 +981,7 @@ export async function applyReviewBundle(reviewId: string): Promise<ChangeReviewB
   if (!bundle) {
     return null;
   }
+  await assertReviewBundleCurrent(bundle);
   if (bundle.stagedOnly) {
     for (const file of bundle.files) {
       if (file.afterContent == null) {
@@ -927,13 +1000,8 @@ export async function revertReviewBundle(reviewId: string): Promise<ChangeReview
   if (!bundle) {
     return null;
   }
+  await assertReviewBundleCurrent(bundle);
   if (!bundle.stagedOnly) {
-    for (const file of bundle.files) {
-      const currentContent = await readFileMaybe(file.absolutePath);
-      if (currentContent !== file.afterContent) {
-        throw new Error(`file changed after review capture: ${file.path}`);
-      }
-    }
     for (const file of bundle.files) {
       if (file.beforeContent == null) {
         await fs.rm(file.absolutePath, { force: true });
@@ -960,6 +1028,7 @@ export async function applyReviewBundleFile(
     return null;
   }
   const file = resolveBundleFileOrThrow(bundle, filePath);
+  await assertReviewFileCurrent(bundle, file);
   if (bundle.stagedOnly) {
     if (file.afterContent == null) {
       await fs.rm(file.absolutePath, { force: true });
@@ -981,11 +1050,8 @@ export async function revertReviewBundleFile(
     return null;
   }
   const file = resolveBundleFileOrThrow(bundle, filePath);
+  await assertReviewFileCurrent(bundle, file);
   if (!bundle.stagedOnly) {
-    const currentContent = await readFileMaybe(file.absolutePath);
-    if (currentContent !== file.afterContent) {
-      throw new Error(`file changed after review capture: ${file.path}`);
-    }
     if (file.beforeContent == null) {
       await fs.rm(file.absolutePath, { force: true });
     } else {
@@ -1007,12 +1073,7 @@ export async function applyReviewBundleGroup(
     return null;
   }
   const file = resolveBundleFileOrThrow(bundle, filePath);
-  if (!bundle.stagedOnly) {
-    const currentContent = await readFileMaybe(file.absolutePath);
-    if (currentContent !== file.afterContent) {
-      throw new Error(`file changed after review capture: ${file.path}`);
-    }
-  }
+  await assertReviewFileCurrent(bundle, file);
   const group = resolveFileGroupOrThrow(file, groupId);
   const nextFile = resolveNextFileAfterGroupAction({ file, group, action: "apply" });
   if (bundle.stagedOnly) {
@@ -1034,12 +1095,7 @@ export async function revertReviewBundleGroup(
     return null;
   }
   const file = resolveBundleFileOrThrow(bundle, filePath);
-  if (!bundle.stagedOnly) {
-    const currentContent = await readFileMaybe(file.absolutePath);
-    if (currentContent !== file.afterContent) {
-      throw new Error(`file changed after review capture: ${file.path}`);
-    }
-  }
+  await assertReviewFileCurrent(bundle, file);
   const group = resolveFileGroupOrThrow(file, groupId);
   const nextFile = resolveNextFileAfterGroupAction({ file, group, action: "revert" });
   if (!bundle.stagedOnly) {
@@ -1061,12 +1117,7 @@ export async function applyReviewBundleHunk(
     return null;
   }
   const file = resolveBundleFileOrThrow(bundle, filePath);
-  if (!bundle.stagedOnly) {
-    const currentContent = await readFileMaybe(file.absolutePath);
-    if (currentContent !== file.afterContent) {
-      throw new Error(`file changed after review capture: ${file.path}`);
-    }
-  }
+  await assertReviewFileCurrent(bundle, file);
   const hunk = resolveFileHunkOrThrow(file, hunkId);
   const nextFile = resolveNextFileAfterHunkAction({ file, hunk, action: "apply" });
   if (bundle.stagedOnly) {
@@ -1088,12 +1139,7 @@ export async function revertReviewBundleHunk(
     return null;
   }
   const file = resolveBundleFileOrThrow(bundle, filePath);
-  if (!bundle.stagedOnly) {
-    const currentContent = await readFileMaybe(file.absolutePath);
-    if (currentContent !== file.afterContent) {
-      throw new Error(`file changed after review capture: ${file.path}`);
-    }
-  }
+  await assertReviewFileCurrent(bundle, file);
   const hunk = resolveFileHunkOrThrow(file, hunkId);
   const nextFile = resolveNextFileAfterHunkAction({ file, hunk, action: "revert" });
   if (!bundle.stagedOnly) {

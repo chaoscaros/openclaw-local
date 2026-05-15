@@ -12,8 +12,8 @@ import {
 import { resolveSessionStoreEntry } from "../../config/sessions/store.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { logVerbose } from "../../globals.js";
 import { getTaskModeTask } from "../../gateway/task-mode-store.js";
+import { logVerbose } from "../../globals.js";
 import { clearCommandLane, getQueueSize } from "../../process/command-queue.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
@@ -96,7 +96,9 @@ export function buildTaskModePromptHint(params: {
     taskTitle
       ? "If earlier messages conflict with the current task binding, explicitly follow the current task and ignore the stale task context."
       : undefined,
-  ].filter(Boolean).join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function buildTaskModeUserPromptPrefix(params: {
@@ -324,10 +326,28 @@ export async function runPreparedReply(
     },
   });
   let currentSystemSent = systemSent;
+  const runId = opts?.runId ?? crypto.randomUUID();
+  let didNotifyAgentRunStart = false;
+  const notifyAgentRunStart = () => {
+    if (didNotifyAgentRunStart) {
+      return;
+    }
+    didNotifyAgentRunStart = true;
+    opts?.onAgentRunStart?.(runId);
+  };
+  const runnerOpts =
+    opts && (opts.onAgentRunStart || opts.runId !== runId)
+      ? {
+          ...opts,
+          runId,
+          onAgentRunStart: () => notifyAgentRunStart(),
+        }
+      : opts;
 
-  const currentTask = sessionEntry?.mode === "task" && sessionEntry.taskId
-    ? await getTaskModeTask(sessionEntry.taskId)
-    : null;
+  const currentTask =
+    sessionEntry?.mode === "task" && sessionEntry.taskId
+      ? await getTaskModeTask(sessionEntry.taskId)
+      : null;
   const isFirstTurnInSession = isNewSession || !currentSystemSent;
   const isGroupChat = sessionCtx.ChatType === "group";
   const wasMentioned = ctx.WasMentioned === true;
@@ -459,6 +479,9 @@ export async function runPreparedReply(
   const effectiveBaseBody = baseBodyTrimmed
     ? baseBodyForPrompt
     : "[User sent media without caption]";
+  if (!isHeartbeat) {
+    notifyAgentRunStart();
+  }
   let prefixedBodyBase = await applySessionHints({
     baseBody: effectiveBaseBody,
     abortedLastRun,
@@ -524,6 +547,7 @@ export async function runPreparedReply(
       systemEventBlocks: drainedSystemEventBlocks,
     });
   };
+  const skillSnapshotStartedAt = Date.now();
   const skillResult =
     process.env.OPENCLAW_TEST_FAST === "1"
       ? {
@@ -532,18 +556,26 @@ export async function runPreparedReply(
           systemSent: currentSystemSent,
         }
       : await (async () => {
-          const { ensureSkillSnapshot } = await loadSessionUpdatesRuntime();
-          return ensureSkillSnapshot({
-            sessionEntry,
-            sessionStore,
-            sessionKey,
-            storePath,
-            sessionId,
-            isFirstTurnInSession,
-            workspaceDir,
-            cfg,
-            skillFilter: opts?.skillFilter,
-          });
+          try {
+            const { ensureSkillSnapshot } = await loadSessionUpdatesRuntime();
+            return ensureSkillSnapshot({
+              sessionEntry,
+              sessionStore,
+              sessionKey,
+              storePath,
+              sessionId,
+              isFirstTurnInSession,
+              workspaceDir,
+              cfg,
+              skillFilter: opts?.skillFilter,
+            });
+          } finally {
+            logVerbose(
+              `reply pre-start ensureSkillSnapshot: sessionKey=${sessionKey} ` +
+                `durationMs=${Date.now() - skillSnapshotStartedAt} ` +
+                `isFirstTurn=${isFirstTurnInSession} skillFilterCount=${opts?.skillFilter?.length ?? 0}`,
+            );
+          }
         })();
   sessionEntry = skillResult.sessionEntry ?? sessionEntry;
   currentSystemSent = skillResult.systemSent;
@@ -803,7 +835,7 @@ export async function runPreparedReply(
       return piRuntime?.isEmbeddedPiRunActive(latestActiveSessionId) ?? false;
     },
     isStreaming,
-    opts,
+    opts: runnerOpts,
     typing,
     sessionEntry: preparedSessionState.sessionEntry,
     sessionStore,

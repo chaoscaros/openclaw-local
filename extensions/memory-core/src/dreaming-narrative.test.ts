@@ -29,6 +29,22 @@ import { createMemoryCoreTestHarness } from "./test-helpers.js";
 const { createTempWorkspace } = createMemoryCoreTestHarness();
 const DREAMS_FILE_LOCKS_KEY = Symbol.for("openclaw.memoryCore.dreamingNarrative.fileLocks");
 
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+};
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: Deferred<T>["resolve"];
+  let reject!: Deferred<T>["reject"];
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   resolveGlobalMap<string, unknown>(DREAMS_FILE_LOCKS_KEY).clear();
@@ -892,8 +908,8 @@ describe("generateAndAppendDreamNarrative", () => {
     await fs.writeFile(path.join(sessionsDir, "kept.jsonl"), '{"runId":"normal-run"}\n', "utf-8");
 
     vi.spyOn(configRuntimeModule, "loadConfig").mockReturnValue({ session: {} } as never);
-    vi.spyOn(configRuntimeModule, "resolveStorePath").mockImplementation(((_store, { agentId }) => {
-      expect(agentId).toBe("main");
+    vi.spyOn(configRuntimeModule, "resolveStorePath").mockImplementation(((_store, opts) => {
+      expect(opts?.agentId).toBe("main");
       return storePath;
     }) as typeof configRuntimeModule.resolveStorePath);
     vi.spyOn(memoryCoreHostRuntimeCoreModule, "resolveStateDir").mockReturnValue(stateDir);
@@ -955,12 +971,12 @@ describe("generateAndAppendDreamNarrative", () => {
     const workspaces = await Promise.all(
       Array.from({ length: 4 }, () => createTempWorkspace("openclaw-dreaming-narrative-")),
     );
-    const gates = Array.from({ length: 4 }, () => Promise.withResolvers<{ status: string }>());
+    const gates = Array.from({ length: 4 }, () => createDeferred<{ status: string }>());
     let runCount = 0;
     let waitCount = 0;
     const subagent = {
       run: vi.fn().mockImplementation(async () => ({ runId: `run-${++runCount}` })),
-      waitForRun: vi.fn().mockImplementation(async () => await gates[waitCount++]!.promise),
+      waitForRun: vi.fn().mockImplementation(async () => await gates[waitCount++].promise),
       getSessionMessages: vi.fn().mockResolvedValue({
         messages: [
           { role: "user", content: "prompt" },
@@ -986,13 +1002,13 @@ describe("generateAndAppendDreamNarrative", () => {
 
     expect(subagent.run).toHaveBeenCalledTimes(3);
 
-    gates[0]!.resolve({ status: "ok" });
+    gates[0].resolve({ status: "ok" });
     await waitForCondition(() => {
       expect(subagent.run).toHaveBeenCalledTimes(4);
     });
-    gates[1]!.resolve({ status: "ok" });
-    gates[2]!.resolve({ status: "ok" });
-    gates[3]!.resolve({ status: "ok" });
+    gates[1].resolve({ status: "ok" });
+    gates[2].resolve({ status: "ok" });
+    gates[3].resolve({ status: "ok" });
     await waitForCondition(() => {
       expect(subagent.deleteSession).toHaveBeenCalledTimes(4);
     });

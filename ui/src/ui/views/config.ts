@@ -725,12 +725,14 @@ export function renderConfig(props: ConfigProps) {
   const categorisedKeys = getCategorisedKeys();
 
   const VIRTUAL_SECTIONS = new Set(["__appearance__"]);
-  const visibleCategories = sectionCategories.map((cat) => ({
-    ...cat,
-    sections: cat.sections.filter(
-      (s) => (includeVirtualSections && VIRTUAL_SECTIONS.has(s.key)) || s.key in schemaProps,
-    ),
-  })).filter((cat) => cat.sections.length > 0);
+  const visibleCategories = sectionCategories
+    .map((cat) => ({
+      ...cat,
+      sections: cat.sections.filter(
+        (s) => (includeVirtualSections && VIRTUAL_SECTIONS.has(s.key)) || s.key in schemaProps,
+      ),
+    }))
+    .filter((cat) => cat.sections.length > 0);
 
   // Catch any schema keys not in our categories
   const extraSections = Object.keys(schemaProps)
@@ -968,7 +970,7 @@ export function renderConfig(props: ConfigProps) {
                 <summary class="config-diff__summary">
                   <span
                     >${t("configPage.ui.pendingChanges", {
-                      count: diff.length,
+                      count: String(diff.length),
                       suffix: diff.length !== 1 ? "s" : "",
                     })}</span
                   >
@@ -1023,7 +1025,9 @@ export function renderConfig(props: ConfigProps) {
                         class="config-env-peek-btn ${envSensitiveVisible
                           ? "config-env-peek-btn--active"
                           : ""}"
-                        title=${envSensitiveVisible ? t("configPage.ui.hideEnv") : t("configPage.ui.revealEnv")}
+                        title=${envSensitiveVisible
+                          ? t("configPage.ui.hideEnv")
+                          : t("configPage.ui.revealEnv")}
                         @click=${() => {
                           cvs.envRevealed = !cvs.envRevealed;
                           requestUpdate();

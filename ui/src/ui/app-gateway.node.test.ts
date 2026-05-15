@@ -643,7 +643,7 @@ describe("connectGateway", () => {
       includeGlobal: true,
       includeUnknown: true,
     });
-    expect(loadTaskModeDataMock).toHaveBeenCalledWith(host);
+    expect(loadTaskModeDataMock).toHaveBeenCalledWith(host, { autoSyncCurrentTask: false });
   });
 
   it.each(["final", "aborted", "error"] as const)(
@@ -682,6 +682,43 @@ describe("connectGateway", () => {
 
     expect(loadTaskModeDataMock).not.toHaveBeenCalled();
   });
+
+  it.each(["normal", "task"] as const)(
+    "does not reload task-mode data for active-session chat finals when binding is incomplete (%s)",
+    (mode) => {
+      const { client, host } = connectHostGateway();
+      host.chatRunId = "run-main";
+      host.sessionsResult = {
+        ...(host.sessionsResult ?? {
+          ts: 1,
+          path: "",
+          count: 1,
+          defaults: { modelProvider: null, model: null, contextTokens: null },
+          sessions: [],
+        }),
+        sessions: [
+          {
+            key: "main",
+            kind: "direct",
+            updatedAt: Date.now(),
+            mode,
+            ...(mode === "task" ? { taskId: "" } : {}),
+          },
+        ],
+      } as never;
+
+      client.emitEvent({
+        event: "chat",
+        payload: {
+          runId: "run-main",
+          sessionKey: "main",
+          state: "final",
+        },
+      });
+
+      expect(loadTaskModeDataMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("stores BTW side results for the active session", () => {
     const { host, client } = connectHostGateway();

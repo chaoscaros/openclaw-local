@@ -510,8 +510,8 @@ export async function dispatchReplyFromConfig(
   ]);
   const {
     sourceReplyDeliveryMode,
-    sendPolicyDenied,
-    suppressAutomaticSourceDelivery,
+    sendPolicyDenied: _sendPolicyDenied,
+    suppressAutomaticSourceDelivery: _suppressAutomaticSourceDelivery,
     suppressDelivery,
     suppressHookUserDelivery,
     suppressHookReplyLifecycle,

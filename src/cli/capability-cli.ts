@@ -1364,6 +1364,7 @@ export function registerCapabilityCli(program: Command) {
       await runCommandWithRuntime(defaultRuntime, async () => {
         const result = await runImageGenerate({
           capability: "image.generate",
+          transport: "local",
           prompt: String(opts.prompt),
           model: opts.model as string | undefined,
           count: opts.count ? Number.parseInt(String(opts.count), 10) : undefined,
@@ -1389,6 +1390,7 @@ export function registerCapabilityCli(program: Command) {
         const files = Array.isArray(opts.file) ? (opts.file as string[]) : [String(opts.file)];
         const result = await runImageGenerate({
           capability: "image.edit",
+          transport: "local",
           prompt: String(opts.prompt),
           model: opts.model as string | undefined,
           file: files,

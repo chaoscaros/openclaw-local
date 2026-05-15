@@ -4,7 +4,7 @@ import { createNonExitingRuntime } from "../runtime.js";
 const mocks = vi.hoisted(() => ({
   loadConfig: vi.fn(() => ({})),
   resolveStateDir: vi.fn(() => "/tmp/openclaw-state"),
-  resolvePluginMigrationProvider: vi.fn(() => undefined),
+  resolvePluginMigrationProvider: vi.fn((_params?: unknown): unknown => undefined),
   writeRuntimeJson: vi.fn(),
 }));
 
@@ -31,7 +31,7 @@ vi.mock("../runtime.js", async () => {
 let migrateCommand: typeof import("./migrate.js").migrateCommand;
 
 function collectLogs(spy: ReturnType<typeof vi.spyOn>) {
-  return spy.mock.calls.map(([message]) => String(message));
+  return spy.mock.calls.map(([message]: [unknown, ...unknown[]]) => String(message));
 }
 
 describe("migrateCommand", () => {
@@ -101,7 +101,9 @@ describe("migrateCommand", () => {
       apply: vi.fn(),
     });
 
-    await expect(migrateCommand(runtime, { providerId: "demo", apply: true })).rejects.toThrow("exit 1");
+    await expect(migrateCommand(runtime, { providerId: "demo", apply: true })).rejects.toThrow(
+      "exit 1",
+    );
     const logs = collectLogs(logSpy);
 
     expect(plan).not.toHaveBeenCalled();
@@ -339,7 +341,11 @@ describe("migrateCommand", () => {
     mocks.resolvePluginMigrationProvider.mockReturnValue({
       id: "demo",
       label: "Demo",
-      detect: vi.fn(async () => ({ found: false, confidence: "low" as const, message: "no source" })),
+      detect: vi.fn(async () => ({
+        found: false,
+        confidence: "low" as const,
+        message: "no source",
+      })),
       plan: vi.fn(),
       apply: vi.fn(),
     });
@@ -424,7 +430,12 @@ describe("migrateCommand", () => {
       apply: vi.fn(async () => applyResult),
     });
 
-    await migrateCommand(runtime, { providerId: "demo", source: "source-dir", apply: true, json: true });
+    await migrateCommand(runtime, {
+      providerId: "demo",
+      source: "source-dir",
+      apply: true,
+      json: true,
+    });
 
     expect(mocks.writeRuntimeJson).toHaveBeenCalledTimes(1);
     expect(mocks.writeRuntimeJson).toHaveBeenLastCalledWith(

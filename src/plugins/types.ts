@@ -1075,6 +1075,8 @@ export type ProviderPlugin = {
    * Returns provider config/model definitions that merge into models.providers.
    */
   catalog?: ProviderPluginCatalog;
+  /** Static catalog hook used during discovery without user auth context. */
+  staticCatalog?: ProviderPluginCatalog;
   /**
    * Legacy alias for catalog.
    * Kept for compatibility with existing provider plugins.
