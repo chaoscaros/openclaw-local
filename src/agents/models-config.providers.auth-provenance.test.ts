@@ -11,6 +11,7 @@ let NON_ENV_SECRETREF_MARKER: typeof import("./model-auth-markers.js").NON_ENV_S
 let MINIMAX_OAUTH_MARKER: typeof import("./model-auth-markers.js").MINIMAX_OAUTH_MARKER;
 let CUSTOM_LOCAL_AUTH_MARKER: typeof import("./model-auth-markers.js").CUSTOM_LOCAL_AUTH_MARKER;
 let resolveApiKeyFromCredential: typeof import("./models-config.providers.secrets.js").resolveApiKeyFromCredential;
+let createProviderApiKeyResolver: typeof import("./models-config.providers.secrets.js").createProviderApiKeyResolver;
 let createProviderAuthResolver: typeof import("./models-config.providers.secrets.js").createProviderAuthResolver;
 let mockedResolveProviderSyntheticAuthWithPlugin: ReturnType<
   typeof vi.mocked<ProviderRuntimeModule["resolveProviderSyntheticAuthWithPlugin"]>
@@ -31,6 +32,7 @@ async function loadProviderAuthModules() {
   NON_ENV_SECRETREF_MARKER = markersModule.NON_ENV_SECRETREF_MARKER;
   MINIMAX_OAUTH_MARKER = markersModule.MINIMAX_OAUTH_MARKER;
   resolveApiKeyFromCredential = secretsModule.resolveApiKeyFromCredential;
+  createProviderApiKeyResolver = secretsModule.createProviderApiKeyResolver;
   createProviderAuthResolver = secretsModule.createProviderAuthResolver;
 }
 
@@ -193,6 +195,100 @@ describe("models-config provider auth provenance", () => {
     expect(auth("lmstudio")).toEqual({
       apiKey: CUSTOM_LOCAL_AUTH_MARKER,
       discoveryApiKey: undefined,
+      mode: "api_key",
+      source: "none",
+    });
+  });
+
+  it("resolves configured env SecretRef api keys for catalog discovery", () => {
+    const auth = createProviderApiKeyResolver(
+      {
+        MY_VLLM_KEY: "resolved-vllm-key",
+      } as NodeJS.ProcessEnv,
+      {
+        version: 1,
+        profiles: {},
+      },
+      {
+        models: {
+          providers: {
+            vllm: {
+              baseUrl: "http://127.0.0.1:8000/v1",
+              apiKey: { source: "env", provider: "default", id: "MY_VLLM_KEY" },
+              api: "openai-completions",
+              models: [],
+            },
+          },
+        },
+      },
+    );
+
+    expect(auth("vllm")).toEqual({
+      apiKey: "MY_VLLM_KEY",
+      discoveryApiKey: "resolved-vllm-key",
+    });
+  });
+
+  it("does not resolve configured env SecretRef api keys outside provider allowlists", () => {
+    const auth = createProviderApiKeyResolver(
+      {
+        AWS_SECRET_ACCESS_KEY: "not-allowed",
+      } as NodeJS.ProcessEnv,
+      {
+        version: 1,
+        profiles: {},
+      },
+      {
+        secrets: {
+          providers: {
+            default: { source: "env", allowlist: ["MY_VLLM_KEY"] },
+          },
+        },
+        models: {
+          providers: {
+            vllm: {
+              baseUrl: "http://127.0.0.1:8000/v1",
+              apiKey: { source: "env", provider: "default", id: "AWS_SECRET_ACCESS_KEY" },
+              api: "openai-completions",
+              models: [],
+            },
+          },
+        },
+      },
+    );
+
+    expect(auth("vllm")).toEqual({
+      apiKey: undefined,
+      discoveryApiKey: undefined,
+    });
+  });
+
+  it("uses configured env SecretRef api keys in config-backed auth summaries", () => {
+    const auth = createProviderAuthResolver(
+      {
+        MY_VLLM_KEY: "resolved-vllm-key",
+      } as NodeJS.ProcessEnv,
+      {
+        version: 1,
+        profiles: {},
+      },
+      {
+        models: {
+          providers: {
+            vllm: {
+              baseUrl: "http://127.0.0.1:8000/v1",
+              apiKey: { source: "env", provider: "default", id: "MY_VLLM_KEY" },
+              api: "openai-completions",
+              models: [],
+            },
+          },
+        },
+      },
+    );
+
+    expect(auth("vllm")).toEqual({
+      apiKey: "MY_VLLM_KEY",
+      discoveryApiKey: "resolved-vllm-key",
       mode: "api_key",
       source: "none",
     });

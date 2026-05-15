@@ -250,6 +250,44 @@ describe("cron view", () => {
     expect(container.textContent).not.toContain("Next 13");
   });
 
+  it("shows stale job next-run as due and renders model sentinel", () => {
+    const container = document.createElement("div");
+    const staleJob = {
+      ...createJob("job-stale"),
+      payload: { kind: "agentTurn" as const, message: "summarize", model: "openai/gpt-5" },
+      state: { nextRunAtMs: Date.now() - 5 * 60_000, lastRunStatus: "ok" as const },
+    };
+    render(renderCron(createProps({ jobs: [staleJob] })), container);
+
+    expect(container.textContent).toContain("Due");
+    expect(container.textContent).toContain("Model");
+    expect(container.textContent).toContain("openai/gpt-5");
+  });
+
+  it("shows default model sentinel when agent job has no model override", () => {
+    const container = document.createElement("div");
+    const defaultModelJob = {
+      ...createJob("job-default-model"),
+      payload: { kind: "agentTurn" as const, message: "summarize" },
+    };
+    render(renderCron(createProps({ jobs: [defaultModelJob] })), container);
+
+    expect(container.textContent).toContain("Model");
+    expect(container.textContent).toContain("Default");
+  });
+
+  it("uses computed job status from lastRunStatus", () => {
+    const container = document.createElement("div");
+    const job = {
+      ...createJob("job-error"),
+      state: { lastRunStatus: "error" as const, lastStatus: "ok" as const },
+    };
+    render(renderCron(createProps({ jobs: [job] })), container);
+
+    expect(container.querySelector(".cron-job-status-error")?.textContent).toContain("Error");
+    expect(container.querySelector(".cron-job-status-ok")).toBeNull();
+  });
+
   it("calls onJobsFiltersChange when schedule filter changes", () => {
     const container = document.createElement("div");
     const onJobsFiltersChange = vi.fn();

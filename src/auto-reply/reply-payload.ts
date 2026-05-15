@@ -44,3 +44,8 @@ export function setReplyPayloadMetadata<T extends object>(
 export function getReplyPayloadMetadata(payload: object): ReplyPayloadMetadata | undefined {
   return replyPayloadMetadata.get(payload);
 }
+
+export function copyReplyPayloadMetadata<T extends object>(source: object, target: T): T {
+  const metadata = replyPayloadMetadata.get(source);
+  return metadata ? setReplyPayloadMetadata(target, metadata) : target;
+}

@@ -592,6 +592,7 @@ export async function runAgentTurnWithFallback(params: {
           config: runtimeConfig,
         };
 
+  const executionStartedAt = Date.now();
   const runId = params.opts?.runId ?? crypto.randomUUID();
   const normalizeReplyMediaPaths = createReplyMediaPathNormalizer({
     cfg: runtimeConfig,
@@ -799,10 +800,16 @@ export async function runAgentTurnWithFallback(params: {
           })
         : undefined;
       const onToolResult = params.opts?.onToolResult;
+      logVerbose(
+        `reply agent execution start: sessionKey=${params.sessionKey} ` +
+          `runId=${runId} durationMs=${Date.now() - executionStartedAt} ` +
+          `isHeartbeat=${params.isHeartbeat}`,
+      );
       const fallbackResult = await runWithModelFallback({
         ...resolveModelFallbackOptions(params.followupRun.run),
         runId,
         run: async (provider, model, runOptions) => {
+          const attemptStartedAt = Date.now();
           // Notify that model selection is complete (including after fallback).
           // This allows responsePrefix template interpolation with the actual model.
           params.opts?.onModelSelected?.({
@@ -821,7 +828,11 @@ export async function runAgentTurnWithFallback(params: {
               `failed to persist fallback candidate selection (non-fatal): ${String(error)}`,
             );
           }
-
+          logVerbose(
+            `reply agent model attempt prepared: sessionKey=${params.sessionKey} ` +
+              `runId=${runId} provider=${provider} model=${model} ` +
+              `durationMs=${Date.now() - attemptStartedAt} isHeartbeat=${params.isHeartbeat}`,
+          );
           if (isCliProvider(provider, runtimeConfig)) {
             const startedAt = Date.now();
             notifyAgentRunStart();
@@ -944,6 +955,7 @@ export async function runAgentTurnWithFallback(params: {
               }
             })();
           }
+          const embeddedBuildStartedAt = Date.now();
           const { embeddedContext, senderContext, runBaseParams } = buildEmbeddedRunExecutionParams(
             {
               run: effectiveRun,
@@ -955,9 +967,35 @@ export async function runAgentTurnWithFallback(params: {
               model,
             },
           );
+          logVerbose(
+            `reply embedded buildRunParams: sessionKey=${params.sessionKey} ` +
+              `runId=${runId} durationMs=${Date.now() - embeddedBuildStartedAt} ` +
+              `sinceAttemptMs=${Date.now() - attemptStartedAt} isHeartbeat=${params.isHeartbeat}`,
+          );
           return (async () => {
             let attemptCompactionCount = 0;
+            const embeddedRunStartedAt = Date.now();
+            let didLogEmbeddedStart = false;
+            let didLogFirstAssistantMessage = false;
+            const logFirstAssistantMessage = (source: string) => {
+              if (didLogFirstAssistantMessage) {
+                return;
+              }
+              didLogFirstAssistantMessage = true;
+              logVerbose(
+                `reply run firstAssistantMessage: sessionKey=${params.sessionKey} ` +
+                  `runId=${runId} source=${source} ` +
+                  `sinceEmbeddedStartMs=${Date.now() - embeddedRunStartedAt} ` +
+                  `sinceAttemptMs=${Date.now() - attemptStartedAt} ` +
+                  `isHeartbeat=${params.isHeartbeat}`,
+              );
+            };
             try {
+              logVerbose(
+                `reply embedded before runEmbeddedPiAgent: sessionKey=${params.sessionKey} ` +
+                  `runId=${runId} sinceAttemptMs=${Date.now() - attemptStartedAt} ` +
+                  `sinceExecutionMs=${Date.now() - executionStartedAt} isHeartbeat=${params.isHeartbeat}`,
+              );
               const result = await runEmbeddedPiAgent({
                 ...embeddedContext,
                 allowGatewaySubagentBinding: true,
@@ -993,6 +1031,9 @@ export async function runAgentTurnWithFallback(params: {
                 blockReplyChunking: params.blockReplyChunking,
                 onPartialReply: async (payload) => {
                   const textForTyping = await handlePartialForTyping(payload);
+                  if (textForTyping !== undefined) {
+                    logFirstAssistantMessage("partialReply");
+                  }
                   if (!params.opts?.onPartialReply || textForTyping === undefined) {
                     return;
                   }
@@ -1002,6 +1043,7 @@ export async function runAgentTurnWithFallback(params: {
                   });
                 },
                 onAssistantMessageStart: async () => {
+                  logFirstAssistantMessage("assistantMessageStart");
                   await params.typingSignals.signalMessageStart();
                   await params.opts?.onAssistantMessageStart?.();
                 },
@@ -1023,6 +1065,16 @@ export async function runAgentTurnWithFallback(params: {
                   // Signal run start only after the embedded agent emits real activity.
                   const hasLifecyclePhase =
                     evt.stream === "lifecycle" && typeof evt.data.phase === "string";
+                  if (hasLifecyclePhase && !didLogEmbeddedStart) {
+                    didLogEmbeddedStart = true;
+                    logVerbose(
+                      `reply run embeddedStart: sessionKey=${params.sessionKey} ` +
+                        `runId=${runId} phase=${readStringValue(evt.data.phase) ?? ""} ` +
+                        `sinceEmbeddedStartMs=${Date.now() - embeddedRunStartedAt} ` +
+                        `sinceAttemptMs=${Date.now() - attemptStartedAt} ` +
+                        `isHeartbeat=${params.isHeartbeat}`,
+                    );
+                  }
                   if (evt.stream !== "lifecycle" || hasLifecyclePhase) {
                     notifyAgentRunStart();
                   }
@@ -1232,6 +1284,13 @@ export async function runAgentTurnWithFallback(params: {
               }
               throw err;
             } finally {
+              logVerbose(
+                `reply run embeddedComplete: sessionKey=${params.sessionKey} ` +
+                  `runId=${runId} durationMs=${Date.now() - embeddedRunStartedAt} ` +
+                  `firstAssistantLogged=${didLogFirstAssistantMessage} ` +
+                  `embeddedStartLogged=${didLogEmbeddedStart} ` +
+                  `isHeartbeat=${params.isHeartbeat}`,
+              );
               autoCompactionCount += attemptCompactionCount;
             }
           })();

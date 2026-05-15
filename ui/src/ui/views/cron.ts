@@ -1,21 +1,17 @@
 import { html, nothing } from "lit";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { t } from "../../i18n/index.ts";
-import type {
-  CronFieldErrors,
-  CronFieldKey,
-  CronJobsLastStatusFilter,
-  CronJobsScheduleKindFilter,
+import {
+  computeCronJobStatus,
+  type CronFieldErrors,
+  type CronFieldKey,
+  type CronJobsLastStatusFilter,
+  type CronJobsScheduleKindFilter,
 } from "../controllers/cron.ts";
 import { formatRelativeTimestamp, formatMs } from "../format.ts";
 import { pathForTab } from "../navigation.ts";
 import { formatCronSchedule, formatNextRun } from "../presenter.ts";
 import type { ChannelUiMetaEntry, CronJob, CronRunLogEntry, CronStatus } from "../types.ts";
-import {
-  filterCronTemplateGroups,
-  findCronTemplateById,
-  type CronTemplateDefinition,
-} from "./cron-templates.ts";
 import type {
   CronDeliveryStatus,
   CronJobsEnabledFilter,
@@ -26,6 +22,11 @@ import type {
   CronSortDir,
 } from "../types.ts";
 import type { CronFormState } from "../ui-types.ts";
+import {
+  filterCronTemplateGroups,
+  findCronTemplateById,
+  type CronTemplateDefinition,
+} from "./cron-templates.ts";
 
 export type CronProps = {
   basePath: string;
@@ -392,7 +393,10 @@ export function renderCron(props: CronProps) {
     props.form.deliveryMode === "announce" && !supportsAnnounce ? "none" : props.form.deliveryMode;
   const templateQuery = props.templateQuery ?? "";
   const templateRiskFilter = props.templateRiskFilter ?? "all";
-  const templateGroups = filterCronTemplateGroups({ query: templateQuery, risk: templateRiskFilter });
+  const templateGroups = filterCronTemplateGroups({
+    query: templateQuery,
+    risk: templateRiskFilter,
+  });
   const activeTemplate = findCronTemplateById(props.activeTemplateId ?? null);
   const recentTemplates = (props.recentTemplateIds ?? [])
     .map((id) => findCronTemplateById(id))
@@ -452,14 +456,17 @@ export function renderCron(props: CronProps) {
       <div class="cron-workspace-main">
         <section class="card cron-templates-card">
           <div class="card-title">自动化模板</div>
-          <div class="card-sub">从模板快速预填定时任务；默认先生成总结、草稿或建议，再由你微调后创建。</div>
+          <div class="card-sub">
+            从模板快速预填定时任务；默认先生成总结、草稿或建议，再由你微调后创建。
+          </div>
           <div class="cron-template-toolbar">
             <label class="field cron-template-toolbar__search">
               <span>搜索模板</span>
               <input
                 .value=${templateQuery}
                 placeholder="模板名、场景、标签"
-                @input=${(e: Event) => props.onTemplateQueryChange?.((e.target as HTMLInputElement).value)}
+                @input=${(e: Event) =>
+                  props.onTemplateQueryChange?.((e.target as HTMLInputElement).value)}
               />
             </label>
             <label class="field cron-template-toolbar__risk">
@@ -481,18 +488,20 @@ export function renderCron(props: CronProps) {
             ? html`<div class="cron-template-recents">
                 <div class="cron-template-recents__title">最近使用</div>
                 <div class="cron-template-recents__chips">
-                  ${recentTemplates.map((template) => html`
-                    <button
-                      type="button"
-                      class="chip cron-template-recents__chip"
-                      @click=${() => {
-                        props.onApplyTemplate?.(template);
-                        focusFormField("cron-name");
-                      }}
-                    >
-                      ${template.title}
-                    </button>
-                  `)}
+                  ${recentTemplates.map(
+                    (template) => html`
+                      <button
+                        type="button"
+                        class="chip cron-template-recents__chip"
+                        @click=${() => {
+                          props.onApplyTemplate?.(template);
+                          focusFormField("cron-name");
+                        }}
+                      >
+                        ${template.title}
+                      </button>
+                    `,
+                  )}
                 </div>
               </div>`
             : nothing}
@@ -530,7 +539,9 @@ export function renderCron(props: CronProps) {
                               <span class="cron-template-card__title">${template.title}</span>
                               <span class="cron-template-card__risk">${template.riskLabel}</span>
                             </span>
-                            <span class="cron-template-card__description">${template.description}</span>
+                            <span class="cron-template-card__description"
+                              >${template.description}</span
+                            >
                           </span>
                         </button>
                       `;
@@ -821,7 +832,8 @@ export function renderCron(props: CronProps) {
         <div class="cron-form">
           ${activeTemplate
             ? html`<div class="callout cron-template-applied">
-                已应用模板：${activeTemplate.title}。你可以继续调整时间、目标会话、投递方式和 prompt 后再创建。
+                已应用模板：${activeTemplate.title}。你可以继续调整时间、目标会话、投递方式和 prompt
+                后再创建。
               </div>`
             : nothing}
           <div class="cron-required-legend">
@@ -1712,6 +1724,10 @@ function renderJobPayload(job: CronJob) {
       <span class="cron-job-detail-label">${t("cron.jobDetail.prompt")}</span>
       <span class="muted cron-job-detail-value">${job.payload.message}</span>
     </div>
+    <div class="cron-job-detail">
+      <span class="cron-job-detail-label">${t("cron.form.model")}</span>
+      <span class="muted cron-job-detail-value">${job.payload.model?.trim() || "Default"}</span>
+    </div>
     ${delivery
       ? html`<div class="cron-job-detail">
           <span class="cron-job-detail-label">${t("cron.jobDetail.delivery")}</span>
@@ -1733,8 +1749,16 @@ function formatRunNextLabel(nextRunAtMs: number, nowMs = Date.now()) {
   return nextRunAtMs > nowMs ? t("cron.runEntry.next", { rel }) : t("cron.runEntry.due", { rel });
 }
 
+function formatJobNextLabel(nextRunAtMs?: number, nowMs = Date.now()) {
+  if (typeof nextRunAtMs !== "number" || !Number.isFinite(nextRunAtMs)) {
+    return t("common.na");
+  }
+  const rel = formatRelativeTimestamp(nextRunAtMs);
+  return nextRunAtMs > nowMs ? t("cron.runEntry.next", { rel }) : t("cron.runEntry.due", { rel });
+}
+
 function renderJobState(job: CronJob) {
-  const rawStatus = job.state?.lastStatus;
+  const rawStatus = computeCronJobStatus(job);
   const statusClass =
     rawStatus === "ok"
       ? "cron-job-status-ok"
@@ -1742,7 +1766,11 @@ function renderJobState(job: CronJob) {
         ? "cron-job-status-error"
         : rawStatus === "skipped"
           ? "cron-job-status-skipped"
-          : "cron-job-status-na";
+          : rawStatus === "running"
+            ? "cron-job-status-running"
+            : rawStatus === "disabled"
+              ? "cron-job-status-na"
+              : "cron-job-status-na";
   const statusLabel =
     rawStatus === "ok"
       ? t("cron.runs.runStatusOk")
@@ -1750,7 +1778,11 @@ function renderJobState(job: CronJob) {
         ? t("cron.runs.runStatusError")
         : rawStatus === "skipped"
           ? t("cron.runs.runStatusSkipped")
-          : t("common.na");
+          : rawStatus === "running"
+            ? "Running"
+            : rawStatus === "disabled"
+              ? t("cron.jobList.disabled")
+              : "Idle";
   const nextRunAtMs = job.state?.nextRunAtMs;
   const lastRunAtMs = job.state?.lastRunAtMs;
 
@@ -1763,7 +1795,7 @@ function renderJobState(job: CronJob) {
       <div class="cron-job-state-row">
         <span class="cron-job-state-key">${t("cron.jobState.next")}</span>
         <span class="cron-job-state-value" title=${formatMs(nextRunAtMs)}>
-          ${formatStateRelative(nextRunAtMs)}
+          ${formatJobNextLabel(nextRunAtMs)}
         </span>
       </div>
       <div class="cron-job-state-row">

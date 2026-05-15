@@ -3,6 +3,8 @@ import { DEFAULT_CRON_FORM } from "../app-defaults.ts";
 import {
   addCronJob,
   cancelCronEdit,
+  computeCronJobStatus,
+  getVisibleCronJobs,
   loadCronJobsPage,
   loadCronRuns,
   loadMoreCronRuns,
@@ -1070,5 +1072,86 @@ describe("cron controller", () => {
     await runCronJob(state, job, "due");
 
     expect(request).toHaveBeenCalledWith("cron.run", { id: "job-due", mode: "due" });
+  });
+
+  it("computes job status from enabled, running, and lastRunStatus", () => {
+    expect(
+      computeCronJobStatus({
+        id: "disabled-job",
+        name: "Disabled",
+        enabled: false,
+        createdAtMs: 0,
+        updatedAtMs: 0,
+        schedule: { kind: "cron", expr: "0 * * * *" },
+        sessionTarget: "isolated",
+        wakeMode: "now",
+        payload: { kind: "agentTurn", message: "run" },
+        state: { lastRunStatus: "ok" },
+      }),
+    ).toBe("disabled");
+
+    expect(
+      computeCronJobStatus({
+        id: "running-job",
+        name: "Running",
+        enabled: true,
+        createdAtMs: 0,
+        updatedAtMs: 0,
+        schedule: { kind: "cron", expr: "0 * * * *" },
+        sessionTarget: "isolated",
+        wakeMode: "now",
+        payload: { kind: "agentTurn", message: "run" },
+        state: { runningAtMs: 123, lastRunStatus: "error" },
+      }),
+    ).toBe("running");
+
+    expect(
+      computeCronJobStatus({
+        id: "last-run-job",
+        name: "Last run",
+        enabled: true,
+        createdAtMs: 0,
+        updatedAtMs: 0,
+        schedule: { kind: "cron", expr: "0 * * * *" },
+        sessionTarget: "isolated",
+        wakeMode: "now",
+        payload: { kind: "agentTurn", message: "run" },
+        state: { lastRunStatus: "skipped", lastStatus: "ok" },
+      }),
+    ).toBe("skipped");
+  });
+
+  it("filters jobs by computed status rather than only legacy lastStatus", () => {
+    const state = createState({
+      cronJobsLastStatusFilter: "error",
+      cronJobs: [
+        {
+          id: "modern-error",
+          name: "Modern error",
+          enabled: true,
+          createdAtMs: 0,
+          updatedAtMs: 0,
+          schedule: { kind: "cron", expr: "0 * * * *" },
+          sessionTarget: "isolated",
+          wakeMode: "now",
+          payload: { kind: "agentTurn", message: "run" },
+          state: { lastRunStatus: "error" },
+        },
+        {
+          id: "legacy-ok",
+          name: "Legacy ok",
+          enabled: true,
+          createdAtMs: 0,
+          updatedAtMs: 0,
+          schedule: { kind: "cron", expr: "0 * * * *" },
+          sessionTarget: "isolated",
+          wakeMode: "now",
+          payload: { kind: "agentTurn", message: "run" },
+          state: { lastStatus: "ok" },
+        },
+      ],
+    });
+
+    expect(getVisibleCronJobs(state).map((job) => job.id)).toEqual(["modern-error"]);
   });
 });

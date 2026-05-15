@@ -86,6 +86,42 @@ describe("createChannelOutboundRuntimeSend", () => {
     );
   });
 
+  it("preserves lazy sender formatting options", async () => {
+    const sendText = vi.fn(async () => ({ channel: "telegram", messageId: "tg-1" }));
+    mocks.loadChannelOutboundAdapter.mockResolvedValue({
+      sendText,
+    });
+
+    const { createChannelOutboundRuntimeSend } = await import("./channel-outbound-send.js");
+    const runtimeSend = createChannelOutboundRuntimeSend({
+      channelId: "telegram" as never,
+      unavailableMessage: "unavailable",
+    });
+
+    await runtimeSend.sendMessage("12345", "<b>hello</b>", {
+      cfg: {},
+      textMode: "html",
+    });
+    await runtimeSend.sendMessage("12345", "custom", {
+      cfg: {},
+      formatting: { parseMode: "MarkdownV2" },
+      textMode: "html",
+    });
+
+    expect(sendText).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        formatting: { parseMode: "HTML" },
+      }),
+    );
+    expect(sendText).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        formatting: { parseMode: "MarkdownV2" },
+      }),
+    );
+  });
+
   it("accepts plugin outbound thread and reply aliases", async () => {
     const sendText = vi.fn(async () => ({ channel: "matrix", messageId: "$reply" }));
     mocks.loadChannelOutboundAdapter.mockResolvedValue({

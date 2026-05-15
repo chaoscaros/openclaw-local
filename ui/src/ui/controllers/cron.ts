@@ -11,6 +11,7 @@ import type {
   CronJobsSortBy,
   CronRunScope,
   CronRunLogEntry,
+  CronRunStatus,
   CronRunsResult,
   CronRunsStatusFilter,
   CronRunsStatusValue,
@@ -42,6 +43,18 @@ export type CronFieldErrors = Partial<Record<CronFieldKey, string>>;
 
 export type CronJobsScheduleKindFilter = "all" | "at" | "every" | "cron";
 export type CronJobsLastStatusFilter = "all" | "ok" | "error" | "skipped";
+export type CronComputedJobStatus = "disabled" | "running" | "idle" | CronRunStatus;
+
+export function computeCronJobStatus(job: CronJob): CronComputedJobStatus {
+  if (!job.enabled) {
+    return "disabled";
+  }
+  const state = job.state ?? {};
+  if (typeof state.runningAtMs === "number" && Number.isFinite(state.runningAtMs)) {
+    return "running";
+  }
+  return state.lastRunStatus ?? state.lastStatus ?? "idle";
+}
 
 export type CronState = {
   client: GatewayBrowserClient | null;
@@ -368,7 +381,7 @@ export function getVisibleCronJobs(
     }
     if (
       state.cronJobsLastStatusFilter !== "all" &&
-      job.state?.lastStatus !== state.cronJobsLastStatusFilter
+      computeCronJobStatus(job) !== state.cronJobsLastStatusFilter
     ) {
       return false;
     }
