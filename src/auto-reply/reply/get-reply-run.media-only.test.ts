@@ -282,6 +282,28 @@ describe("runPreparedReply media-only handling", () => {
     );
   });
 
+  it("skips skill snapshot hydration for heartbeat turns", async () => {
+    const result = await runPreparedReply(
+      baseParams({
+        opts: {
+          isHeartbeat: true,
+        },
+      }),
+    );
+
+    expect(result).toEqual({ text: "ok" });
+    expect(ensureSkillSnapshotMock).not.toHaveBeenCalled();
+    expect(runReplyAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        followupRun: expect.objectContaining({
+          run: expect.objectContaining({
+            sessionKey: "session-key",
+          }),
+        }),
+      }),
+    );
+  });
+
   it("passes approved elevated defaults to the runner", async () => {
     await runPreparedReply(
       baseParams({

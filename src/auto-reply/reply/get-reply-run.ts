@@ -352,6 +352,11 @@ export async function runPreparedReply(
   const isGroupChat = sessionCtx.ChatType === "group";
   const wasMentioned = ctx.WasMentioned === true;
   const isHeartbeat = opts?.isHeartbeat === true;
+  if (!isHeartbeat && process.env.OPENCLAW_TEST_FAST !== "1") {
+    // Start loading the skill-snapshot runtime before other prompt prep so ordinary
+    // turns do not pay dynamic import latency inside the measured pre-start window.
+    void loadSessionUpdatesRuntime();
+  }
   const { typingPolicy, suppressTyping } = resolveRunTypingPolicy({
     requestedPolicy: opts?.typingPolicy,
     suppressTyping: opts?.suppressTyping === true,
@@ -549,7 +554,7 @@ export async function runPreparedReply(
   };
   const skillSnapshotStartedAt = Date.now();
   const skillResult =
-    process.env.OPENCLAW_TEST_FAST === "1"
+    process.env.OPENCLAW_TEST_FAST === "1" || isHeartbeat
       ? {
           sessionEntry,
           skillsSnapshot: sessionEntry?.skillsSnapshot,
@@ -577,6 +582,13 @@ export async function runPreparedReply(
             );
           }
         })();
+  if (isHeartbeat && process.env.OPENCLAW_TEST_FAST !== "1") {
+    logVerbose(
+      `reply pre-start ensureSkillSnapshot: sessionKey=${sessionKey} ` +
+        `durationMs=${Date.now() - skillSnapshotStartedAt} ` +
+        `isFirstTurn=${isFirstTurnInSession} skillFilterCount=${opts?.skillFilter?.length ?? 0} skipped=heartbeat`,
+    );
+  }
   sessionEntry = skillResult.sessionEntry ?? sessionEntry;
   currentSystemSent = skillResult.systemSent;
   const skillsSnapshot = skillResult.skillsSnapshot;
