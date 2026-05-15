@@ -83,6 +83,13 @@ function findGatewayHandler(
   return registerGatewayMethod.mock.calls.find((call) => call[0] === method)?.[1];
 }
 
+function readGatewayMethodOptions(
+  registerGatewayMethod: ReturnType<typeof vi.fn>,
+  method: string,
+): unknown {
+  return registerGatewayMethod.mock.calls.find((call) => call[0] === method)?.[2];
+}
+
 describe("memory-wiki gateway methods", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -138,6 +145,27 @@ describe("memory-wiki gateway methods", () => {
       items: [],
       total: 0,
     } as never);
+  });
+
+  it("registers Obsidian CLI methods with write scope", async () => {
+    const { config } = await createVault({ prefix: "memory-wiki-gateway-" });
+    const { api, registerGatewayMethod } = createPluginApi();
+
+    registerMemoryWikiGatewayMethods({ api, config });
+
+    expect(
+      Object.fromEntries(
+        registerGatewayMethod.mock.calls
+          .filter(([method]) => typeof method === "string" && method.startsWith("wiki.obsidian."))
+          .map(([method, , options]) => [method, options]),
+      ),
+    ).toEqual({
+      "wiki.obsidian.status": { scope: "operator.read" },
+      "wiki.obsidian.search": { scope: "operator.write" },
+      "wiki.obsidian.open": { scope: "operator.write" },
+      "wiki.obsidian.command": { scope: "operator.write" },
+      "wiki.obsidian.daily": { scope: "operator.write" },
+    });
   });
 
   it("returns wiki status over the gateway", async () => {
@@ -354,6 +382,20 @@ describe("memory-wiki gateway methods", () => {
       undefined,
       expect.objectContaining({ message: "query is required." }),
     );
+  });
+
+  it("registers wiki.ingest with admin scope and keeps compile at write scope", async () => {
+    const { config } = await createVault({ prefix: "memory-wiki-gateway-" });
+    const { api, registerGatewayMethod } = createPluginApi();
+
+    registerMemoryWikiGatewayMethods({ api, config });
+
+    expect(readGatewayMethodOptions(registerGatewayMethod, "wiki.compile")).toEqual({
+      scope: "operator.write",
+    });
+    expect(readGatewayMethodOptions(registerGatewayMethod, "wiki.ingest")).toEqual({
+      scope: "operator.admin",
+    });
   });
 
   it("forwards ingest requests over the gateway", async () => {
