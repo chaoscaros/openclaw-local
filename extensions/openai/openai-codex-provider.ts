@@ -258,7 +258,9 @@ async function refreshOpenAICodexOAuthCredential(cred: OAuthCredential) {
 }
 
 async function runOpenAICodexOAuth(ctx: ProviderAuthContext) {
-  const importCodexCliFallback = async () => {
+  const importCodexCliFallback = async (
+    reason: "token-exchange-failed" | "credential-persist-failed",
+  ) => {
     const store = ensureAuthProfileStore(ctx.agentDir, {
       allowKeychainPrompt: false,
     });
@@ -270,7 +272,9 @@ async function runOpenAICodexOAuth(ctx: ProviderAuthContext) {
       return null;
     }
     await ctx.prompter.note(
-      "Imported the existing Codex CLI login from ~/.codex/auth.json after OAuth token exchange failed.",
+      reason === "credential-persist-failed"
+        ? "Imported the Codex CLI login from ~/.codex/auth.json after OAuth completed but credential persistence failed."
+        : "Imported the existing Codex CLI login from ~/.codex/auth.json after OAuth token exchange failed.",
       "OpenAI Codex fallback",
     );
     return {
@@ -298,26 +302,37 @@ async function runOpenAICodexOAuth(ctx: ProviderAuthContext) {
       localBrowserMessage: "Complete sign-in in browser…",
     });
   } catch {
-    return (await importCodexCliFallback()) ?? { profiles: [] };
+    return (await importCodexCliFallback("token-exchange-failed")) ?? { profiles: [] };
   }
   if (!creds) {
-    return (await importCodexCliFallback()) ?? { profiles: [] };
+    return (await importCodexCliFallback("token-exchange-failed")) ?? { profiles: [] };
   }
 
-  const identity = resolveCodexAuthIdentity({
-    accessToken: creds.access,
-    email: readStringValue(creds.email),
-  });
+  try {
+    const identity = resolveCodexAuthIdentity({
+      accessToken: creds.access,
+      email: readStringValue(creds.email),
+    });
 
-  return buildOauthProviderAuthResult({
-    providerId: PROVIDER_ID,
-    defaultModel: OPENAI_CODEX_DEFAULT_MODEL,
-    access: creds.access,
-    refresh: creds.refresh,
-    expires: creds.expires,
-    email: identity.email,
-    profileName: identity.profileName,
-  });
+    return buildOauthProviderAuthResult({
+      providerId: PROVIDER_ID,
+      defaultModel: OPENAI_CODEX_DEFAULT_MODEL,
+      access: creds.access,
+      refresh: creds.refresh,
+      expires: creds.expires,
+      email: identity.email,
+      profileName: identity.profileName,
+    });
+  } catch (error) {
+    ctx.runtime.error(
+      `OpenAI Codex OAuth completed, but OpenClaw could not persist the returned credentials: ${formatErrorMessage(error)}`,
+    );
+    const imported = await importCodexCliFallback("credential-persist-failed");
+    if (imported) {
+      return imported;
+    }
+    throw error;
+  }
 }
 
 function buildOpenAICodexAuthDoctorHint(ctx: { profileId?: string }) {

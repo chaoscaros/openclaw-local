@@ -145,6 +145,54 @@ describe("openai codex provider", () => {
     );
   });
 
+  it("falls back to the Codex CLI auth file when returned OAuth credentials cannot be persisted", async () => {
+    const provider = buildOpenAICodexProviderPlugin();
+    loginOpenAICodexOAuthMock.mockResolvedValueOnce({
+      access: undefined,
+      refresh: "oauth-refresh",
+      expires: Date.now() + 60_000,
+    });
+    readOpenAICodexCliOAuthProfileMock.mockReturnValueOnce({
+      profileId: "openai-codex:default",
+      credential: {
+        type: "oauth",
+        provider: "openai-codex",
+        access: "cli-access",
+        refresh: "cli-refresh",
+        expires: Date.now() + 60_000,
+        email: "cli@example.com",
+      },
+    });
+
+    const prompter = { note: vi.fn(async () => {}) };
+    const runtime = { log: vi.fn(), error: vi.fn(), exit: vi.fn() };
+    const result = await provider.auth[0]?.run({
+      agentDir: "/tmp/agent",
+      env: process.env,
+      prompter,
+      runtime,
+      isRemote: false,
+      openUrl: async () => {},
+    } as never);
+
+    expect(result).toMatchObject({
+      defaultModel: "openai/gpt-5.5",
+      profiles: [
+        {
+          profileId: "openai-codex:default",
+          credential: expect.objectContaining({ access: "cli-access", refresh: "cli-refresh" }),
+        },
+      ],
+    });
+    expect(runtime.error).toHaveBeenCalledWith(
+      expect.stringContaining("could not persist the returned credentials"),
+    );
+    expect(prompter.note).toHaveBeenCalledWith(
+      expect.stringContaining("credential persistence failed"),
+      "OpenAI Codex fallback",
+    );
+  });
+
   it("owns native reasoning output mode for Codex responses", () => {
     const provider = buildOpenAICodexProviderPlugin();
 

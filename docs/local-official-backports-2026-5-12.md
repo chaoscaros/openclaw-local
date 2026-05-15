@@ -34,6 +34,17 @@ should be split by risk area.
   - Note: the official bundled catalog sub-change was not needed because this
     local branch already reads bundled channel package metadata directly.
 
+## Local Hardening
+
+- OpenAI Codex OAuth credential persistence fallback
+  - Local impact: when `openclaw models auth login --provider openai-codex`
+    completes OAuth but the returned credential shape cannot be normalized for
+    OpenClaw storage, the provider now imports the Codex CLI auth file from
+    `~/.codex/auth.json` and returns a normal auth result so the outer login
+    command still writes the OpenClaw auth profile/config entry.
+  - Files: `extensions/openai/openai-codex-provider.ts`,
+    `extensions/openai/openai-codex-provider.test.ts`.
+
 ## Deferred
 
 - `6104c0cc79` `fix: require heartbeat tool replies`
