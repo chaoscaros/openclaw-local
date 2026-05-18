@@ -30,7 +30,9 @@ describe("noteStartupOptimizationHints", () => {
     const [message, title] = noteFn.mock.calls[0] ?? [];
     expect(title).toBe("Startup optimization");
     expect(message).toContain("NODE_COMPILE_CACHE points to /tmp");
-    expect(message).toContain("OPENCLAW_NO_RESPAWN is not set to 1");
+    expect(message).toContain(
+      "OPENCLAW_NO_RESPAWN is not set to 1; set it when you want routine gateway restarts to stay in-process",
+    );
     expect(message).toContain("export NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache");
     expect(message).toContain("export OPENCLAW_NO_RESPAWN=1");
   });

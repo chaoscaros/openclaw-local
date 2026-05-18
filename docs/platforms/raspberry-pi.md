@@ -213,7 +213,7 @@ Notes:
 
 - `NODE_COMPILE_CACHE` speeds up subsequent runs (`status`, `health`, `--help`).
 - `/var/tmp` survives reboots better than `/tmp`.
-- `OPENCLAW_NO_RESPAWN=1` avoids extra startup cost from CLI self-respawn.
+- `OPENCLAW_NO_RESPAWN=1` keeps routine Gateway restarts in-process, which avoids extra process handoffs and keeps PID tracking simple on small hosts.
 - First run warms the cache; later runs benefit most.
 
 ### systemd startup tuning (optional)

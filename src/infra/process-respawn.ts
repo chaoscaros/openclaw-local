@@ -1,6 +1,4 @@
-import { spawn } from "node:child_process";
 import { normalizeOptionalLowercaseString } from "../shared/string-coerce.js";
-import { formatErrorMessage } from "./errors.js";
 import { triggerOpenClawRestart } from "./restart.js";
 import { detectRespawnSupervisor } from "./supervisor-markers.js";
 
@@ -21,7 +19,8 @@ function isTruthy(value: string | undefined): boolean {
  * Attempt to restart this process with a fresh PID.
  * - supervised environments (launchd/systemd/schtasks): caller should exit and let supervisor restart
  * - OPENCLAW_NO_RESPAWN=1: caller should keep in-process restart behavior (tests/dev)
- * - otherwise: spawn detached child with current argv/execArgv, then caller exits
+ * - unmanaged environments: caller should keep in-process restart behavior so
+ *   custom supervisors keep tracking the same gateway PID
  */
 export function restartGatewayProcessWithFreshPid(): GatewayRespawnResult {
   if (isTruthy(process.env.OPENCLAW_NO_RESPAWN)) {
@@ -52,17 +51,8 @@ export function restartGatewayProcessWithFreshPid(): GatewayRespawnResult {
     };
   }
 
-  try {
-    const args = [...process.execArgv, ...process.argv.slice(1)];
-    const child = spawn(process.execPath, args, {
-      env: process.env,
-      detached: true,
-      stdio: "inherit",
-    });
-    child.unref();
-    return { mode: "spawned", pid: child.pid ?? undefined };
-  } catch (err) {
-    const detail = formatErrorMessage(err);
-    return { mode: "failed", detail };
-  }
+  return {
+    mode: "disabled",
+    detail: "unmanaged: use in-process restart to keep custom supervisor PID tracking stable",
+  };
 }
