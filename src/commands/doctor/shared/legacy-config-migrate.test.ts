@@ -686,6 +686,40 @@ describe("legacy migrate controlUi.allowedOrigins seed (issue #29385)", () => {
     ]);
   });
 
+  it("seeds allowedOrigins before normalizing non-loopback bind aliases", () => {
+    const res = migrateLegacyConfigForTest({
+      gateway: {
+        bind: "0.0.0.0",
+        auth: { mode: "token", token: "tok" },
+      },
+    });
+
+    expect(res.config?.gateway?.bind).toBe("lan");
+    expect(res.config?.gateway?.controlUi?.allowedOrigins).toEqual([
+      "http://localhost:18789",
+      "http://127.0.0.1:18789",
+    ]);
+    expect(
+      res.changes.some(
+        (c) => c.includes("Seeded gateway.controlUi.allowedOrigins") && c.includes("bind=lan"),
+      ),
+    ).toBe(true);
+    expect(res.changes.some((c) => c.includes('Normalized gateway.bind "0.0.0.0"'))).toBe(true);
+  });
+
+  it("does not seed allowedOrigins before normalizing loopback bind aliases", () => {
+    const res = migrateLegacyConfigForTest({
+      gateway: {
+        bind: "localhost",
+        auth: { mode: "token", token: "tok" },
+      },
+    });
+
+    expect(res.config?.gateway?.bind).toBe("loopback");
+    expect(res.config?.gateway?.controlUi).toBeUndefined();
+    expect(res.changes.some((c) => c.includes('Normalized gateway.bind "localhost"'))).toBe(true);
+  });
+
   it("seeds allowedOrigins including custom bind host for bind=custom", () => {
     const res = migrateLegacyConfigForTest({
       gateway: {

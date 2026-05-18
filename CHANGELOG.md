@@ -12,6 +12,7 @@ Docs: https://docs.openclaw.ai
 - Cron: keep announce runs in message-tool-only source-reply mode so scheduled turns do not also echo through automatic visible replies.
 - Agents/subagents: require the initial registry save before reporting spawn accepted so failed writes cannot leave untracked child runs.
 - Agents/subagents: preserve run-mode keep entries past the session sweep TTL so kept child runs remain visible after cleanup.
+- Doctor/gateway: seed Control UI allowed origins before normalizing legacy non-loopback `gateway.bind` host aliases so LAN upgrades keep browser access working.
 
 ## 2026.4.15
 
