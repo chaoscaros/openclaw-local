@@ -255,6 +255,33 @@ describe("subagent registry seam flow", () => {
     ).toBeUndefined();
   });
 
+  it("preserves run-mode keep entries past the session sweep TTL", async () => {
+    mod.registerSubagentRun({
+      runId: "run-keep-survives-ttl",
+      childSessionKey: "agent:main:subagent:child",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "keep me past the session ttl",
+      cleanup: "keep",
+      spawnMode: "run",
+    });
+
+    await waitForFast(() => {
+      const run = mod
+        .listSubagentRunsForRequester("agent:main:main")
+        .find((entry) => entry.runId === "run-keep-survives-ttl");
+      expect(run?.cleanupCompletedAt).toBeTypeOf("number");
+    });
+
+    vi.setSystemTime(new Date(Date.parse("2026-03-24T12:00:00Z") + 10 * 60_000));
+    await mod.__testing.sweepOnceForTests();
+
+    const run = mod
+      .listSubagentRunsForRequester("agent:main:main")
+      .find((entry) => entry.runId === "run-keep-survives-ttl");
+    expect(run?.runId).toBe("run-keep-survives-ttl");
+  });
+
   it("schedules orphan recovery instead of terminally failing on recoverable wait transport errors", async () => {
     mocks.callGateway.mockImplementation(async (request: { method?: string }) => {
       if (request.method === "agent.wait") {

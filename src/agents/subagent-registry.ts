@@ -545,9 +545,12 @@ async function sweepSubagentRuns() {
     const now = Date.now();
     let mutated = false;
     for (const [runId, entry] of subagentRuns.entries()) {
-      // Session-mode runs have no archiveAtMs — apply absolute TTL after cleanup completes.
-      // Use cleanupCompletedAt (not endedAt) to avoid interrupting deferred cleanup flows.
+      if (!entry.archiveAtMs && entry.cleanup === "keep" && entry.spawnMode !== "session") {
+        continue;
+      }
       if (!entry.archiveAtMs) {
+        // Session-mode runs have no archiveAtMs — apply absolute TTL after cleanup completes.
+        // Use cleanupCompletedAt (not endedAt) to avoid interrupting deferred cleanup flows.
         if (
           typeof entry.cleanupCompletedAt === "number" &&
           now - entry.cleanupCompletedAt > SESSION_RUN_TTL_MS
@@ -776,6 +779,7 @@ export const __testing = {
         }
       : defaultSubagentRegistryDeps;
   },
+  sweepOnceForTests: sweepSubagentRuns,
 } as const;
 
 export function addSubagentRunForTests(entry: SubagentRunRecord) {
