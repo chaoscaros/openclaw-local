@@ -1019,6 +1019,11 @@ describe("classifyFailoverReason", () => {
     expect(classifyFailoverReason("key has been disabled")).toBe("auth_permanent");
     expect(classifyFailoverReason("account has been deactivated")).toBe("auth_permanent");
     expect(
+      classifyFailoverReason(
+        "Authentication session could not be refreshed automatically: invalid_grant.",
+      ),
+    ).toBe("auth_permanent");
+    expect(
       classifyFailoverReason("OAuth authentication is currently not allowed for this organization"),
     ).toBe("auth_permanent");
   });
@@ -1148,6 +1153,11 @@ describe("classifyProviderRuntimeFailureKind", () => {
     expect(
       classifyProviderRuntimeFailureKind(
         "OAuth token refresh failed for openai-codex: invalid_grant. Please try again or re-authenticate.",
+      ),
+    ).toBe("auth_refresh");
+    expect(
+      classifyProviderRuntimeFailureKind(
+        "Access token could not be refreshed. Please sign in again.",
       ),
     ).toBe("auth_refresh");
   });

@@ -83,6 +83,34 @@ describe("CodexAppServerClient", () => {
     } satisfies Partial<CodexAppServerRpcError>);
   });
 
+  it("includes relogin details from JSON-RPC error data", async () => {
+    const harness = createClientHarness();
+    clients.push(harness.client);
+
+    const request = harness.client.request("thread/start", {});
+    const outbound = JSON.parse(harness.writes[0] ?? "{}") as { id?: number };
+    harness.send({
+      id: outbound.id,
+      error: {
+        code: 401,
+        message: "Authentication required",
+        data: {
+          error: {
+            action: "relogin",
+            detail: "Access token could not be refreshed. Please sign in again.",
+          },
+        },
+      },
+    });
+
+    await expect(request).rejects.toMatchObject({
+      name: "CodexAppServerRpcError",
+      code: 401,
+      message:
+        "Authentication required: Access token could not be refreshed. Please sign in again.",
+    } satisfies Partial<CodexAppServerRpcError>);
+  });
+
   it("rejects timed-out requests and ignores late responses", async () => {
     vi.useFakeTimers();
     const harness = createClientHarness();

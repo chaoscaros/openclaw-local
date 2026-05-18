@@ -716,6 +716,10 @@ function classifyFailoverClassificationFromMessage(
   if (isBillingErrorMessage(raw)) {
     return toReasonClassification("billing");
   }
+  const oauthRefreshFailure = classifyOAuthRefreshFailure(raw);
+  if (oauthRefreshFailure?.reason) {
+    return toReasonClassification("auth_permanent");
+  }
   if (isAuthPermanentErrorMessage(raw)) {
     return toReasonClassification("auth_permanent");
   }

@@ -55,6 +55,14 @@ should be split by risk area.
     command still writes the OpenClaw auth profile/config entry.
   - Files: `extensions/openai/openai-codex-provider.ts`,
     `extensions/openai/openai-codex-provider.test.ts`.
+- Codex app-server auth refresh detail handling
+  - Local impact: Codex app-server JSON-RPC relogin errors now include the
+    actionable relogin detail in the thrown message, and OpenClaw classifies
+    Codex-style refresh failures such as "access token could not be refreshed"
+    as auth refresh/permanent auth failures.
+  - Files: `extensions/codex/src/app-server/client.ts`,
+    `src/agents/auth-profiles/oauth-refresh-failure.ts`,
+    `src/agents/pi-embedded-helpers/errors.ts`.
 
 ## Deferred
 
