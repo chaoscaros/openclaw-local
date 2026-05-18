@@ -534,6 +534,105 @@ describe("createTelegramBot", () => {
     }
   });
 
+  it.each(["stop", "/stop@openclaw_bot"] as const)(
+    "lets %s bypass and cancel pending same-chat inbound debounce",
+    async (stopText) => {
+      const DEBOUNCE_MS = 4321;
+      loadConfig.mockReturnValue({
+        agents: {
+          defaults: {
+            envelopeTimezone: "utc",
+          },
+        },
+        messages: {
+          inbound: {
+            debounceMs: DEBOUNCE_MS,
+          },
+        },
+        channels: {
+          telegram: { dmPolicy: "open", allowFrom: ["*"] },
+        },
+      });
+
+      installPerKeySequentializer();
+
+      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+      const startedBodies: string[] = [];
+      replySpy.mockImplementation(async (ctx: MsgContext, opts?: GetReplyOptions) => {
+        await opts?.onReplyStart?.();
+        const body = String(ctx.Body ?? "");
+        startedBodies.push(body);
+        return { text: `reply:${body}` };
+      });
+
+      const extractLatestDebounceFlush = () => {
+        const debounceCallIndex = setTimeoutSpy.mock.calls.findLastIndex(
+          (call) => call[1] === DEBOUNCE_MS,
+        );
+        expect(debounceCallIndex).toBeGreaterThanOrEqual(0);
+        clearTimeout(
+          setTimeoutSpy.mock.results[debounceCallIndex]?.value as ReturnType<typeof setTimeout>,
+        );
+        return setTimeoutSpy.mock.calls[debounceCallIndex]?.[0] as
+          | (() => Promise<void>)
+          | undefined;
+      };
+
+      try {
+        createTelegramBot({ token: "tok" });
+        const messageHandler = getOnHandler("message") as (
+          ctx: TelegramMiddlewareTestContext,
+        ) => Promise<void>;
+
+        await runTelegramMiddlewareChain({
+          ctx: {
+            update: { update_id: 301 },
+            message: {
+              chat: { id: 7, type: "private" },
+              text: "first",
+              date: 1736380800,
+              message_id: 301,
+              from: { id: 42, first_name: "Ada" },
+            },
+            me: { username: "openclaw_bot" },
+            getFile: async () => ({}),
+          },
+          finalHandler: messageHandler,
+        });
+
+        const flushFirst = extractLatestDebounceFlush();
+
+        await runTelegramMiddlewareChain({
+          ctx: {
+            update: { update_id: 302 },
+            message: {
+              chat: { id: 7, type: "private" },
+              text: stopText,
+              date: 1736380801,
+              message_id: 302,
+              from: { id: 42, first_name: "Ada" },
+            },
+            me: { username: "openclaw_bot" },
+            getFile: async () => ({}),
+          },
+          finalHandler: messageHandler,
+        });
+
+        await vi.waitFor(() => {
+          expect(startedBodies).toHaveLength(1);
+          expect(startedBodies[0]).toContain(stopText);
+          expect(sendMessageSpy).toHaveBeenCalledTimes(1);
+        });
+
+        await flushFirst?.();
+        expect(startedBodies).toHaveLength(1);
+        expect(String(sendMessageSpy.mock.calls[0]?.[1])).toContain(stopText);
+      } finally {
+        setTimeoutSpy.mockRestore();
+      }
+    },
+  );
+
   it("routes callback_query payloads as messages and answers callbacks", async () => {
     createTelegramBot({ token: "tok" });
     const callbackHandler = onSpy.mock.calls.find((call) => call[0] === "callback_query")?.[1] as (

@@ -27,6 +27,7 @@ import {
 } from "openclaw/plugin-sdk/conversation-runtime";
 import { parseExecApprovalCommandText } from "openclaw/plugin-sdk/infra-runtime";
 import { formatModelsAvailableHeader } from "openclaw/plugin-sdk/models-provider-runtime";
+import { isAbortRequestText } from "openclaw/plugin-sdk/reply-runtime";
 import { resolveAgentRoute } from "openclaw/plugin-sdk/routing";
 import { resolveThreadSessionKeys } from "openclaw/plugin-sdk/routing";
 import { danger, logVerbose, warn } from "openclaw/plugin-sdk/runtime-env";
@@ -939,7 +940,12 @@ export const registerTelegramHandlers = ({
     chatId: number;
     resolvedThreadId?: number;
     dmThreadId?: number;
+    isGroup: boolean;
+    dmPolicy: DmPolicy;
     storeAllowFrom: string[];
+    senderId: string;
+    senderUsername: string;
+    effectiveDmAllow: NormalizedAllowFrom;
     sendOversizeWarning: boolean;
     oversizeLogMessage: string;
   }) => {
@@ -949,21 +955,46 @@ export const registerTelegramHandlers = ({
       chatId,
       resolvedThreadId,
       dmThreadId,
+      isGroup,
+      dmPolicy,
       storeAllowFrom,
+      senderId,
+      senderUsername,
+      effectiveDmAllow,
       sendOversizeWarning,
       oversizeLogMessage,
     } = params;
+
+    const messageText = getTelegramTextParts(msg).text;
+    const botUsername = ctx.me?.username;
+    const isAbortControlMessage = isAbortRequestText(
+      messageText,
+      botUsername ? { botUsername } : undefined,
+    );
+    let abortControlAuthorized: boolean | undefined;
+    const isAuthorizedAbortControlMessage = () => {
+      if (!isAbortControlMessage || !senderId) {
+        return false;
+      }
+      if (abortControlAuthorized !== undefined) {
+        return abortControlAuthorized;
+      }
+      abortControlAuthorized = isGroup
+        ? true
+        : dmPolicy === "open" || isAllowlistAuthorized(effectiveDmAllow, senderId, senderUsername);
+      return abortControlAuthorized;
+    };
 
     // Text fragment handling - Telegram splits long pastes into multiple inbound messages (~4096 chars).
     // We buffer “near-limit” messages and append immediately-following parts.
     const text = typeof msg.text === "string" ? msg.text : undefined;
     const isCommandLike = (text ?? "").trim().startsWith("/");
-    if (text && !isCommandLike) {
+    if (text && !isCommandLike && !isAbortControlMessage) {
       const nowMs = Date.now();
-      const senderId = msg.from?.id != null ? String(msg.from.id) : "unknown";
+      const textSenderId = senderId || (msg.from?.id != null ? String(msg.from.id) : "unknown");
       // Use resolvedThreadId for forum groups, dmThreadId for DM topics
       const threadId = resolvedThreadId ?? dmThreadId;
-      const key = `text:${chatId}:${threadId ?? "main"}:${senderId}`;
+      const key = `text:${chatId}:${threadId ?? "main"}:${textSenderId}`;
       const existing = textFragmentBuffer.get(key);
 
       if (existing) {
@@ -1015,6 +1046,15 @@ export const registerTelegramHandlers = ({
         textFragmentBuffer.set(key, entry);
         scheduleTextFragmentFlush(entry);
         return;
+      }
+    } else if (text && isAbortControlMessage && isAuthorizedAbortControlMessage()) {
+      const textSenderId = senderId || (msg.from?.id != null ? String(msg.from.id) : "unknown");
+      const threadId = resolvedThreadId ?? dmThreadId;
+      const key = `text:${chatId}:${threadId ?? "main"}:${textSenderId}`;
+      const existing = textFragmentBuffer.get(key);
+      if (existing) {
+        clearTimeout(existing.timer);
+        textFragmentBuffer.delete(key);
       }
     }
 
@@ -1110,7 +1150,6 @@ export const registerTelegramHandlers = ({
           },
         ]
       : [];
-    const senderId = msg.from?.id ? String(msg.from.id) : "";
     const conversationThreadId = resolvedThreadId ?? dmThreadId;
     const conversationKey =
       conversationThreadId != null ? `${chatId}:topic:${conversationThreadId}` : String(chatId);
@@ -1123,15 +1162,27 @@ export const registerTelegramHandlers = ({
           debounceLane,
         })
       : null;
+    if (senderId && isAuthorizedAbortControlMessage()) {
+      for (const lane of ["default", "forward"] as const) {
+        inboundDebouncer.cancelKey(
+          buildTelegramInboundDebounceKey({
+            accountId,
+            conversationKey,
+            senderId,
+            debounceLane: lane,
+          }),
+        );
+      }
+    }
     await inboundDebouncer.enqueue({
       ctx,
       msg,
       allMedia,
       storeAllowFrom,
       receivedAtMs: Date.now(),
-      debounceKey,
+      debounceKey: isAbortControlMessage ? null : debounceKey,
       debounceLane,
-      botUsername: ctx.me?.username,
+      botUsername,
     });
   };
   bot.on("callback_query", async (ctx) => {
@@ -1850,7 +1901,12 @@ export const registerTelegramHandlers = ({
         chatId: event.chatId,
         resolvedThreadId,
         dmThreadId,
+        isGroup: event.isGroup,
+        dmPolicy,
         storeAllowFrom,
+        senderId: event.senderId,
+        senderUsername: event.senderUsername,
+        effectiveDmAllow,
         sendOversizeWarning: event.sendOversizeWarning,
         oversizeLogMessage: event.oversizeLogMessage,
       });
