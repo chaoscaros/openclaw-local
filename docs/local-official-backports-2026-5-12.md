@@ -42,7 +42,8 @@ should be split by risk area.
   - Files: `src/plugin-sdk/reply-payload.ts`,
     `src/auto-reply/reply/block-reply-pipeline.ts`,
     `src/auto-reply/reply/reply-delivery.ts`,
-    `src/auto-reply/reply/dispatch-from-config.ts`.
+    `src/auto-reply/reply/dispatch-from-config.ts`,
+    `src/cron/heartbeat-policy.ts`.
 
 ## Local Hardening
 
