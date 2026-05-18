@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createSessionAndRefresh,
   deleteSessionsAndRefresh,
   loadSessions,
   subscribeSessions,
@@ -49,6 +50,48 @@ describe("subscribeSessions", () => {
 
     expect(request).toHaveBeenCalledWith("sessions.subscribe", {});
     expect(state.sessionsError).toBeNull();
+  });
+});
+
+describe("createSessionAndRefresh", () => {
+  it("creates a dashboard session and refreshes the session list", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.create") {
+        return { key: "agent:main:dashboard:created" };
+      }
+      if (method === "sessions.list") {
+        return {
+          ts: 1,
+          path: "",
+          count: 1,
+          defaults: {},
+          sessions: [{ key: "agent:main:dashboard:created", kind: "direct", updatedAt: 1 }],
+        };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const state = createState(request);
+
+    const key = await createSessionAndRefresh(
+      state,
+      { agentId: "main", parentSessionKey: "main", emitCommandHooks: true },
+      { activeMinutes: 120, limit: 100, includeGlobal: true, includeUnknown: true },
+    );
+
+    expect(key).toBe("agent:main:dashboard:created");
+    expect(request).toHaveBeenNthCalledWith(1, "sessions.create", {
+      agentId: "main",
+      parentSessionKey: "main",
+      emitCommandHooks: true,
+    });
+    expect(request).toHaveBeenNthCalledWith(2, "sessions.list", {
+      includeGlobal: true,
+      includeUnknown: true,
+      activeMinutes: 120,
+      limit: 100,
+    });
+    expect(state.sessionsLoading).toBe(false);
+    expect(state.sessionsResult?.sessions[0]?.key).toBe("agent:main:dashboard:created");
   });
 });
 

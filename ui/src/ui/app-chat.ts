@@ -1,8 +1,8 @@
+import { t } from "../i18n/index.ts";
 import { setLastActiveSessionKey } from "./app-last-active-session.ts";
 import { scheduleChatScroll, resetChatScroll } from "./app-scroll.ts";
 import { resetToolStream } from "./app-tool-stream.ts";
 import type { ChatSideResult } from "./chat/side-result.ts";
-import { t } from "../i18n/index.ts";
 import { executeSlashCommand } from "./chat/slash-command-executor.ts";
 import { parseSlashCommand, refreshSlashCommands } from "./chat/slash-commands.ts";
 import {
@@ -17,8 +17,8 @@ import { loadSessions, type SessionsState } from "./controllers/sessions.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import { normalizeBasePath } from "./navigation.ts";
 import { parseAgentSessionKey } from "./session-key.ts";
-import { normalizeLowercaseStringOrEmpty } from "./string-coerce.ts";
 import type { UiSettings } from "./storage.ts";
+import { normalizeLowercaseStringOrEmpty } from "./string-coerce.ts";
 import type { ChatModelOverride, ModelCatalogEntry } from "./types.ts";
 import type { SessionsListResult } from "./types.ts";
 import type { ChatAttachment, ChatQueueItem } from "./ui-types.ts";
@@ -67,6 +67,7 @@ export type ChatHost = {
 };
 
 export const CHAT_SESSIONS_ACTIVE_MINUTES = 120;
+export const CHAT_SESSIONS_REFRESH_LIMIT = 100;
 
 export function isChatBusy(host: ChatHost) {
   return host.chatSending || Boolean(host.chatRunId);
@@ -202,9 +203,12 @@ async function sendChatMessageNow(
   if (ok && opts?.refreshSessions && runId) {
     host.refreshSessionsAfterChat.add(runId);
     const currentSession = host.sessionsResult?.sessions.find((row) => row.key === host.sessionKey);
-    const currentTaskId = currentSession?.mode === "task" ? currentSession.taskId?.trim() ?? "" : "";
+    const currentTaskId =
+      currentSession?.mode === "task" ? (currentSession.taskId?.trim() ?? "") : "";
     if (currentTaskId) {
-      const map = host.taskCarryoverAfterChatByRun ?? new Map<string, { taskId: string; sourceSessionKey: string }>();
+      const map =
+        host.taskCarryoverAfterChatByRun ??
+        new Map<string, { taskId: string; sourceSessionKey: string }>();
       map.set(runId, { taskId: currentTaskId, sourceSessionKey: host.sessionKey });
       host.taskCarryoverAfterChatByRun = map;
     }
@@ -448,7 +452,7 @@ export async function handleSendChat(
 }
 
 function shouldQueueLocalSlashCommand(name: string): boolean {
-  return !["stop", "focus", "export-session", "steer", "redirect"].includes(name);
+  return !["stop", "new", "focus", "export-session", "steer", "redirect"].includes(name);
 }
 
 // ── Slash Command Dispatch ──
@@ -465,11 +469,7 @@ async function dispatchSlashCommand(
       await handleAbortChat(host);
       return;
     case "new":
-      await sendChatMessageNow(host, "/new", {
-        refreshSessions: true,
-        previousDraft: sendOpts?.previousDraft,
-        restoreDraft: sendOpts?.restoreDraft,
-      });
+      host.onSlashAction?.("new-session");
       return;
     case "reset":
       await sendChatMessageNow(host, "/reset", {

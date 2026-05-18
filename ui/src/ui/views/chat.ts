@@ -2696,6 +2696,19 @@ export function renderChat(props: ChatProps) {
                   >
                     ${icons.plus}
                   </button>
+                  ${props.onClearHistory
+                    ? html`
+                        <button
+                          class="btn btn--ghost"
+                          data-chat-reset-session-button="true"
+                          @click=${props.onClearHistory}
+                          title=${t("commands.descriptions.reset")}
+                          aria-label=${t("commands.descriptions.reset")}
+                        >
+                          ${icons.refresh}
+                        </button>
+                      `
+                    : nothing}
                 `}
             <button
               class="btn btn--ghost"

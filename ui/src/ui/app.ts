@@ -29,6 +29,7 @@ import {
   handleFirstUpdated,
   handleUpdated,
 } from "./app-lifecycle.ts";
+import { createChatSession } from "./app-render.helpers.ts";
 import { renderApp } from "./app-render.ts";
 import {
   exportLogs as exportLogsInternal,
@@ -634,7 +635,7 @@ export class OpenClawApp extends LitElement {
   taskCarryoverAfterChatByRun = new Map<string, { taskId: string; sourceSessionKey: string }>();
   devExecuteCarryoverAfterChatByRun = new Map<
     string,
-    { changeReviewModeEnabled: boolean; sourceSessionKey: string }
+    { changeReviewModeEnabled: boolean; sourceSessionKey: string; allowSameSession?: boolean }
   >();
   resumedDevExecuteBySessionKey = new Map<
     string,
@@ -672,6 +673,9 @@ export class OpenClawApp extends LitElement {
           break;
         case "export":
           exportChatMarkdown(this.chatMessages, this.assistantName);
+          break;
+        case "new-session":
+          void createChatSession(this as unknown as AppViewState);
           break;
         case "refresh-tools-effective": {
           void refreshVisibleToolsEffectiveForCurrentSessionInternal(this);

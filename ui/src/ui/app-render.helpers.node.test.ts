@@ -1,19 +1,23 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   refreshChatMock,
   refreshChatAvatarMock,
   refreshSlashCommandsMock,
   loadChatHistoryMock,
   loadSessionsMock,
+  createSessionAndRefreshMock,
 } = vi.hoisted(() => ({
   refreshChatMock: vi.fn(),
   refreshChatAvatarMock: vi.fn(),
   refreshSlashCommandsMock: vi.fn(),
   loadChatHistoryMock: vi.fn(),
   loadSessionsMock: vi.fn(),
+  createSessionAndRefreshMock: vi.fn(),
 }));
 
 vi.mock("./app-chat.ts", () => ({
+  CHAT_SESSIONS_ACTIVE_MINUTES: 120,
+  CHAT_SESSIONS_REFRESH_LIMIT: 100,
   refreshChat: refreshChatMock,
   refreshChatAvatar: refreshChatAvatarMock,
 }));
@@ -27,10 +31,12 @@ vi.mock("./controllers/chat.ts", () => ({
 }));
 
 vi.mock("./controllers/sessions.ts", () => ({
+  createSessionAndRefresh: createSessionAndRefreshMock,
   loadSessions: loadSessionsMock,
 }));
 
 import {
+  createChatSession,
   isCronSessionKey,
   isDreamingNarrativeSessionKey,
   parseSessionKey,
@@ -43,6 +49,15 @@ import type { AppViewState } from "./app-view-state.ts";
 import type { SessionsListResult } from "./types.ts";
 
 type SessionRow = SessionsListResult["sessions"][number];
+
+beforeEach(() => {
+  refreshChatMock.mockReset();
+  refreshChatAvatarMock.mockReset();
+  refreshSlashCommandsMock.mockReset();
+  loadChatHistoryMock.mockReset();
+  loadSessionsMock.mockReset();
+  createSessionAndRefreshMock.mockReset();
+});
 
 function row(overrides: Partial<SessionRow> & { key: string }): SessionRow {
   return { kind: "direct", updatedAt: 0, ...overrides };
@@ -473,8 +488,8 @@ describe("switchChatSession", () => {
     });
     expect(loadChatHistoryMock).toHaveBeenCalledWith(state);
     expect(loadSessionsMock).toHaveBeenCalledWith(state, {
-      activeMinutes: 0,
-      limit: 0,
+      activeMinutes: 120,
+      limit: 100,
       includeGlobal: true,
       includeUnknown: true,
     });
@@ -543,5 +558,133 @@ describe("switchChatSession", () => {
       client: state.client,
       agentId: undefined,
     });
+  });
+});
+
+describe("createChatSession", () => {
+  function createChatSessionState(overrides: Partial<AppViewState> = {}) {
+    const settings: AppViewState["settings"] = {
+      gatewayUrl: "",
+      token: "",
+      locale: "en",
+      sessionKey: "agent:solo:main",
+      lastActiveSessionKey: "agent:solo:main",
+      theme: "claw",
+      themeMode: "dark",
+      splitRatio: 0.6,
+      navWidth: 280,
+      navCollapsed: false,
+      navGroupsCollapsed: {},
+      borderRadius: 50,
+      chatFocusMode: false,
+      chatShowThinking: false,
+      chatShowToolCalls: true,
+      dreamingAssistEnabled: true,
+      planModeEnabled: false,
+      executionGoalModeEnabled: false,
+      devSpecFirstEnabled: false,
+      changeReviewModeEnabled: true,
+    };
+    const state = {
+      client: { request: vi.fn() },
+      connected: true,
+      sessionsLoading: false,
+      sessionsError: null,
+      sessionKey: "agent:solo:main",
+      sessionsResult: {
+        ts: 1,
+        path: "",
+        count: 1,
+        defaults: {},
+        sessions: [
+          {
+            key: "agent:solo:main",
+            kind: "direct",
+            updatedAt: 1,
+            mode: "task",
+            taskId: "task-current",
+          },
+        ],
+      } as SessionsListResult,
+      chatLoading: false,
+      chatSending: false,
+      chatRunId: null,
+      chatStream: null,
+      chatQueue: [],
+      chatMessage: "draft",
+      chatAttachments: [{ mimeType: "image/png", dataUrl: "data:image/png;base64,AAA" }],
+      chatMessages: [{ role: "user", content: "old" }],
+      chatToolMessages: [],
+      chatStreamSegments: [],
+      chatThinkingLevel: null,
+      chatSideResult: null,
+      compactionStatus: null,
+      fallbackStatus: null,
+      chatAvatarUrl: null,
+      chatChangeReview: null,
+      chatSideResultTerminalRuns: new Set<string>(),
+      chatStreamStartedAt: null,
+      settings,
+      resumedDevExecuteBySessionKey: new Map<
+        string,
+        { changeReviewModeEnabled: boolean; remainingTurns: number }
+      >(),
+      applySettings(next: typeof settings) {
+        state.settings = next;
+      },
+      loadAssistantIdentity: vi.fn(),
+      resetToolStream: vi.fn(),
+      resetChatScroll: vi.fn(),
+      setCurrentTaskForSession: vi.fn(async () => undefined),
+      ...overrides,
+    } as unknown as AppViewState;
+    return state;
+  }
+
+  it("creates and switches to a real dashboard session while preserving local modes", async () => {
+    const state = createChatSessionState();
+    createSessionAndRefreshMock.mockResolvedValue("agent:solo:dashboard:new");
+    refreshChatAvatarMock.mockResolvedValue(undefined);
+    refreshSlashCommandsMock.mockResolvedValue(undefined);
+    loadChatHistoryMock.mockResolvedValue(undefined);
+    loadSessionsMock.mockResolvedValue(undefined);
+
+    const created = await createChatSession(state);
+
+    expect(created).toBe(true);
+    expect(createSessionAndRefreshMock).toHaveBeenCalledWith(
+      state,
+      {
+        agentId: "solo",
+        parentSessionKey: "agent:solo:main",
+        emitCommandHooks: true,
+      },
+      {
+        activeMinutes: 120,
+        limit: 100,
+        includeGlobal: true,
+        includeUnknown: true,
+      },
+    );
+    expect(state.sessionKey).toBe("agent:solo:dashboard:new");
+    expect(state.chatMessage).toBe("draft");
+    expect(state.chatAttachments).toEqual([
+      { mimeType: "image/png", dataUrl: "data:image/png;base64,AAA" },
+    ]);
+    expect(state.setCurrentTaskForSession).toHaveBeenCalledWith("task-current");
+    expect(state.resumedDevExecuteBySessionKey.get("agent:solo:dashboard:new")).toEqual({
+      changeReviewModeEnabled: true,
+      remainingTurns: 1,
+    });
+  });
+
+  it("does not create a session while the current chat is busy", async () => {
+    const state = createChatSessionState({ chatRunId: "run-active" } as Partial<AppViewState>);
+
+    const created = await createChatSession(state);
+
+    expect(created).toBe(false);
+    expect(createSessionAndRefreshMock).not.toHaveBeenCalled();
+    expect(state.lastError).toContain("active run");
   });
 });

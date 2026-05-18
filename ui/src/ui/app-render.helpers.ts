@@ -1,7 +1,12 @@
 import { html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import { t } from "../i18n/index.ts";
-import { refreshChat, refreshChatAvatar } from "./app-chat.ts";
+import {
+  CHAT_SESSIONS_ACTIVE_MINUTES,
+  CHAT_SESSIONS_REFRESH_LIMIT,
+  refreshChat,
+  refreshChatAvatar,
+} from "./app-chat.ts";
 import { syncUrlWithSessionKey } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
 import { createChatModelOverride } from "./chat-model-ref.ts";
@@ -12,12 +17,12 @@ import {
 import { refreshSlashCommands } from "./chat/slash-commands.ts";
 import { refreshVisibleToolsEffectiveForCurrentSession } from "./controllers/agents.ts";
 import { ChatState, loadChatHistory } from "./controllers/chat.ts";
-import { loadSessions } from "./controllers/sessions.ts";
+import { createSessionAndRefresh, loadSessions } from "./controllers/sessions.ts";
 import { resolveSessionTask } from "./controllers/tasks.ts";
 import { formatRelativeTimestamp } from "./format.ts";
 import { icons } from "./icons.ts";
 import { iconForTab, pathForTab, titleForTab, type Tab } from "./navigation.ts";
-import { parseAgentSessionKey } from "./session-key.ts";
+import { parseAgentSessionKey, resolveAgentIdFromSessionKey } from "./session-key.ts";
 import { normalizeLowercaseStringOrEmpty, normalizeOptionalString } from "./string-coerce.ts";
 import type { ThemeMode } from "./theme.ts";
 import {
@@ -98,6 +103,23 @@ function resetChatStateForSessionSwitch(state: AppViewState, sessionKey: string)
     lastActiveSessionKey: sessionKey,
   });
 }
+
+function canSwitchToNewChatSession(state: AppViewState): boolean {
+  return (
+    !state.chatLoading &&
+    !state.chatSending &&
+    !state.chatRunId &&
+    state.chatStream === null &&
+    state.chatQueue.length === 0
+  );
+}
+
+const NEW_CHAT_ACTIVE_RUN_MESSAGE =
+  "Start a new session after the active run or queued messages finish.";
+const NEW_CHAT_SESSIONS_LOADING_MESSAGE =
+  "Session list is still refreshing. Try New Chat again in a moment.";
+const NEW_CHAT_CREATE_FAILED_MESSAGE =
+  "New Chat could not create a new session. Try again in a moment.";
 
 export function renderTab(state: AppViewState, tab: Tab, opts?: { collapsed?: boolean }) {
   const href = pathForTab(tab, state.basePath);
@@ -1015,10 +1037,77 @@ export function switchChatSession(state: AppViewState, nextSessionKey: string) {
   void refreshSessionOptions(state);
 }
 
+export async function createChatSession(state: AppViewState): Promise<boolean> {
+  if (!state.client || !state.connected) {
+    return false;
+  }
+  if (!canSwitchToNewChatSession(state)) {
+    state.lastError = NEW_CHAT_ACTIVE_RUN_MESSAGE;
+    return false;
+  }
+  if (state.sessionsLoading) {
+    state.lastError = NEW_CHAT_SESSIONS_LOADING_MESSAGE;
+    return false;
+  }
+
+  state.lastError = null;
+  const previousSessionKey = state.sessionKey;
+  const currentSession = state.sessionsResult?.sessions.find(
+    (row) => row.key === previousSessionKey,
+  );
+  const parentSessionKey = currentSession ? previousSessionKey : undefined;
+  const currentTaskId =
+    currentSession?.mode === "task" ? (currentSession.taskId?.trim() ?? "") : "";
+  const nextSessionKey = await createSessionAndRefresh(
+    state,
+    {
+      agentId: resolveAgentIdFromSessionKey(previousSessionKey),
+      parentSessionKey,
+      emitCommandHooks: parentSessionKey !== undefined ? true : undefined,
+    },
+    {
+      activeMinutes: CHAT_SESSIONS_ACTIVE_MINUTES,
+      limit: CHAT_SESSIONS_REFRESH_LIMIT,
+      includeGlobal: true,
+      includeUnknown: true,
+    },
+  );
+  if (
+    !nextSessionKey ||
+    state.sessionKey !== previousSessionKey ||
+    !canSwitchToNewChatSession(state)
+  ) {
+    if (!nextSessionKey) {
+      state.lastError =
+        state.sessionsError ??
+        (state.sessionsLoading
+          ? NEW_CHAT_SESSIONS_LOADING_MESSAGE
+          : NEW_CHAT_CREATE_FAILED_MESSAGE);
+    }
+    return false;
+  }
+
+  const preservedDraft = state.chatMessage;
+  const preservedAttachments = state.chatAttachments;
+  switchChatSession(state, nextSessionKey);
+  state.chatMessage = preservedDraft;
+  state.chatAttachments = preservedAttachments;
+  if (currentTaskId) {
+    await state.setCurrentTaskForSession(currentTaskId);
+  }
+  if (state.settings.changeReviewModeEnabled) {
+    state.resumedDevExecuteBySessionKey.set(nextSessionKey, {
+      changeReviewModeEnabled: true,
+      remainingTurns: 1,
+    });
+  }
+  return true;
+}
+
 async function refreshSessionOptions(state: AppViewState) {
-  await loadSessions(state as unknown as Parameters<typeof loadSessions>[0], {
-    activeMinutes: 0,
-    limit: 0,
+  await loadSessions(state, {
+    activeMinutes: CHAT_SESSIONS_ACTIVE_MINUTES,
+    limit: CHAT_SESSIONS_REFRESH_LIMIT,
     includeGlobal: true,
     includeUnknown: true,
   });

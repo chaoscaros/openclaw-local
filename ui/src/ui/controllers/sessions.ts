@@ -29,6 +29,25 @@ export type SessionsState = {
   sessionsCheckpointErrorByKey: Record<string, string>;
 };
 
+type LoadSessionsOverrides = {
+  activeMinutes?: number;
+  limit?: number;
+  includeGlobal?: boolean;
+  includeUnknown?: boolean;
+};
+
+type CreateSessionParams = {
+  agentId?: string;
+  label?: string;
+  model?: string;
+  parentSessionKey?: string;
+  emitCommandHooks?: boolean;
+};
+
+type CreateSessionResult = {
+  key?: string;
+};
+
 function checkpointSummarySignature(
   row:
     | {
@@ -136,15 +155,7 @@ export async function subscribeSessions(state: SessionsState) {
   }
 }
 
-export async function loadSessions(
-  state: SessionsState,
-  overrides?: {
-    activeMinutes?: number;
-    limit?: number;
-    includeGlobal?: boolean;
-    includeUnknown?: boolean;
-  },
-) {
+export async function loadSessions(state: SessionsState, overrides?: LoadSessionsOverrides) {
   if (!state.client || !state.connected) {
     return;
   }
@@ -203,6 +214,35 @@ export async function loadSessions(
     state.sessionsResult = null;
     state.sessionsError = formatMissingOperatorReadScopeMessage("sessions");
   });
+}
+
+export async function createSessionAndRefresh(
+  state: SessionsState,
+  params: CreateSessionParams = {},
+  refreshOverrides?: LoadSessionsOverrides,
+): Promise<string | null> {
+  if (!state.client || !state.connected || state.sessionsLoading) {
+    return null;
+  }
+  const client = state.client;
+  state.sessionsLoading = true;
+  state.sessionsError = null;
+  let createdKey: string | null = null;
+  try {
+    const result = await client.request<CreateSessionResult>("sessions.create", params);
+    const key = typeof result?.key === "string" ? result.key.trim() : "";
+    if (!key) {
+      throw new Error("sessions.create returned no key");
+    }
+    createdKey = key;
+  } catch (err) {
+    state.sessionsError = String(err);
+    return null;
+  } finally {
+    state.sessionsLoading = false;
+  }
+  await loadSessions(state, refreshOverrides);
+  return createdKey;
 }
 
 export async function patchSession(

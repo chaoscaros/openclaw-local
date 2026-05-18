@@ -17,6 +17,7 @@ import {
   isRecoverableTelegramNetworkError,
   isTelegramPollingNetworkError,
 } from "./network-errors.js";
+import { acquireTelegramPollingLease } from "./polling-lease.js";
 import { makeProxyFetch } from "./proxy.js";
 
 export type { MonitorTelegramOpts } from "./monitor.types.js";
@@ -161,83 +162,103 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
     const { TelegramPollingSession, readTelegramUpdateOffset, writeTelegramUpdateOffset } =
       await loadTelegramMonitorPollingRuntime();
 
-    if (isTelegramExecApprovalHandlerConfigured({ cfg, accountId: account.accountId })) {
-      registerChannelRuntimeContext({
-        channelRuntime: opts.channelRuntime,
-        channelId: "telegram",
-        accountId: account.accountId,
-        capability: CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY,
-        context: { token },
-        abortSignal: opts.abortSignal,
-      });
-    }
-
-    const persistedOffsetRaw = await readTelegramUpdateOffset({
+    const pollingLease = await acquireTelegramPollingLease({
+      token,
       accountId: account.accountId,
-      botToken: token,
+      abortSignal: opts.abortSignal,
     });
-    let lastUpdateId = normalizePersistedUpdateId(persistedOffsetRaw);
-    if (persistedOffsetRaw !== null && lastUpdateId === null) {
+    if (pollingLease.waitedForPrevious) {
       log(
-        `[telegram] Ignoring invalid persisted update offset (${String(persistedOffsetRaw)}); starting without offset confirmation.`,
+        `[telegram][diag] waited for previous polling lease for ${pollingLease.tokenFingerprint}`,
+      );
+    }
+    if (pollingLease.replacedStoppingPrevious) {
+      log(
+        `[telegram][diag] previous polling lease for ${pollingLease.tokenFingerprint} did not stop in time; replacing it`,
       );
     }
 
-    const persistUpdateId = async (updateId: number) => {
-      const normalizedUpdateId = normalizePersistedUpdateId(updateId);
-      if (normalizedUpdateId === null) {
-        log(`[telegram] Ignoring invalid update_id value: ${String(updateId)}`);
-        return;
-      }
-      if (lastUpdateId !== null && normalizedUpdateId <= lastUpdateId) {
-        return;
-      }
-      lastUpdateId = normalizedUpdateId;
-      try {
-        await writeTelegramUpdateOffset({
+    try {
+      if (isTelegramExecApprovalHandlerConfigured({ cfg, accountId: account.accountId })) {
+        registerChannelRuntimeContext({
+          channelRuntime: opts.channelRuntime,
+          channelId: "telegram",
           accountId: account.accountId,
-          updateId: normalizedUpdateId,
-          botToken: token,
+          capability: CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY,
+          context: { token },
+          abortSignal: opts.abortSignal,
         });
-      } catch (err) {
-        (opts.runtime?.error ?? console.error)(
-          `telegram: failed to persist update offset: ${String(err)}`,
+      }
+
+      const persistedOffsetRaw = await readTelegramUpdateOffset({
+        accountId: account.accountId,
+        botToken: token,
+      });
+      let lastUpdateId = normalizePersistedUpdateId(persistedOffsetRaw);
+      if (persistedOffsetRaw !== null && lastUpdateId === null) {
+        log(
+          `[telegram] Ignoring invalid persisted update offset (${String(persistedOffsetRaw)}); starting without offset confirmation.`,
         );
       }
-    };
 
-    // Preserve sticky IPv4 fallback state across clean/conflict restarts.
-    // Dirty polling cycles rebuild transport inside TelegramPollingSession.
-    const createTelegramTransportForPolling = () =>
-      resolveTelegramTransport(proxyFetch, {
-        network: account.config.network,
+      const persistUpdateId = async (updateId: number) => {
+        const normalizedUpdateId = normalizePersistedUpdateId(updateId);
+        if (normalizedUpdateId === null) {
+          log(`[telegram] Ignoring invalid update_id value: ${String(updateId)}`);
+          return;
+        }
+        if (lastUpdateId !== null && normalizedUpdateId <= lastUpdateId) {
+          return;
+        }
+        lastUpdateId = normalizedUpdateId;
+        try {
+          await writeTelegramUpdateOffset({
+            accountId: account.accountId,
+            updateId: normalizedUpdateId,
+            botToken: token,
+          });
+        } catch (err) {
+          (opts.runtime?.error ?? console.error)(
+            `telegram: failed to persist update offset: ${String(err)}`,
+          );
+        }
+      };
+
+      // Preserve sticky IPv4 fallback state across clean/conflict restarts.
+      // Dirty polling cycles rebuild transport inside TelegramPollingSession.
+      const createTelegramTransportForPolling = () =>
+        resolveTelegramTransport(proxyFetch, {
+          network: account.config.network,
+        });
+      const telegramTransport = createTelegramTransportForPolling();
+
+      pollingSession = new TelegramPollingSession({
+        token,
+        config: cfg,
+        accountId: account.accountId,
+        runtime: opts.runtime,
+        proxyFetch,
+        botInfo: opts.botInfo,
+        abortSignal: opts.abortSignal,
+        runnerOptions: createTelegramRunnerOptions(cfg),
+        getLastUpdateId: () => lastUpdateId,
+        persistUpdateId,
+        log,
+        telegramTransport,
+        createTelegramTransport: createTelegramTransportForPolling,
+        setStatus: opts.setStatus,
+        isolatedIngress: {
+          enabled: opts.isolatedIngress?.enabled ?? true,
+          apiRoot: account.config.apiRoot,
+          timeoutSeconds: account.config.timeoutSeconds,
+          proxy: account.config.proxy,
+          network: account.config.network,
+        },
       });
-    const telegramTransport = createTelegramTransportForPolling();
-
-    pollingSession = new TelegramPollingSession({
-      token,
-      config: cfg,
-      accountId: account.accountId,
-      runtime: opts.runtime,
-      proxyFetch,
-      botInfo: opts.botInfo,
-      abortSignal: opts.abortSignal,
-      runnerOptions: createTelegramRunnerOptions(cfg),
-      getLastUpdateId: () => lastUpdateId,
-      persistUpdateId,
-      log,
-      telegramTransport,
-      createTelegramTransport: createTelegramTransportForPolling,
-      setStatus: opts.setStatus,
-      isolatedIngress: {
-        enabled: opts.isolatedIngress?.enabled ?? false,
-        apiRoot: account.config.apiRoot,
-        timeoutSeconds: account.config.timeoutSeconds,
-        proxy: account.config.proxy,
-        network: account.config.network,
-      },
-    });
-    await pollingSession.runUntilAbort();
+      await pollingSession.runUntilAbort();
+    } finally {
+      pollingLease.release();
+    }
   } finally {
     unregisterHandler();
   }

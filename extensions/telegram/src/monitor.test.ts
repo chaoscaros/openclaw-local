@@ -133,6 +133,11 @@ const createAbortTask = (
 const makeAbortRunner = (abort: AbortController, beforeAbort?: () => void): RunnerStub =>
   makeRunnerStub({ task: createAbortTask(abort, beforeAbort) });
 
+const withLegacyPolling = (opts: MonitorTelegramOpts): MonitorTelegramOpts => ({
+  ...opts,
+  isolatedIngress: { enabled: false, ...opts.isolatedIngress },
+});
+
 function createSignal() {
   let resolve!: () => void;
   const promise = new Promise<void>((res) => {
@@ -158,7 +163,7 @@ async function expectOffsetConfirmationSkipped(offset: number | null) {
   api.deleteWebhook.mockResolvedValueOnce(true);
   mockRunOnceAndAbort(abort);
 
-  await monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+  await monitorTelegramProvider(withLegacyPolling({ token: "tok", abortSignal: abort.signal }));
 
   expect(api.getUpdates).not.toHaveBeenCalled();
 }
@@ -186,7 +191,7 @@ async function runMonitorAndCaptureStartupOrder(params?: { persistedOffset?: num
     return makeAbortRunner(abort);
   });
 
-  await monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+  await monitorTelegramProvider(withLegacyPolling({ token: "tok", abortSignal: abort.signal }));
   return { order };
 }
 
@@ -258,6 +263,7 @@ async function monitorWithAutoAbort(opts: Omit<MonitorTelegramOpts, "abortSignal
     token: "tok",
     ...opts,
     abortSignal: abort.signal,
+    isolatedIngress: { enabled: false, ...opts.isolatedIngress },
   });
 }
 
@@ -444,7 +450,7 @@ describe("monitorTelegramProvider (grammY)", () => {
       )
       .mockImplementationOnce(() => makeAbortRunner(abort));
 
-    await monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+    await monitorTelegramProvider(withLegacyPolling({ token: "tok", abortSignal: abort.signal }));
 
     expectRecoverableRetryState(2);
   });
@@ -463,7 +469,7 @@ describe("monitorTelegramProvider (grammY)", () => {
     api.deleteWebhook.mockRejectedValueOnce(cleanupError).mockResolvedValueOnce(true);
     mockRunOnceAndAbort(abort);
 
-    await monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+    await monitorTelegramProvider(withLegacyPolling({ token: "tok", abortSignal: abort.signal }));
 
     expect(api.deleteWebhook).toHaveBeenCalledTimes(2);
     expectRecoverableRetryState(1);
@@ -475,7 +481,7 @@ describe("monitorTelegramProvider (grammY)", () => {
     createTelegramBotErrors.push(setupError);
     mockRunOnceAndAbort(abort);
 
-    await monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+    await monitorTelegramProvider(withLegacyPolling({ token: "tok", abortSignal: abort.signal }));
 
     expectRecoverableRetryState(1);
   });
@@ -501,7 +507,7 @@ describe("monitorTelegramProvider (grammY)", () => {
         return makeAbortRunner(abort);
       });
 
-    await monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+    await monitorTelegramProvider(withLegacyPolling({ token: "tok", abortSignal: abort.signal }));
 
     expect(firstStop).toHaveBeenCalled();
     expectRecoverableRetryState(2);
@@ -511,10 +517,56 @@ describe("monitorTelegramProvider (grammY)", () => {
     const abort = new AbortController();
     mockRunOnceAndAbort(abort);
 
-    await monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+    await monitorTelegramProvider(withLegacyPolling({ token: "tok", abortSignal: abort.signal }));
 
     expect(createdBotStops.length).toBe(1);
     expect(createdBotStops[0]).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a concurrent same-token polling monitor before starting another runner", async () => {
+    const abort = new AbortController();
+    const firstCycle = mockRunOnceWithStalledPollingRunner();
+
+    const monitor = monitorTelegramProvider(
+      withLegacyPolling({ token: "tok", abortSignal: abort.signal }),
+    );
+    await firstCycle.waitForRunStart();
+
+    await expect(monitorTelegramProvider(withLegacyPolling({ token: "tok" }))).rejects.toThrow(
+      "refusing duplicate poller",
+    );
+    expect(runSpy).toHaveBeenCalledTimes(1);
+
+    abort.abort();
+    await monitor;
+  });
+
+  it("allows concurrent polling monitors for different bot tokens", async () => {
+    const firstAbort = new AbortController();
+    const secondAbort = new AbortController();
+    const firstCycle = mockRunOnceWithStalledPollingRunner();
+    const secondCycle = mockRunOnceWithStalledPollingRunner();
+
+    const firstMonitor = monitorTelegramProvider(
+      withLegacyPolling({
+        token: "tok-a",
+        abortSignal: firstAbort.signal,
+      }),
+    );
+    await firstCycle.waitForRunStart();
+    const secondMonitor = monitorTelegramProvider(
+      withLegacyPolling({
+        token: "tok-b",
+        abortSignal: secondAbort.signal,
+      }),
+    );
+    await secondCycle.waitForRunStart();
+
+    expect(runSpy).toHaveBeenCalledTimes(2);
+
+    firstAbort.abort();
+    secondAbort.abort();
+    await Promise.all([firstMonitor, secondMonitor]);
   });
 
   it("clears bounded cleanup timers after a clean stop", async () => {
@@ -523,7 +575,7 @@ describe("monitorTelegramProvider (grammY)", () => {
       const abort = new AbortController();
       mockRunOnceAndAbort(abort);
 
-      await monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+      await monitorTelegramProvider(withLegacyPolling({ token: "tok", abortSignal: abort.signal }));
 
       expect(vi.getTimerCount()).toBe(0);
     } finally {
@@ -538,7 +590,9 @@ describe("monitorTelegramProvider (grammY)", () => {
       }),
     );
 
-    await expect(monitorTelegramProvider({ token: "tok" })).rejects.toThrow("bad token");
+    await expect(monitorTelegramProvider(withLegacyPolling({ token: "tok" }))).rejects.toThrow(
+      "bad token",
+    );
   });
 
   it("force-restarts polling when unhandled network rejection stalls runner", async () => {
@@ -546,7 +600,9 @@ describe("monitorTelegramProvider (grammY)", () => {
     const firstCycle = mockRunOnceWithStalledPollingRunner();
     const secondCycle = mockRunOnceWithStalledPollingRunner();
 
-    const monitor = monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+    const monitor = monitorTelegramProvider(
+      withLegacyPolling({ token: "tok", abortSignal: abort.signal }),
+    );
     await firstCycle.waitForRunStart();
 
     expect(emitUnhandledRejection(await makeTaggedPollingFetchError())).toBe(true);
@@ -578,7 +634,9 @@ describe("monitorTelegramProvider (grammY)", () => {
       const firstCycle = mockRunOnceWithStalledPollingRunner();
       const secondCycle = mockRunOnceAndAbort(abort);
 
-      const monitor = monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+      const monitor = monitorTelegramProvider(
+        withLegacyPolling({ token: "tok", abortSignal: abort.signal }),
+      );
       await firstCycle.waitForRunStart();
 
       vi.advanceTimersByTime(120_000);
@@ -610,7 +668,9 @@ describe("monitorTelegramProvider (grammY)", () => {
       .mockReturnValueOnce(rebuiltTransport);
     const secondCycle = mockRunOnceAndAbort(abort);
 
-    const monitor = monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+    const monitor = monitorTelegramProvider(
+      withLegacyPolling({ token: "tok", abortSignal: abort.signal }),
+    );
     await firstCycle.waitForRunStart();
 
     expect(emitUnhandledRejection(await makeTaggedPollingFetchError())).toBe(true);
@@ -629,7 +689,9 @@ describe("monitorTelegramProvider (grammY)", () => {
     const { stop, waitForTaskStart } = mockRunOnceWithStalledPollingRunner();
     const secondCycle = mockRunOnceAndAbort(abort);
 
-    const monitor = monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+    const monitor = monitorTelegramProvider(
+      withLegacyPolling({ token: "tok", abortSignal: abort.signal }),
+    );
     await waitForTaskStart();
     const firstSignal = createTelegramBotCalls[0]?.fetchAbortSignal;
     expect(firstSignal).toBeInstanceOf(AbortSignal);
@@ -648,7 +710,9 @@ describe("monitorTelegramProvider (grammY)", () => {
     const firstCycle = mockRunOnceWithStalledPollingRunner();
     const { stop } = firstCycle;
 
-    const monitor = monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+    const monitor = monitorTelegramProvider(
+      withLegacyPolling({ token: "tok", abortSignal: abort.signal }),
+    );
     await firstCycle.waitForRunStart();
 
     const slackDnsError = Object.assign(
@@ -719,7 +783,9 @@ describe("monitorTelegramProvider (grammY)", () => {
     const { stop } = firstCycle;
     const secondCycle = mockRunOnceAndAbort(abort);
 
-    const monitor = monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+    const monitor = monitorTelegramProvider(
+      withLegacyPolling({ token: "tok", abortSignal: abort.signal }),
+    );
     await firstCycle.waitForRunStart();
 
     // Advance time past the stall threshold (90s) + watchdog interval (30s)
@@ -788,7 +854,7 @@ describe("monitorTelegramProvider (grammY)", () => {
         return makeAbortRunner(abort);
       });
 
-    await monitorTelegramProvider({ token: "tok", abortSignal: abort.signal });
+    await monitorTelegramProvider(withLegacyPolling({ token: "tok", abortSignal: abort.signal }));
 
     // deleteWebhook should be called twice: once on initial cleanup, once after 409 reset
     expect(api.deleteWebhook).toHaveBeenCalledTimes(2);

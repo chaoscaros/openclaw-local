@@ -1014,11 +1014,13 @@ describe("chat view", () => {
   it("shows a new session button when aborting is unavailable", () => {
     const container = document.createElement("div");
     const onNewSession = vi.fn();
+    const onClearHistory = vi.fn();
     render(
       renderChat(
         createProps({
           canAbort: false,
           onNewSession,
+          onClearHistory,
         }),
       ),
       container,
@@ -1030,6 +1032,12 @@ describe("chat view", () => {
     expect(newSessionButton).not.toBeUndefined();
     newSessionButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onNewSession).toHaveBeenCalledTimes(1);
+    const resetSessionButton = container.querySelector<HTMLButtonElement>(
+      'button[data-chat-reset-session-button="true"]',
+    );
+    expect(resetSessionButton).not.toBeUndefined();
+    resetSessionButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onClearHistory).toHaveBeenCalledTimes(1);
     expect(container.textContent).not.toContain("Stop");
   });
 

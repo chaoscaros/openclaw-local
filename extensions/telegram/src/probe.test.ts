@@ -33,7 +33,7 @@ describe("probeTelegram retry logic", () => {
       ok: true,
       json: vi.fn().mockResolvedValue({
         ok: true,
-        result: { id: 123, username: "test_bot" },
+        result: { id: 123, is_bot: true, first_name: "Test", username: "test_bot" },
       }),
     });
   }
@@ -274,5 +274,37 @@ describe("probeTelegram retry logic", () => {
     });
 
     expect(resolveTelegramFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("normalizes startup botInfo from getMe", async () => {
+    const fetchMock = installFetchMock();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        ok: true,
+        result: {
+          id: 123,
+          is_bot: true,
+          first_name: "Test",
+          username: "test_bot",
+          can_join_groups: true,
+          can_read_all_group_messages: true,
+          supports_inline_queries: false,
+        },
+      }),
+    });
+    mockGetWebhookInfoSuccess(fetchMock);
+
+    const result = await probeTelegram(token, timeoutMs);
+
+    expect(result.botInfo).toMatchObject({
+      id: 123,
+      is_bot: true,
+      first_name: "Test",
+      username: "test_bot",
+      can_join_groups: true,
+      can_read_all_group_messages: true,
+      supports_inline_queries: false,
+    });
   });
 });

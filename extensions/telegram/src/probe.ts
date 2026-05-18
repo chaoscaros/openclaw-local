@@ -2,6 +2,7 @@ import type { BaseProbeResult } from "openclaw/plugin-sdk/channel-contract";
 import type { TelegramNetworkConfig } from "openclaw/plugin-sdk/config-runtime";
 import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { fetchWithTimeout } from "openclaw/plugin-sdk/text-runtime";
+import { normalizeTelegramBotInfo, type TelegramBotInfo } from "./bot-info.js";
 import { resolveTelegramApiBase, resolveTelegramFetch } from "./fetch.js";
 import { makeProxyFetch } from "./proxy.js";
 
@@ -15,6 +16,7 @@ export type TelegramProbe = BaseProbeResult & {
     canReadAllGroupMessages?: boolean | null;
     supportsInlineQueries?: boolean | null;
   };
+  botInfo?: TelegramBotInfo;
   webhook?: { url?: string | null; hasCustomCert?: boolean | null };
 };
 
@@ -157,10 +159,19 @@ export async function probeTelegram(
       description?: string;
       result?: {
         id?: number;
+        is_bot?: boolean;
+        first_name?: string;
+        last_name?: string;
         username?: string;
+        language_code?: string;
         can_join_groups?: boolean;
         can_read_all_group_messages?: boolean;
+        can_manage_bots?: boolean;
         supports_inline_queries?: boolean;
+        can_connect_to_business?: boolean;
+        has_main_web_app?: boolean;
+        has_topics_enabled?: boolean;
+        allows_users_to_create_topics?: boolean;
       };
     };
     if (!meRes.ok || !meJson?.ok) {
@@ -183,6 +194,10 @@ export async function probeTelegram(
           ? meJson.result?.supports_inline_queries
           : null,
     };
+    const botInfo = normalizeTelegramBotInfo(meJson.result);
+    if (botInfo) {
+      result.botInfo = botInfo;
+    }
 
     // Try to fetch webhook info, but don't fail health if it errors.
     try {

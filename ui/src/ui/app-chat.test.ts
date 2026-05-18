@@ -36,13 +36,13 @@ function requestUrl(input: string | URL | Request): string {
 function makeHost(overrides?: Partial<ChatHost>): ChatHost {
   return {
     settings: {
-      gatewayUrl: '',
-      token: '',
-      locale: 'en',
-      sessionKey: 'agent:main',
-      lastActiveSessionKey: 'agent:main',
-      theme: 'claw',
-      themeMode: 'dark',
+      gatewayUrl: "",
+      token: "",
+      locale: "en",
+      sessionKey: "agent:main",
+      lastActiveSessionKey: "agent:main",
+      theme: "claw",
+      themeMode: "dark",
       splitRatio: 0.6,
       navWidth: 280,
       navCollapsed: false,
@@ -418,33 +418,23 @@ describe("handleSendChat", () => {
     expect(host.chatAttachments).toEqual([]);
   });
 
-  it("stores reset-in-place dev-execute carryover metadata when /new succeeds in change-review mode", async () => {
+  it("delegates /new to the app-level new session action", async () => {
     const request = vi.fn(async (method: string) => {
-      if (method === "chat.send") {
-        return {};
-      }
       throw new Error(`Unexpected request: ${method}`);
     });
+    const onSlashAction = vi.fn();
     const host = makeHost({
       client: { request } as unknown as ChatHost["client"],
       chatMessage: "/new",
       sessionKey: "main",
-      settings: {
-        ...makeHost().settings,
-        changeReviewModeEnabled: true,
-      },
+      onSlashAction,
     });
 
     await handleSendChat(host);
 
-    expect(host.refreshSessionsAfterChat.size).toBe(1);
-    const [[runId, carry]] = Array.from(host.devExecuteCarryoverAfterChatByRun.entries());
-    expect(runId).toBeTruthy();
-    expect(carry).toEqual({
-      changeReviewModeEnabled: true,
-      sourceSessionKey: "main",
-      allowSameSession: true,
-    });
+    expect(request).not.toHaveBeenCalled();
+    expect(onSlashAction).toHaveBeenCalledWith("new-session");
+    expect(host.chatMessage).toBe("");
   });
 
   it("shows a visible pending item for /steer on the active run", async () => {

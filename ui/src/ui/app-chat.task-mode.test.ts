@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { handleSendChat, type ChatHost } from "./app-chat.ts";
 import type { SessionsListResult } from "./types.ts";
 
@@ -65,16 +65,15 @@ function buildHost(): ChatHost & { sessionsResult: SessionsListResult } {
 }
 
 describe("handleSendChat task mode guard", () => {
-  it("records current task carryover when /new is sent from task mode", async () => {
+  it("delegates /new to the app-level new session action from task mode", async () => {
     const request = async (method: string) => {
-      if (method === "chat.send") {
-        return {};
-      }
       throw new Error(`Unexpected request: ${method}`);
     };
+    const onSlashAction = vi.fn();
     const host = buildHost();
     host.client = { request } as never;
     host.chatMessage = "/new";
+    host.onSlashAction = onSlashAction;
     host.sessionsResult.sessions[0] = {
       ...host.sessionsResult.sessions[0],
       taskId: "task-current",
@@ -82,12 +81,8 @@ describe("handleSendChat task mode guard", () => {
 
     await handleSendChat(host as never);
 
-    expect(host.refreshSessionsAfterChat.size).toBe(1);
-    const [runId] = Array.from(host.refreshSessionsAfterChat);
-    expect(host.taskCarryoverAfterChatByRun.get(runId)).toEqual({
-      taskId: "task-current",
-      sourceSessionKey: "main",
-    });
+    expect(onSlashAction).toHaveBeenCalledWith("new-session");
+    expect(host.refreshSessionsAfterChat.size).toBe(0);
   });
 
   it("blocks send when task mode has no current task", async () => {

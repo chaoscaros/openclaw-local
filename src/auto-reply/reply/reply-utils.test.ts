@@ -64,6 +64,13 @@ describe("matchesMentionWithExplicit", () => {
         },
         expected: true,
       },
+      {
+        name: "allows catch-all mention patterns for empty media captions",
+        text: "",
+        mentionRegexes: [/^$/],
+        explicit: undefined,
+        expected: true,
+      },
     ] as const;
     for (const testCase of cases) {
       const result = matchesMentionWithExplicit({

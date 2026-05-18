@@ -454,7 +454,7 @@ export type AppViewState = {
     taskCarryoverAfterChatByRun: Map<string, { taskId: string; sourceSessionKey: string }>;
     devExecuteCarryoverAfterChatByRun: Map<
       string,
-      { changeReviewModeEnabled: boolean; sourceSessionKey: string }
+      { changeReviewModeEnabled: boolean; sourceSessionKey: string; allowSameSession?: boolean }
     >;
     resumedDevExecuteBySessionKey: Map<
       string,

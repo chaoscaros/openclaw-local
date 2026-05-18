@@ -466,6 +466,47 @@ describe("gateway server sessions", () => {
     ws.close();
   });
 
+  test("sessions.create can emit /new command and session lifecycle hooks", async () => {
+    await createSessionStoreDir();
+    beforeResetHookState.hasBeforeResetHook = true;
+    await writeSessionStore({
+      entries: {
+        main: {
+          sessionId: "sess-parent",
+          updatedAt: Date.now(),
+        },
+      },
+    });
+    const { ws } = await openClient();
+
+    const created = await rpcReq<{
+      key?: string;
+      sessionId?: string;
+    }>(ws, "sessions.create", {
+      agentId: "ops",
+      parentSessionKey: "main",
+      emitCommandHooks: true,
+    });
+
+    expect(created.ok).toBe(true);
+    expect(sessionHookMocks.triggerInternalHook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "command",
+        action: "new",
+        sessionKey: "agent:main:main",
+        context: expect.objectContaining({
+          commandSource: "webchat",
+          sessionEntry: expect.objectContaining({ sessionId: "sess-parent" }),
+        }),
+      }),
+    );
+    expect(beforeResetHookMocks.runBeforeReset).toHaveBeenCalledTimes(1);
+    expect(sessionLifecycleHookMocks.runSessionEnd).toHaveBeenCalledTimes(1);
+    expect(sessionLifecycleHookMocks.runSessionStart).toHaveBeenCalledTimes(1);
+
+    ws.close();
+  });
+
   test("sessions.create accepts an explicit key for persistent dashboard sessions", async () => {
     await createSessionStoreDir();
     const { ws } = await openClient();
@@ -1658,53 +1699,53 @@ describe("gateway server sessions", () => {
     ws.close();
   });
 
-test("sessions.reset drops cached skills snapshot so /new rebuilds visible skills", async () => {
-  const { storePath } = await createSessionStoreDir();
-  testState.agentConfig = {
-    model: {
-      primary: "openai/gpt-test-a",
-    },
-  };
+  test("sessions.reset drops cached skills snapshot so /new rebuilds visible skills", async () => {
+    const { storePath } = await createSessionStoreDir();
+    testState.agentConfig = {
+      model: {
+        primary: "openai/gpt-test-a",
+      },
+    };
 
-  await writeSessionStore({
-    entries: {
-      main: {
-        sessionId: "sess-stale-skills",
-        updatedAt: Date.now(),
-        skillsSnapshot: {
-          prompt: "<available_skills><skill><name>stale</name></skill></available_skills>",
-          skills: [{ name: "stale" }],
-          version: 0,
+    await writeSessionStore({
+      entries: {
+        main: {
+          sessionId: "sess-stale-skills",
+          updatedAt: Date.now(),
+          skillsSnapshot: {
+            prompt: "<available_skills><skill><name>stale</name></skill></available_skills>",
+            skills: [{ name: "stale" }],
+            version: 0,
+          },
         },
       },
-    },
+    });
+
+    const { ws } = await openClient();
+    const reset = await rpcReq<{
+      ok: true;
+      key: string;
+      entry: {
+        sessionId: string;
+        skillsSnapshot?: unknown;
+      };
+    }>(ws, "sessions.reset", { key: "main" });
+
+    expect(reset.ok).toBe(true);
+    expect(reset.payload?.entry.sessionId).not.toBe("sess-stale-skills");
+    expect(reset.payload?.entry.skillsSnapshot).toBeUndefined();
+
+    const store = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
+      string,
+      { skillsSnapshot?: unknown }
+    >;
+    expect(store["agent:main:main"]?.skillsSnapshot).toBeUndefined();
+
+    ws.close();
   });
 
-  const { ws } = await openClient();
-  const reset = await rpcReq<{
-    ok: true;
-    key: string;
-    entry: {
-      sessionId: string;
-      skillsSnapshot?: unknown;
-    };
-  }>(ws, "sessions.reset", { key: "main" });
-
-  expect(reset.ok).toBe(true);
-  expect(reset.payload?.entry.sessionId).not.toBe("sess-stale-skills");
-  expect(reset.payload?.entry.skillsSnapshot).toBeUndefined();
-
-  const store = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
-    string,
-    { skillsSnapshot?: unknown }
-  >;
-  expect(store["agent:main:main"]?.skillsSnapshot).toBeUndefined();
-
-  ws.close();
-});
-
-test("sessions.reset preserves legacy explicit model overrides without modelOverrideSource", async () => {
-  const { storePath } = await createSessionStoreDir();
+  test("sessions.reset preserves legacy explicit model overrides without modelOverrideSource", async () => {
+    const { storePath } = await createSessionStoreDir();
     testState.agentConfig = {
       model: {
         primary: "openai/gpt-test-a",
