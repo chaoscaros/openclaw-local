@@ -505,6 +505,7 @@ export const pl: TranslationMap = {
     voiceInput: "Voice input",
     newMessages: "New messages",
     newSession: "New session",
+    resetSession: "Resetuj sesję",
     export: "Export",
     exportChat: "Export chat",
     stop: "Stop",

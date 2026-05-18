@@ -500,6 +500,7 @@ export const zh_TW: TranslationMap = {
     voiceInput: "Voice input",
     newMessages: "New messages",
     newSession: "New session",
+    resetSession: "重置會話",
     export: "Export",
     exportChat: "Export chat",
     stop: "Stop",

@@ -607,6 +607,7 @@ export const zh_CN: TranslationMap = {
     voiceInput: "语音输入",
     newMessages: "新消息",
     newSession: "新会话",
+    resetSession: "重置会话",
     export: "导出",
     exportChat: "导出聊天",
     stop: "停止",

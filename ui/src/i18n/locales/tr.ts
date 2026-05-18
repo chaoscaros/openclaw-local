@@ -508,6 +508,7 @@ export const tr: TranslationMap = {
     voiceInput: "Voice input",
     newMessages: "New messages",
     newSession: "New session",
+    resetSession: "Oturumu sıfırla",
     export: "Export",
     exportChat: "Export chat",
     stop: "Stop",

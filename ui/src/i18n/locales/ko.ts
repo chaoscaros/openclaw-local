@@ -503,6 +503,7 @@ export const ko: TranslationMap = {
     voiceInput: "Voice input",
     newMessages: "New messages",
     newSession: "New session",
+    resetSession: "세션 재설정",
     export: "Export",
     exportChat: "Export chat",
     stop: "Stop",

@@ -504,6 +504,7 @@ export const pt_BR: TranslationMap = {
     voiceInput: "Voice input",
     newMessages: "New messages",
     newSession: "New session",
+    resetSession: "Redefinir sessão",
     export: "Export",
     exportChat: "Export chat",
     stop: "Stop",

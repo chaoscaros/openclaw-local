@@ -24,6 +24,7 @@ import {
 } from "../chat/message-normalizer.ts";
 import { PinnedMessages } from "../chat/pinned-messages.ts";
 import { getPinnedMessageSummary } from "../chat/pinned-summary.ts";
+import { renderChatRunControls } from "../chat/run-controls.ts";
 import { messageMatchesSearchQuery } from "../chat/search-match.ts";
 import { getOrCreateSessionCacheValue } from "../chat/session-cache.ts";
 import type { ChatSideResult } from "../chat/side-result.ts";
@@ -2683,71 +2684,20 @@ export function renderChat(props: ChatProps) {
             ${tokens ? html`<span class="agent-chat__token-count">${tokens}</span>` : nothing}
           </div>
 
-          <div class="agent-chat__toolbar-right">
-            ${nothing /* search hidden for now */}
-            ${canAbort
-              ? nothing
-              : html`
-                  <button
-                    class="btn btn--ghost"
-                    @click=${props.onNewSession}
-                    title=${t("chatUi.newSession")}
-                    aria-label=${t("chatUi.newSession")}
-                  >
-                    ${icons.plus}
-                  </button>
-                  ${props.onClearHistory
-                    ? html`
-                        <button
-                          class="btn btn--ghost"
-                          data-chat-reset-session-button="true"
-                          @click=${props.onClearHistory}
-                          title=${t("commands.descriptions.reset")}
-                          aria-label=${t("commands.descriptions.reset")}
-                        >
-                          ${icons.refresh}
-                        </button>
-                      `
-                    : nothing}
-                `}
-            <button
-              class="btn btn--ghost"
-              @click=${() => exportMarkdown(props)}
-              title=${t("chatUi.export")}
-              aria-label=${t("chatUi.exportChat")}
-              ?disabled=${props.messages.length === 0}
-            >
-              ${icons.download}
-            </button>
-
-            ${canAbort
-              ? html`
-                  <button
-                    class="chat-send-btn chat-send-btn--stop"
-                    @click=${props.onAbort}
-                    title=${t("chatUi.stop")}
-                    aria-label=${t("chatUi.stopGenerating")}
-                  >
-                    ${icons.stop}
-                  </button>
-                `
-              : html`
-                  <button
-                    class="chat-send-btn"
-                    @click=${() => {
-                      if (props.draft.trim()) {
-                        inputHistory.push(props.draft);
-                      }
-                      props.onSend();
-                    }}
-                    ?disabled=${!props.canSend || props.sending}
-                    title=${isBusy ? t("chatUi.queue") : t("chatUi.send")}
-                    aria-label=${isBusy ? t("chatUi.queueMessage") : t("chatUi.sendMessage")}
-                  >
-                    ${icons.send}
-                  </button>
-                `}
-          </div>
+          ${renderChatRunControls({
+            canAbort,
+            canSend: props.canSend,
+            draft: props.draft,
+            hasMessages: props.messages.length > 0,
+            isBusy,
+            sending: props.sending,
+            onAbort: props.onAbort,
+            onExport: () => exportMarkdown(props),
+            onNewSession: props.onNewSession,
+            onResetSession: props.onClearHistory,
+            onSend: props.onSend,
+            onStoreDraft: (draft) => inputHistory.push(draft),
+          })}
         </div>
       </div>
     </section>

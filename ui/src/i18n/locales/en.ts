@@ -92,7 +92,7 @@ export const en: TranslationMap = {
       loadingSchema: "Loading schema…",
       add: "Add",
       addEntry: "Add Entry",
-      noItems: "No items yet. Click \"Add\" to create one.",
+      noItems: 'No items yet. Click "Add" to create one.',
       noCustomEntries: "No custom entries.",
       removeItem: "Remove item",
       unsupportedArraySchema: "Unsupported array schema. Use Raw mode.",
@@ -607,6 +607,7 @@ export const en: TranslationMap = {
     voiceInput: "Voice input",
     newMessages: "New messages",
     newSession: "New session",
+    resetSession: "Reset session",
     export: "Export",
     exportChat: "Export chat",
     stop: "Stop",
@@ -650,16 +651,19 @@ export const en: TranslationMap = {
   taskWorkspace: {
     currentTaskLabel: "Current task workspace",
     activeQueueLabel: "Active task workspace",
-    activeQueueDescription: "Use this page to review the current task, scan progress, and switch execution focus without going back to chat.",
+    activeQueueDescription:
+      "Use this page to review the current task, scan progress, and switch execution focus without going back to chat.",
     archiveCenterLabel: "Archive recovery center",
-    archiveCenterDescription: "Review archived work, recover it when needed, or delete it after confirming the history is no longer useful.",
+    archiveCenterDescription:
+      "Review archived work, recover it when needed, or delete it after confirming the history is no longer useful.",
     activeCount: "{count} active tasks",
     archivedCount: "{count} archived tasks",
     latestArchived: "Latest archived",
     lastLinkedSession: "Last session",
     taskId: "Task ID",
     archiveSnapshot: "Last snapshot",
-    normalModeDescription: "Switch to task mode to focus chats around one tracked goal with details and timeline.",
+    normalModeDescription:
+      "Switch to task mode to focus chats around one tracked goal with details and timeline.",
     updated: "Updated",
     modeSwitch: "Task workspace mode",
     sections: "Task workspace sections",
@@ -673,7 +677,8 @@ export const en: TranslationMap = {
     done: "Completed in this round",
     next: "Next step",
     noneYet: "No structured milestone yet.",
-    technicalDescription: "Technical context is grouped here for quick scanning without overwhelming the main summary.",
+    technicalDescription:
+      "Technical context is grouped here for quick scanning without overwhelming the main summary.",
     noTechnicalContext: "No technical context extracted yet.",
     nextState: {
       continue: "Continue from the current progress and verify the next visible milestone.",
@@ -718,8 +723,7 @@ export const en: TranslationMap = {
       workspacesSuffix: "工作区",
       failedSuffix: "失败",
       narrativeSkippedSuffix: "跳过叙事",
-      manualRunNote:
-        "手动运行只会做后台整理，不会创建可见会话。",
+      manualRunNote: "手动运行只会做后台整理，不会创建可见会话。",
       working: "执行中…",
     },
     phase: {

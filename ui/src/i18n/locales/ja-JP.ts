@@ -508,6 +508,7 @@ export const ja_JP: TranslationMap = {
     voiceInput: "Voice input",
     newMessages: "New messages",
     newSession: "New session",
+    resetSession: "セッションをリセット",
     export: "Export",
     exportChat: "Export chat",
     stop: "Stop",
