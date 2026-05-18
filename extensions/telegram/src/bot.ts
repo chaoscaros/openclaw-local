@@ -179,7 +179,7 @@ export function createTelegramBot(opts: TelegramBotOptions): TelegramBotInstance
         }
       };
       const method = extractTelegramApiMethod(input);
-      const requestTimeoutMs = resolveTelegramRequestTimeoutMs(method);
+      const requestTimeoutMs = resolveTelegramRequestTimeoutMs(method, telegramCfg?.timeoutSeconds);
       let requestTimeout: ReturnType<typeof setTimeout> | undefined;
       let onRequestAbort: (() => void) | undefined;
       const requestSignal = init?.signal;
@@ -234,10 +234,15 @@ export function createTelegramBot(opts: TelegramBotOptions): TelegramBotInstance
     };
   }
 
-  const timeoutSeconds =
+  const configuredTimeoutSeconds =
     typeof telegramCfg?.timeoutSeconds === "number" && Number.isFinite(telegramCfg.timeoutSeconds)
       ? Math.max(1, Math.floor(telegramCfg.timeoutSeconds))
       : undefined;
+  const timeoutSeconds =
+    typeof opts.minimumClientTimeoutSeconds === "number" &&
+    Number.isFinite(opts.minimumClientTimeoutSeconds)
+      ? Math.max(configuredTimeoutSeconds ?? 0, Math.floor(opts.minimumClientTimeoutSeconds))
+      : configuredTimeoutSeconds;
   const apiRoot = normalizeOptionalString(telegramCfg.apiRoot);
   const client: ApiClientOptions | undefined =
     finalFetch || timeoutSeconds || apiRoot
@@ -248,7 +253,11 @@ export function createTelegramBot(opts: TelegramBotOptions): TelegramBotInstance
         }
       : undefined;
 
-  const bot = new botRuntime.Bot(opts.token, client ? { client } : undefined);
+  const botConfig =
+    client || opts.botInfo
+      ? { ...(client ? { client } : {}), ...(opts.botInfo ? { botInfo: opts.botInfo } : {}) }
+      : undefined;
+  const bot = new botRuntime.Bot(opts.token, botConfig);
   bot.api.config.use(botRuntime.apiThrottler());
   // Catch all errors from bot middleware to prevent unhandled rejections
   bot.catch((err) => {
@@ -268,7 +277,10 @@ export function createTelegramBot(opts: TelegramBotOptions): TelegramBotInstance
   const pendingUpdateIds = new Set<number>();
   const failedUpdateIds = new Set<number>();
   let highestCompletedUpdateId: number | null = initialUpdateId;
-  let highestPersistedUpdateId: number | null = initialUpdateId;
+  let highestPersistedUpdateId: number | null =
+    typeof opts.updateOffset?.persistenceFloorUpdateId === "number"
+      ? opts.updateOffset.persistenceFloorUpdateId
+      : initialUpdateId;
   const maybePersistSafeWatermark = () => {
     if (typeof opts.updateOffset?.onUpdateId !== "function") {
       return;

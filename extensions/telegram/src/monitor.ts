@@ -220,6 +220,7 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
       accountId: account.accountId,
       runtime: opts.runtime,
       proxyFetch,
+      botInfo: opts.botInfo,
       abortSignal: opts.abortSignal,
       runnerOptions: createTelegramRunnerOptions(cfg),
       getLastUpdateId: () => lastUpdateId,
@@ -227,6 +228,14 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
       log,
       telegramTransport,
       createTelegramTransport: createTelegramTransportForPolling,
+      setStatus: opts.setStatus,
+      isolatedIngress: {
+        enabled: opts.isolatedIngress?.enabled ?? false,
+        apiRoot: account.config.apiRoot,
+        timeoutSeconds: account.config.timeoutSeconds,
+        proxy: account.config.proxy,
+        network: account.config.network,
+      },
     });
     await pollingSession.runUntilAbort();
   } finally {

@@ -85,6 +85,29 @@ should be split by risk area.
     `src/agents/auth-profiles/oauth-refresh-failure.ts`,
     `src/agents/pi-embedded-helpers/errors.ts`.
 
+## Post-5.12 Follow-Up Alignment
+
+- Official `v2026.5.16-beta.*` did fill the deferred Telegram ingress direction
+  with an isolated `getUpdates` worker, durable update spool, claim recovery,
+  bounded long-poll timeout, and backlog health reporting.
+- Local strategy: migrate the durable spool/worker foundation and main-thread
+  drain path, but keep it opt-in for now (`isolatedIngress.enabled`) because the
+  local branch already has sticky transport rebuilds and polling watchdog
+  behavior that need a staged rollout instead of an immediate default cutover.
+- Local impact in this slice: Telegram can drain worker-spooled updates through
+  the existing bot middleware without blocking the event loop on long polling;
+  long-poll and outbound Telegram API timeouts now follow the safer official
+  bounds while preserving local configured timeout expansion for outbound calls.
+- Files: `extensions/telegram/src/api-root.ts`,
+  `extensions/telegram/src/bot.ts`, `extensions/telegram/src/bot.types.ts`,
+  `extensions/telegram/src/monitor.ts`, `extensions/telegram/src/monitor.types.ts`,
+  `extensions/telegram/src/polling-session.ts`,
+  `extensions/telegram/src/polling-status.ts`,
+  `extensions/telegram/src/request-timeouts.ts`,
+  `extensions/telegram/src/telegram-ingress-spool.ts`,
+  `extensions/telegram/src/telegram-ingress-worker.ts`,
+  `extensions/telegram/src/telegram-ingress-worker.runtime.ts`.
+
 ## Deferred
 
 - `6104c0cc79` `fix: require heartbeat tool replies`
@@ -95,9 +118,9 @@ should be split by risk area.
     payloads. Remaining official heartbeat response-tool pieces are tracked
     separately because the local contract is not complete yet.
 - `f9652c7b09` `Fix Telegram polling ingress under event-loop stalls`
-  - Reason: large isolated ingress worker change. Local already has polling
-    watchdog/transport-dirty restart logic, so this needs a separate structural
-    migration instead of a direct patch.
+  - Status: first structural migration slice landed as opt-in isolated ingress.
+    Remaining work is rollout policy, polling lease cleanup, and any post-beta
+    official refinements that prove compatible with local Telegram modules.
 - `9798e95786` `fix: reconcile managed plugin peers`
   - Reason: local branch does not have official's managed npm root helper
     module, so only the directly applicable unresolved `openclaw` peer failure
@@ -110,7 +133,9 @@ should be split by risk area.
    projection, and Codex media auth profile fixes.
 3. Plugin install/update batch: evaluate managed peer reconciliation and runtime
    install scanning.
-4. Telegram batch: evaluate HTML reply preservation and polling ingress worker.
+4. Telegram batch: continue isolated ingress rollout: evaluate default enablement,
+   polling lease cleanup, startup bot info reuse, and group media mention
+   refinements against local Telegram customizations.
 5. Heartbeat/automation batch: evaluate heartbeat response tool mode together
    with local cron and heartbeat customizations.
 

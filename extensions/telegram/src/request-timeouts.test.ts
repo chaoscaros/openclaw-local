@@ -13,7 +13,12 @@ describe("resolveTelegramRequestTimeoutMs", () => {
   });
 
   it("does not assign hard timeouts to unrelated Telegram methods", () => {
-    expect(resolveTelegramRequestTimeoutMs("sendmessage")).toBeUndefined();
+    expect(resolveTelegramRequestTimeoutMs("answercallbackquery")).toBeUndefined();
     expect(resolveTelegramRequestTimeoutMs(null)).toBeUndefined();
+  });
+
+  it("honors configured outbound timeouts without shortening safe defaults", () => {
+    expect(resolveTelegramRequestTimeoutMs("sendmessage", 10)).toBe(60_000);
+    expect(resolveTelegramRequestTimeoutMs("sendmessage", 90)).toBe(90_000);
   });
 });
