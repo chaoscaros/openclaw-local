@@ -16,12 +16,12 @@ import {
 } from "./config-form.shared.ts";
 import { analyzeConfigSchema, renderConfigForm, getSectionMetaMap } from "./config-form.ts";
 
-const BORDER_RADIUS_LABELS: Record<BorderRadiusStop, string> = {
-  0: "None",
-  25: "Slight",
-  50: "Default",
-  75: "Round",
-  100: "Full",
+const BORDER_RADIUS_LABEL_KEYS: Record<BorderRadiusStop, string> = {
+  0: "configPage.ui.appearance.radius.none",
+  25: "configPage.ui.appearance.radius.slight",
+  50: "configPage.ui.appearance.radius.default",
+  75: "configPage.ui.appearance.radius.round",
+  100: "configPage.ui.appearance.radius.full",
 };
 
 export type ConfigProps = {
@@ -373,25 +373,25 @@ function getSectionCategories(): SectionCategory[] {
     },
     {
       id: "ai",
-      label: "AI & Agents",
+      label: t("configPage.categories.ai"),
       sections: [
-        { key: "agents", label: "Agents" },
-        { key: "models", label: "Models" },
-        { key: "skills", label: "Skills" },
-        { key: "tools", label: "Tools" },
-        { key: "memory", label: "Memory" },
-        { key: "session", label: "Session" },
+        { key: "agents", label: t("configPage.sections.agents") },
+        { key: "models", label: t("configPage.sections.models") },
+        { key: "skills", label: t("configPage.sections.skills") },
+        { key: "tools", label: t("configPage.sections.tools") },
+        { key: "memory", label: t("configPage.sections.memory") },
+        { key: "session", label: t("configPage.sections.session") },
       ],
     },
     {
       id: "communication",
-      label: "Communication",
+      label: t("configPage.categories.communication"),
       sections: [
-        { key: "channels", label: "Channels" },
-        { key: "messages", label: "Messages" },
-        { key: "broadcast", label: "Broadcast" },
-        { key: "talk", label: "Talk" },
-        { key: "audio", label: "Audio" },
+        { key: "channels", label: t("configPage.sections.channels") },
+        { key: "messages", label: t("configPage.sections.messages") },
+        { key: "broadcast", label: t("configPage.sections.broadcast") },
+        { key: "talk", label: t("configPage.sections.talk") },
+        { key: "audio", label: t("configPage.sections.audio") },
       ],
     },
     {
@@ -408,26 +408,26 @@ function getSectionCategories(): SectionCategory[] {
     },
     {
       id: "infrastructure",
-      label: "Infrastructure",
+      label: t("configPage.categories.infrastructure"),
       sections: [
-        { key: "gateway", label: "Gateway" },
-        { key: "web", label: "Web" },
-        { key: "browser", label: "Browser" },
-        { key: "nodeHost", label: "NodeHost" },
-        { key: "canvasHost", label: "CanvasHost" },
-        { key: "discovery", label: "Discovery" },
-        { key: "media", label: "Media" },
-        { key: "acp", label: "Acp" },
-        { key: "mcp", label: "Mcp" },
+        { key: "gateway", label: t("configPage.sections.gateway") },
+        { key: "web", label: t("configPage.sections.web") },
+        { key: "browser", label: t("configPage.sections.browser") },
+        { key: "nodeHost", label: t("configPage.sections.nodeHost") },
+        { key: "canvasHost", label: t("configPage.sections.canvasHost") },
+        { key: "discovery", label: t("configPage.sections.discovery") },
+        { key: "media", label: t("configPage.sections.media") },
+        { key: "acp", label: t("configPage.sections.acp") },
+        { key: "mcp", label: t("configPage.sections.mcp") },
       ],
     },
     {
       id: "appearance",
       label: t("tabs.appearance"),
       sections: [
-        { key: "__appearance__", label: "Theme" },
-        { key: "ui", label: "UI" },
-        { key: "wizard", label: "Setup Wizard" },
+        { key: "__appearance__", label: t("configPage.sections.theme") },
+        { key: "ui", label: t("configPage.sections.ui") },
+        { key: "wizard", label: t("configPage.sections.wizard") },
       ],
     },
   ];
@@ -577,8 +577,8 @@ function renderAppearanceSection(props: ConfigProps) {
   return html`
     <div class="settings-appearance">
       <div class="settings-appearance__section">
-        <h3 class="settings-appearance__heading">Theme</h3>
-        <p class="settings-appearance__hint">Choose a theme family.</p>
+        <h3 class="settings-appearance__heading">${t("configPage.ui.appearance.theme")}</h3>
+        <p class="settings-appearance__hint">${t("configPage.ui.appearance.themeHint")}</p>
         <div class="settings-theme-grid">
           ${THEME_OPTIONS.map(
             (opt) => html`
@@ -610,8 +610,8 @@ function renderAppearanceSection(props: ConfigProps) {
       </div>
 
       <div class="settings-appearance__section">
-        <h3 class="settings-appearance__heading">Roundness</h3>
-        <p class="settings-appearance__hint">Adjust corner radius across the UI.</p>
+        <h3 class="settings-appearance__heading">${t("configPage.ui.appearance.roundness")}</h3>
+        <p class="settings-appearance__hint">${t("configPage.ui.appearance.roundnessHint")}</p>
         <div class="settings-roundness">
           <div class="settings-roundness__options">
             ${BORDER_RADIUS_STOPS.map(
@@ -625,7 +625,9 @@ function renderAppearanceSection(props: ConfigProps) {
                     class="settings-roundness__swatch"
                     style="border-radius: ${Math.round(10 * (stop / 50))}px"
                   ></span>
-                  <span class="settings-roundness__label">${BORDER_RADIUS_LABELS[stop]}</span>
+                  <span class="settings-roundness__label"
+                    >${t(BORDER_RADIUS_LABEL_KEYS[stop])}</span
+                  >
                 </button>
               `,
             )}
@@ -634,14 +636,14 @@ function renderAppearanceSection(props: ConfigProps) {
       </div>
 
       <div class="settings-appearance__section">
-        <h3 class="settings-appearance__heading">Connection</h3>
+        <h3 class="settings-appearance__heading">${t("configPage.ui.appearance.connection")}</h3>
         <div class="settings-info-grid">
           <div class="settings-info-row">
-            <span class="settings-info-row__label">Gateway</span>
+            <span class="settings-info-row__label">${t("configPage.ui.appearance.gateway")}</span>
             <span class="settings-info-row__value mono">${props.gatewayUrl || "-"}</span>
           </div>
           <div class="settings-info-row">
-            <span class="settings-info-row__label">Status</span>
+            <span class="settings-info-row__label">${t("configPage.ui.appearance.status")}</span>
             <span class="settings-info-row__value">
               <span
                 class="settings-status-dot ${props.connected ? "settings-status-dot--ok" : ""}"
@@ -652,7 +654,9 @@ function renderAppearanceSection(props: ConfigProps) {
           ${props.assistantName
             ? html`
                 <div class="settings-info-row">
-                  <span class="settings-info-row__label">Assistant</span>
+                  <span class="settings-info-row__label"
+                    >${t("configPage.ui.appearance.assistant")}</span
+                  >
                   <span class="settings-info-row__value">${props.assistantName}</span>
                 </div>
               `
@@ -804,20 +808,20 @@ export function renderConfig(props: ConfigProps) {
                     <button
                       class="config-mode-toggle__btn ${formMode === "form" ? "active" : ""}"
                       ?disabled=${props.schemaLoading || !props.schema}
-                      title=${formUnsafe ? "Form view can't safely edit some fields" : ""}
+                      title=${formUnsafe ? t("configPage.ui.formUnsafeTitle") : ""}
                       @click=${() => props.onFormModeChange("form")}
                     >
-                      Form
+                      ${t("configPage.ui.form")}
                     </button>
                     <button
                       class="config-mode-toggle__btn ${formMode === "raw" ? "active" : ""}"
                       ?disabled=${!rawAvailable}
                       title=${rawAvailable
-                        ? "Edit raw JSON/JSON5 config"
-                        : "Raw mode unavailable for this snapshot"}
+                        ? t("configPage.ui.rawEditTitle")
+                        : t("configPage.ui.rawUnavailableTitle")}
                       @click=${() => props.onFormModeChange("raw")}
                     >
-                      Raw
+                      ${t("configPage.ui.raw")}
                     </button>
                   </div>
                 `
@@ -826,28 +830,29 @@ export function renderConfig(props: ConfigProps) {
               ? html`
                   <span class="config-changes-badge"
                     >${formMode === "raw"
-                      ? "Unsaved changes"
-                      : `${diff.length} unsaved change${diff.length !== 1 ? "s" : ""}`}</span
+                      ? t("configPage.ui.unsavedChanges")
+                      : t("configPage.ui.unsavedChangeCount", {
+                          count: String(diff.length),
+                          suffix: diff.length !== 1 ? "s" : "",
+                        })}</span
                   >
                 `
-              : html` <span class="config-status muted">No changes</span> `}
+              : html` <span class="config-status muted">${t("configPage.ui.noChanges")}</span> `}
           </div>
           <div class="config-actions__right">
             ${!rawAvailable
-              ? html`
-                  <span class="config-status muted"
-                    >Raw mode disabled (snapshot cannot safely round-trip raw text).</span
-                  >
-                `
+              ? html` <span class="config-status muted">${t("configPage.ui.rawDisabled")}</span> `
               : nothing}
             ${props.onOpenFile
               ? html`
                   <button
                     class="btn btn--sm"
-                    title=${props.configPath ? `Open ${props.configPath}` : "Open config file"}
+                    title=${props.configPath
+                      ? t("configPage.ui.openConfigPath", { path: props.configPath })
+                      : t("configPage.ui.openConfigFile")}
                     @click=${props.onOpenFile}
                   >
-                    ${icons.fileText} Open
+                    ${icons.fileText} ${t("configPage.ui.open")}
                   </button>
                 `
               : nothing}
@@ -855,13 +860,13 @@ export function renderConfig(props: ConfigProps) {
               ${props.loading ? t("common.loading") : t("common.reload")}
             </button>
             <button class="btn btn--sm primary" ?disabled=${!canSave} @click=${props.onSave}>
-              ${props.saving ? "Saving…" : "Save"}
+              ${props.saving ? t("configPage.ui.saving") : t("configPage.ui.save")}
             </button>
             <button class="btn btn--sm" ?disabled=${!canApply} @click=${props.onApply}>
-              ${props.applying ? "Applying…" : "Apply"}
+              ${props.applying ? t("configPage.ui.applying") : t("configPage.ui.apply")}
             </button>
             <button class="btn btn--sm" ?disabled=${!canUpdate} @click=${props.onUpdate}>
-              ${props.updating ? "Updating…" : "Update"}
+              ${props.updating ? t("configPage.ui.updating") : t("configPage.ui.update")}
             </button>
           </div>
         </div>

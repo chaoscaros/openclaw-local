@@ -135,6 +135,35 @@ describe("config view", () => {
     expect(text).toContain("机密");
   });
 
+  it("renders appearance controls in Chinese after locale switch", async () => {
+    await i18n.setLocale("zh-CN");
+    const { container } = renderConfigView({
+      navRootLabel: "设置",
+      includeSections: ["__appearance__", "agents", "channels", "gateway"],
+      activeSection: "__appearance__",
+      schema: {
+        type: "object",
+        properties: {
+          agents: { type: "object", properties: {} },
+          channels: { type: "object", properties: {} },
+          gateway: { type: "object", properties: {} },
+        },
+      },
+    });
+
+    const text = normalizedText(container);
+    expect(text).toContain("设置");
+    expect(text).toContain("代理");
+    expect(text).toContain("频道");
+    expect(text).toContain("主题");
+    expect(text).toContain("选择主题风格。");
+    expect(text).toContain("圆角");
+    expect(text).toContain("轻微");
+    expect(text).toContain("连接");
+    expect(text).toContain("助手");
+    expect(text).not.toContain("Choose a theme family.");
+  });
+
   it("allows save when form is unsafe", () => {
     const container = document.createElement("div");
     render(
