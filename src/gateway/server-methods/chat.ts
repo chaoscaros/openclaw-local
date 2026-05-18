@@ -50,6 +50,7 @@ import {
   parseMessageWithAttachments,
 } from "../chat-attachments.js";
 import { MediaOffloadError } from "../chat-attachments.js";
+import { isDisplayHiddenChatHistoryMessage } from "../chat-history-visibility.js";
 import { stripEnvelopeFromMessage, stripEnvelopeFromMessages } from "../chat-sanitize.js";
 import { augmentChatHistoryWithCliSessionImports } from "../cli-session-history.js";
 import { isSuppressedControlReplyText } from "../control-reply-text.js";
@@ -980,6 +981,10 @@ export function sanitizeChatHistoryMessages(
   let changed = false;
   const next: unknown[] = [];
   for (const message of messages) {
+    if (isDisplayHiddenChatHistoryMessage(message)) {
+      changed = true;
+      continue;
+    }
     if (shouldDropAssistantHistoryMessage(message)) {
       changed = true;
       continue;
@@ -987,6 +992,10 @@ export function sanitizeChatHistoryMessages(
     const res = sanitizeChatHistoryMessage(message, maxChars);
     changed ||= res.changed;
     if (shouldDropAssistantHistoryMessage(res.message)) {
+      changed = true;
+      continue;
+    }
+    if (isDisplayHiddenChatHistoryMessage(res.message)) {
       changed = true;
       continue;
     }

@@ -75,4 +75,60 @@ describe("SessionHistorySseState", () => {
     expect(snapshot.history.messages[0]?.__openclaw?.seq).toBe(2);
     expect(snapshot.rawTranscriptSeq).toBe(2);
   });
+
+  test("drops hidden runtime-context custom messages from projected history", () => {
+    const snapshot = buildSessionHistorySnapshot({
+      rawMessages: [
+        {
+          role: "custom",
+          customType: "openclaw.runtime-context",
+          content: "secret runtime context",
+          display: false,
+          __openclaw: { seq: 1 },
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "visible answer" }],
+          __openclaw: { seq: 2 },
+        },
+      ],
+    });
+
+    expect(snapshot.history.messages).toEqual([
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "visible answer" }],
+        __openclaw: { seq: 2 },
+      },
+    ]);
+    expect(snapshot.rawTranscriptSeq).toBe(2);
+  });
+
+  test("drops hidden inline messages while preserving raw sequence", () => {
+    const state = SessionHistorySseState.fromRawSnapshot({
+      target: { sessionId: "sess-main" },
+      rawMessages: [],
+    });
+
+    expect(
+      state.appendInlineMessage({
+        message: {
+          role: "custom",
+          customType: "openclaw.runtime-context",
+          content: "secret runtime context",
+          display: false,
+        },
+      }),
+    ).toBeNull();
+
+    const appended = state.appendInlineMessage({
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "visible answer" }],
+      },
+    });
+
+    expect(appended?.messageSeq).toBe(2);
+    expect(state.snapshot().messages).toHaveLength(1);
+  });
 });
