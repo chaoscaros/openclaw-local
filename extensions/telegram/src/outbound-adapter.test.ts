@@ -13,6 +13,10 @@ describe("telegramOutbound", () => {
     sendMessageTelegramMock.mockReset();
   });
 
+  it("leaves outbound text sanitization to Telegram HTML rendering", () => {
+    expect(telegramOutbound.sanitizeText).toBeUndefined();
+  });
+
   it("forwards mediaLocalRoots in direct media sends", async () => {
     sendMessageTelegramMock.mockResolvedValueOnce({ messageId: "tg-media" });
 
@@ -41,6 +45,25 @@ describe("telegramOutbound", () => {
       }),
     );
     expect(result).toEqual({ channel: "telegram", messageId: "tg-media" });
+  });
+
+  it("does not plain-text sanitize Telegram HTML before durable delivery", async () => {
+    sendMessageTelegramMock.mockResolvedValueOnce({ messageId: "tg-html", chatId: "12345" });
+
+    await telegramOutbound.sendText!({
+      cfg: {} as never,
+      to: "12345",
+      text: "<b>Morning</b> <code>oauth2</code>",
+      deps: { sendTelegram: sendMessageTelegramMock },
+    });
+
+    expect(sendMessageTelegramMock).toHaveBeenCalledWith(
+      "12345",
+      "<b>Morning</b> <code>oauth2</code>",
+      expect.objectContaining({
+        textMode: "html",
+      }),
+    );
   });
 
   it("sends payload media in sequence and keeps buttons on the first message only", async () => {

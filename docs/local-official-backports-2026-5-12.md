@@ -59,6 +59,12 @@ should be split by risk area.
     dependency now fail and roll back if OpenClaw cannot create the plugin-local
     `node_modules/openclaw` link, instead of leaving a broken plugin installed.
   - Files: `src/plugins/install.ts`, `src/plugins/install.test.ts`.
+- Telegram HTML reply preservation from `7c606f834c` / `3c3cef1785`
+  - Local impact: supported Telegram HTML tags survive markdown rendering and
+    chunking, unsupported tags remain escaped, and durable outbound Telegram
+    sends no longer strip HTML formatting before delivery.
+  - Files: `extensions/telegram/src/format.ts`,
+    `extensions/telegram/src/outbound-adapter.ts`.
 
 ## Local Hardening
 
@@ -89,7 +95,9 @@ should be split by risk area.
     payloads. Remaining official heartbeat response-tool pieces are tracked
     separately because the local contract is not complete yet.
 - `f9652c7b09` `Fix Telegram polling ingress under event-loop stalls`
-  - Reason: large Telegram ingress worker change; should be its own batch.
+  - Reason: large isolated ingress worker change. Local already has polling
+    watchdog/transport-dirty restart logic, so this needs a separate structural
+    migration instead of a direct patch.
 - `9798e95786` `fix: reconcile managed plugin peers`
   - Reason: local branch does not have official's managed npm root helper
     module, so only the directly applicable unresolved `openclaw` peer failure

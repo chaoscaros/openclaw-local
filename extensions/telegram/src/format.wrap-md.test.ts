@@ -102,8 +102,7 @@ describe("renderTelegramHtmlText - file reference wrapping", () => {
     expect(result).toContain("<code>README.md</code>");
   });
 
-  it("does not wrap in HTML mode (trusts caller markup)", () => {
-    // textMode: "html" should pass through unchanged - caller owns the markup
+  it("does not wrap in HTML mode", () => {
     const result = renderTelegramHtmlText("Check README.md", { textMode: "html" });
     expect(result).toBe("Check README.md");
     expect(result).not.toContain("<code>");
