@@ -187,6 +187,7 @@ export class TelegramPollingSession {
         }
       }
     } finally {
+      await this.#transportState.dispose();
       this.#status.notePollingStop();
     }
   }

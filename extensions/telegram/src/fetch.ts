@@ -429,13 +429,20 @@ export type TelegramTransport = {
   fetch: typeof fetch;
   sourceFetch: typeof fetch;
   dispatcherAttempts?: TelegramDispatcherAttempt[];
+  /**
+   * Release dispatchers owned by this transport. Caller-provided proxy fetches
+   * own their own lifecycle, so those transports return a no-op close.
+   */
+  close?: () => Promise<void>;
 };
 
 function createTelegramTransportAttempts(params: {
   defaultDispatcher: ReturnType<typeof createTelegramDispatcher>;
   allowFallback: boolean;
   fallbackPolicy?: PinnedDispatcherPolicy;
+  ownedDispatchers: Set<TelegramDispatcher>;
 }): TelegramTransportAttempt[] {
+  params.ownedDispatchers.add(params.defaultDispatcher.dispatcher);
   const attempts: TelegramTransportAttempt[] = [
     {
       createDispatcher: () => params.defaultDispatcher.dispatcher,
@@ -447,12 +454,14 @@ function createTelegramTransportAttempts(params: {
     return attempts;
   }
   const fallbackPolicy = params.fallbackPolicy;
+  const ownedDispatchers = params.ownedDispatchers;
 
   let ipv4Dispatcher: TelegramDispatcher | null = null;
   attempts.push({
     createDispatcher: () => {
       if (!ipv4Dispatcher) {
         ipv4Dispatcher = createTelegramDispatcher(fallbackPolicy).dispatcher;
+        ownedDispatchers.add(ipv4Dispatcher);
       }
       return ipv4Dispatcher;
     },
@@ -476,6 +485,7 @@ function createTelegramTransportAttempts(params: {
     createDispatcher: () => {
       if (!fallbackIpDispatcher) {
         fallbackIpDispatcher = createTelegramDispatcher(fallbackIpPolicy).dispatcher;
+        ownedDispatchers.add(fallbackIpDispatcher);
       }
       return fallbackIpDispatcher;
     },
@@ -484,6 +494,18 @@ function createTelegramTransportAttempts(params: {
   });
 
   return attempts;
+}
+
+async function destroyOwnedDispatchers(dispatchers: Iterable<TelegramDispatcher>): Promise<void> {
+  await Promise.all(
+    [...dispatchers].map(async (dispatcher) => {
+      try {
+        await dispatcher.destroy();
+      } catch {
+        // Dispatcher may already be destroyed; close is best effort.
+      }
+    }),
+  );
 }
 
 export function resolveTelegramTransport(
@@ -518,7 +540,7 @@ export function resolveTelegramTransport(
       : undiciSourceFetch;
   const dnsResultOrder = normalizeDnsResultOrder(dnsDecision.value);
   if (effectiveProxyFetch && !explicitProxyUrl) {
-    return { fetch: sourceFetch, sourceFetch };
+    return { fetch: sourceFetch, sourceFetch, close: async () => {} };
   }
 
   const useEnvProxy = !explicitProxyUrl && hasEnvHttpProxyForTelegramApi();
@@ -543,10 +565,12 @@ export function resolveTelegramTransport(
         proxyUrl: explicitProxyUrl,
       }).policy
     : undefined;
+  const ownedDispatchers = new Set<TelegramDispatcher>();
   const transportAttempts = createTelegramTransportAttempts({
     defaultDispatcher,
     allowFallback: allowStickyFallback,
     fallbackPolicy: fallbackDispatcherPolicy,
+    ownedDispatchers,
   });
 
   let stickyAttemptIndex = 0;
@@ -615,10 +639,22 @@ export function resolveTelegramTransport(
     throw err;
   }) as typeof fetch;
 
+  let closed = false;
+  const close = async (): Promise<void> => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    const toDestroy = [...ownedDispatchers];
+    ownedDispatchers.clear();
+    await destroyOwnedDispatchers(toDestroy);
+  };
+
   return {
     fetch: resolvedFetch,
     sourceFetch,
     dispatcherAttempts: transportAttempts.map((attempt) => attempt.exportAttempt),
+    close,
   };
 }
 

@@ -91,68 +91,72 @@ async function main(): Promise<void> {
   const proxyFetch = options.proxy ? makeProxyFetch(options.proxy) : undefined;
   const transport = resolveTelegramTransport(proxyFetch, { network: options.network });
   const fetchImpl = transport.fetch ?? globalThis.fetch;
-  const apiRoot = normalizeTelegramApiRoot(options.apiRoot);
+  const apiRoot = normalizeTelegramApiRoot(options.apiRoot ?? "https://api.telegram.org");
   const getUpdatesUrl = `${apiRoot}/bot${options.token}/getUpdates`;
   const pollTimeoutSeconds = resolveTelegramLongPollTimeoutSeconds(options.timeoutSeconds);
   let lastUpdateId = options.initialUpdateId;
   let failures = 0;
 
-  for (;;) {
-    if (stopped) {
-      break;
-    }
-    const offset = lastUpdateId === null ? null : lastUpdateId + 1;
-    const startedAt = Date.now();
-    post({ type: "poll-start", offset, startedAt });
-    try {
-      const result = await fetchJson({
-        fetch: fetchImpl,
-        url: getUpdatesUrl,
-        body: {
-          timeout: pollTimeoutSeconds,
-          limit: pollLimit,
-          allowed_updates: resolveTelegramAllowedUpdates(),
-          ...(offset === null ? {} : { offset }),
-        },
-      });
-      if (!Array.isArray(result)) {
-        throw new Error("Telegram getUpdates returned a non-array result.");
-      }
-      for (const update of result) {
-        if (stopped) {
-          break;
-        }
-        const updateId = await writeTelegramSpooledUpdate({
-          spoolDir: options.spoolDir,
-          update,
-        });
-        if (lastUpdateId === null || updateId > lastUpdateId) {
-          lastUpdateId = updateId;
-        }
-        post({ type: "spooled", updateId, queued: result.length });
-      }
-      failures = 0;
-      post({
-        type: "poll-success",
-        offset,
-        count: result.length,
-        finishedAt: Date.now(),
-      });
-    } catch (err) {
+  try {
+    for (;;) {
       if (stopped) {
         break;
       }
-      failures += 1;
-      post({
-        type: "poll-error",
-        message: formatErrorMessage(err),
-        finishedAt: Date.now(),
-      });
-      if (!isRecoverableTelegramNetworkError(err, { context: "polling" })) {
-        throw err;
+      const offset = lastUpdateId === null ? null : lastUpdateId + 1;
+      const startedAt = Date.now();
+      post({ type: "poll-start", offset, startedAt });
+      try {
+        const result = await fetchJson({
+          fetch: fetchImpl,
+          url: getUpdatesUrl,
+          body: {
+            timeout: pollTimeoutSeconds,
+            limit: pollLimit,
+            allowed_updates: resolveTelegramAllowedUpdates(),
+            ...(offset === null ? {} : { offset }),
+          },
+        });
+        if (!Array.isArray(result)) {
+          throw new Error("Telegram getUpdates returned a non-array result.");
+        }
+        for (const update of result) {
+          if (stopped) {
+            break;
+          }
+          const updateId = await writeTelegramSpooledUpdate({
+            spoolDir: options.spoolDir,
+            update,
+          });
+          if (lastUpdateId === null || updateId > lastUpdateId) {
+            lastUpdateId = updateId;
+          }
+          post({ type: "spooled", updateId, queued: result.length });
+        }
+        failures = 0;
+        post({
+          type: "poll-success",
+          offset,
+          count: result.length,
+          finishedAt: Date.now(),
+        });
+      } catch (err) {
+        if (stopped) {
+          break;
+        }
+        failures += 1;
+        post({
+          type: "poll-error",
+          message: formatErrorMessage(err),
+          finishedAt: Date.now(),
+        });
+        if (!isRecoverableTelegramNetworkError(err, { context: "polling" })) {
+          throw err;
+        }
+        await sleep(resolveBackoff(failures));
       }
-      await sleep(resolveBackoff(failures));
     }
+  } finally {
+    await transport.close?.();
   }
 }
 
