@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { normalizeConfiguredMcpServers } from "../../config/mcp-config.js";
 import { applyMergePatch } from "../../config/merge-patch.js";
 import type { CliBackendConfig } from "../../config/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -24,6 +25,15 @@ type PreparedCliBundleMcpConfig = {
   mcpConfigHash?: string;
   env?: Record<string, string>;
 };
+
+type CodexThreadConfigValue =
+  | string
+  | number
+  | boolean
+  | null
+  | CodexThreadConfigValue[]
+  | { [key: string]: CodexThreadConfigValue };
+type CodexThreadConfigObject = { [key: string]: CodexThreadConfigValue };
 
 function resolveBundleMcpMode(mode: CliBundleMcpMode | undefined): CliBundleMcpMode {
   return mode ?? "claude-config-file";
@@ -140,9 +150,23 @@ function applyCommonServerConfig(
   }
 }
 
-function normalizeCodexServerConfig(server: BundleMcpServerConfig): Record<string, unknown> {
-  const next: Record<string, unknown> = {};
+function isOpenClawLoopbackMcpServer(name: string, server: BundleMcpServerConfig): boolean {
+  return (
+    name === "openclaw" &&
+    typeof server.url === "string" &&
+    /^https?:\/\/(?:127\.0\.0\.1|localhost):\d+\/mcp(?:[?#].*)?$/.test(server.url)
+  );
+}
+
+function normalizeCodexServerConfig(
+  name: string,
+  server: BundleMcpServerConfig,
+): CodexThreadConfigObject {
+  const next: CodexThreadConfigObject = {};
   applyCommonServerConfig(next, server);
+  if (isOpenClawLoopbackMcpServer(name, server)) {
+    next.default_tools_approval_mode = "approve";
+  }
   const httpHeaders = normalizeStringRecord(server.headers);
   if (httpHeaders) {
     const staticHeaders: Record<string, string> = {};
@@ -210,11 +234,26 @@ function injectCodexMcpConfigArgs(args: string[] | undefined, config: BundleMcpC
     Object.fromEntries(
       Object.entries(config.mcpServers).map(([name, server]) => [
         name,
-        normalizeCodexServerConfig(server),
+        normalizeCodexServerConfig(name, server),
       ]),
     ),
   );
   return [...(args ?? []), "-c", `mcp_servers=${overrides}`];
+}
+
+export function buildCodexUserMcpServersThreadConfigPatch(
+  cfg: OpenClawConfig | undefined,
+): { mcp_servers: CodexThreadConfigObject } | undefined {
+  const userServers = normalizeConfiguredMcpServers(cfg?.mcp?.servers);
+  const entries = Object.entries(userServers);
+  if (entries.length === 0) {
+    return undefined;
+  }
+  const mcp_servers: CodexThreadConfigObject = {};
+  for (const [name, server] of entries) {
+    mcp_servers[name] = normalizeCodexServerConfig(name, server as BundleMcpServerConfig);
+  }
+  return { mcp_servers };
 }
 
 async function writeGeminiSystemSettings(

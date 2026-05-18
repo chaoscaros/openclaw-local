@@ -8,7 +8,10 @@ import {
   writeClaudeBundleManifest,
 } from "../../plugins/bundle-mcp.test-support.js";
 import { captureEnv } from "../../test-utils/env.js";
-import { prepareCliBundleMcpConfig } from "./bundle-mcp.js";
+import {
+  buildCodexUserMcpServersThreadConfigPatch,
+  prepareCliBundleMcpConfig,
+} from "./bundle-mcp.js";
 
 const tempHarness = createBundleMcpTempHarness();
 
@@ -269,14 +272,14 @@ describe("prepareCliBundleMcpConfig", () => {
       "exec",
       "--json",
       "-c",
-      'mcp_servers={ openclaw = { url = "http://127.0.0.1:23119/mcp", bearer_token_env_var = "OPENCLAW_MCP_TOKEN", env_http_headers = { x-session-key = "OPENCLAW_MCP_SESSION_KEY", x-openclaw-sender-is-owner = "OPENCLAW_MCP_SENDER_IS_OWNER" } } }',
+      'mcp_servers={ openclaw = { url = "http://127.0.0.1:23119/mcp", default_tools_approval_mode = "approve", bearer_token_env_var = "OPENCLAW_MCP_TOKEN", env_http_headers = { x-session-key = "OPENCLAW_MCP_SESSION_KEY", x-openclaw-sender-is-owner = "OPENCLAW_MCP_SENDER_IS_OWNER" } } }',
     ]);
     expect(prepared.backend.resumeArgs).toEqual([
       "exec",
       "resume",
       "{sessionId}",
       "-c",
-      'mcp_servers={ openclaw = { url = "http://127.0.0.1:23119/mcp", bearer_token_env_var = "OPENCLAW_MCP_TOKEN", env_http_headers = { x-session-key = "OPENCLAW_MCP_SESSION_KEY", x-openclaw-sender-is-owner = "OPENCLAW_MCP_SENDER_IS_OWNER" } } }',
+      'mcp_servers={ openclaw = { url = "http://127.0.0.1:23119/mcp", default_tools_approval_mode = "approve", bearer_token_env_var = "OPENCLAW_MCP_TOKEN", env_http_headers = { x-session-key = "OPENCLAW_MCP_SESSION_KEY", x-openclaw-sender-is-owner = "OPENCLAW_MCP_SENDER_IS_OWNER" } } }',
     ]);
     expect(prepared.cleanup).toBeUndefined();
   });
@@ -320,5 +323,50 @@ describe("prepareCliBundleMcpConfig", () => {
     expect(raw.mcpServers?.openclaw?.headers?.Authorization).toBe("Bearer loopback-token-123");
 
     await prepared.cleanup?.();
+  });
+});
+
+describe("buildCodexUserMcpServersThreadConfigPatch", () => {
+  it("projects user-configured MCP servers into Codex thread config", () => {
+    expect(
+      buildCodexUserMcpServersThreadConfigPatch({
+        mcp: {
+          servers: {
+            notes: {
+              command: "node",
+              args: ["/opt/notes/dist/server.js"],
+              env: { NOTES_HOME: "/tmp/notes" },
+            },
+            openclaw: {
+              url: "http://127.0.0.1:23119/mcp",
+              headers: {
+                Authorization: "Bearer ${OPENCLAW_MCP_TOKEN}",
+                "x-session-key": "${OPENCLAW_MCP_SESSION_KEY}",
+              },
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      mcp_servers: {
+        notes: {
+          command: "node",
+          args: ["/opt/notes/dist/server.js"],
+          env: { NOTES_HOME: "/tmp/notes" },
+        },
+        openclaw: {
+          url: "http://127.0.0.1:23119/mcp",
+          default_tools_approval_mode: "approve",
+          bearer_token_env_var: "OPENCLAW_MCP_TOKEN",
+          env_http_headers: {
+            "x-session-key": "OPENCLAW_MCP_SESSION_KEY",
+          },
+        },
+      },
+    });
+  });
+
+  it("omits Codex thread config when no user MCP servers are configured", () => {
+    expect(buildCodexUserMcpServersThreadConfigPatch({})).toBeUndefined();
   });
 });

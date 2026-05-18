@@ -1,4 +1,5 @@
 import { embeddedAgentLog, type EmbeddedRunAttemptParams } from "openclaw/plugin-sdk/agent-harness";
+import { buildCodexUserMcpServersThreadConfigPatch } from "openclaw/plugin-sdk/codex-mcp-projection";
 import type { CodexAppServerClient } from "./client.js";
 import type { CodexAppServerRuntimeOptions } from "./config.js";
 import {
@@ -26,7 +27,16 @@ export async function startOrResumeThread(params: {
   appServer: CodexAppServerRuntimeOptions;
 }): Promise<CodexAppServerThreadBinding> {
   const dynamicToolsFingerprint = fingerprintDynamicTools(params.dynamicTools);
-  const binding = await readCodexAppServerBinding(params.params.sessionFile);
+  const userMcpServersConfigPatch = buildCodexUserMcpServersThreadConfigPatch(params.params.config);
+  const userMcpServersFingerprint = fingerprintUserMcpServersConfigPatch(userMcpServersConfigPatch);
+  let binding = await readCodexAppServerBinding(params.params.sessionFile);
+  if (binding?.threadId && binding.userMcpServersFingerprint !== userMcpServersFingerprint) {
+    embeddedAgentLog.debug("codex app-server user MCP config changed; starting a new thread", {
+      threadId: binding.threadId,
+    });
+    await clearCodexAppServerBinding(params.params.sessionFile);
+    binding = undefined;
+  }
   if (binding?.threadId) {
     // `/codex resume <thread>` writes a binding before the next turn can know
     // the dynamic tool catalog, so only invalidate fingerprints we actually have.
@@ -48,6 +58,7 @@ export async function startOrResumeThread(params: {
           buildThreadResumeParams(params.params, {
             threadId: binding.threadId,
             appServer: params.appServer,
+            config: userMcpServersConfigPatch,
           }),
         );
         await writeCodexAppServerBinding(params.params.sessionFile, {
@@ -56,6 +67,7 @@ export async function startOrResumeThread(params: {
           model: params.params.modelId,
           modelProvider: response.modelProvider ?? normalizeModelProvider(params.params.provider),
           dynamicToolsFingerprint,
+          userMcpServersFingerprint,
           createdAt: binding.createdAt,
         });
         return {
@@ -65,6 +77,7 @@ export async function startOrResumeThread(params: {
           model: params.params.modelId,
           modelProvider: response.modelProvider ?? normalizeModelProvider(params.params.provider),
           dynamicToolsFingerprint,
+          userMcpServersFingerprint,
         };
       } catch (error) {
         embeddedAgentLog.warn("codex app-server thread resume failed; starting a new thread", {
@@ -83,6 +96,7 @@ export async function startOrResumeThread(params: {
     approvalsReviewer: params.appServer.approvalsReviewer,
     sandbox: params.appServer.sandbox,
     ...(params.appServer.serviceTier ? { serviceTier: params.appServer.serviceTier } : {}),
+    ...(userMcpServersConfigPatch ? { config: userMcpServersConfigPatch } : {}),
     serviceName: "OpenClaw",
     developerInstructions: buildDeveloperInstructions(params.params),
     dynamicTools: params.dynamicTools,
@@ -96,6 +110,7 @@ export async function startOrResumeThread(params: {
     model: response.model ?? params.params.modelId,
     modelProvider: response.modelProvider ?? normalizeModelProvider(params.params.provider),
     dynamicToolsFingerprint,
+    userMcpServersFingerprint,
     createdAt,
   });
   return {
@@ -106,6 +121,7 @@ export async function startOrResumeThread(params: {
     model: response.model ?? params.params.modelId,
     modelProvider: response.modelProvider ?? normalizeModelProvider(params.params.provider),
     dynamicToolsFingerprint,
+    userMcpServersFingerprint,
     createdAt,
     updatedAt: createdAt,
   };
@@ -116,6 +132,7 @@ export function buildThreadResumeParams(
   options: {
     threadId: string;
     appServer: CodexAppServerRuntimeOptions;
+    config?: JsonObject;
   },
 ): CodexThreadResumeParams {
   return {
@@ -126,8 +143,15 @@ export function buildThreadResumeParams(
     approvalsReviewer: options.appServer.approvalsReviewer,
     sandbox: options.appServer.sandbox,
     ...(options.appServer.serviceTier ? { serviceTier: options.appServer.serviceTier } : {}),
+    ...(options.config ? { config: options.config } : {}),
     persistExtendedHistory: true,
   };
+}
+
+function fingerprintUserMcpServersConfigPatch(
+  configPatch: JsonObject | undefined,
+): string | undefined {
+  return configPatch ? JSON.stringify(stabilizeJsonValue(configPatch)) : undefined;
 }
 
 export function buildTurnStartParams(

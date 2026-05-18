@@ -44,6 +44,16 @@ should be split by risk area.
     `src/auto-reply/reply/reply-delivery.ts`,
     `src/auto-reply/reply/dispatch-from-config.ts`,
     `src/cron/heartbeat-policy.ts`.
+- Codex MCP server projection from `1f18e8864d` / `59d7f03eaa`
+  - Local impact: Codex app-server threads now receive user-configured
+    `mcp.servers` as `config.mcp_servers` during start/resume, binding
+    metadata fingerprints that config so changed MCP definitions start a fresh
+    thread, and the local OpenClaw loopback MCP server defaults to approved
+    tools in Codex.
+  - Files: `src/agents/cli-runner/bundle-mcp.ts`,
+    `src/plugin-sdk/codex-mcp-projection.ts`,
+    `extensions/codex/src/app-server/thread-lifecycle.ts`,
+    `extensions/codex/src/app-server/session-binding.ts`.
 
 ## Local Hardening
 
@@ -71,8 +81,8 @@ should be split by risk area.
     not present as a complete local contract yet.
 - `86885ccc24` `fix(replies): preserve rich outbound content`
   - Reason: partially backported for local `interactive` / `channelData`
-    payloads. Remaining official pieces touch broader runtime-plan, cron, and
-    heartbeat surfaces that should be evaluated separately.
+    payloads. Remaining official heartbeat response-tool pieces are tracked
+    separately because the local contract is not complete yet.
 - `f9652c7b09` `Fix Telegram polling ingress under event-loop stalls`
   - Reason: large Telegram ingress worker change; should be its own batch.
 - `9798e95786` `fix: reconcile managed plugin peers`

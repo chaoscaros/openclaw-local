@@ -74,6 +74,7 @@ export type CodexThreadResumeParams = {
   approvalsReviewer?: "user" | "guardian_subagent";
   sandbox?: "read-only" | "workspace-write" | "danger-full-access";
   serviceTier?: string | null;
+  config?: JsonObject | null;
   persistExtendedHistory?: boolean;
 };
 

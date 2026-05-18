@@ -9,6 +9,7 @@ export type CodexAppServerThreadBinding = {
   model?: string;
   modelProvider?: string;
   dynamicToolsFingerprint?: string;
+  userMcpServersFingerprint?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -47,6 +48,10 @@ export async function readCodexAppServerBinding(
         typeof parsed.dynamicToolsFingerprint === "string"
           ? parsed.dynamicToolsFingerprint
           : undefined,
+      userMcpServersFingerprint:
+        typeof parsed.userMcpServersFingerprint === "string"
+          ? parsed.userMcpServersFingerprint
+          : undefined,
       createdAt: typeof parsed.createdAt === "string" ? parsed.createdAt : new Date().toISOString(),
       updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : new Date().toISOString(),
     };
@@ -74,6 +79,7 @@ export async function writeCodexAppServerBinding(
     model: binding.model,
     modelProvider: binding.modelProvider,
     dynamicToolsFingerprint: binding.dynamicToolsFingerprint,
+    userMcpServersFingerprint: binding.userMcpServersFingerprint,
     createdAt: binding.createdAt ?? now,
     updatedAt: now,
   };

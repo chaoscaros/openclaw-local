@@ -7,6 +7,7 @@ import {
   queueAgentHarnessMessage,
   type EmbeddedRunAttemptParams,
 } from "openclaw/plugin-sdk/agent-harness";
+import { buildCodexUserMcpServersThreadConfigPatch } from "openclaw/plugin-sdk/codex-mcp-projection";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CodexServerNotification } from "./protocol.js";
 import { runCodexAppServerAttempt, __testing } from "./run-attempt.js";
@@ -15,7 +16,11 @@ import { buildThreadResumeParams, buildTurnStartParams } from "./thread-lifecycl
 
 let tempDir: string;
 
-function createParams(sessionFile: string, workspaceDir: string): EmbeddedRunAttemptParams {
+function createParams(
+  sessionFile: string,
+  workspaceDir: string,
+  config?: EmbeddedRunAttemptParams["config"],
+): EmbeddedRunAttemptParams {
   return {
     prompt: "hello",
     sessionId: "session-1",
@@ -41,6 +46,7 @@ function createParams(sessionFile: string, workspaceDir: string): EmbeddedRunAtt
     timeoutMs: 5_000,
     authStorage: {} as never,
     modelRegistry: {} as never,
+    config,
   } as EmbeddedRunAttemptParams;
 }
 
@@ -372,6 +378,162 @@ describe("runCodexAppServerAttempt", () => {
       approvalPolicy: "never",
       approvalsReviewer: "user",
       sandbox: "workspace-write",
+      persistExtendedHistory: true,
+    });
+  });
+
+  it("projects configured MCP servers into Codex thread/start config", async () => {
+    const { requests, waitForMethod, completeTurn } = createAppServerHarness(async (method) => {
+      if (method === "thread/start") {
+        return { thread: { id: "thread-1" }, model: "gpt-5.4-codex", modelProvider: "openai" };
+      }
+      if (method === "turn/start") {
+        return { turn: { id: "turn-1", status: "inProgress" } };
+      }
+      return {};
+    });
+    const config = {
+      mcp: {
+        servers: {
+          notes: {
+            command: "node",
+            args: ["/opt/notes-mcp/dist/index.js"],
+          },
+        },
+      },
+    } as EmbeddedRunAttemptParams["config"];
+
+    const run = runCodexAppServerAttempt(
+      createParams(path.join(tempDir, "session.jsonl"), path.join(tempDir, "workspace"), config),
+    );
+    await waitForMethod("turn/start");
+    await completeTurn({ threadId: "thread-1", turnId: "turn-1" });
+    await run;
+
+    expect(requests).toEqual(
+      expect.arrayContaining([
+        {
+          method: "thread/start",
+          params: expect.objectContaining({
+            config: {
+              mcp_servers: {
+                notes: {
+                  command: "node",
+                  args: ["/opt/notes-mcp/dist/index.js"],
+                },
+              },
+            },
+          }),
+        },
+      ]),
+    );
+  });
+
+  it("starts a fresh Codex thread when configured MCP servers differ from the binding", async () => {
+    const sessionFile = path.join(tempDir, "session.jsonl");
+    const workspaceDir = path.join(tempDir, "workspace");
+    await writeCodexAppServerBinding(sessionFile, {
+      threadId: "thread-existing",
+      cwd: workspaceDir,
+      model: "gpt-5.4-codex",
+      modelProvider: "openai",
+      dynamicToolsFingerprint: "[]",
+    });
+    const { requests, waitForMethod, completeTurn } = createAppServerHarness(async (method) => {
+      if (method === "thread/start") {
+        return { thread: { id: "thread-fresh" }, model: "gpt-5.4-codex", modelProvider: "openai" };
+      }
+      if (method === "turn/start") {
+        return { turn: { id: "turn-1", status: "inProgress" } };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const config = {
+      mcp: {
+        servers: {
+          notes: {
+            command: "node",
+            args: ["/opt/notes-mcp/dist/index.js"],
+          },
+        },
+      },
+    } as EmbeddedRunAttemptParams["config"];
+
+    const run = runCodexAppServerAttempt(createParams(sessionFile, workspaceDir, config));
+    await waitForMethod("turn/start");
+    await completeTurn({ threadId: "thread-fresh", turnId: "turn-1" });
+    await run;
+
+    expect(requests.some((entry) => entry.method === "thread/resume")).toBe(false);
+    expect(requests).toEqual(
+      expect.arrayContaining([
+        {
+          method: "thread/start",
+          params: expect.objectContaining({
+            config: expect.objectContaining({
+              mcp_servers: expect.objectContaining({
+                notes: expect.objectContaining({ command: "node" }),
+              }),
+            }),
+          }),
+        },
+      ]),
+    );
+  });
+
+  it("preserves configured MCP servers in Codex thread/resume config", async () => {
+    const sessionFile = path.join(tempDir, "session.jsonl");
+    const workspaceDir = path.join(tempDir, "workspace");
+    const config = {
+      mcp: {
+        servers: {
+          notes: {
+            command: "node",
+            args: ["/opt/notes-mcp/dist/index.js"],
+          },
+        },
+      },
+    } as EmbeddedRunAttemptParams["config"];
+    const patch = buildCodexUserMcpServersThreadConfigPatch(config);
+    await writeCodexAppServerBinding(sessionFile, {
+      threadId: "thread-existing",
+      cwd: workspaceDir,
+      model: "gpt-5.4-codex",
+      modelProvider: "openai",
+      dynamicToolsFingerprint: "[]",
+      userMcpServersFingerprint: patch
+        ? JSON.stringify({
+            mcp_servers: {
+              notes: {
+                args: ["/opt/notes-mcp/dist/index.js"],
+                command: "node",
+              },
+            },
+          })
+        : undefined,
+    });
+    const { requests, waitForMethod, completeTurn } = createResumeHarness();
+
+    const run = runCodexAppServerAttempt(createParams(sessionFile, workspaceDir, config));
+    await waitForMethod("turn/start");
+    await completeTurn({ threadId: "thread-existing", turnId: "turn-1" });
+    await run;
+
+    expectResumeRequest(requests, {
+      threadId: "thread-existing",
+      model: "gpt-5.4-codex",
+      modelProvider: "openai",
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandbox: "workspace-write",
+      config: {
+        mcp_servers: {
+          notes: {
+            command: "node",
+            args: ["/opt/notes-mcp/dist/index.js"],
+          },
+        },
+      },
       persistExtendedHistory: true,
     });
   });
