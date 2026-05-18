@@ -16,6 +16,7 @@ Docs: https://docs.openclaw.ai
 - Gateway/restart: keep ordinary unmanaged restarts in-process instead of detached-spawning a child so custom supervisors and local launchers keep tracking the same gateway PID.
 - CLI/status: render extra gateway-like service diagnostics as warning/info output instead of error output.
 - Agents/failover: classify Moonshot/Kimi exhausted-balance HTTP 429 payloads as billing instead of generic rate limits.
+- Telegram: require normal command authorization before stop-like messages cancel pending same-chat debounce buffers.
 
 ## 2026.4.15
 

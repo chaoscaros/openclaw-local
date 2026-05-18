@@ -1169,9 +1169,25 @@ export const registerTelegramHandlers = ({
       if (abortControlAuthorized !== undefined) {
         return abortControlAuthorized;
       }
-      abortControlAuthorized = isGroup
-        ? true
+      const allowForCommands = isGroup ? effectiveGroupAllow : effectiveDmAllow;
+      const senderAllowedForCommands = isGroup
+        ? isAllowlistAuthorized(effectiveGroupAllow, senderId, senderUsername)
         : dmPolicy === "open" || isAllowlistAuthorized(effectiveDmAllow, senderId, senderUsername);
+      const commandGate = resolveControlCommandGate({
+        useAccessGroups: cfg.commands?.useAccessGroups !== false,
+        authorizers: [
+          {
+            configured: isGroup
+              ? allowForCommands.hasEntries
+              : dmPolicy === "open" || allowForCommands.hasEntries,
+            allowed: senderAllowedForCommands,
+          },
+        ],
+        allowTextCommands: true,
+        hasControlCommand: true,
+        modeWhenAccessGroupsOff: "allow",
+      });
+      abortControlAuthorized = commandGate.commandAuthorized;
       return abortControlAuthorized;
     };
 
