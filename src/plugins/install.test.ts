@@ -2117,6 +2117,46 @@ describe("installPluginFromDir", () => {
     }
   });
 
+  it("rejects plugins when their openclaw peerDependency cannot be linked", async () => {
+    const { pluginDir, extensionsDir } = setupPluginInstallDirs();
+    const warnings: string[] = [];
+    const resolveRootMock = vi
+      .spyOn(openclawRoot, "resolveOpenClawPackageRootSync")
+      .mockReturnValue(null);
+
+    try {
+      fs.writeFileSync(
+        path.join(pluginDir, "package.json"),
+        JSON.stringify({
+          name: "peer-install-plugin",
+          version: "1.0.0",
+          openclaw: { extensions: ["index.js"] },
+          peerDependencies: { openclaw: "*" },
+        }),
+      );
+      fs.writeFileSync(path.join(pluginDir, "index.js"), "export {};\n");
+
+      const result = await installPluginFromDir({
+        dirPath: pluginDir,
+        extensionsDir,
+        logger: { info: () => {}, warn: (message) => warnings.push(message) },
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        return;
+      }
+      expect(result.error).toContain("peer-install-plugin");
+      expect(result.error).toContain("plugin-local node_modules/openclaw link");
+      expect(warnings).toEqual(
+        expect.arrayContaining([expect.stringContaining("Could not locate openclaw package root")]),
+      );
+      expect(fs.existsSync(path.join(extensionsDir, "peer-install-plugin"))).toBe(false);
+    } finally {
+      resolveRootMock.mockRestore();
+    }
+  });
+
   it("is idempotent - re-installing replaces an existing symlink without error", async () => {
     const { pluginDir, extensionsDir } = setupPluginInstallDirs();
     const fakeHostRoot = suiteTempRootTracker.makeTempDir();

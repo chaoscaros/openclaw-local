@@ -45,6 +45,10 @@ const PLUGIN_ARCHIVE_ROOT_MARKERS = [
   ".cursor-plugin/plugin.json",
 ];
 
+function formatUnresolvedOpenClawPeerLinkError(packageName: string): string {
+  return `Installed plugin ${packageName} declares openclaw as a peer dependency, but OpenClaw could not create a plugin-local node_modules/openclaw link. Run from a packaged OpenClaw install or reinstall OpenClaw, then retry.`;
+}
+
 export const PLUGIN_INSTALL_ERROR_CODE = {
   INVALID_NPM_SPEC: "invalid_npm_spec",
   INVALID_MIN_HOST_VERSION: "invalid_min_host_version",
@@ -612,12 +616,13 @@ async function detectNativePackageInstallSource(packageDir: string): Promise<boo
 
 async function linkOpenClawPeerDependencies(params: {
   installedDir: string;
+  packageName: string;
   peerDependencies: Record<string, string>;
   logger: PluginInstallLogger;
-}): Promise<void> {
+}): Promise<{ ok: true } | { ok: false; error: string }> {
   const peers = Object.keys(params.peerDependencies).filter((name) => name === "openclaw");
   if (peers.length === 0) {
-    return;
+    return { ok: true };
   }
 
   const hostRoot = resolveOpenClawPackageRootSync({
@@ -629,7 +634,7 @@ async function linkOpenClawPeerDependencies(params: {
     params.logger.warn?.(
       "Could not locate openclaw package root to symlink peerDependencies; plugin may fail to resolve openclaw at runtime.",
     );
-    return;
+    return { ok: false, error: formatUnresolvedOpenClawPeerLinkError(params.packageName) };
   }
 
   const nodeModulesDir = path.join(params.installedDir, "node_modules");
@@ -642,8 +647,10 @@ async function linkOpenClawPeerDependencies(params: {
       params.logger.info?.(`Linked peerDependency "${peerName}" -> ${hostRoot}`);
     } catch (err) {
       params.logger.warn?.(`Failed to symlink peerDependency "${peerName}": ${String(err)}`);
+      return { ok: false, error: formatUnresolvedOpenClawPeerLinkError(params.packageName) };
     }
   }
+  return { ok: true };
 }
 
 async function installPluginFromPackageDir(
@@ -822,11 +829,15 @@ async function installPluginFromPackageDir(
       if (scanResult) {
         return scanResult;
       }
-      await linkOpenClawPeerDependencies({
+      const peerLinkResult = await linkOpenClawPeerDependencies({
         installedDir,
+        packageName: pkgName || pluginId,
         peerDependencies: peerDeps,
         logger,
       });
+      if (!peerLinkResult.ok) {
+        return peerLinkResult;
+      }
       return null;
     },
   });

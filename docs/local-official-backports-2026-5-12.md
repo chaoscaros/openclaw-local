@@ -54,6 +54,11 @@ should be split by risk area.
     `src/plugin-sdk/codex-mcp-projection.ts`,
     `extensions/codex/src/app-server/thread-lifecycle.ts`,
     `extensions/codex/src/app-server/session-binding.ts`.
+- Plugin `openclaw` peer link failure handling from `2db6bde617`
+  - Local impact: package plugin installs that declare `openclaw` as a peer
+    dependency now fail and roll back if OpenClaw cannot create the plugin-local
+    `node_modules/openclaw` link, instead of leaving a broken plugin installed.
+  - Files: `src/plugins/install.ts`, `src/plugins/install.test.ts`.
 
 ## Local Hardening
 
@@ -86,8 +91,9 @@ should be split by risk area.
 - `f9652c7b09` `Fix Telegram polling ingress under event-loop stalls`
   - Reason: large Telegram ingress worker change; should be its own batch.
 - `9798e95786` `fix: reconcile managed plugin peers`
-  - Reason: install/update behavior change; useful, but needs a dedicated
-    plugin-install validation pass.
+  - Reason: local branch does not have official's managed npm root helper
+    module, so only the directly applicable unresolved `openclaw` peer failure
+    behavior has been backported so far.
 
 ## Suggested Next Batches
 
