@@ -94,6 +94,37 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
     });
   });
 
+  it("keeps cron announce source replies message-tool-only", async () => {
+    mockRunCronFallbackPassthrough();
+    resolveCronDeliveryPlanMock.mockReturnValue({
+      requested: true,
+      mode: "announce",
+      channel: "telegram",
+      to: "123",
+    });
+
+    await runCronIsolatedAgentTurn({
+      ...makeParams(),
+      job: {
+        id: "message-tool-policy",
+        name: "Message Tool Policy",
+        schedule: { kind: "every", everyMs: 60_000 },
+        sessionTarget: "isolated",
+        payload: { kind: "agentTurn", message: "send a message" },
+        delivery: { mode: "announce", channel: "telegram", to: "123" },
+      } as never,
+    });
+
+    expect(runEmbeddedPiAgentMock).toHaveBeenCalledTimes(1);
+    expect(runEmbeddedPiAgentMock.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        sourceReplyDeliveryMode: "message_tool_only",
+        forceMessageTool: true,
+        messageChannel: "telegram",
+      }),
+    );
+  });
+
   it("disables the message tool for webhook delivery", async () => {
     await expectMessageToolDisabledForPlan({
       requested: true,

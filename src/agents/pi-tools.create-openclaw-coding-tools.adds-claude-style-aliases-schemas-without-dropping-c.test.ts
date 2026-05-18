@@ -110,6 +110,15 @@ describe("createOpenClawCodingTools", () => {
     expect(names.has("browser")).toBe(false);
   });
 
+  it("keeps message available for message-tool-only source delivery", () => {
+    const tools = createOpenClawCodingTools({
+      config: { tools: { profile: "minimal" } },
+      sourceReplyDeliveryMode: "message_tool_only",
+    });
+    const names = new Set(tools.map((tool) => tool.name));
+    expect(names.has("message")).toBe(true);
+  });
+
   it("expands group shorthands in global tool policy", () => {
     const tools = createOpenClawCodingTools({
       config: { tools: { allow: ["group:fs"] } },

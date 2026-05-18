@@ -1,5 +1,6 @@
 import { hasAnyAuthProfileStoreSource } from "../../agents/auth-profiles/source-check.js";
 import type { SkillSnapshot } from "../../agents/skills.js";
+import type { SourceReplyDeliveryMode } from "../../auto-reply/get-reply-options.types.js";
 import type { ThinkLevel } from "../../auto-reply/thinking.js";
 import type { CliDeps } from "../../cli/outbound-send-deps.js";
 import type { AgentDefaultsConfig } from "../../config/types.agent-defaults.js";
@@ -136,6 +137,21 @@ function resolveCronToolPolicy(params: { deliveryMode: "announce" | "webhook" | 
   };
 }
 
+function resolveCronSourceReplyDeliveryMode(params: {
+  deliveryMode: "announce" | "webhook" | "none";
+  resolvedDelivery: ResolvedCronDeliveryTarget;
+  toolPolicy: ReturnType<typeof resolveCronToolPolicy>;
+}): SourceReplyDeliveryMode | undefined {
+  if (
+    params.deliveryMode !== "announce" ||
+    params.toolPolicy.disableMessageTool ||
+    !params.resolvedDelivery.ok
+  ) {
+    return undefined;
+  }
+  return "message_tool_only";
+}
+
 async function resolveCronDeliveryContext(params: {
   cfg: OpenClawConfig;
   job: CronJob;
@@ -159,6 +175,7 @@ async function resolveCronDeliveryContext(params: {
       toolPolicy: resolveCronToolPolicy({
         deliveryMode: deliveryPlan.mode,
       }),
+      sourceReplyDeliveryMode: undefined,
     };
   }
   const { resolveDeliveryTarget } = await loadCronDeliveryRuntime();
@@ -169,12 +186,18 @@ async function resolveCronDeliveryContext(params: {
     accountId: deliveryPlan.accountId,
     sessionKey: params.job.sessionKey,
   });
+  const toolPolicy = resolveCronToolPolicy({
+    deliveryMode: deliveryPlan.mode,
+  });
   return {
     deliveryPlan,
     deliveryRequested: deliveryPlan.requested,
     resolvedDelivery,
-    toolPolicy: resolveCronToolPolicy({
+    toolPolicy,
+    sourceReplyDeliveryMode: resolveCronSourceReplyDeliveryMode({
       deliveryMode: deliveryPlan.mode,
+      resolvedDelivery,
+      toolPolicy,
     }),
   };
 }
@@ -243,6 +266,7 @@ type PreparedCronRunContext = {
   agentPayload: Extract<CronJob["payload"], { kind: "agentTurn" }> | null;
   resolvedDelivery: ResolvedCronDeliveryTarget;
   deliveryRequested: boolean;
+  sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
   toolPolicy: ReturnType<typeof resolveCronToolPolicy>;
   skillsSnapshot: SkillSnapshot;
   liveSelection: CronLiveSelection;
@@ -418,11 +442,12 @@ async function prepareCronRunContext(params: {
       input.job.payload.kind === "agentTurn" ? input.job.payload.timeoutSeconds : undefined,
   });
   const agentPayload = input.job.payload.kind === "agentTurn" ? input.job.payload : null;
-  const { deliveryRequested, resolvedDelivery, toolPolicy } = await resolveCronDeliveryContext({
-    cfg: cfgWithAgentDefaults,
-    job: input.job,
-    agentId,
-  });
+  const { deliveryRequested, resolvedDelivery, sourceReplyDeliveryMode, toolPolicy } =
+    await resolveCronDeliveryContext({
+      cfg: cfgWithAgentDefaults,
+      job: input.job,
+      agentId,
+    });
 
   const { formattedTime, timeLine } = resolveCronStyleNow(input.cfg, now);
   const base = `[cron:${input.job.id} ${input.job.name}] ${input.message}`.trim();
@@ -535,6 +560,7 @@ async function prepareCronRunContext(params: {
       agentPayload,
       resolvedDelivery,
       deliveryRequested,
+      sourceReplyDeliveryMode,
       toolPolicy,
       skillsSnapshot,
       liveSelection,
@@ -767,6 +793,7 @@ export async function runCronIsolatedAgentTurn(
         channel: prepared.context.resolvedDelivery.channel,
         accountId: prepared.context.resolvedDelivery.accountId,
       },
+      sourceReplyDeliveryMode: prepared.context.sourceReplyDeliveryMode,
       toolPolicy: prepared.context.toolPolicy,
       skillsSnapshot: prepared.context.skillsSnapshot,
       agentPayload: prepared.context.agentPayload,

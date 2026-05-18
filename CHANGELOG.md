@@ -9,6 +9,7 @@ Docs: https://docs.openclaw.ai
 ### Fixes
 
 - Plugins: add a default 15-second timeout for legacy `before_agent_start` hooks so hung handlers no longer block agent startup.
+- Cron: keep announce runs in message-tool-only source-reply mode so scheduled turns do not also echo through automatic visible replies.
 
 ## 2026.4.15
 

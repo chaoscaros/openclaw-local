@@ -1,4 +1,5 @@
 import type { SkillSnapshot } from "../../agents/skills.js";
+import type { SourceReplyDeliveryMode } from "../../auto-reply/get-reply-options.types.js";
 import type { ThinkLevel, VerboseLevel } from "../../auto-reply/thinking.js";
 import type { AgentDefaultsConfig } from "../../config/types.agent-defaults.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -66,6 +67,7 @@ export function createCronPromptExecutor(params: {
   timeoutMs: number;
   messageChannel: string | undefined;
   resolvedDelivery: { accountId?: string };
+  sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
   toolPolicy: {
     requireExplicitMessageTarget: boolean;
     disableMessageTool: boolean;
@@ -180,6 +182,8 @@ export function createCronPromptExecutor(params: {
           runId: params.cronSession.sessionEntry.sessionId,
           requireExplicitMessageTarget: params.toolPolicy.requireExplicitMessageTarget,
           disableMessageTool: params.toolPolicy.disableMessageTool,
+          forceMessageTool: params.toolPolicy.forceMessageTool,
+          sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
           allowTransientCooldownProbe: runOptions?.allowTransientCooldownProbe,
           abortSignal: params.abortSignal,
           bootstrapPromptWarningSignaturesSeen,
@@ -224,6 +228,7 @@ export async function executeCronRun(params: {
     channel?: string;
     accountId?: string;
   };
+  sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
   toolPolicy: {
     requireExplicitMessageTarget: boolean;
     disableMessageTool: boolean;
@@ -265,6 +270,7 @@ export async function executeCronRun(params: {
     timeoutMs: params.timeoutMs,
     messageChannel: params.resolvedDelivery.channel,
     resolvedDelivery: params.resolvedDelivery,
+    sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
     toolPolicy: {
       ...params.toolPolicy,
       forceMessageTool: params.toolPolicy.forceMessageTool ?? false,
