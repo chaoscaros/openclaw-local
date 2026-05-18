@@ -387,13 +387,15 @@ describe("models list/status", () => {
     expect(ensureOpenClawModelsJson).not.toHaveBeenCalled();
   });
 
-  it("filters stale direct OpenAI spark rows from models list and registry views", async () => {
+  it("filters stale OpenAI and Codex spark rows from models list and registry views", async () => {
     shouldSuppressBuiltInModel.mockImplementation(
       ({ provider, id }: { provider?: string | null; id?: string | null }) =>
         id === "gpt-5.3-codex-spark" &&
-        (provider === "openai" || provider === "azure-openai-responses"),
+        (provider === "openai" ||
+          provider === "azure-openai-responses" ||
+          provider === "openai-codex"),
     );
-    setDefaultModel("openai-codex/gpt-5.3-codex-spark");
+    setDefaultModel("openai/gpt-4.1-mini");
     modelRegistryState.models = [
       OPENAI_SPARK_MODEL,
       AZURE_OPENAI_SPARK_MODEL,
@@ -408,16 +410,11 @@ describe("models list/status", () => {
 
     await modelsListCommand({ all: true, json: true }, runtime);
 
-    const payload = parseJsonLog(runtime);
-    expect(payload.models.map((model: { key: string }) => model.key)).toEqual([
-      "openai-codex/gpt-5.3-codex-spark",
-    ]);
+    expect(runtime.log).toHaveBeenCalledWith("No models found.");
 
     const loaded = await loadModelRegistry({} as never);
-    expect(loaded.models.map((model) => `${model.provider}/${model.id}`)).toEqual([
-      "openai-codex/gpt-5.3-codex-spark",
-    ]);
-    expect(Array.from(loaded.availableKeys ?? [])).toEqual(["openai-codex/gpt-5.3-codex-spark"]);
+    expect(loaded.models.map((model) => `${model.provider}/${model.id}`)).toEqual([]);
+    expect(Array.from(loaded.availableKeys ?? [])).toEqual([]);
   });
 
   it("modelsListCommand persists using the source snapshot config when provided", async () => {

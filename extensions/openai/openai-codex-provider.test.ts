@@ -205,6 +205,78 @@ describe("openai codex provider", () => {
     ).toBe("native");
   });
 
+  it("resolves gpt-5.5 with Codex runtime context caps", () => {
+    const provider = buildOpenAICodexProviderPlugin();
+
+    const model = provider.resolveDynamicModel?.({
+      provider: "openai-codex",
+      modelId: "gpt-5.5",
+      modelRegistry: {
+        find: () => undefined,
+      } as never,
+    } as never);
+
+    expect(model).toMatchObject({
+      id: "gpt-5.5",
+      api: "openai-codex-responses",
+      baseUrl: "https://chatgpt.com/backend-api",
+      contextWindow: 400_000,
+      contextTokens: 272_000,
+      maxTokens: 128_000,
+    });
+  });
+
+  it("resolves gpt-5.5-pro with pro pricing and native context", () => {
+    const provider = buildOpenAICodexProviderPlugin();
+
+    const model = provider.resolveDynamicModel?.({
+      provider: "openai-codex",
+      modelId: "gpt-5.5-pro",
+      modelRegistry: {
+        find: (providerId: string, modelId: string) => {
+          if (providerId === "openai-codex" && modelId === "gpt-5.4") {
+            return {
+              id: "gpt-5.4",
+              name: "gpt-5.4",
+              provider: "openai-codex",
+              api: "openai-codex-responses",
+              baseUrl: "https://chatgpt.com/backend-api",
+              reasoning: true,
+              input: ["text", "image"] as const,
+              cost: { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0 },
+              contextWindow: 1_050_000,
+              contextTokens: 272_000,
+              maxTokens: 128_000,
+            };
+          }
+          return undefined;
+        },
+      } as never,
+    });
+
+    expect(model).toMatchObject({
+      id: "gpt-5.5-pro",
+      contextWindow: 1_000_000,
+      contextTokens: 272_000,
+      maxTokens: 128_000,
+      cost: { input: 30, output: 180, cacheRead: 0, cacheWrite: 0 },
+    });
+  });
+
+  it("does not synthesize the removed gpt-5.3-codex-spark model", () => {
+    const provider = buildOpenAICodexProviderPlugin();
+
+    const model = provider.resolveDynamicModel?.({
+      provider: "openai-codex",
+      modelId: "gpt-5.3-codex-spark",
+      modelRegistry: {
+        find: () => undefined,
+      } as never,
+    } as never);
+
+    expect(model).toBeUndefined();
+  });
+
   it("resolves gpt-5.4 with native contextWindow plus default contextTokens cap", () => {
     const provider = buildOpenAICodexProviderPlugin();
 
@@ -409,6 +481,14 @@ describe("openai codex provider", () => {
 
     expect(entries).toContainEqual(
       expect.objectContaining({
+        id: "gpt-5.5-pro",
+        contextWindow: 1_000_000,
+        contextTokens: 272_000,
+        cost: { input: 30, output: 180, cacheRead: 0, cacheWrite: 0 },
+      }),
+    );
+    expect(entries).toContainEqual(
+      expect.objectContaining({
         id: "gpt-5.4",
         contextWindow: 1_050_000,
         contextTokens: 272_000,
@@ -429,6 +509,11 @@ describe("openai codex provider", () => {
         contextWindow: 400_000,
         contextTokens: 272_000,
         cost: { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0 },
+      }),
+    );
+    expect(entries).not.toContainEqual(
+      expect.objectContaining({
+        id: "gpt-5.3-codex-spark",
       }),
     );
   });

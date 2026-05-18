@@ -82,7 +82,7 @@ const OPENAI_MODERN_MODEL_IDS = [
 ] as const;
 const OPENAI_DIRECT_SPARK_MODEL_ID = "gpt-5.3-codex-spark";
 
-const SUPPRESSED_SPARK_PROVIDERS = new Set(["openai", "azure-openai-responses"]);
+const SUPPRESSED_SPARK_PROVIDERS = new Set(["openai", "azure-openai-responses", "openai-codex"]);
 const OPENAI_RESPONSES_STREAM_HOOKS = buildProviderStreamFamilyHooks("openai-responses-defaults");
 
 function shouldUseOpenAIResponsesTransport(params: {

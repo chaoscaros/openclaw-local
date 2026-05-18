@@ -122,11 +122,13 @@ function createOpenAiCatalogProviderPlugin(
     label: "OpenAI",
     auth: [],
     suppressBuiltInModel: ({ provider, modelId }) =>
-      (provider === "openai" || provider === "azure-openai-responses") &&
+      (provider === "openai" ||
+        provider === "azure-openai-responses" ||
+        provider === "openai-codex") &&
       modelId === "gpt-5.3-codex-spark"
         ? {
             suppress: true,
-            errorMessage: "openai/gpt-5.3-codex-spark with the Codex OAuth profile",
+            errorMessage: "gpt-5.3-codex-spark is no longer exposed",
           }
         : undefined,
     augmentModelCatalog: () => [
@@ -136,14 +138,10 @@ function createOpenAiCatalogProviderPlugin(
       { provider: "openai", id: "gpt-5.4-pro", name: "gpt-5.4-pro" },
       { provider: "openai", id: "gpt-5.4-mini", name: "gpt-5.4-mini" },
       { provider: "openai", id: "gpt-5.4-nano", name: "gpt-5.4-nano" },
+      { provider: "openai-codex", id: "gpt-5.5-pro", name: "gpt-5.5-pro" },
       { provider: "openai-codex", id: "gpt-5.4", name: "gpt-5.4" },
       { provider: "openai-codex", id: "gpt-5.4-pro", name: "gpt-5.4-pro" },
       { provider: "openai-codex", id: "gpt-5.4-mini", name: "gpt-5.4-mini" },
-      {
-        provider: "openai-codex",
-        id: "gpt-5.3-codex-spark",
-        name: "gpt-5.3-codex-spark",
-      },
     ],
     ...overrides,
   };

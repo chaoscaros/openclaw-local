@@ -119,7 +119,9 @@ function installModelsListCommandForwardCompatMocks() {
       provider?: string | null;
       id?: string | null;
     }) =>
-      (provider === "openai" || provider === "azure-openai-responses") &&
+      (provider === "openai" ||
+        provider === "azure-openai-responses" ||
+        provider === "openai-codex") &&
       id === "gpt-5.3-codex-spark",
   }));
 
