@@ -4,7 +4,8 @@ import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const noop = () => {};
-const waitForFast = <T>(callback: () => T | Promise<T>) => vi.waitFor(callback, { timeout: 1_000, interval: 1 });
+const waitForFast = <T>(callback: () => T | Promise<T>) =>
+  vi.waitFor(callback, { timeout: 1_000, interval: 1 });
 
 const mocks = vi.hoisted(() => ({
   callGateway: vi.fn(),
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   updateSessionStore: vi.fn(),
   emitSessionLifecycleEvent: vi.fn(),
   persistSubagentRunsToDisk: vi.fn(),
+  persistSubagentRunsToDiskOrThrow: vi.fn(),
   restoreSubagentRunsFromDisk: vi.fn(() => 0),
   getSubagentRunsSnapshotForRead: vi.fn(
     (runs: Map<string, import("./subagent-registry.types.js").SubagentRunRecord>) => new Map(runs),
@@ -68,6 +70,7 @@ vi.mock("../sessions/session-lifecycle-events.js", () => ({
 vi.mock("./subagent-registry-state.js", () => ({
   getSubagentRunsSnapshotForRead: mocks.getSubagentRunsSnapshotForRead,
   persistSubagentRunsToDisk: mocks.persistSubagentRunsToDisk,
+  persistSubagentRunsToDiskOrThrow: mocks.persistSubagentRunsToDiskOrThrow,
   restoreSubagentRunsFromDisk: mocks.restoreSubagentRunsFromDisk,
 }));
 
@@ -151,6 +154,7 @@ describe("subagent registry seam flow", () => {
       cleanupBrowserSessionsForLifecycleEnd: async () => {},
       onAgentEvent: mocks.onAgentEvent,
       persistSubagentRunsToDisk: mocks.persistSubagentRunsToDisk,
+      persistSubagentRunsToDiskOrThrow: mocks.persistSubagentRunsToDiskOrThrow,
       resolveAgentTimeoutMs: mocks.resolveAgentTimeoutMs,
       restoreSubagentRunsFromDisk: mocks.restoreSubagentRunsFromDisk,
       runSubagentAnnounceFlow: mocks.runSubagentAnnounceFlow,
@@ -228,6 +232,29 @@ describe("subagent registry seam flow", () => {
     expect(mocks.persistSubagentRunsToDisk).toHaveBeenCalled();
   });
 
+  it("throws and removes the entry when the initial durable registry write fails", () => {
+    mocks.persistSubagentRunsToDiskOrThrow.mockImplementationOnce(() => {
+      throw new Error("disk full");
+    });
+
+    expect(() =>
+      mod.registerSubagentRun({
+        runId: "run-durability-required",
+        childSessionKey: "agent:main:subagent:child",
+        requesterSessionKey: "agent:main:main",
+        requesterDisplayKey: "main",
+        task: "must fail closed",
+        cleanup: "keep",
+      }),
+    ).toThrowError("disk full");
+
+    expect(
+      mod
+        .listSubagentRunsForRequester("agent:main:main")
+        .find((entry) => entry.runId === "run-durability-required"),
+    ).toBeUndefined();
+  });
+
   it("schedules orphan recovery instead of terminally failing on recoverable wait transport errors", async () => {
     mocks.callGateway.mockImplementation(async (request: { method?: string }) => {
       if (request.method === "agent.wait") {
@@ -246,7 +273,9 @@ describe("subagent registry seam flow", () => {
     });
 
     await waitForFast(() => {
-      expect(mocks.scheduleOrphanRecovery).toHaveBeenCalledWith(expect.objectContaining({ delayMs: 1_000 }));
+      expect(mocks.scheduleOrphanRecovery).toHaveBeenCalledWith(
+        expect.objectContaining({ delayMs: 1_000 }),
+      );
     });
     expect(mocks.runSubagentAnnounceFlow).not.toHaveBeenCalled();
     const run = mod

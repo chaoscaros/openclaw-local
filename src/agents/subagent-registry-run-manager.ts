@@ -80,6 +80,7 @@ export function createSubagentRunManager(params: {
   resumedRuns: Set<string>;
   endedHookInFlightRunIds: Set<string>;
   persist(): void;
+  persistOrThrow(): void;
   callGateway: typeof callGateway;
   loadConfig: typeof loadConfig;
   ensureRuntimePluginsLoaded:
@@ -397,6 +398,12 @@ export function createSubagentRunManager(params: {
       attachmentsRootDir: registerParams.attachmentsRootDir,
       retainAttachmentsOnKeep: registerParams.retainAttachmentsOnKeep,
     });
+    try {
+      params.persistOrThrow();
+    } catch (error) {
+      params.runs.delete(runId);
+      throw error;
+    }
     try {
       createRunningTaskRun({
         runtime: "subagent",
