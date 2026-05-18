@@ -14,6 +14,7 @@ Docs: https://docs.openclaw.ai
 - Agents/subagents: preserve run-mode keep entries past the session sweep TTL so kept child runs remain visible after cleanup.
 - Doctor/gateway: seed Control UI allowed origins before normalizing legacy non-loopback `gateway.bind` host aliases so LAN upgrades keep browser access working.
 - Gateway/restart: keep ordinary unmanaged restarts in-process instead of detached-spawning a child so custom supervisors and local launchers keep tracking the same gateway PID.
+- CLI/status: render extra gateway-like service diagnostics as warning/info output instead of error output.
 
 ## 2026.4.15
 

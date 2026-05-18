@@ -118,4 +118,36 @@ describe("printDaemonStatus", () => {
       expect.stringContaining(formatCliCommand("openclaw gateway restart")),
     );
   });
+
+  it("prints extra gateway-like services as warnings instead of errors", () => {
+    printDaemonStatus(
+      {
+        service: {
+          label: "LaunchAgent",
+          loaded: true,
+          loadedText: "loaded",
+          notLoadedText: "not loaded",
+          runtime: { status: "running", pid: 8000 },
+        },
+        rpc: {
+          ok: true,
+          url: "ws://127.0.0.1:18789",
+        },
+        port: {
+          port: 18789,
+          status: "busy",
+          listeners: [],
+          hints: [],
+        },
+        extraServices: [{ label: "ai.openclaw.gateway.rescue", scope: "user", detail: "loaded" }],
+      },
+      { json: false },
+    );
+
+    expect(runtime.log).toHaveBeenCalledWith(
+      expect.stringContaining("Other gateway-like services detected"),
+    );
+    expect(runtime.log).toHaveBeenCalledWith(expect.stringContaining("ai.openclaw.gateway.rescue"));
+    expect(runtime.error).not.toHaveBeenCalled();
+  });
 });
