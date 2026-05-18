@@ -529,7 +529,12 @@ export function classifyFailoverReasonFromHttpStatus(
     ? classifyFailoverClassificationFromMessage(message, opts?.provider)
     : null;
   return failoverReasonFromClassification(
-    classifyFailoverClassificationFromHttpStatus(status, message, messageClassification),
+    classifyFailoverClassificationFromHttpStatus(
+      status,
+      message,
+      messageClassification,
+      opts?.provider,
+    ),
   );
 }
 
@@ -537,6 +542,7 @@ function classifyFailoverClassificationFromHttpStatus(
   status: number | undefined,
   message: string | undefined,
   messageClassification: FailoverClassification | null,
+  provider?: string,
 ): FailoverClassification | null {
   const messageReason = failoverReasonFromClassification(messageClassification);
   if (typeof status !== "number" || !Number.isFinite(status)) {
@@ -547,6 +553,13 @@ function classifyFailoverClassificationFromHttpStatus(
     return toReasonClassification(message ? classify402Message(message) : "billing");
   }
   if (status === 429) {
+    if (
+      message &&
+      (isProvider(provider, "moonshot") || isProvider(provider, "kimi")) &&
+      isBillingErrorMessage(message)
+    ) {
+      return toReasonClassification("billing");
+    }
     return toReasonClassification("rate_limit");
   }
   if (status === 401 || status === 403) {
@@ -761,6 +774,7 @@ export function classifyFailoverSignal(signal: FailoverSignal): FailoverClassifi
     inferredStatus,
     signal.message,
     messageClassification,
+    signal.provider,
   );
   if (statusClassification) {
     return statusClassification;
