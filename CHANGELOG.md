@@ -8,6 +8,8 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+- Plugins: add a default 15-second timeout for legacy `before_agent_start` hooks so hung handlers no longer block agent startup.
+
 ## 2026.4.15
 
 ### Changes

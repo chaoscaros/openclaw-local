@@ -5,7 +5,7 @@
  * propagated through the hook merger, including priority ordering and
  * backward compatibility.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHookRunner } from "./hooks.js";
 import { addStaticTestHooks, addTestHook, TEST_PLUGIN_AGENT_CTX } from "./hooks.test-helpers.js";
 import { createEmptyPluginRegistry, type PluginRegistry } from "./registry.js";
@@ -33,6 +33,10 @@ describe("before_agent_start hook merger", () => {
 
   beforeEach(() => {
     registry = createEmptyPluginRegistry();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   const runWithSingleHook = async (result: PluginHookBeforeAgentStartResult, priority?: number) => {
@@ -206,5 +210,56 @@ describe("before_agent_start hook merger", () => {
 
     expect(capturedCtx).toBeDefined();
     expect(capturedCtx?.runId).toBe("test-run-id");
+  });
+
+  it("fails open with the default timeout when a handler hangs", async () => {
+    vi.useFakeTimers();
+    const error = vi.fn();
+    addBeforeAgentStartHook(
+      registry,
+      "hanging-plugin",
+      () => new Promise<PluginHookBeforeAgentStartResult>(() => {}),
+      10,
+    );
+    const runner = createHookRunner(registry, { logger: { warn: vi.fn(), error } });
+
+    const resultPromise = runner.runBeforeAgentStart({ prompt: "hello" }, stubCtx);
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    await expect(resultPromise).resolves.toBeUndefined();
+    expect(error).toHaveBeenCalledWith(
+      "[hooks] before_agent_start handler from hanging-plugin failed: Error: timed out after 15000ms",
+    );
+  });
+
+  it("keeps later before_agent_start contributions after a timed-out handler", async () => {
+    vi.useFakeTimers();
+    const error = vi.fn();
+    addBeforeAgentStartHook(
+      registry,
+      "hanging-plugin",
+      () => new Promise<PluginHookBeforeAgentStartResult>(() => {}),
+      10,
+    );
+    addBeforeAgentStartHook(
+      registry,
+      "fast-plugin",
+      () => ({ modelOverride: "fallback-model", prependContext: "fast context" }),
+      1,
+    );
+    const runner = createHookRunner(registry, { logger: { warn: vi.fn(), error } });
+
+    const resultPromise = runner.runBeforeAgentStart({ prompt: "hello" }, stubCtx);
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    await expect(resultPromise).resolves.toEqual(
+      expect.objectContaining({
+        modelOverride: "fallback-model",
+        prependContext: "fast context",
+      }),
+    );
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining("before_agent_start handler from hanging-plugin failed"),
+    );
   });
 });
