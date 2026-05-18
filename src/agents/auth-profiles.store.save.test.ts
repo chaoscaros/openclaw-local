@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { resolveLegacyOAuthSidecarPath } from "./auth-profiles/legacy-oauth-sidecar.js";
 import { resolveAuthStatePath, resolveAuthStorePath } from "./auth-profiles/paths.js";
 import {
   clearRuntimeAuthProfileStoreSnapshots,
@@ -15,6 +16,11 @@ vi.mock("./auth-profiles/external-auth.js", () => ({
   overlayExternalAuthProfiles: <T>(store: T) => store,
   shouldPersistExternalAuthProfile: () => true,
 }));
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  clearRuntimeAuthProfileStoreSnapshots();
+});
 
 describe("saveAuthProfileStore", () => {
   it("strips plaintext when keyRef/tokenRef are present", async () => {
@@ -69,6 +75,72 @@ describe("saveAuthProfileStore", () => {
       expect(parsed.profiles["anthropic:default"]?.key).toBe("sk-anthropic-plain");
     } finally {
       await fs.rm(agentDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rehydrates legacy Codex OAuth sidecar material without persisting it inline", async () => {
+    const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-auth-save-sidecar-"));
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-auth-state-sidecar-"));
+    try {
+      vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
+      const ref = {
+        source: "openclaw-credentials" as const,
+        provider: "openai-codex" as const,
+        id: "0123456789abcdef0123456789abcdef",
+      };
+      const profileId = "openai-codex:default";
+      await fs.mkdir(path.dirname(resolveLegacyOAuthSidecarPath(ref)), { recursive: true });
+      await fs.writeFile(
+        resolveLegacyOAuthSidecarPath(ref),
+        `${JSON.stringify(
+          {
+            version: 1,
+            profileId,
+            provider: "openai-codex",
+            access: "sidecar-access",
+            refresh: "sidecar-refresh",
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      await fs.mkdir(agentDir, { recursive: true });
+      await fs.writeFile(
+        resolveAuthStorePath(agentDir),
+        `${JSON.stringify(
+          {
+            version: 1,
+            profiles: {
+              [profileId]: {
+                type: "oauth",
+                provider: "openai-codex",
+                expires: 123,
+                oauthRef: ref,
+              },
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      );
+
+      const store = ensureAuthProfileStore(agentDir);
+      expect(store.profiles[profileId]).toMatchObject({
+        access: "sidecar-access",
+        refresh: "sidecar-refresh",
+      });
+
+      saveAuthProfileStore(store, agentDir);
+
+      const persisted = JSON.parse(await fs.readFile(resolveAuthStorePath(agentDir), "utf8")) as {
+        profiles: Record<string, { access?: string; refresh?: string; oauthRef?: unknown }>;
+      };
+      expect(persisted.profiles[profileId]?.access).toBeUndefined();
+      expect(persisted.profiles[profileId]?.refresh).toBeUndefined();
+      expect(persisted.profiles[profileId]?.oauthRef).toEqual(ref);
+    } finally {
+      await fs.rm(agentDir, { recursive: true, force: true });
+      await fs.rm(stateDir, { recursive: true, force: true });
     }
   });
 

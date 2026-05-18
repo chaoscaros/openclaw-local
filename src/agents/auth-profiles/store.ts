@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { withFileLock } from "../../infra/file-lock.js";
-import { saveJsonFile } from "../../infra/json-file.js";
+import { loadJsonFile, saveJsonFile } from "../../infra/json-file.js";
 import {
   AUTH_STORE_LOCK_OPTIONS,
   AUTH_STORE_VERSION,
@@ -18,8 +18,10 @@ import {
 import {
   applyLegacyAuthStore,
   buildPersistedAuthProfileSecretsStore,
+  isRuntimeLegacyOAuthSidecarCredential,
   loadLegacyAuthProfileStore,
   loadPersistedAuthProfileStore,
+  matchesRuntimeLegacyOAuthSidecarMaterial,
   mergeAuthProfileStores,
   mergeOAuthFileIntoStore,
 } from "./persisted.js";
@@ -214,7 +216,7 @@ function loadAuthProfileStoreForAgent(
       return cached;
     }
   }
-  const asStore = loadPersistedAuthProfileStore(agentDir);
+  const asStore = loadPersistedAuthProfileStore(agentDir, options);
   if (asStore) {
     // Runtime secret activation must remain read-only:
     // sync external CLI credentials in-memory, but never persist while readOnly.
@@ -234,10 +236,16 @@ function loadAuthProfileStoreForAgent(
 
   // Fallback: inherit auth-profiles from main agent if subagent has none
   if (agentDir && !readOnly) {
-    const mainStore = loadPersistedAuthProfileStore();
+    const mainStore = loadPersistedAuthProfileStore(undefined, options);
     if (mainStore && Object.keys(mainStore.profiles).length > 0) {
       // Clone only secret-bearing profiles to subagent directory for auth inheritance.
-      saveJsonFile(authPath, buildPersistedAuthProfileSecretsStore(mainStore));
+      saveJsonFile(
+        authPath,
+        buildPersistedAuthProfileSecretsStore(
+          mainStore,
+          ({ credential }) => !isRuntimeLegacyOAuthSidecarCredential(credential),
+        ),
+      );
       log.info("inherited auth-profiles from main agent", { agentDir });
       const inherited = { version: mainStore.version, profiles: { ...mainStore.profiles } };
       writeCachedAuthProfileStore({
@@ -377,20 +385,36 @@ export function saveAuthProfileStore(
 ): void {
   const authPath = resolveAuthStorePath(agentDir);
   const statePath = resolveAuthStatePath(agentDir);
-  const payload = buildPersistedAuthProfileSecretsStore(store, ({ profileId, credential }) => {
-    if (credential.type !== "oauth") {
-      return true;
-    }
-    if (options?.filterExternalAuthProfiles === false) {
-      return true;
-    }
-    return shouldPersistExternalAuthProfile({
-      store,
-      profileId,
-      credential,
-      agentDir,
-    });
-  });
+  const runtimeLegacyOAuthSidecarProfileIds = new Set(
+    Object.entries(store.profiles)
+      .filter(
+        ([profileId, credential]) =>
+          isRuntimeLegacyOAuthSidecarCredential(credential) ||
+          matchesRuntimeLegacyOAuthSidecarMaterial({ authPath, profileId, credential }),
+      )
+      .map(([profileId]) => profileId),
+  );
+  const payload = buildPersistedAuthProfileSecretsStore(
+    store,
+    ({ profileId, credential }) => {
+      if (credential.type !== "oauth") {
+        return true;
+      }
+      if (options?.filterExternalAuthProfiles === false) {
+        return true;
+      }
+      return shouldPersistExternalAuthProfile({
+        store,
+        profileId,
+        credential,
+        agentDir,
+      });
+    },
+    {
+      existingRaw: loadJsonFile(authPath),
+      runtimeLegacyOAuthSidecarProfileIds,
+    },
+  );
   saveJsonFile(authPath, payload);
   savePersistedAuthProfileState(store, agentDir);
   const runtimeStore = cloneAuthProfileStore(store);

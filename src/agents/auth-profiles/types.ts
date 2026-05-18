@@ -7,6 +7,7 @@ export type ExternalOAuthManager = "codex-cli" | "minimax-cli";
 export type OAuthCredentials = {
   access: string;
   refresh: string;
+  idToken?: string;
   expires: number;
   provider?: OAuthProvider;
   email?: string;
