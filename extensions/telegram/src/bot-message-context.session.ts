@@ -32,6 +32,7 @@ import {
   buildSenderLabel,
   buildSenderName,
   buildTelegramGroupFrom,
+  buildTelegramInboundOriginTarget,
   describeReplyTarget,
   normalizeForwardedContext,
   type TelegramReplyTarget,
@@ -304,6 +305,7 @@ export async function buildTelegramInboundContextPayload(params: {
       : undefined;
   const currentMediaForContext = stickerCacheHit ? [] : allMedia;
   const contextMedia = [...currentMediaForContext, ...replyMedia];
+  const telegramTo = buildTelegramInboundOriginTarget(chatId, threadSpec);
   const ctxPayload = sessionRuntime.finalizeInboundContext({
     Body: combinedBody,
     BodyForAgent: bodyText,
@@ -311,7 +313,7 @@ export async function buildTelegramInboundContextPayload(params: {
     RawBody: rawBody,
     CommandBody: commandBody,
     From: isGroup ? buildTelegramGroupFrom(chatId, resolvedThreadId) : `telegram:${chatId}`,
-    To: `telegram:${chatId}`,
+    To: telegramTo,
     SessionKey: route.sessionKey,
     AccountId: route.accountId,
     ChatType: isGroup ? "group" : "direct",
@@ -366,7 +368,7 @@ export async function buildTelegramInboundContextPayload(params: {
     IsForum: isForum,
     TopicName: isForum && topicName ? topicName : undefined,
     OriginatingChannel: "telegram" as const,
-    OriginatingTo: `telegram:${chatId}`,
+    OriginatingTo: telegramTo,
   });
 
   const pinnedMainDmOwner = !isGroup

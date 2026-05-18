@@ -1,13 +1,35 @@
 import { describe, expect, it, vi } from "vitest";
 import { normalizeAllowFrom } from "./bot-access.js";
 
-const transcribeFirstAudioMock = vi.fn();
+const { transcribeFirstAudioMock, triggerInternalHookMock } = vi.hoisted(() => ({
+  transcribeFirstAudioMock: vi.fn(),
+  triggerInternalHookMock: vi.fn<(event: unknown) => Promise<void>>(async () => undefined),
+}));
 
 vi.mock("./media-understanding.runtime.js", () => ({
   transcribeFirstAudio: (...args: unknown[]) => transcribeFirstAudioMock(...args),
 }));
 
+vi.mock("openclaw/plugin-sdk/hook-runtime", async () => {
+  const actual = await vi.importActual<typeof import("openclaw/plugin-sdk/hook-runtime")>(
+    "openclaw/plugin-sdk/hook-runtime",
+  );
+  return {
+    ...actual,
+    fireAndForgetHook: (promise: Promise<unknown>) => {
+      void promise;
+    },
+    triggerInternalHook: (event: unknown) => triggerInternalHookMock(event),
+  };
+});
+
 const { resolveTelegramInboundBody } = await import("./bot-message-context.body.js");
+
+function transcribeCallContext() {
+  return transcribeFirstAudioMock.mock.calls.at(-1)?.[0] as
+    | { ctx?: Record<string, unknown> }
+    | undefined;
+}
 
 describe("resolveTelegramInboundBody", () => {
   it("keeps the media marker when a captioned video has no downloaded media", async () => {
@@ -188,5 +210,114 @@ describe("resolveTelegramInboundBody", () => {
       bodyText: "hello from a voice note",
     });
     expect(result?.bodyText).not.toContain("<media:audio>");
+  });
+
+  it("preserves forum topic origin targets in audio preflight context", async () => {
+    transcribeFirstAudioMock.mockReset();
+    transcribeFirstAudioMock.mockResolvedValueOnce("topic audio");
+
+    await resolveTelegramInboundBody({
+      cfg: {
+        channels: { telegram: {} },
+        commands: { useAccessGroups: false },
+        messages: { groupChat: { mentionPatterns: ["\\bbot\\b"] } },
+        tools: { media: { audio: { enabled: true, echoTranscript: true } } },
+      } as never,
+      primaryCtx: {
+        me: { id: 7, username: "bot" },
+      } as never,
+      msg: {
+        message_id: 13,
+        message_thread_id: 99,
+        date: 1_700_000_013,
+        chat: { id: -1001234567890, type: "supergroup", title: "Test Forum", is_forum: true },
+        from: { id: 46, first_name: "Eve" },
+        voice: { file_id: "voice-forum-topic-1" },
+        entities: [],
+      } as never,
+      allMedia: [{ path: "/tmp/voice-forum-topic.ogg", contentType: "audio/ogg" }],
+      isGroup: true,
+      chatId: -1001234567890,
+      accountId: "primary",
+      senderId: "46",
+      senderUsername: "",
+      resolvedThreadId: 99,
+      replyThreadId: 99,
+      originatingTo: "telegram:-1001234567890:topic:99",
+      routeAgentId: undefined,
+      effectiveGroupAllow: normalizeAllowFrom([]),
+      effectiveDmAllow: normalizeAllowFrom([]),
+      groupConfig: { requireMention: true } as never,
+      topicConfig: undefined,
+      requireMention: true,
+      options: undefined,
+      groupHistories: new Map(),
+      historyLimit: 0,
+      logger: { info: vi.fn() },
+    });
+
+    const call = transcribeCallContext();
+    expect(call?.ctx?.OriginatingTo).toBe("telegram:-1001234567890:topic:99");
+    expect(call?.ctx?.MessageThreadId).toBe(99);
+  });
+
+  it("preserves forum topic origin targets for skipped-message hooks", async () => {
+    triggerInternalHookMock.mockClear();
+
+    const result = await resolveTelegramInboundBody({
+      cfg: {
+        channels: { telegram: {} },
+        messages: { groupChat: { mentionPatterns: ["\\bbot\\b"] } },
+      } as never,
+      primaryCtx: {
+        me: { id: 7, username: "bot" },
+      } as never,
+      msg: {
+        message_id: 14,
+        message_thread_id: 99,
+        date: 1_700_000_014,
+        chat: { id: -1001234567890, type: "supergroup", title: "Test Forum", is_forum: true },
+        from: { id: 46, first_name: "Eve" },
+        text: "ambient chatter",
+        entities: [],
+      } as never,
+      allMedia: [],
+      isGroup: true,
+      chatId: -1001234567890,
+      accountId: "primary",
+      senderId: "46",
+      senderUsername: "",
+      sessionKey: "agent:main:telegram:group:-1001234567890:topic:99",
+      resolvedThreadId: 99,
+      replyThreadId: 99,
+      originatingTo: "telegram:-1001234567890:topic:99",
+      routeAgentId: undefined,
+      effectiveGroupAllow: normalizeAllowFrom([]),
+      effectiveDmAllow: normalizeAllowFrom([]),
+      groupConfig: { requireMention: true } as never,
+      topicConfig: { ingest: true } as never,
+      requireMention: true,
+      options: undefined,
+      groupHistories: new Map(),
+      historyLimit: 0,
+      logger: { info: vi.fn() },
+    });
+
+    expect(result).toBeNull();
+    const event = triggerInternalHookMock.mock.calls[0]?.[0] as
+      | { context?: { conversationId?: string; metadata?: Record<string, unknown> } }
+      | undefined;
+    expect(event?.context).toEqual(
+      expect.objectContaining({
+        conversationId: "telegram:-1001234567890:topic:99",
+      }),
+    );
+    expect(event?.context?.metadata).toEqual(
+      expect.objectContaining({
+        threadId: 99,
+        to: "telegram:-1001234567890:topic:99",
+      }),
+    );
+    expect(triggerInternalHookMock).toHaveBeenCalledOnce();
   });
 });
