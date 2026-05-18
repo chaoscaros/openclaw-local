@@ -155,6 +155,21 @@ should be split by risk area.
 5. Heartbeat/automation batch: evaluate heartbeat response tool mode together
    with local cron and heartbeat customizations.
 
+## Local Product Backlog
+
+- Session queue guided insertion
+  - Goal: when a session already has a running or queued turn, allow a new user
+    message to be inserted as guided follow-up context, similar to the Codex app
+    session flow, instead of requiring the user to wait for the previous turn to
+    finish.
+  - Design notes: define the safe insertion windows for running versus queued
+    turns, expose the pending/inserted state through the gateway/UI protocol,
+    and preserve channel delivery semantics for Telegram, cron, approvals, and
+    tool calls before implementing the scheduler change.
+  - Status: keep as a dedicated follow-up after the current official alignment
+    iteration is closed, because it crosses session scheduling, gateway state,
+    and UI behavior.
+
 ## Validation Notes
 
 Use scoped tests for each batch, then run `pnpm tsgo`. If a batch touches build
