@@ -625,6 +625,8 @@ export function createTelegramBot(opts: TelegramBotOptions): TelegramBotInstance
     allowFrom,
     groupAllowFrom,
     resolveGroupPolicy,
+    resolveGroupActivation,
+    resolveGroupRequireMention,
     resolveTelegramGroupConfig,
     shouldSkipUpdate,
     processMessage,

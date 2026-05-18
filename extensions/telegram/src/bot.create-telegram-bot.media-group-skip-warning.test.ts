@@ -65,6 +65,7 @@ const TELEGRAM_TEST_TIMINGS = {
 } as const;
 
 const CHANNEL_ID = -100777111222;
+const GROUP_ID = -100777111333;
 
 function setOpenChannelPostConfig() {
   loadConfig.mockReturnValue({
@@ -82,9 +83,30 @@ function setOpenChannelPostConfig() {
   });
 }
 
+function setMentionRequiredGroupConfig() {
+  loadConfig.mockReturnValue({
+    channels: {
+      telegram: {
+        groupPolicy: "open",
+        groups: {
+          [String(GROUP_ID)]: {
+            enabled: true,
+            requireMention: true,
+          },
+        },
+      },
+    },
+  });
+}
+
 function getChannelPostHandler() {
   createTelegramBot({ token: "tok", testTimings: TELEGRAM_TEST_TIMINGS });
   return getOnHandler("channel_post") as (ctx: Record<string, unknown>) => Promise<void>;
+}
+
+function getGroupMessageHandler() {
+  createTelegramBot({ token: "tok", testTimings: TELEGRAM_TEST_TIMINGS });
+  return getOnHandler("message") as (ctx: Record<string, unknown>) => Promise<void>;
 }
 
 function resolveFlushTimer(setTimeoutSpy: ReturnType<typeof vi.spyOn>) {
@@ -131,6 +153,28 @@ function createChannelPostContext(params: {
   };
 }
 
+function createGroupMessageContext(params: {
+  messageId: number;
+  date: number;
+  caption?: string;
+  mediaGroupId: string;
+  photoFileId: string;
+}) {
+  return {
+    message: {
+      chat: { id: GROUP_ID, type: "group", title: "Ops Group" },
+      from: { id: 42, first_name: "Ada", username: "ada" },
+      message_id: params.messageId,
+      date: params.date,
+      ...(params.caption ? { caption: params.caption } : {}),
+      media_group_id: params.mediaGroupId,
+      photo: [{ file_id: params.photoFileId }],
+    },
+    me: { id: 9001, username: "openclaw_bot" },
+    getFile: async () => ({ file_path: `photos/${params.photoFileId}.jpg` }),
+  };
+}
+
 async function queueChannelPostAlbum(
   handler: (ctx: Record<string, unknown>) => Promise<void>,
   params: { caption: string; mediaGroupId: string; photoFileIds: string[] },
@@ -141,6 +185,26 @@ async function queueChannelPostAlbum(
       createChannelPostContext({
         messageId: baseMessageId + index,
         date: 1736380800 + index,
+        ...(index === 0 ? { caption: params.caption } : {}),
+        mediaGroupId: params.mediaGroupId,
+        photoFileId: fileId,
+      }),
+    ),
+  );
+  await Promise.all(calls);
+  return baseMessageId;
+}
+
+async function queueGroupAlbum(
+  handler: (ctx: Record<string, unknown>) => Promise<void>,
+  params: { caption: string; mediaGroupId: string; photoFileIds: string[] },
+) {
+  const baseMessageId = 700;
+  const calls = params.photoFileIds.map((fileId, index) =>
+    handler(
+      createGroupMessageContext({
+        messageId: baseMessageId + index,
+        date: 1736380900 + index,
         ...(index === 0 ? { caption: params.caption } : {}),
         mediaGroupId: params.mediaGroupId,
         photoFileId: fileId,
@@ -284,6 +348,61 @@ describe("createTelegramBot media-group skip warning", () => {
       const warningText = String(sendMessageSpy.mock.calls[0]?.[1]);
       expect(warningText).toContain("1 of 3 images");
       expect(warningText).toContain("2 could not be fetched and were skipped");
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
+  });
+
+  it("skips unmentioned requireMention group albums before downloading media", async () => {
+    setMentionRequiredGroupConfig();
+    fetchRemoteMedia.mockResolvedValue({
+      buffer: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+      contentType: "image/png",
+      fileName: "p1.jpg",
+    });
+
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    try {
+      const handler = getGroupMessageHandler();
+      await queueGroupAlbum(handler, {
+        caption: "plain album",
+        mediaGroupId: "mention-album-1",
+        photoFileIds: ["p1", "p2"],
+      });
+      await flushChannelPostMediaGroup(setTimeoutSpy);
+
+      expect(fetchRemoteMedia).not.toHaveBeenCalled();
+      expect(sendMessageSpy).not.toHaveBeenCalled();
+      expect(replySpy).not.toHaveBeenCalled();
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
+  });
+
+  it("downloads mentioned requireMention group albums", async () => {
+    setMentionRequiredGroupConfig();
+    fetchRemoteMedia.mockImplementation(async (...args: unknown[]) => ({
+      buffer: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+      contentType: "image/png",
+      fileName: urlOf(args).split("/").at(-1) ?? "photo.jpg",
+    }));
+
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    try {
+      const handler = getGroupMessageHandler();
+      await queueGroupAlbum(handler, {
+        caption: "hey @openclaw_bot album",
+        mediaGroupId: "mention-album-2",
+        photoFileIds: ["p1", "p2"],
+      });
+      await flushChannelPostMediaGroup(setTimeoutSpy);
+
+      expect(fetchRemoteMedia).toHaveBeenCalledTimes(2);
+      expect(replySpy).toHaveBeenCalledTimes(1);
+      const payload = replySpy.mock.calls[0]?.[0] as { Body?: string; WasMentioned?: boolean };
+      expect(payload.Body).toContain("@openclaw_bot album");
+      expect(payload.WasMentioned).toBe(true);
+      expect(sendMessageSpy).not.toHaveBeenCalled();
     } finally {
       setTimeoutSpy.mockRestore();
     }

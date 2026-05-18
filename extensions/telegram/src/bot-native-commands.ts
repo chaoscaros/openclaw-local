@@ -35,7 +35,11 @@ import { withTelegramApiErrorLogging } from "./api-logging.js";
 import { isSenderAllowed, normalizeDmAllowFromWithStore } from "./bot-access.js";
 import type { TelegramBotDeps } from "./bot-deps.js";
 import type { TelegramMediaRef } from "./bot-message-context.js";
-import type { TelegramMessageContextOptions } from "./bot-message-context.types.js";
+import type {
+  ResolveGroupActivation,
+  ResolveGroupRequireMention,
+  TelegramMessageContextOptions,
+} from "./bot-message-context.types.js";
 import {
   defaultTelegramNativeCommandDeps,
   type TelegramNativeCommandDeps,
@@ -184,6 +188,8 @@ export type RegisterTelegramHandlerParams = {
   allowFrom?: Array<string | number>;
   groupAllowFrom?: Array<string | number>;
   resolveGroupPolicy: (chatId: string | number) => ChannelGroupPolicy;
+  resolveGroupActivation: ResolveGroupActivation;
+  resolveGroupRequireMention: ResolveGroupRequireMention;
   resolveTelegramGroupConfig: (
     chatId: string | number,
     messageThreadId?: number,
