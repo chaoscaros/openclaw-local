@@ -167,6 +167,9 @@ should be split by risk area.
   - LM Studio provider auth now resolves arbitrary `${ENV_VAR}` apiKey templates
     through the config secret runtime, and header-only Authorization flows can
     ignore intentionally unused unresolved apiKey templates.
+  - Paired iOS/iPadOS and Android clients can refresh same-family OS version
+    labels on reconnect without triggering metadata-upgrade approval, while
+    device-family and non-mobile platform changes remain approval-bound.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -189,7 +192,8 @@ should be split by risk area.
     `src/agents/session-write-lock-error.ts`, `src/agents/session-write-lock.ts`,
     `src/agents/failover-error.ts`, `src/agents/model-fallback.ts`,
     `src/gateway/server-methods/agent.ts`, `extensions/lmstudio/src/runtime.ts`,
-    `extensions/lmstudio/src/setup.ts`.
+    `extensions/lmstudio/src/setup.ts`,
+    `src/gateway/server/ws-connection/message-handler.ts`.
 
 ## Deferred
 

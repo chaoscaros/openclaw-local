@@ -66,6 +66,7 @@ import {
 } from "../../net.js";
 import { reconcileNodePairingOnConnect } from "../../node-connect-reconcile.js";
 import { checkBrowserOrigin } from "../../origin-check.js";
+import { GATEWAY_CLIENT_IDS } from "../../protocol/client-info.js";
 import {
   ConnectErrorDetailCodes,
   resolveDeviceAuthConnectErrorDetailCode,
@@ -130,6 +131,7 @@ export type WsOriginCheckMetrics = {
 };
 
 function resolvePinnedClientMetadata(params: {
+  clientId?: string;
   claimedPlatform?: string;
   claimedDeviceFamily?: string;
   pairedPlatform?: string;
@@ -139,20 +141,45 @@ function resolvePinnedClientMetadata(params: {
   deviceFamilyMismatch: boolean;
   pinnedPlatform?: string;
   pinnedDeviceFamily?: string;
+  refreshPairedPlatform?: string;
 } {
+  function normalizeMobileAppPlatformPin(clientId: string | undefined, value: string): string {
+    if (clientId === GATEWAY_CLIENT_IDS.IOS_APP && /^(?:ios|ipados)(?:\s|$)/.test(value)) {
+      return "ios-family";
+    }
+    if (clientId === GATEWAY_CLIENT_IDS.ANDROID_APP && /^android(?:\s|$)/.test(value)) {
+      return "android";
+    }
+    return value;
+  }
+
   const claimedPlatform = normalizeDeviceMetadataForAuth(params.claimedPlatform);
   const claimedDeviceFamily = normalizeDeviceMetadataForAuth(params.claimedDeviceFamily);
   const pairedPlatform = normalizeDeviceMetadataForAuth(params.pairedPlatform);
   const pairedDeviceFamily = normalizeDeviceMetadataForAuth(params.pairedDeviceFamily);
   const hasPinnedPlatform = pairedPlatform !== "";
   const hasPinnedDeviceFamily = pairedDeviceFamily !== "";
-  const platformMismatch = hasPinnedPlatform && claimedPlatform !== pairedPlatform;
+  const isMobileAppPlatformVersionRefresh =
+    hasPinnedPlatform &&
+    claimedPlatform !== "" &&
+    claimedPlatform !== pairedPlatform &&
+    normalizeMobileAppPlatformPin(params.clientId, claimedPlatform) ===
+      normalizeMobileAppPlatformPin(params.clientId, pairedPlatform);
+  const platformMismatch =
+    hasPinnedPlatform && claimedPlatform !== pairedPlatform && !isMobileAppPlatformVersionRefresh;
   const deviceFamilyMismatch = hasPinnedDeviceFamily && claimedDeviceFamily !== pairedDeviceFamily;
+  const pinnedPlatform =
+    claimedPlatform === pairedPlatform
+      ? params.pairedPlatform
+      : isMobileAppPlatformVersionRefresh
+        ? params.claimedPlatform
+        : undefined;
   return {
     platformMismatch,
     deviceFamilyMismatch,
-    pinnedPlatform: hasPinnedPlatform ? params.pairedPlatform : undefined,
+    pinnedPlatform: hasPinnedPlatform ? pinnedPlatform : undefined,
     pinnedDeviceFamily: hasPinnedDeviceFamily ? params.pairedDeviceFamily : undefined,
+    ...(isMobileAppPlatformVersionRefresh ? { refreshPairedPlatform: params.claimedPlatform } : {}),
   };
 }
 
@@ -1021,6 +1048,7 @@ export function attachGatewayWsMessageHandler(params: {
             const claimedDeviceFamily = connectParams.client.deviceFamily;
             const pairedDeviceFamily = paired.deviceFamily;
             const metadataPinning = resolvePinnedClientMetadata({
+              clientId: connectParams.client.id,
               claimedPlatform,
               claimedDeviceFamily,
               pairedPlatform,
@@ -1087,9 +1115,15 @@ export function attachGatewayWsMessageHandler(params: {
               }
             }
 
-            // Metadata pinning is approval-bound. Reconnects can update access metadata,
-            // but platform/device family must stay on the approved pairing record.
-            await updatePairedDeviceMetadata(device.id, clientAccessMetadata);
+            // Metadata pinning is approval-bound. Reconnects can update access metadata
+            // and same-family mobile OS version labels, but real platform/device-family
+            // changes must stay on the approved pairing record.
+            await updatePairedDeviceMetadata(device.id, {
+              ...clientAccessMetadata,
+              ...(metadataPinning.refreshPairedPlatform
+                ? { platform: metadataPinning.refreshPairedPlatform }
+                : {}),
+            });
           }
         }
 
@@ -1482,3 +1516,8 @@ function setSocketMaxPayload(socket: WebSocket, maxPayload: number): void {
     receiver._maxPayload = maxPayload;
   }
 }
+
+export const testing = {
+  resolvePinnedClientMetadata,
+};
+export { testing as __testing };
