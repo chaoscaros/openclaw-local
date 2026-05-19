@@ -451,6 +451,41 @@ describe("createFollowupRunner runtime config", () => {
     expect(call?.config).toBe(runtimeConfig);
   });
 
+  it("passes queued images into embedded followup runs", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [],
+      meta: {},
+    });
+    const runner = createFollowupRunner({
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      defaultModel: "anthropic/claude-opus-4-6",
+    });
+    const images = [
+      {
+        type: "image" as const,
+        data: Buffer.from("queued-image").toString("base64"),
+        mimeType: "image/png",
+      },
+    ];
+
+    await runner(
+      createQueuedRun({
+        images,
+        imageOrder: ["inline"],
+      }),
+    );
+
+    const call = runEmbeddedPiAgentMock.mock.calls.at(-1)?.[0] as
+      | {
+          images?: unknown;
+          imageOrder?: unknown;
+        }
+      | undefined;
+    expect(call?.images).toBe(images);
+    expect(call?.imageOrder).toEqual(["inline"]);
+  });
+
   it("resolves queued embedded followups before preflight helpers read config", async () => {
     const sourceConfig: OpenClawConfig = {
       skills: {

@@ -1,4 +1,7 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { importFreshModule } from "../../../test/helpers/import-fresh.ts";
 import {
   clearActiveEmbeddedRun,
@@ -210,6 +213,8 @@ function baseParams(
 }
 
 describe("runPreparedReply media-only handling", () => {
+  const cleanupPaths: string[] = [];
+
   beforeAll(async () => {
     ({ runPreparedReply } = await import("./get-reply-run.js"));
     ({ runReplyAgent } = await import("./agent-runner.runtime.js"));
@@ -231,6 +236,11 @@ describe("runPreparedReply media-only handling", () => {
     }));
     vi.clearAllMocks();
     replyRunTesting.resetReplyRunRegistry();
+  });
+
+  afterEach(async () => {
+    const paths = cleanupPaths.splice(0);
+    await Promise.all(paths.map((entry) => rm(entry, { recursive: true, force: true })));
   });
 
   it("does not load session store runtime on module import", async () => {
@@ -338,6 +348,57 @@ describe("runPreparedReply media-only handling", () => {
     expect(call?.followupRun.prompt).toContain("[Thread history - for context]");
     expect(call?.followupRun.prompt).toContain("Earlier message in this thread");
     expect(call?.followupRun.prompt).toContain("[User sent media without caption]");
+  });
+
+  it("hydrates current MediaPaths into queued followup images", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "openclaw-followup-image-"));
+    cleanupPaths.push(tmpDir);
+    const imagePath = path.join(tmpDir, "inbound.png");
+    await writeFile(
+      imagePath,
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    );
+
+    const result = await runPreparedReply(
+      baseParams({
+        ctx: {
+          Body: "describe this",
+          RawBody: "describe this",
+          CommandBody: "describe this",
+          MediaPaths: [imagePath],
+          MediaTypes: ["image/png"],
+          OriginatingChannel: "discord",
+          OriginatingTo: "C123",
+          ChatType: "group",
+        },
+        sessionCtx: {
+          Body: "describe this",
+          BodyStripped: "describe this",
+          Provider: "discord",
+          OriginatingChannel: "discord",
+          OriginatingTo: "C123",
+          ChatType: "group",
+          MediaPaths: [imagePath],
+          MediaTypes: ["image/png"],
+        },
+      }),
+    );
+
+    expect(result).toEqual({ text: "ok" });
+    expect(vi.mocked(runReplyAgent)).toHaveBeenCalledOnce();
+    const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
+    expect(call?.followupRun.images).toEqual([
+      {
+        type: "image",
+        data: expect.any(String),
+        mimeType: "image/png",
+      },
+    ]);
+    expect(call?.followupRun.images?.[0]?.data).toHaveLength(92);
+    expect(call?.followupRun.imageOrder).toEqual(["inline"]);
   });
 
   it("keeps thread history context on follow-up turns", async () => {

@@ -878,8 +878,8 @@ export async function runAgentTurnWithFallback(params: {
                     bootstrapPromptWarningSignaturesSeen[
                       bootstrapPromptWarningSignaturesSeen.length - 1
                     ],
-                  images: params.opts?.images,
-                  imageOrder: params.opts?.imageOrder,
+                  images: params.followupRun.images ?? params.opts?.images,
+                  imageOrder: params.followupRun.imageOrder ?? params.opts?.imageOrder,
                   skillsSnapshot: params.followupRun.run.skillsSnapshot,
                   messageProvider: params.followupRun.run.messageProvider,
                   agentAccountId: params.followupRun.run.agentAccountId,
@@ -1023,8 +1023,8 @@ export async function runAgentTurnWithFallback(params: {
                 changeReviewModeEnabled: params.opts?.changeReviewModeEnabled,
                 bootstrapContextMode: params.opts?.bootstrapContextMode,
                 bootstrapContextRunKind: params.opts?.isHeartbeat ? "heartbeat" : "default",
-                images: params.opts?.images,
-                imageOrder: params.opts?.imageOrder,
+                images: params.followupRun.images ?? params.opts?.images,
+                imageOrder: params.followupRun.imageOrder ?? params.opts?.imageOrder,
                 abortSignal: params.replyOperation?.abortSignal ?? params.opts?.abortSignal,
                 replyOperation: params.replyOperation,
                 blockReplyBreak: params.resolvedBlockStreamingBreak,

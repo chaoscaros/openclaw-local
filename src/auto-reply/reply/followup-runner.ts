@@ -256,6 +256,8 @@ export function createFollowupRunner(params: {
                   bootstrapPromptWarningSignaturesSeen[
                     bootstrapPromptWarningSignaturesSeen.length - 1
                   ],
+                images: queued.images,
+                imageOrder: queued.imageOrder,
                 onAgentEvent: (evt) => {
                   if (evt.stream !== "compaction") {
                     return;

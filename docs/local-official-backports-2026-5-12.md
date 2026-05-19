@@ -146,6 +146,9 @@ should be split by risk area.
   - Codex app-server turn start now mirrors the active OpenClaw sandbox writable
     root and network-egress policy, so Docker `network=none` continues to hold
     even though the app-server process itself runs on the gateway host.
+  - Queued followup runs now preserve current-turn image attachments as native
+    image payloads instead of relying only on prompt file references, which keeps
+    deferred Codex/agent image understanding intact.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -153,6 +156,11 @@ should be split by risk area.
     `extensions/telegram/src/request-timeouts.ts`, `extensions/anthropic/register.runtime.ts`,
     `extensions/telegram/src/token-fingerprint.ts`, `src/agents/model-auth-label.ts`,
     `src/auto-reply/reply/commands-models.ts`, `src/auto-reply/reply/mentions.ts`,
+    `src/auto-reply/reply/agent-runner-execution.ts`,
+    `src/auto-reply/reply/current-turn-images.ts`,
+    `src/auto-reply/reply/followup-runner.ts`,
+    `src/auto-reply/reply/get-reply-run.ts`,
+    `src/auto-reply/reply/queue/types.ts`,
     `src/cron/service/task-session-key.ts`, `src/cron/service/timer.ts`,
     `src/cron/service/ops.ts`, `src/cli/skills-cli.format.ts`,
     `extensions/codex/src/app-server/protocol.ts`,
