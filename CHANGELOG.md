@@ -6,6 +6,8 @@ Docs: https://docs.openclaw.ai
 
 ### Changes
 
+- Control UI: highlight WebChat markdown code blocks for common languages while keeping the existing copy and JSON-collapse controls.
+
 ### Fixes
 
 - Plugins: add a default 15-second timeout for legacy `before_agent_start` hooks so hung handlers no longer block agent startup.

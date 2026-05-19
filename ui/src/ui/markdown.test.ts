@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { md, toSanitizedMarkdownHtml } from "./markdown.ts";
 
+function htmlFragment(html: string): HTMLElement {
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  return container;
+}
+
 describe("toSanitizedMarkdownHtml", () => {
   // ── Original tests from before markdown-it migration ──
   it("renders basic markdown", () => {
@@ -465,6 +471,54 @@ describe("toSanitizedMarkdownHtml", () => {
       expect(html).toContain("<details");
       expect(html).toContain("json-collapse");
       expect(html).toContain("JSON");
+    });
+
+    it("highlights fenced code blocks while preserving copy text", () => {
+      const source = 'const answer = "yes";\nconsole.log(answer);\n';
+      const html = toSanitizedMarkdownHtml(`\`\`\`js\n${source}\`\`\``);
+      const fragment = htmlFragment(html);
+      const code = fragment.querySelector("pre code");
+      const copy = fragment.querySelector<HTMLButtonElement>(".code-block-copy");
+
+      expect(fragment.querySelector(".code-block-lang")?.textContent).toBe("js");
+      expect(copy?.dataset.code).toBe(source.trimEnd());
+      expect(code?.classList.contains("hljs")).toBe(true);
+      expect(code?.classList.contains("language-js")).toBe(true);
+      expect(code?.textContent).toBe(source);
+      expect(code?.querySelector(".hljs-keyword")?.textContent).toBe("const");
+      expect(code?.querySelector(".hljs-string")?.textContent).toBe('"yes"');
+    });
+
+    it("highlights collapsed JSON code blocks", () => {
+      const html = toSanitizedMarkdownHtml('```json\n{"ok": true}\n```');
+      const fragment = htmlFragment(html);
+      const details = fragment.querySelector("details.json-collapse");
+      const code = details?.querySelector("pre code");
+
+      expect(details?.querySelector("summary")?.textContent).toBe("JSON · 2 lines");
+      expect(code?.textContent).toBe('{"ok": true}\n');
+      expect(code?.innerHTML).toContain("hljs-");
+    });
+
+    it("auto-highlights unlabeled code blocks only when detection is confident", () => {
+      const html = toSanitizedMarkdownHtml("```\n#include <vector>\nstd::vector<int> nums;\n```");
+      const fragment = htmlFragment(html);
+      const code = fragment.querySelector("pre code");
+
+      expect(code?.classList.contains("hljs")).toBe(true);
+      expect(code?.textContent).toBe("#include <vector>\nstd::vector<int> nums;\n");
+      expect(code?.innerHTML).toContain("hljs-meta");
+      expect(code?.innerHTML).toContain("hljs-keyword");
+    });
+
+    it("keeps highlighted HTML code escaped", () => {
+      const html = toSanitizedMarkdownHtml("```html\n<script>alert(1)</script>\n```");
+      const fragment = htmlFragment(html);
+      const code = fragment.querySelector("pre code");
+
+      expect(code?.querySelector("script")).toBeNull();
+      expect(code?.textContent).toBe("<script>alert(1)</script>\n");
+      expect(code?.innerHTML).not.toContain("<script>");
     });
   });
 

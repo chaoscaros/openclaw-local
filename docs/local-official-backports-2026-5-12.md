@@ -191,6 +191,9 @@ should be split by risk area.
   - Onboarding model checks now treat Codex OAuth profiles as valid auth for
     canonical OpenAI provider models, while still keeping custom
     OpenAI-compatible `models.providers.openai.baseUrl` endpoints separate.
+  - Control UI markdown rendering now highlights common code block languages
+    using the existing WebChat code-block wrapper, while keeping local copy and
+    JSON-collapse controls intact.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -219,7 +222,9 @@ should be split by risk area.
     `src/agents/failover-error.ts`, `src/agents/model-fallback.ts`,
     `src/gateway/server-methods/agent.ts`, `extensions/lmstudio/src/runtime.ts`,
     `extensions/lmstudio/src/setup.ts`,
-    `src/gateway/server/ws-connection/message-handler.ts`.
+    `src/gateway/server/ws-connection/message-handler.ts`,
+    `ui/src/ui/markdown.ts`, `ui/src/styles/components.css`,
+    `ui/src/types/highlight-js-subpaths.d.ts`.
 
 ## Deferred
 
