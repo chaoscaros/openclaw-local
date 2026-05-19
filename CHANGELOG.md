@@ -32,6 +32,7 @@ Docs: https://docs.openclaw.ai
 - Memory: surface directory creation failures from the memory host SDK instead of hiding permission or disk errors until later database work.
 - Agents/failover: stop treating local session lock and embedded takeover coordination errors as provider/model failures, avoiding misleading fallback retries when the same session is already being written.
 - Gateway/sessions: rotate failed agent sessions whose transcript file is missing instead of trying to resume stale session IDs with no backing transcript.
+- LM Studio: resolve `${ENV_VAR}` API-key templates through the config secret runtime and allow header-only auth to continue when a stale template is intentionally unused.
 
 ## 2026.4.15
 

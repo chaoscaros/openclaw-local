@@ -135,6 +135,24 @@ describe("lmstudio-runtime", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("allows header-only runtime auth when an api key env template is unset", async () => {
+    resolveApiKeyForProviderMock.mockRejectedValueOnce(
+      new Error('No API key found for provider "lmstudio". Auth store: /tmp/auth-profiles.json.'),
+    );
+
+    await expect(
+      resolveLmstudioRuntimeApiKey({
+        config: buildLmstudioConfig({
+          apiKey: "${CUSTOM_LMSTUDIO_KEY}",
+          headers: {
+            Authorization: "Bearer proxy-token",
+          },
+        }),
+        env: {},
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("suppresses profile runtime auth when Authorization is configured", async () => {
     resolveApiKeyForProviderMock.mockResolvedValueOnce({
       apiKey: "stale-profile-key",
@@ -254,6 +272,30 @@ describe("lmstudio-runtime", () => {
         },
       }),
     ).resolves.toBe("template-lmstudio-key");
+  });
+
+  it("resolves arbitrary env-template api keys from config", async () => {
+    await expect(
+      resolveLmstudioConfiguredApiKey({
+        config: buildLmstudioConfig({
+          apiKey: "${CUSTOM_LMSTUDIO_KEY}",
+        }),
+        env: {
+          CUSTOM_LMSTUDIO_KEY: "custom-template-lmstudio-key",
+        },
+      }),
+    ).resolves.toBe("custom-template-lmstudio-key");
+  });
+
+  it("throws a path-specific error when an env-template api key cannot be resolved", async () => {
+    await expect(
+      resolveLmstudioConfiguredApiKey({
+        config: buildLmstudioConfig({
+          apiKey: "${CUSTOM_LMSTUDIO_KEY}",
+        }),
+        env: {},
+      }),
+    ).rejects.toThrow(/models\.providers\.lmstudio\.apiKey/i);
   });
 
   it("throws a path-specific error when a SecretRef header cannot be resolved", async () => {

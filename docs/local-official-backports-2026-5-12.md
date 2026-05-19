@@ -164,6 +164,9 @@ should be split by risk area.
   - Gateway agent sends now rotate failed sessions whose transcript file is
     missing, clearing stale failure/runtime fields while preserving reusable
     failed sessions when the transcript still exists.
+  - LM Studio provider auth now resolves arbitrary `${ENV_VAR}` apiKey templates
+    through the config secret runtime, and header-only Authorization flows can
+    ignore intentionally unused unresolved apiKey templates.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -185,7 +188,8 @@ should be split by risk area.
     `extensions/browser/src/browser/config.ts`, `src/memory-host-sdk/host/internal.ts`,
     `src/agents/session-write-lock-error.ts`, `src/agents/session-write-lock.ts`,
     `src/agents/failover-error.ts`, `src/agents/model-fallback.ts`,
-    `src/gateway/server-methods/agent.ts`.
+    `src/gateway/server-methods/agent.ts`, `extensions/lmstudio/src/runtime.ts`,
+    `extensions/lmstudio/src/setup.ts`.
 
 ## Deferred
 
