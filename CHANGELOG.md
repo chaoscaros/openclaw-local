@@ -27,6 +27,7 @@ Docs: https://docs.openclaw.ai
 - Codex app-server: expose non-Docker OpenClaw sandbox shell tools as `sandbox_exec` and `sandbox_process` so native Codex shell tools are not shadowed while sandbox sessions remain reachable.
 - Codex app-server: mirror OpenClaw sandbox workspace and network egress policy into Codex turn sandboxing so host-side app-server turns cannot bypass Docker `network=none`.
 - Auto-reply: hydrate current-turn image attachments into queued followups so deferred Codex/agent runs keep the image payload instead of relying only on prompt file references.
+- Control UI: keep collapsed sidebar groups collapsed even when the active page is inside that group.
 
 ## 2026.4.15
 

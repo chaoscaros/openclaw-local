@@ -1089,8 +1089,7 @@ export function renderApp(state: AppViewState) {
               <nav class="sidebar-nav">
                 ${TAB_GROUPS.map((group) => {
                   const isGroupCollapsed = state.settings.navGroupsCollapsed[group.label] ?? false;
-                  const hasActiveTab = group.tabs.some((tab) => tab === state.tab);
-                  const showItems = navCollapsed || hasActiveTab || !isGroupCollapsed;
+                  const showItems = navCollapsed || !isGroupCollapsed;
 
                   return html`
                     <section class="nav-section ${!showItems ? "nav-section--collapsed" : ""}">

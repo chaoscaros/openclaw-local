@@ -239,6 +239,30 @@ describe("control UI routing", () => {
     expect(header.querySelector(".nav-collapse-toggle")).not.toBeNull();
   });
 
+  it("hides child nav items when the active group is collapsed", async () => {
+    const app = mountApp("/chat");
+    await app.updateComplete;
+
+    app.applySettings({
+      ...app.settings,
+      navGroupsCollapsed: { ...app.settings.navGroupsCollapsed, chat: true },
+    });
+    await app.updateComplete;
+
+    const chatLink = app.querySelector<HTMLAnchorElement>('a.nav-item[href="/chat"]');
+    expect(chatLink).not.toBeNull();
+    const section = chatLink?.closest(".nav-section");
+    expect(section).toBeInstanceOf(HTMLElement);
+    if (!(section instanceof HTMLElement)) {
+      return;
+    }
+
+    expect(section.classList.contains("nav-section--collapsed")).toBe(true);
+    expect(section.querySelector(".nav-section__label")?.getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+  });
+
   it("preserves the active session when opening chat from sidebar navigation", async () => {
     const app = mountApp("/sessions?session=agent:main:subagent:task-123");
     await app.updateComplete;

@@ -149,6 +149,9 @@ should be split by risk area.
   - Queued followup runs now preserve current-turn image attachments as native
     image payloads instead of relying only on prompt file references, which keeps
     deferred Codex/agent image understanding intact.
+  - Control UI sidebar groups now stay collapsed when the active page belongs to
+    that group, matching the official navigation behavior while preserving the
+    local sidebar layout.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -165,7 +168,8 @@ should be split by risk area.
     `src/cron/service/ops.ts`, `src/cli/skills-cli.format.ts`,
     `extensions/codex/src/app-server/protocol.ts`,
     `extensions/codex/src/app-server/run-attempt.ts`,
-    `extensions/codex/src/app-server/thread-lifecycle.ts`, `ui/src/ui/app-gateway.ts`.
+    `extensions/codex/src/app-server/thread-lifecycle.ts`, `ui/src/ui/app-gateway.ts`,
+    `ui/src/ui/app-render.ts`.
 
 ## Deferred
 
