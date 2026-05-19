@@ -157,6 +157,10 @@ should be split by risk area.
     precedence.
   - Memory host SDK directory creation now propagates filesystem failures so
     permission or disk errors are visible at the real source.
+  - Session write-lock timeouts and embedded attempt takeover errors now stay
+    classified as local runtime coordination failures, so model fallback does
+    not retry every candidate against the same locked session while still
+    preserving explicit provider rate-limit metadata when present.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -175,7 +179,9 @@ should be split by risk area.
     `extensions/codex/src/app-server/run-attempt.ts`,
     `extensions/codex/src/app-server/thread-lifecycle.ts`, `ui/src/ui/app-gateway.ts`,
     `ui/src/ui/app-render.ts`, `extensions/browser/src/browser/cdp.helpers.ts`,
-    `extensions/browser/src/browser/config.ts`, `src/memory-host-sdk/host/internal.ts`.
+    `extensions/browser/src/browser/config.ts`, `src/memory-host-sdk/host/internal.ts`,
+    `src/agents/session-write-lock-error.ts`, `src/agents/session-write-lock.ts`,
+    `src/agents/failover-error.ts`, `src/agents/model-fallback.ts`.
 
 ## Deferred
 

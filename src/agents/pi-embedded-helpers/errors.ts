@@ -324,7 +324,7 @@ const REPLAY_INVALID_RE =
 const SANDBOX_BLOCKED_RE =
   /\bapproval is required\b|\bapproval timed out\b|\bapproval was denied\b|\bblocked by sandbox\b|\bsandbox\b.*\b(?:blocked|denied|forbidden|disabled|not allowed)\b/i;
 
-function inferSignalStatus(signal: FailoverSignal): number | undefined {
+export function inferSignalStatus(signal: FailoverSignal): number | undefined {
   if (typeof signal.status === "number" && Number.isFinite(signal.status)) {
     return signal.status;
   }

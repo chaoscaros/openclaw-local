@@ -30,6 +30,7 @@ Docs: https://docs.openclaw.ai
 - Control UI: keep collapsed sidebar groups collapsed even when the active page is inside that group.
 - Browser: preserve a profile `cdpPort` when its `cdpUrl` omits a port, while still letting explicitly written URL ports win.
 - Memory: surface directory creation failures from the memory host SDK instead of hiding permission or disk errors until later database work.
+- Agents/failover: stop treating local session lock and embedded takeover coordination errors as provider/model failures, avoiding misleading fallback retries when the same session is already being written.
 
 ## 2026.4.15
 

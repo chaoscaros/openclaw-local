@@ -15,6 +15,7 @@ import {
   coerceToFailoverError,
   describeFailoverError,
   isFailoverError,
+  isNonProviderRuntimeCoordinationError,
   isTimeoutError,
 } from "./failover-error.js";
 import {
@@ -827,6 +828,9 @@ export async function runWithModelFallback<T>(params: {
     }
     const err = attemptRun.error;
     {
+      if (isNonProviderRuntimeCoordinationError(err)) {
+        throw err;
+      }
       if (transientProbeProviderForAttempt) {
         const probeFailureReason = describeFailoverError(err).reason;
         if (!shouldPreserveTransientCooldownProbeSlot(probeFailureReason)) {
