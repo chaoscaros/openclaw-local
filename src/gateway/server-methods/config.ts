@@ -32,6 +32,7 @@ import { resolveEffectiveSharedGatewayAuth } from "../auth.js";
 import {
   buildGatewayReloadPlan,
   diffConfigPaths,
+  resolveConfigReloadMetadata,
   resolveGatewayReloadSettings,
 } from "../config-reload.js";
 import {
@@ -416,7 +417,7 @@ export const configHandlers: GatewayRequestHandlers = {
     }
     const path = (params as { path: string }).path;
     const schema = loadSchemaWithPlugins();
-    const result = lookupConfigSchema(schema, path);
+    const result = lookupConfigSchema(schema, path, resolveConfigReloadMetadata);
     if (!result) {
       respond(
         false,

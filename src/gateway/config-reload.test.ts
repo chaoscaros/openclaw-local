@@ -8,6 +8,7 @@ import { createTestRegistry } from "../test-utils/channel-plugins.js";
 import {
   buildGatewayReloadPlan,
   diffConfigPaths,
+  resolveConfigReloadMetadata,
   resolveGatewayReloadSettings,
   startGatewayConfigReloader,
 } from "./config-reload.js";
@@ -311,6 +312,13 @@ describe("buildGatewayReloadPlan", () => {
     if (testCase.expectRestartHeartbeat) {
       expect(plan.restartHeartbeat).toBe(true);
     }
+  });
+
+  it("exposes path reload metadata for schema lookup clients", () => {
+    expect(resolveConfigReloadMetadata("gateway.channelHealthCheckMinutes").kind).toBe("hot");
+    expect(resolveConfigReloadMetadata("gateway.remote.url").kind).toBe("none");
+    expect(resolveConfigReloadMetadata("gateway.auth.token").kind).toBe("restart");
+    expect(resolveConfigReloadMetadata("unknownField").kind).toBe("restart");
   });
 });
 

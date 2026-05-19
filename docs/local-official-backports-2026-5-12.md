@@ -176,6 +176,9 @@ should be split by risk area.
   - Strict-agentic embedded runs now log execution-contract diagnostics only
     when a planning-only retry is triggered, reducing normal activation noise
     while keeping blocked-run debugging context.
+  - `config.schema.lookup` now includes optional `reloadKind` metadata for the
+    requested path and child fields, letting local UI/CLI surfaces tell users
+    whether a config edit is hot-reloadable, no-op, or restart-required.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,

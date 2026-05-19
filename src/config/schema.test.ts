@@ -382,6 +382,27 @@ describe("config schema", () => {
     expect(schema?.properties).toBeUndefined();
   });
 
+  it("includes reload metadata when a resolver is provided", () => {
+    const lookup = lookupConfigSchema(baseSchema, "gateway", (path) => {
+      if (path === "gateway.channelHealthCheckMinutes") {
+        return { kind: "hot" };
+      }
+      if (path.startsWith("gateway")) {
+        return { kind: "restart" };
+      }
+      return { kind: "none" };
+    });
+
+    expect(lookup?.reloadKind).toBe("restart");
+    expect(lookup?.children.find((child) => child.path === "gateway.port")?.reloadKind).toBe(
+      "restart",
+    );
+    expect(
+      lookup?.children.find((child) => child.path === "gateway.channelHealthCheckMinutes")
+        ?.reloadKind,
+    ).toBe("hot");
+  });
+
   it("returns a shallow lookup schema without nested composition keywords", () => {
     const lookup = lookupConfigSchema(baseSchema, "agents.list.0.runtime");
     expect(lookup?.path).toBe("agents.list.0.runtime");

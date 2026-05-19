@@ -36,6 +36,7 @@ Docs: https://docs.openclaw.ai
 - Gateway/sessions: rotate failed agent sessions whose transcript file is missing instead of trying to resume stale session IDs with no backing transcript.
 - LM Studio: resolve `${ENV_VAR}` API-key templates through the config secret runtime and allow header-only auth to continue when a stale template is intentionally unused.
 - Gateway/mobile: allow paired iOS/iPadOS and Android clients to refresh same-family OS version metadata without triggering metadata-upgrade approval.
+- Gateway/config: expose `reloadKind` in config schema lookups so clients can distinguish restart-required, hot-reloadable, and no-op fields.
 
 ## 2026.4.15
 

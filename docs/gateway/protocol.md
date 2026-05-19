@@ -301,13 +301,15 @@ implemented in `src/gateway/server-methods/*.ts`.
   documentation exists.
 - `config.schema.lookup` returns a path-scoped lookup payload for one config
   path: normalized path, a shallow schema node, matched hint + `hintPath`, and
-  immediate child summaries for UI/CLI drill-down.
+  immediate child summaries for UI/CLI drill-down, with optional `reloadKind`
+  metadata (`restart`, `hot`, or `none`) when the gateway can classify the
+  requested path.
   - Lookup schema nodes keep the user-facing docs and common validation fields:
     `title`, `description`, `type`, `enum`, `const`, `format`, `pattern`,
     numeric/string/array/object bounds, and boolean flags like
     `additionalProperties`, `deprecated`, `readOnly`, `writeOnly`.
   - Child summaries expose `key`, normalized `path`, `type`, `required`,
-    `hasChildren`, plus the matched `hint` / `hintPath`.
+    `hasChildren`, optional `reloadKind`, plus the matched `hint` / `hintPath`.
 - `update.run` runs the gateway update flow and schedules a restart only when
   the update itself succeeded.
 - `wizard.start`, `wizard.next`, `wizard.status`, and `wizard.cancel` expose the
