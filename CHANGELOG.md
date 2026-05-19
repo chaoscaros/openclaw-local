@@ -24,6 +24,7 @@ Docs: https://docs.openclaw.ai
 - Models: show the effective OpenAI/Codex auth profile in `/models` provider headers instead of falling back to the OpenAI env-key label.
 - Cron: link isolated scheduled task runs to their stable cron session so task status and cleanup can follow the backing agent run.
 - CLI/skills: require unique case-insensitive fallback matches in `openclaw skills info` so case-only collisions return not-found instead of showing the wrong skill.
+- Codex app-server: expose non-Docker OpenClaw sandbox shell tools as `sandbox_exec` and `sandbox_process` so native Codex shell tools are not shadowed while sandbox sessions remain reachable.
 
 ## 2026.4.15
 

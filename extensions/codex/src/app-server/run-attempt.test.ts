@@ -5,6 +5,7 @@ import type { Api, Model } from "@mariozechner/pi-ai";
 import {
   abortAgentHarnessRun,
   queueAgentHarnessMessage,
+  type AnyAgentTool,
   type EmbeddedRunAttemptParams,
 } from "openclaw/plugin-sdk/agent-harness";
 import { buildCodexUserMcpServersThreadConfigPatch } from "openclaw/plugin-sdk/codex-mcp-projection";
@@ -48,6 +49,66 @@ function createParams(
     modelRegistry: {} as never,
     config,
   } as EmbeddedRunAttemptParams;
+}
+
+function createTestDynamicTool(name: string, description?: string): AnyAgentTool {
+  return {
+    name,
+    label: name,
+    description: description ?? `${name} test tool`,
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+    },
+    execute: vi.fn(async () => ({
+      content: [
+        {
+          type: "text" as const,
+          text: `${name} result. Use process for follow-up.`,
+        },
+      ],
+      details: {},
+    })),
+  } as AnyAgentTool;
+}
+
+function createSandboxContext(backendId: string) {
+  return {
+    enabled: true,
+    backendId,
+    sessionKey: "agent:main:session-1",
+    workspaceDir: "/tmp/openclaw-sandbox",
+    agentWorkspaceDir: "/tmp/openclaw-workspace",
+    workspaceAccess: "rw",
+    runtimeId: "runtime-1",
+    runtimeLabel: backendId,
+    containerName: "sandbox-1",
+    containerWorkdir: "/workspace",
+    docker: {},
+    tools: {},
+    browserAllowHostControl: false,
+  } as never;
+}
+
+function createDisabledSandboxContext() {
+  return { enabled: false } as never;
+}
+
+function createDynamicToolBuildInput(
+  params: EmbeddedRunAttemptParams,
+  workspaceDir: string,
+  sandbox = createSandboxContext("ssh"),
+) {
+  return {
+    params,
+    resolvedWorkspace: workspaceDir,
+    effectiveWorkspace: workspaceDir,
+    sandboxSessionKey: params.sessionKey ?? params.sessionId,
+    sandbox,
+    runAbortController: new AbortController(),
+    sessionAgentId: "main",
+    onYieldDetected: vi.fn(),
+  };
 }
 
 function createAppServerHarness(
@@ -124,6 +185,7 @@ describe("runCodexAppServerAttempt", () => {
 
   afterEach(async () => {
     __testing.resetCodexAppServerClientFactoryForTests();
+    __testing.resetOpenClawCodingToolsFactoryForTests();
     vi.restoreAllMocks();
     await fs.rm(tempDir, { recursive: true, force: true });
   });
@@ -650,5 +712,102 @@ describe("runCodexAppServerAttempt", () => {
         serviceTier: "priority",
       }),
     );
+  });
+
+  it("adds sandbox shell dynamic tools for non-Docker sandbox backends", async () => {
+    const sessionFile = path.join(tempDir, "session.jsonl");
+    const workspaceDir = path.join(tempDir, "workspace");
+    const params = createParams(sessionFile, workspaceDir);
+    params.disableTools = false;
+    __testing.setOpenClawCodingToolsFactoryForTests(() => [
+      createTestDynamicTool("exec", "Run shell commands. Use process for follow-up."),
+      createTestDynamicTool("process", "Use process to inspect command sessions."),
+      createTestDynamicTool("message"),
+    ]);
+
+    const tools = await __testing.buildDynamicTools(
+      createDynamicToolBuildInput(params, workspaceDir),
+    );
+
+    expect(tools.map((tool) => tool.name)).toEqual(["message", "sandbox_exec", "sandbox_process"]);
+    expect(tools.find((tool) => tool.name === "sandbox_exec")?.description).toContain(
+      "configured ssh sandbox backend",
+    );
+    expect(tools.find((tool) => tool.name === "sandbox_exec")?.description).toContain(
+      "Use sandbox_process for follow-up.",
+    );
+  });
+
+  it("does not add sandbox shell dynamic tools for Docker or disabled sandboxes", async () => {
+    const sessionFile = path.join(tempDir, "session.jsonl");
+    const workspaceDir = path.join(tempDir, "workspace");
+    const params = createParams(sessionFile, workspaceDir);
+    params.disableTools = false;
+    __testing.setOpenClawCodingToolsFactoryForTests(() => [
+      createTestDynamicTool("exec"),
+      createTestDynamicTool("process"),
+    ]);
+
+    await expect(
+      __testing.buildDynamicTools(
+        createDynamicToolBuildInput(params, workspaceDir, createSandboxContext("docker")),
+      ),
+    ).resolves.toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({ name: "sandbox_exec" }),
+        expect.objectContaining({ name: "sandbox_process" }),
+      ]),
+    );
+    await expect(
+      __testing.buildDynamicTools(
+        createDynamicToolBuildInput(params, workspaceDir, createDisabledSandboxContext()),
+      ),
+    ).resolves.toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({ name: "sandbox_exec" }),
+        expect.objectContaining({ name: "sandbox_process" }),
+      ]),
+    );
+  });
+
+  it("maps exec allowlist entries to sandbox shell dynamic tools", async () => {
+    const sessionFile = path.join(tempDir, "session.jsonl");
+    const workspaceDir = path.join(tempDir, "workspace");
+    const params = createParams(sessionFile, workspaceDir);
+    params.disableTools = false;
+    params.toolsAllow = ["exec"];
+    __testing.setOpenClawCodingToolsFactoryForTests(() => [
+      createTestDynamicTool("exec"),
+      createTestDynamicTool("process"),
+      createTestDynamicTool("message"),
+    ]);
+
+    const tools = await __testing.buildDynamicTools(
+      createDynamicToolBuildInput(params, workspaceDir),
+    );
+
+    expect(tools.map((tool) => tool.name)).toEqual(["sandbox_exec", "sandbox_process"]);
+  });
+
+  it("keeps sandbox exec result guidance pointed at sandbox_process", async () => {
+    const execTool = createTestDynamicTool(
+      "exec",
+      "Run shell commands. Use process for follow-up.",
+    );
+    const processTool = createTestDynamicTool("process");
+    const [sandboxExec] = __testing.addSandboxShellDynamicToolsIfAvailable(
+      [],
+      [execTool, processTool],
+      { sandbox: createSandboxContext("ssh") },
+    );
+
+    const result = await sandboxExec.execute("call-1", {}, new AbortController().signal);
+
+    expect(result.content).toEqual([
+      {
+        type: "text",
+        text: "exec result. Use sandbox_process for follow-up.",
+      },
+    ]);
   });
 });

@@ -16,6 +16,7 @@ import {
   supportsModelTools,
   type EmbeddedRunAttemptParams,
   type EmbeddedRunAttemptResult,
+  type AnyAgentTool,
 } from "openclaw/plugin-sdk/agent-harness";
 import { handleCodexAppServerApprovalRequest } from "./approval-bridge.js";
 import { isCodexAppServerApprovalRequest, type CodexAppServerClient } from "./client.js";
@@ -38,9 +39,15 @@ import { mirrorCodexAppServerTranscript } from "./transcript-mirror.js";
 type CodexAppServerClientFactory = (
   startOptions?: CodexAppServerStartOptions,
 ) => Promise<CodexAppServerClient>;
+type OpenClawCodingToolsFactory = typeof createOpenClawCodingTools;
+type DynamicToolBuildResult = Awaited<ReturnType<AnyAgentTool["execute"]>>;
 
 let clientFactory: CodexAppServerClientFactory = (startOptions) =>
   getSharedCodexAppServerClient({ startOptions });
+let openClawCodingToolsFactory: OpenClawCodingToolsFactory = createOpenClawCodingTools;
+
+const SANDBOX_EXEC_TOOL_NAME = "sandbox_exec";
+const SANDBOX_PROCESS_TOOL_NAME = "sandbox_process";
 
 export async function runCodexAppServerAttempt(
   params: EmbeddedRunAttemptParams,
@@ -296,7 +303,7 @@ async function buildDynamicTools(input: DynamicToolBuildParams) {
   }
   const modelHasVision = params.model.input?.includes("image") ?? false;
   const agentDir = params.agentDir ?? resolveOpenClawAgentDir();
-  const allTools = createOpenClawCodingTools({
+  const allTools = openClawCodingToolsFactory({
     agentId: input.sessionAgentId,
     ...buildEmbeddedAttemptToolRunContext(params),
     exec: {
@@ -353,10 +360,8 @@ async function buildDynamicTools(input: DynamicToolBuildParams) {
       input.runAbortController.abort("sessions_yield");
     },
   });
-  const filteredTools =
-    params.toolsAllow && params.toolsAllow.length > 0
-      ? allTools.filter((tool) => params.toolsAllow?.includes(tool.name))
-      : allTools;
+  const toolsWithSandboxShell = addSandboxShellDynamicToolsIfAvailable(allTools, allTools, input);
+  const filteredTools = filterDynamicToolsForAllowlist(toolsWithSandboxShell, params.toolsAllow);
   return normalizeProviderToolSchemas({
     tools: filteredTools,
     provider: params.provider,
@@ -367,6 +372,155 @@ async function buildDynamicTools(input: DynamicToolBuildParams) {
     modelApi: params.model.api,
     model: params.model,
   });
+}
+
+function normalizeDynamicToolName(name: string): string {
+  return name.trim().toLowerCase().replaceAll("-", "_");
+}
+
+function findDynamicToolByName(tools: AnyAgentTool[], name: string): AnyAgentTool | undefined {
+  const normalizedName = normalizeDynamicToolName(name);
+  return tools.find((tool) => normalizeDynamicToolName(tool.name) === normalizedName);
+}
+
+function filterDynamicToolsForAllowlist<T extends { name: string }>(
+  tools: T[],
+  toolsAllow: string[] | undefined,
+): T[] {
+  if (!toolsAllow || toolsAllow.length === 0) {
+    return tools;
+  }
+  const allowed = new Set(
+    toolsAllow.map((name) => normalizeDynamicToolName(name)).filter((name) => name.length > 0),
+  );
+  return tools.filter((tool) => {
+    const name = normalizeDynamicToolName(tool.name);
+    return (
+      allowed.has(name) ||
+      (name === SANDBOX_EXEC_TOOL_NAME && allowed.has("exec")) ||
+      (name === SANDBOX_PROCESS_TOOL_NAME && (allowed.has("exec") || allowed.has("process")))
+    );
+  });
+}
+
+function addSandboxShellDynamicToolsIfAvailable(
+  tools: AnyAgentTool[],
+  allTools: AnyAgentTool[],
+  input: Pick<DynamicToolBuildParams, "sandbox">,
+): AnyAgentTool[] {
+  const backendId = resolveSandboxShellBackendId(input.sandbox);
+  if (!backendId) {
+    return tools;
+  }
+  const execTool = findDynamicToolByName(allTools, "exec");
+  const processTool = findDynamicToolByName(allTools, "process");
+  if (!execTool || !processTool) {
+    return tools;
+  }
+  const nextTools = tools.filter((tool) => !isOpenClawShellDynamicToolName(tool.name));
+  const existingToolNames = new Set(nextTools.map((tool) => normalizeDynamicToolName(tool.name)));
+  if (!existingToolNames.has(SANDBOX_EXEC_TOOL_NAME)) {
+    nextTools.push(createSandboxExecDynamicTool(execTool, backendId));
+  }
+  if (!existingToolNames.has(SANDBOX_PROCESS_TOOL_NAME)) {
+    nextTools.push(createSandboxProcessDynamicTool(processTool, backendId));
+  }
+  return nextTools;
+}
+
+function isOpenClawShellDynamicToolName(name: string): boolean {
+  const normalizedName = normalizeDynamicToolName(name);
+  return normalizedName === "exec" || normalizedName === "process";
+}
+
+function resolveSandboxShellBackendId(
+  sandbox: Awaited<ReturnType<typeof resolveSandboxContext>>,
+): string | undefined {
+  if (!sandbox?.enabled) {
+    return undefined;
+  }
+  const backendId = sandbox.backendId.trim().toLowerCase();
+  if (!backendId || backendId === "docker") {
+    return undefined;
+  }
+  return backendId;
+}
+
+function createSandboxExecDynamicTool(execTool: AnyAgentTool, backendId: string): AnyAgentTool {
+  return {
+    ...execTool,
+    name: SANDBOX_EXEC_TOOL_NAME,
+    label: SANDBOX_EXEC_TOOL_NAME,
+    get description() {
+      return describeSandboxExecTool(execTool, backendId);
+    },
+    execute: async (...args: Parameters<AnyAgentTool["execute"]>) => {
+      const result = await execTool.execute(...args);
+      return rewriteSandboxExecToolResult(result);
+    },
+  } as AnyAgentTool;
+}
+
+function createSandboxProcessDynamicTool(
+  processTool: AnyAgentTool,
+  backendId: string,
+): AnyAgentTool {
+  return {
+    ...processTool,
+    name: SANDBOX_PROCESS_TOOL_NAME,
+    label: SANDBOX_PROCESS_TOOL_NAME,
+    description: describeSandboxProcessTool(processTool, backendId),
+  } as AnyAgentTool;
+}
+
+function describeSandboxExecTool(execTool: AnyAgentTool, backendId: string): string {
+  return [
+    `Run a shell command through OpenClaw's configured ${backendId} sandbox backend for this session. Use only when the command must execute in the OpenClaw sandbox backend. Use Codex's native shell for normal local workspace commands.`,
+    rewriteProcessToolReferences(readToolDescription(execTool)),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function describeSandboxProcessTool(processTool: AnyAgentTool, backendId: string): string {
+  return [
+    `Manage sandbox_exec sessions that were started through OpenClaw's configured ${backendId} sandbox backend for this session. Use only for sandbox_exec follow-up; use Codex's native shell session handling for normal native shell commands.`,
+    rewriteProcessToolReferences(readToolDescription(processTool)),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function readToolDescription(tool: AnyAgentTool): string {
+  const description = tool.description;
+  return typeof description === "string" ? description.trim() : "";
+}
+
+function rewriteProcessToolReferences(text: string): string {
+  return text
+    .replaceAll("Use process", "Use sandbox_process")
+    .replaceAll("use process", "use sandbox_process")
+    .replaceAll("via process", "via sandbox_process");
+}
+
+function rewriteSandboxExecToolResult(result: DynamicToolBuildResult): DynamicToolBuildResult {
+  const content = result.content;
+  let changed = false;
+  const nextContent = content.map((item) => {
+    if (item.type !== "text") {
+      return item;
+    }
+    const text = rewriteProcessToolReferences(item.text);
+    if (text === item.text) {
+      return item;
+    }
+    changed = true;
+    return { ...item, text };
+  });
+  if (!changed) {
+    return result;
+  }
+  return { ...result, content: nextContent };
 }
 
 async function withCodexStartupTimeout<T>(params: {
@@ -483,10 +637,19 @@ function handleApprovalRequest(params: {
 }
 
 export const __testing = {
+  buildDynamicTools,
+  addSandboxShellDynamicToolsIfAvailable,
+  filterDynamicToolsForAllowlist,
   setCodexAppServerClientFactoryForTests(factory: CodexAppServerClientFactory): void {
     clientFactory = factory;
   },
   resetCodexAppServerClientFactoryForTests(): void {
     clientFactory = (startOptions) => getSharedCodexAppServerClient({ startOptions });
+  },
+  setOpenClawCodingToolsFactoryForTests(factory: OpenClawCodingToolsFactory): void {
+    openClawCodingToolsFactory = factory;
+  },
+  resetOpenClawCodingToolsFactoryForTests(): void {
+    openClawCodingToolsFactory = createOpenClawCodingTools;
   },
 } as const;

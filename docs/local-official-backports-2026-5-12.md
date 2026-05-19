@@ -140,6 +140,9 @@ should be split by risk area.
     follow the real agent run.
   - `openclaw skills info` now resolves unique case/separator-normalized skill
     names while returning not-found for ambiguous matches and sanitized input.
+  - Codex app-server now exposes non-Docker OpenClaw sandbox shell access under
+    `sandbox_exec` / `sandbox_process`, preserving native Codex shell naming
+    while keeping OpenClaw sandbox sessions usable from app-server turns.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -149,7 +152,7 @@ should be split by risk area.
     `src/auto-reply/reply/commands-models.ts`, `src/auto-reply/reply/mentions.ts`,
     `src/cron/service/task-session-key.ts`, `src/cron/service/timer.ts`,
     `src/cron/service/ops.ts`, `src/cli/skills-cli.format.ts`,
-    `ui/src/ui/app-gateway.ts`.
+    `extensions/codex/src/app-server/run-attempt.ts`, `ui/src/ui/app-gateway.ts`.
 
 ## Deferred
 
