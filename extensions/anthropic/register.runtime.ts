@@ -3,6 +3,7 @@ import type {
   OpenClawPluginApi,
   ProviderAuthContext,
   ProviderAuthMethodNonInteractiveContext,
+  ProviderNormalizeResolvedModelContext,
   ProviderResolveDynamicModelContext,
   ProviderRuntimeModel,
 } from "openclaw/plugin-sdk/plugin-entry";
@@ -46,11 +47,18 @@ const ANTHROPIC_SONNET_46_MODEL_ID = "claude-sonnet-4-6";
 const ANTHROPIC_SONNET_46_DOT_MODEL_ID = "claude-sonnet-4.6";
 const ANTHROPIC_SONNET_TEMPLATE_MODEL_IDS = ["claude-sonnet-4-5", "claude-sonnet-4.5"] as const;
 const ANTHROPIC_MODERN_MODEL_PREFIXES = [
+  "claude-opus-4-7",
+  "claude-opus-4.7",
   "claude-opus-4-6",
+  "claude-opus-4.6",
   "claude-sonnet-4-6",
+  "claude-sonnet-4.6",
   "claude-opus-4-5",
+  "claude-opus-4.5",
   "claude-sonnet-4-5",
+  "claude-sonnet-4.5",
   "claude-haiku-4-5",
+  "claude-haiku-4.5",
 ] as const;
 const _ANTHROPIC_OAUTH_ALLOWLIST = [
   "anthropic/claude-sonnet-4-6",
@@ -262,6 +270,38 @@ function matchesAnthropicModernModel(modelId: string): boolean {
   return ANTHROPIC_MODERN_MODEL_PREFIXES.some((prefix) => lower.startsWith(prefix));
 }
 
+function hasImageInput(input: unknown): boolean {
+  return Array.isArray(input) && input.includes("image");
+}
+
+function supportsAnthropicImageInput(modelId: string, modelName?: string): boolean {
+  return [modelId, modelName]
+    .filter((value): value is string => typeof value === "string")
+    .some((candidate) => matchesAnthropicModernModel(candidate));
+}
+
+function applyAnthropicImageInputCapability(params: {
+  modelId: string;
+  model: ProviderRuntimeModel;
+}): ProviderRuntimeModel | undefined {
+  if (hasImageInput(params.model.input)) {
+    return undefined;
+  }
+  if (!supportsAnthropicImageInput(params.modelId, params.model.name)) {
+    return undefined;
+  }
+  return {
+    ...params.model,
+    input: ["text", "image"],
+  };
+}
+
+function normalizeAnthropicResolvedModel(
+  ctx: ProviderNormalizeResolvedModelContext,
+): ProviderRuntimeModel | undefined {
+  return applyAnthropicImageInputCapability(ctx);
+}
+
 function buildAnthropicAuthDoctorHint(params: {
   config?: ProviderAuthContext["config"];
   store: AuthProfileStore;
@@ -468,7 +508,19 @@ export function registerAnthropicPlugin(api: OpenClawPluginApi): void {
     ],
     normalizeConfig: ({ providerConfig }) => normalizeAnthropicProviderConfig(providerConfig),
     applyConfigDefaults: ({ config, env }) => applyAnthropicConfigDefaults({ config, env }),
-    resolveDynamicModel: (ctx) => resolveAnthropicForwardCompatModel(ctx),
+    resolveDynamicModel: (ctx) => {
+      const model = resolveAnthropicForwardCompatModel(ctx);
+      if (!model) {
+        return undefined;
+      }
+      return (
+        applyAnthropicImageInputCapability({
+          modelId: ctx.modelId,
+          model,
+        }) ?? model
+      );
+    },
+    normalizeResolvedModel: (ctx) => normalizeAnthropicResolvedModel(ctx),
     resolveSyntheticAuth: ({ provider }) =>
       normalizeLowercaseStringOrEmpty(provider) === CLAUDE_CLI_BACKEND_ID
         ? resolveClaudeCliSyntheticAuth()

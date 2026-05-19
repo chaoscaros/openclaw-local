@@ -12,6 +12,20 @@ const GOOGLE_GEMINI_CLI_BASE_URL = "https://cloudcode-pa.googleapis.com";
 const DEFAULT_CONTEXT_WINDOW = 200_000;
 const DEFAULT_MAX_TOKENS = 8192;
 const OPENROUTER_FALLBACK_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+const ANTHROPIC_VISION_MODEL_PREFIXES = [
+  "claude-opus-4-7",
+  "claude-opus-4.7",
+  "claude-opus-4-6",
+  "claude-opus-4.6",
+  "claude-sonnet-4-6",
+  "claude-sonnet-4.6",
+  "claude-opus-4-5",
+  "claude-opus-4.5",
+  "claude-sonnet-4-5",
+  "claude-sonnet-4.5",
+  "claude-haiku-4-5",
+  "claude-haiku-4.5",
+] as const;
 
 type ModelRegistryLike = {
   find: (provider: string, modelId: string) => unknown;
@@ -65,6 +79,20 @@ function cloneTemplate(
 }
 
 function normalizeDynamicModel(params: { provider: string; model: ResolvedModelLike }) {
+  if (params.provider === "anthropic" || params.provider === "claude-cli") {
+    const candidates = [params.model.id, params.model.name]
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => lowercasePreservingWhitespace(value))
+      .filter(Boolean);
+    const isKnownVisionModel = candidates.some((candidate) =>
+      ANTHROPIC_VISION_MODEL_PREFIXES.some((prefix) => candidate.startsWith(prefix)),
+    );
+    const hasImageInput = Array.isArray(params.model.input) && params.model.input.includes("image");
+    if (isKnownVisionModel && !hasImageInput) {
+      return { ...params.model, input: ["text", "image"] };
+    }
+    return undefined;
+  }
   if (params.provider !== "openai-codex") {
     return undefined;
   }

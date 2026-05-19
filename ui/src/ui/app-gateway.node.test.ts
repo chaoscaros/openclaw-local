@@ -126,6 +126,7 @@ type TestGatewayHost = Parameters<typeof connectGateway>[0] & {
   chatSideResult: unknown;
   chatSideResultTerminalRuns: Set<string>;
   chatStream: string | null;
+  chatStreamStartedAt: number | null;
   chatToolMessages: Record<string, unknown>[];
   toolStreamById: Map<string, unknown>;
   toolStreamOrder: string[];
