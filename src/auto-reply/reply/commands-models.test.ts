@@ -18,7 +18,11 @@ const modelAddMocks = vi.hoisted(() => ({
   validateAddProvider: vi.fn((provider?: string) =>
     provider === "openai-codex"
       ? { ok: true as const, provider: "openai-codex" }
-      : { ok: false as const, providers: ["openai-codex"], ...(provider ? { knownProvider: provider } : {}) },
+      : {
+          ok: false as const,
+          providers: ["openai-codex"],
+          ...(provider ? { knownProvider: provider } : {}),
+        },
   ),
   addModelToConfig: vi.fn(async () => ({
     provider: "openai-codex",
@@ -145,7 +149,10 @@ describe("handleModelsCommand", () => {
   } as OpenClawConfig;
 
   it("shows /models add usage when provider/model is missing", async () => {
-    const result = await handleModelsCommand(buildModelsParams("/models add", cfg, "discord"), true);
+    const result = await handleModelsCommand(
+      buildModelsParams("/models add", cfg, "discord"),
+      true,
+    );
     expect(result?.shouldContinue).toBe(false);
     expect(result?.reply?.text).toContain("Usage: /models add <provider> <model-id>");
     expect(result?.reply?.text).toContain("openai-codex");
@@ -325,6 +332,39 @@ describe("handleModelsCommand", () => {
       }),
     );
     expect(result?.reply?.text).toContain("target-auth");
+  });
+
+  it("labels OpenAI provider pages with the effective Codex auth provider set", async () => {
+    modelAuthLabelMocks.resolveModelAuthLabel.mockReturnValue(
+      "oauth (openai-codex:user@example.com)",
+    );
+
+    const result = await handleModelsCommand(
+      buildModelsParams(
+        "/models openai",
+        {
+          ...cfg,
+          auth: {
+            order: {
+              openai: ["openai-codex:user@example.com"],
+            },
+          },
+        } as OpenClawConfig,
+        "discord",
+      ),
+      true,
+    );
+
+    expect(result?.reply?.text).toContain(
+      "Models (openai · 🔑 oauth (openai-codex:user@example.com))",
+    );
+    const openaiAuthCall = modelAuthLabelMocks.resolveModelAuthLabel.mock.calls.find(
+      ([params]) => (params as { provider?: string }).provider === "openai",
+    );
+    expect(openaiAuthCall?.[0]).toMatchObject({
+      provider: "openai",
+      acceptedProviderIds: ["openai-codex"],
+    });
   });
 
   it("honors model allowlists and config-only providers", async () => {

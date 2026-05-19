@@ -108,4 +108,36 @@ describe("resolveModelAuthLabel", () => {
 
     expect(label).toBe("oauth (anthropic:oauth)");
   });
+
+  it("uses accepted provider ids before falling back to provider env auth", () => {
+    mocks.ensureAuthProfileStore.mockReturnValue({
+      version: 1,
+      profiles: {
+        "openai-codex:user@example.com": {
+          type: "oauth",
+          provider: "openai-codex",
+          access: "access-token",
+          refresh: "refresh-token",
+          expires: Date.now() + 60_000,
+        },
+      },
+    } as never);
+    mocks.resolveAuthProfileOrder.mockImplementation(({ provider }: { provider?: string }) =>
+      provider === "openai-codex" ? ["openai-codex:user@example.com"] : [],
+    );
+    mocks.resolveAuthProfileDisplayLabel.mockReturnValue("openai-codex:user@example.com");
+    mocks.resolveEnvApiKey.mockReturnValue({
+      apiKey: "env-key-placeholder",
+      source: "env: OPENAI_API_KEY",
+    } as never);
+
+    const label = resolveModelAuthLabel({
+      provider: "openai",
+      acceptedProviderIds: ["openai-codex"],
+      cfg: {},
+    });
+
+    expect(label).toBe("oauth (openai-codex:user@example.com)");
+    expect(mocks.resolveEnvApiKey).not.toHaveBeenCalled();
+  });
 });

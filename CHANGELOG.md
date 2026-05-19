@@ -21,6 +21,7 @@ Docs: https://docs.openclaw.ai
 - Outbound/plugins: fall back from pinned setup-only channel entries to the active runtime registry so plugin channels can still send after setup/status registry swaps.
 - Control UI/chat: render session-scoped tool events so operator pages that attach to an already running session show live tool activity instead of waiting for history reload.
 - Providers/Anthropic: preserve native image input for current Claude model rows when stale local catalog data marks them text-only.
+- Models: show the effective OpenAI/Codex auth profile in `/models` provider headers instead of falling back to the OpenAI env-key label.
 
 ## 2026.4.15
 

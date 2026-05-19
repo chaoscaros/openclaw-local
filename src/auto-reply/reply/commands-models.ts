@@ -212,6 +212,10 @@ function resolveProviderLabel(params: {
 }): string {
   const authLabel = resolveModelAuthLabel({
     provider: params.provider,
+    acceptedProviderIds: resolveAcceptedAuthProviderIdsForModelsHeader({
+      provider: params.provider,
+      cfg: params.cfg,
+    }),
     cfg: params.cfg,
     sessionEntry: params.sessionEntry,
     agentDir: params.agentDir,
@@ -220,6 +224,24 @@ function resolveProviderLabel(params: {
     return params.provider;
   }
   return `${params.provider} · 🔑 ${authLabel}`;
+}
+
+function resolveAcceptedAuthProviderIdsForModelsHeader(params: {
+  provider: string;
+  cfg: OpenClawConfig;
+}): string[] | undefined {
+  if (normalizeProviderId(params.provider) !== "openai") {
+    return undefined;
+  }
+  const order = params.cfg.auth?.order?.openai ?? [];
+  const hasCodexOrder = order.some((profileId) => {
+    const profile = params.cfg.auth?.profiles?.[profileId];
+    return (
+      profileId.trim().toLowerCase().startsWith("openai-codex:") ||
+      normalizeProviderId(profile?.provider ?? "") === "openai-codex"
+    );
+  });
+  return hasCodexOrder ? ["openai-codex"] : undefined;
 }
 
 export function formatModelsAvailableHeader(params: {
@@ -468,10 +490,9 @@ export const handleModelsCommand: CommandHandler = async (params, allowTextComma
     return {
       shouldContinue: false,
       reply: {
-        text: [
-          `✅ Model ${status}: ${outcome.provider}/${outcome.modelId}`,
-          allowlistLine,
-        ].join("\n"),
+        text: [`✅ Model ${status}: ${outcome.provider}/${outcome.modelId}`, allowlistLine].join(
+          "\n",
+        ),
       },
     };
   }

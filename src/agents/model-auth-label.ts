@@ -10,6 +10,7 @@ import { normalizeProviderId } from "./model-selection.js";
 
 export function resolveModelAuthLabel(params: {
   provider?: string;
+  acceptedProviderIds?: string[];
   cfg?: OpenClawConfig;
   sessionEntry?: Partial<Pick<SessionEntry, "authProfileOverride">>;
   agentDir?: string;
@@ -20,35 +21,42 @@ export function resolveModelAuthLabel(params: {
   }
 
   const providerKey = normalizeProviderId(resolvedProvider);
+  const acceptedProviderKeys = [
+    providerKey,
+    ...(params.acceptedProviderIds ?? []).map((provider) => normalizeProviderId(provider)),
+  ].filter((provider, index, all) => provider && all.indexOf(provider) === index);
   const store = ensureAuthProfileStore(params.agentDir, {
     allowKeychainPrompt: false,
   });
   const profileOverride = params.sessionEntry?.authProfileOverride?.trim();
-  const order = resolveAuthProfileOrder({
-    cfg: params.cfg,
-    store,
-    provider: providerKey,
-    preferredProfile: profileOverride,
-  });
-  const candidates = [profileOverride, ...order].filter(Boolean) as string[];
 
-  for (const profileId of candidates) {
-    const profile = store.profiles[profileId];
-    if (!profile || normalizeProviderId(profile.provider) !== providerKey) {
-      continue;
-    }
-    const label = resolveAuthProfileDisplayLabel({
+  for (const acceptedProviderKey of acceptedProviderKeys) {
+    const order = resolveAuthProfileOrder({
       cfg: params.cfg,
       store,
-      profileId,
+      provider: acceptedProviderKey,
+      preferredProfile: profileOverride,
     });
-    if (profile.type === "oauth") {
-      return `oauth${label ? ` (${label})` : ""}`;
+    const candidates = [profileOverride, ...order].filter(Boolean) as string[];
+
+    for (const profileId of candidates) {
+      const profile = store.profiles[profileId];
+      if (!profile || normalizeProviderId(profile.provider) !== acceptedProviderKey) {
+        continue;
+      }
+      const label = resolveAuthProfileDisplayLabel({
+        cfg: params.cfg,
+        store,
+        profileId,
+      });
+      if (profile.type === "oauth") {
+        return `oauth${label ? ` (${label})` : ""}`;
+      }
+      if (profile.type === "token") {
+        return `token${label ? ` (${label})` : ""}`;
+      }
+      return `api-key${label ? ` (${label})` : ""}`;
     }
-    if (profile.type === "token") {
-      return `token${label ? ` (${label})` : ""}`;
-    }
-    return `api-key${label ? ` (${label})` : ""}`;
   }
 
   const envKey = resolveEnvApiKey(providerKey);

@@ -133,13 +133,16 @@ should be split by risk area.
     without waiting for transcript history to reload.
   - Anthropic provider normalization now preserves native image input for
     current Claude rows when stale local catalog data marks them text-only.
+  - `/models openai` provider headers now prefer the effective Codex OAuth
+    profile label when the OpenAI page is backed by openai-codex auth order.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
     `extensions/telegram/src/polling-lease.ts`, `extensions/telegram/src/probe.ts`,
     `extensions/telegram/src/request-timeouts.ts`, `extensions/anthropic/register.runtime.ts`,
-    `extensions/telegram/src/token-fingerprint.ts`,
-    `src/auto-reply/reply/mentions.ts`, `ui/src/ui/app-gateway.ts`.
+    `extensions/telegram/src/token-fingerprint.ts`, `src/agents/model-auth-label.ts`,
+    `src/auto-reply/reply/commands-models.ts`, `src/auto-reply/reply/mentions.ts`,
+    `ui/src/ui/app-gateway.ts`.
 
 ## Deferred
 
