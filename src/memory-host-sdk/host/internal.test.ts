@@ -1,11 +1,13 @@
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildMultimodalChunkForIndexing,
   buildFileEntry,
   chunkMarkdown,
+  ensureDir,
   isMemoryPath,
   listMemoryFiles,
   normalizeExtraMemoryPaths,
@@ -26,6 +28,25 @@ function setupTempDirLifecycle(prefix: string): () => string {
   });
   return () => tmpDir;
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("ensureDir", () => {
+  const getTmpDir = setupTempDirLifecycle("memory-ensure-dir-");
+
+  it("propagates directory creation failures", () => {
+    const mkdirError = new Error("disk full");
+    const targetDir = path.join(getTmpDir(), "blocked");
+    const mkdirSync = vi.spyOn(fsSync, "mkdirSync").mockImplementation(() => {
+      throw mkdirError;
+    });
+
+    expect(() => ensureDir(targetDir)).toThrow(mkdirError);
+    expect(mkdirSync).toHaveBeenCalledWith(targetDir, { recursive: true });
+  });
+});
 
 describe("normalizeExtraMemoryPaths", () => {
   it("trims, resolves, and dedupes paths", () => {

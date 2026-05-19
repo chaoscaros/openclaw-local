@@ -155,6 +155,8 @@ should be split by risk area.
   - Browser CDP profile resolution now keeps a configured `cdpPort` when
     `cdpUrl` omits the port, but still gives explicitly written URL ports
     precedence.
+  - Memory host SDK directory creation now propagates filesystem failures so
+    permission or disk errors are visible at the real source.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -173,7 +175,7 @@ should be split by risk area.
     `extensions/codex/src/app-server/run-attempt.ts`,
     `extensions/codex/src/app-server/thread-lifecycle.ts`, `ui/src/ui/app-gateway.ts`,
     `ui/src/ui/app-render.ts`, `extensions/browser/src/browser/cdp.helpers.ts`,
-    `extensions/browser/src/browser/config.ts`.
+    `extensions/browser/src/browser/config.ts`, `src/memory-host-sdk/host/internal.ts`.
 
 ## Deferred
 

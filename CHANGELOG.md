@@ -29,6 +29,7 @@ Docs: https://docs.openclaw.ai
 - Auto-reply: hydrate current-turn image attachments into queued followups so deferred Codex/agent runs keep the image payload instead of relying only on prompt file references.
 - Control UI: keep collapsed sidebar groups collapsed even when the active page is inside that group.
 - Browser: preserve a profile `cdpPort` when its `cdpUrl` omits a port, while still letting explicitly written URL ports win.
+- Memory: surface directory creation failures from the memory host SDK instead of hiding permission or disk errors until later database work.
 
 ## 2026.4.15
 
