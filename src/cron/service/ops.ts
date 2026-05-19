@@ -23,6 +23,7 @@ import {
 import { locked } from "./locked.js";
 import type { CronServiceState } from "./state.js";
 import { ensureLoaded, persist, warnIfDisabled } from "./store.js";
+import { resolveCronTaskChildSessionKey } from "./task-session-key.js";
 import {
   applyJobResult,
   armTimer,
@@ -452,7 +453,7 @@ function tryCreateManualTaskRun(params: {
       sourceId: params.job.id,
       ownerKey: "",
       scopeKind: "system",
-      childSessionKey: params.job.sessionKey,
+      childSessionKey: resolveCronTaskChildSessionKey(params),
       agentId: params.job.agentId,
       runId,
       label: params.job.name,

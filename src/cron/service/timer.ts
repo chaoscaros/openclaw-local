@@ -34,6 +34,7 @@ import {
 import { locked } from "./locked.js";
 import type { CronEvent, CronServiceState } from "./state.js";
 import { ensureLoaded, persist } from "./store.js";
+import { resolveCronTaskChildSessionKey } from "./task-session-key.js";
 import { DEFAULT_JOB_TIMEOUT_MS, resolveCronJobTimeoutMs } from "./timeout-policy.js";
 
 export { DEFAULT_JOB_TIMEOUT_MS } from "./timeout-policy.js";
@@ -146,7 +147,7 @@ function tryCreateCronTaskRun(params: {
       sourceId: params.job.id,
       ownerKey: "",
       scopeKind: "system",
-      childSessionKey: params.job.sessionKey,
+      childSessionKey: resolveCronTaskChildSessionKey(params),
       agentId: params.job.agentId,
       runId,
       label: params.job.name,

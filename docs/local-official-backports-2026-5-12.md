@@ -135,6 +135,9 @@ should be split by risk area.
     current Claude rows when stale local catalog data marks them text-only.
   - `/models openai` provider headers now prefer the effective Codex OAuth
     profile label when the OpenAI page is backed by openai-codex auth order.
+  - Isolated cron task ledger entries now point at the stable backing cron
+    session, including the local manual-run path, so cleanup and task details can
+    follow the real agent run.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -142,7 +145,8 @@ should be split by risk area.
     `extensions/telegram/src/request-timeouts.ts`, `extensions/anthropic/register.runtime.ts`,
     `extensions/telegram/src/token-fingerprint.ts`, `src/agents/model-auth-label.ts`,
     `src/auto-reply/reply/commands-models.ts`, `src/auto-reply/reply/mentions.ts`,
-    `ui/src/ui/app-gateway.ts`.
+    `src/cron/service/task-session-key.ts`, `src/cron/service/timer.ts`,
+    `src/cron/service/ops.ts`, `ui/src/ui/app-gateway.ts`.
 
 ## Deferred
 

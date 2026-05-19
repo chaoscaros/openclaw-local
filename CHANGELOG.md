@@ -22,6 +22,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/chat: render session-scoped tool events so operator pages that attach to an already running session show live tool activity instead of waiting for history reload.
 - Providers/Anthropic: preserve native image input for current Claude model rows when stale local catalog data marks them text-only.
 - Models: show the effective OpenAI/Codex auth profile in `/models` provider headers instead of falling back to the OpenAI env-key label.
+- Cron: link isolated scheduled task runs to their stable cron session so task status and cleanup can follow the backing agent run.
 
 ## 2026.4.15
 
