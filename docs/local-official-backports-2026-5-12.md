@@ -185,6 +185,9 @@ should be split by risk area.
   - Skill quick validation now rejects empty or whitespace-only `name` and
     `description` frontmatter values instead of accepting a skill with missing
     display metadata.
+  - Browser CLI `evaluate` now accepts `--timeout-ms`, forwards it to the
+    browser action body, and keeps the outer request timeout slightly longer so
+    long-running page functions do not race the transport timeout.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -203,7 +206,10 @@ should be split by risk area.
     `extensions/codex/src/app-server/run-attempt.ts`,
     `extensions/codex/src/app-server/thread-lifecycle.ts`, `ui/src/ui/app-gateway.ts`,
     `ui/src/ui/app-render.ts`, `extensions/browser/src/browser/cdp.helpers.ts`,
-    `extensions/browser/src/browser/config.ts`, `src/memory-host-sdk/host/internal.ts`,
+    `extensions/browser/src/browser/config.ts`,
+    `extensions/browser/src/cli/browser-cli-actions-input/register.form-wait-eval.ts`,
+    `extensions/browser/src/cli/browser-cli-actions-input/shared.ts`,
+    `src/memory-host-sdk/host/internal.ts`,
     `src/agents/session-write-lock-error.ts`, `src/agents/session-write-lock.ts`,
     `src/agents/failover-error.ts`, `src/agents/model-fallback.ts`,
     `src/gateway/server-methods/agent.ts`, `extensions/lmstudio/src/runtime.ts`,

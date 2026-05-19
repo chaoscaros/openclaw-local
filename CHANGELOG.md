@@ -39,6 +39,7 @@ Docs: https://docs.openclaw.ai
 - Gateway/mobile: allow paired iOS/iPadOS and Android clients to refresh same-family OS version metadata without triggering metadata-upgrade approval.
 - Gateway/config: expose `reloadKind` in config schema lookups so clients can distinguish restart-required, hot-reloadable, and no-op fields.
 - Skills: reject empty or whitespace-only skill names and descriptions during quick validation.
+- Browser CLI: add `openclaw browser evaluate --timeout-ms` so long-running page functions can extend both the evaluate action and outer request timeout budgets.
 
 ## 2026.4.15
 
