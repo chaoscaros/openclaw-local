@@ -7,6 +7,7 @@ import {
   type CodexThreadResumeParams,
   type CodexThreadResumeResponse,
   type CodexThreadStartResponse,
+  type CodexSandboxPolicy,
   type CodexTurnStartParams,
   type CodexUserInput,
   type JsonObject,
@@ -160,6 +161,7 @@ export function buildTurnStartParams(
     threadId: string;
     cwd: string;
     appServer: CodexAppServerRuntimeOptions;
+    sandboxPolicy?: CodexSandboxPolicy;
   },
 ): CodexTurnStartParams {
   return {
@@ -168,6 +170,7 @@ export function buildTurnStartParams(
     cwd: options.cwd,
     approvalPolicy: resolveApprovalPolicyForRun(params, options.appServer),
     approvalsReviewer: options.appServer.approvalsReviewer,
+    ...(options.sandboxPolicy !== undefined ? { sandboxPolicy: options.sandboxPolicy } : {}),
     model: params.modelId,
     ...(options.appServer.serviceTier ? { serviceTier: options.appServer.serviceTier } : {}),
     effort: resolveReasoningEffort(params.thinkLevel),

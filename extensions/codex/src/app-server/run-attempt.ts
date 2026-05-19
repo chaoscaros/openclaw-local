@@ -20,11 +20,16 @@ import {
 } from "openclaw/plugin-sdk/agent-harness";
 import { handleCodexAppServerApprovalRequest } from "./approval-bridge.js";
 import { isCodexAppServerApprovalRequest, type CodexAppServerClient } from "./client.js";
-import { resolveCodexAppServerRuntimeOptions, type CodexAppServerStartOptions } from "./config.js";
+import {
+  resolveCodexAppServerRuntimeOptions,
+  type CodexAppServerRuntimeOptions,
+  type CodexAppServerStartOptions,
+} from "./config.js";
 import { createCodexDynamicToolBridge } from "./dynamic-tools.js";
 import { CodexAppServerEventProjector } from "./event-projector.js";
 import {
   isJsonObject,
+  type CodexSandboxPolicy,
   type CodexServerNotification,
   type CodexDynamicToolCallParams,
   type CodexTurnStartResponse,
@@ -41,6 +46,7 @@ type CodexAppServerClientFactory = (
 ) => Promise<CodexAppServerClient>;
 type OpenClawCodingToolsFactory = typeof createOpenClawCodingTools;
 type DynamicToolBuildResult = Awaited<ReturnType<AnyAgentTool["execute"]>>;
+type OpenClawSandboxContext = Awaited<ReturnType<typeof resolveSandboxContext>>;
 
 let clientFactory: CodexAppServerClientFactory = (startOptions) =>
   getSharedCodexAppServerClient({ startOptions });
@@ -68,6 +74,11 @@ export async function runCodexAppServerAttempt(
       : sandbox.workspaceDir
     : resolvedWorkspace;
   await fs.mkdir(effectiveWorkspace, { recursive: true });
+  const codexSandboxPolicy = resolveCodexAppServerSandboxPolicyForOpenClawSandbox(
+    appServer,
+    sandbox,
+    effectiveWorkspace,
+  );
 
   const runAbortController = new AbortController();
   const abortFromUpstream = () => {
@@ -191,6 +202,7 @@ export async function runCodexAppServerAttempt(
         threadId: thread.threadId,
         cwd: effectiveWorkspace,
         appServer,
+        sandboxPolicy: codexSandboxPolicy,
       }),
       { timeoutMs: params.timeoutMs, signal: runAbortController.signal },
     );
@@ -433,9 +445,7 @@ function isOpenClawShellDynamicToolName(name: string): boolean {
   return normalizedName === "exec" || normalizedName === "process";
 }
 
-function resolveSandboxShellBackendId(
-  sandbox: Awaited<ReturnType<typeof resolveSandboxContext>>,
-): string | undefined {
+function resolveSandboxShellBackendId(sandbox: OpenClawSandboxContext): string | undefined {
   if (!sandbox?.enabled) {
     return undefined;
   }
@@ -444,6 +454,30 @@ function resolveSandboxShellBackendId(
     return undefined;
   }
   return backendId;
+}
+
+function resolveCodexAppServerSandboxPolicyForOpenClawSandbox(
+  appServer: CodexAppServerRuntimeOptions,
+  sandbox: OpenClawSandboxContext,
+  cwd: string,
+): CodexSandboxPolicy | undefined {
+  if (!sandbox?.enabled || appServer.sandbox === "read-only") {
+    return undefined;
+  }
+  return {
+    type: "workspaceWrite",
+    writableRoots: [cwd],
+    networkAccess: codexNetworkAccessForOpenClawSandbox(sandbox),
+    excludeTmpdirEnvVar: false,
+    excludeSlashTmp: false,
+  };
+}
+
+function codexNetworkAccessForOpenClawSandbox(sandbox: OpenClawSandboxContext): boolean {
+  if (!sandbox?.enabled || sandbox.backendId !== "docker") {
+    return true;
+  }
+  return sandbox.docker.network.trim().toLowerCase() !== "none";
 }
 
 function createSandboxExecDynamicTool(execTool: AnyAgentTool, backendId: string): AnyAgentTool {
@@ -640,6 +674,7 @@ export const __testing = {
   buildDynamicTools,
   addSandboxShellDynamicToolsIfAvailable,
   filterDynamicToolsForAllowlist,
+  resolveCodexAppServerSandboxPolicyForOpenClawSandbox,
   setCodexAppServerClientFactoryForTests(factory: CodexAppServerClientFactory): void {
     clientFactory = factory;
   },

@@ -92,10 +92,13 @@ export type CodexTurnStartParams = {
   cwd?: string | null;
   approvalPolicy?: "never" | "on-request" | "on-failure" | "untrusted";
   approvalsReviewer?: "user" | "guardian_subagent";
+  sandboxPolicy?: CodexSandboxPolicy;
   model?: string | null;
   serviceTier?: string | null;
   effort?: "minimal" | "low" | "medium" | "high" | "xhigh" | null;
 };
+
+export type CodexSandboxPolicy = string | JsonObject;
 
 export type CodexTurnSteerParams = {
   threadId: string;

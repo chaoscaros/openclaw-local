@@ -72,7 +72,7 @@ function createTestDynamicTool(name: string, description?: string): AnyAgentTool
   } as AnyAgentTool;
 }
 
-function createSandboxContext(backendId: string) {
+function createSandboxContext(backendId: string, options: { network?: string } = {}) {
   return {
     enabled: true,
     backendId,
@@ -84,7 +84,7 @@ function createSandboxContext(backendId: string) {
     runtimeLabel: backendId,
     containerName: "sandbox-1",
     containerWorkdir: "/workspace",
-    docker: {},
+    docker: { network: options.network ?? "none" },
     tools: {},
     browserAllowHostControl: false,
   } as never;
@@ -712,6 +712,86 @@ describe("runCodexAppServerAttempt", () => {
         serviceTier: "priority",
       }),
     );
+  });
+
+  it("passes explicit sandbox policy to Codex turn start params", () => {
+    const params = createParams("/tmp/session.jsonl", "/tmp/workspace");
+    const appServer = {
+      start: {
+        transport: "stdio" as const,
+        command: "codex",
+        args: ["app-server", "--listen", "stdio://"],
+        headers: {},
+      },
+      requestTimeoutMs: 60_000,
+      approvalPolicy: "on-request" as const,
+      approvalsReviewer: "user" as const,
+      sandbox: "danger-full-access" as const,
+    };
+    const sandboxPolicy = {
+      type: "workspaceWrite",
+      writableRoots: ["/tmp/workspace"],
+      networkAccess: false,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    };
+
+    expect(
+      buildTurnStartParams(params, {
+        threadId: "thread-1",
+        cwd: "/tmp/workspace",
+        appServer,
+        sandboxPolicy,
+      }),
+    ).toEqual(expect.objectContaining({ sandboxPolicy }));
+  });
+
+  it("preserves OpenClaw sandbox egress in Codex app-server sandbox policy", () => {
+    const appServer = {
+      start: {
+        transport: "stdio" as const,
+        command: "codex",
+        args: ["app-server", "--listen", "stdio://"],
+        headers: {},
+      },
+      requestTimeoutMs: 60_000,
+      approvalPolicy: "on-request" as const,
+      approvalsReviewer: "user" as const,
+      sandbox: "workspace-write" as const,
+    };
+
+    expect(
+      __testing.resolveCodexAppServerSandboxPolicyForOpenClawSandbox(
+        appServer,
+        createSandboxContext("docker", { network: "none" }),
+        "/tmp/workspace",
+      ),
+    ).toEqual({
+      type: "workspaceWrite",
+      writableRoots: ["/tmp/workspace"],
+      networkAccess: false,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    });
+    expect(
+      __testing.resolveCodexAppServerSandboxPolicyForOpenClawSandbox(
+        appServer,
+        createSandboxContext("ssh"),
+        "/tmp/workspace",
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        type: "workspaceWrite",
+        networkAccess: true,
+      }),
+    );
+    expect(
+      __testing.resolveCodexAppServerSandboxPolicyForOpenClawSandbox(
+        { ...appServer, sandbox: "read-only" },
+        createSandboxContext("docker", { network: "bridge" }),
+        "/tmp/workspace",
+      ),
+    ).toBeUndefined();
   });
 
   it("adds sandbox shell dynamic tools for non-Docker sandbox backends", async () => {

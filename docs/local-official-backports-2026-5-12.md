@@ -143,6 +143,9 @@ should be split by risk area.
   - Codex app-server now exposes non-Docker OpenClaw sandbox shell access under
     `sandbox_exec` / `sandbox_process`, preserving native Codex shell naming
     while keeping OpenClaw sandbox sessions usable from app-server turns.
+  - Codex app-server turn start now mirrors the active OpenClaw sandbox writable
+    root and network-egress policy, so Docker `network=none` continues to hold
+    even though the app-server process itself runs on the gateway host.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -152,7 +155,9 @@ should be split by risk area.
     `src/auto-reply/reply/commands-models.ts`, `src/auto-reply/reply/mentions.ts`,
     `src/cron/service/task-session-key.ts`, `src/cron/service/timer.ts`,
     `src/cron/service/ops.ts`, `src/cli/skills-cli.format.ts`,
-    `extensions/codex/src/app-server/run-attempt.ts`, `ui/src/ui/app-gateway.ts`.
+    `extensions/codex/src/app-server/protocol.ts`,
+    `extensions/codex/src/app-server/run-attempt.ts`,
+    `extensions/codex/src/app-server/thread-lifecycle.ts`, `ui/src/ui/app-gateway.ts`.
 
 ## Deferred
 
