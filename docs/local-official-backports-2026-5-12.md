@@ -179,6 +179,9 @@ should be split by risk area.
   - `config.schema.lookup` now includes optional `reloadKind` metadata for the
     requested path and child fields, letting local UI/CLI surfaces tell users
     whether a config edit is hot-reloadable, no-op, or restart-required.
+  - Skill quick validation now rejects empty or whitespace-only `name` and
+    `description` frontmatter values instead of accepting a skill with missing
+    display metadata.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
