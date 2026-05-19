@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { listAgentIds, resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
 import type { AgentInternalEvent } from "../../agents/internal-events.js";
 import {
@@ -18,6 +19,8 @@ import {
   resolveAgentIdFromSessionKey,
   resolveExplicitAgentSessionKey,
   resolveAgentMainSessionKey,
+  resolveSessionFilePath,
+  resolveSessionFilePathOptions,
   type SessionEntry,
   updateSessionStore,
 } from "../../config/sessions.js";
@@ -101,6 +104,26 @@ function resolveAllowModelOverrideFromClient(
 
 function resolveCanResetSessionFromClient(client: GatewayRequestHandlerOptions["client"]): boolean {
   return resolveSenderIsOwnerFromClient(client);
+}
+
+function isFailedSessionTranscriptMissing(params: {
+  entry?: SessionEntry;
+  storePath?: string;
+  canonicalKey: string;
+}): boolean {
+  const sessionId = normalizeOptionalString(params.entry?.sessionId);
+  if (params.entry?.status !== "failed" || !sessionId) {
+    return false;
+  }
+  try {
+    const sessionPathOpts = resolveSessionFilePathOptions({
+      storePath: params.storePath,
+      agentId: resolveAgentIdFromSessionKey(params.canonicalKey),
+    });
+    return !existsSync(resolveSessionFilePath(sessionId, params.entry, sessionPathOpts));
+  } catch {
+    return true;
+  }
 }
 
 async function runSessionResetFromAgent(params: {
@@ -557,7 +580,15 @@ export const agentHandlers: GatewayRequestHandlers = {
       cfgForAgent = cfg;
       isNewSession = !entry;
       const now = Date.now();
-      const sessionId = entry?.sessionId ?? randomUUID();
+      const failedSessionTranscriptMissing = isFailedSessionTranscriptMissing({
+        entry,
+        storePath,
+        canonicalKey,
+      });
+      const sessionId = failedSessionTranscriptMissing
+        ? randomUUID()
+        : (entry?.sessionId ?? randomUUID());
+      const rotatedSessionId = Boolean(entry?.sessionId && entry.sessionId !== sessionId);
       const labelValue = normalizeOptionalString(request.label) || entry?.label;
       const sessionAgent = resolveAgentIdFromSessionKey(canonicalKey);
       spawnedByValue = canonicalizeSpawnedByForAgent(cfg, sessionAgent, entry?.spawnedBy);
@@ -626,6 +657,16 @@ export const agentHandlers: GatewayRequestHandlers = {
         groupId: resolvedGroupId ?? entry?.groupId,
         groupChannel: resolvedGroupChannel ?? entry?.groupChannel,
         space: resolvedGroupSpace ?? entry?.space,
+        ...(rotatedSessionId
+          ? {
+              status: undefined,
+              startedAt: undefined,
+              endedAt: undefined,
+              runtimeMs: undefined,
+              abortedLastRun: undefined,
+              sessionFile: undefined,
+            }
+          : {}),
         cliSessionIds: entry?.cliSessionIds,
         claudeCliSessionId: entry?.claudeCliSessionId,
       };

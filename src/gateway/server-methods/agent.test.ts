@@ -469,6 +469,72 @@ describe("gateway agent handler", () => {
     expect(capturedEntry?.cliSessionIds).toEqual(existingCliSessionIds);
     expect(capturedEntry?.claudeCliSessionId).toBe(existingClaudeCliSessionId);
   });
+
+  it("rotates a failed session instead of resuming when its transcript is missing", async () => {
+    mockMainSessionEntry({
+      sessionId: "failed-missing-session-id",
+      sessionFile: "/tmp/openclaw/missing/failed-missing-session-id.jsonl",
+      status: "failed",
+      startedAt: 1,
+      endedAt: 2,
+      runtimeMs: 1,
+      abortedLastRun: true,
+    });
+
+    const capturedEntry = await runMainAgentAndCaptureEntry("test-idem-failed-missing");
+    const call = readLastAgentCommandCall();
+
+    expect(call?.sessionId).not.toBe("failed-missing-session-id");
+    expect(capturedEntry?.sessionId).not.toBe("failed-missing-session-id");
+    expect(capturedEntry?.status).toBeUndefined();
+    expect(capturedEntry?.startedAt).toBeUndefined();
+    expect(capturedEntry?.endedAt).toBeUndefined();
+    expect(capturedEntry?.runtimeMs).toBeUndefined();
+    expect(capturedEntry?.abortedLastRun).toBeUndefined();
+    expect(capturedEntry?.sessionFile).toBeUndefined();
+  });
+
+  it("rotates a failed session when its default transcript is missing", async () => {
+    mockMainSessionEntry({
+      sessionId: "failed-missing-default-session-id",
+      status: "failed",
+    });
+
+    const capturedEntry = await runMainAgentAndCaptureEntry("test-idem-failed-missing-default");
+    const call = readLastAgentCommandCall();
+
+    expect(call?.sessionId).not.toBe("failed-missing-default-session-id");
+    expect(capturedEntry?.sessionId).not.toBe("failed-missing-default-session-id");
+    expect(capturedEntry?.status).toBeUndefined();
+    expect(capturedEntry?.sessionFile).toBeUndefined();
+  });
+
+  it("keeps a failed session reusable when its default transcript exists", async () => {
+    await withTempDir({ prefix: "openclaw-gateway-failed-default-session-file-" }, async (root) => {
+      const sessionsDir = `${root}/sessions`;
+      await fs.mkdir(sessionsDir, { recursive: true });
+      await fs.writeFile(`${sessionsDir}/failed-present-default-session-id.jsonl`, "", "utf8");
+      mocks.loadSessionEntry.mockReturnValue({
+        cfg: {},
+        storePath: `${sessionsDir}/sessions.json`,
+        entry: {
+          sessionId: "failed-present-default-session-id",
+          status: "failed",
+          updatedAt: Date.now(),
+        },
+        canonicalKey: "agent:main:main",
+      });
+
+      const capturedEntry = await runMainAgentAndCaptureEntry("test-idem-failed-present-default");
+      const call = readLastAgentCommandCall();
+
+      expect(call?.sessionId).toBe("failed-present-default-session-id");
+      expect(capturedEntry?.sessionId).toBe("failed-present-default-session-id");
+      expect(capturedEntry?.status).toBe("failed");
+      expect(capturedEntry?.sessionFile).toBeUndefined();
+    });
+  });
+
   it("reactivates completed subagent sessions and broadcasts send updates", async () => {
     const childSessionKey = "agent:main:subagent:followup";
     const completedRun = {
