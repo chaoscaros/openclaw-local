@@ -128,13 +128,16 @@ should be split by risk area.
     the monitor so the polling bot can skip redundant identity probes.
   - Captionless or empty-text group media can match catch-all mention patterns,
     which makes media-only mention rules viable.
+  - Control UI now routes session-scoped tool events into the live tool stream,
+    so pages that attach to an already running session can render tool activity
+    without waiting for transcript history to reload.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
     `extensions/telegram/src/polling-lease.ts`, `extensions/telegram/src/probe.ts`,
     `extensions/telegram/src/request-timeouts.ts`,
     `extensions/telegram/src/token-fingerprint.ts`,
-    `src/auto-reply/reply/mentions.ts`.
+    `src/auto-reply/reply/mentions.ts`, `ui/src/ui/app-gateway.ts`.
 
 ## Deferred
 
