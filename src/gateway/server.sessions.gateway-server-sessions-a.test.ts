@@ -2210,6 +2210,106 @@ describe("gateway server sessions", () => {
     ws.close();
   });
 
+  test("sessions.reset clears CLI session bindings for normal sessions", async () => {
+    const { storePath } = await createSessionStoreDir();
+    await writeSessionStore({
+      entries: {
+        main: {
+          sessionId: "sess-with-cli-binding",
+          updatedAt: Date.now(),
+          claudeCliSessionId: "claude-cli-old-session",
+          cliSessionBindings: {
+            "claude-cli": { sessionId: "claude-cli-old-session" },
+          },
+          cliSessionIds: { "claude-cli": "claude-cli-old-session" },
+        },
+      },
+    });
+
+    const { ws } = await openClient();
+    const reset = await rpcReq<{
+      ok: true;
+      key: string;
+      entry: {
+        sessionId?: string;
+        claudeCliSessionId?: string;
+        cliSessionBindings?: Record<string, unknown>;
+        cliSessionIds?: Record<string, string>;
+      };
+    }>(ws, "sessions.reset", { key: "main" });
+
+    expect(reset.ok).toBe(true);
+    expect(reset.payload?.entry.sessionId).not.toBe("sess-with-cli-binding");
+    expect(reset.payload?.entry.claudeCliSessionId).toBeUndefined();
+    expect(reset.payload?.entry.cliSessionBindings).toBeUndefined();
+    expect(reset.payload?.entry.cliSessionIds).toBeUndefined();
+
+    const store = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
+      string,
+      {
+        claudeCliSessionId?: string;
+        cliSessionBindings?: Record<string, unknown>;
+        cliSessionIds?: Record<string, string>;
+      }
+    >;
+    expect(store["agent:main:main"]?.claudeCliSessionId).toBeUndefined();
+    expect(store["agent:main:main"]?.cliSessionBindings).toBeUndefined();
+    expect(store["agent:main:main"]?.cliSessionIds).toBeUndefined();
+
+    ws.close();
+  });
+
+  test("sessions.reset clears CLI session bindings for parent-linked non-subagent sessions", async () => {
+    const { storePath } = await createSessionStoreDir();
+    await writeSessionStore({
+      entries: {
+        "dashboard:child:42": {
+          sessionId: "sess-dashboard-child",
+          updatedAt: Date.now(),
+          parentSessionKey: "agent:main:main",
+          claudeCliSessionId: "claude-cli-dashboard-session",
+          cliSessionBindings: {
+            "claude-cli": { sessionId: "claude-cli-dashboard-session" },
+          },
+          cliSessionIds: { "claude-cli": "claude-cli-dashboard-session" },
+        },
+      },
+    });
+
+    const { ws } = await openClient();
+    const reset = await rpcReq<{
+      ok: true;
+      key: string;
+      entry: {
+        sessionId?: string;
+        claudeCliSessionId?: string;
+        cliSessionBindings?: Record<string, unknown>;
+        cliSessionIds?: Record<string, string>;
+      };
+    }>(ws, "sessions.reset", { key: "dashboard:child:42" });
+
+    expect(reset.ok).toBe(true);
+    expect(reset.payload?.entry.sessionId).not.toBe("sess-dashboard-child");
+    expect(reset.payload?.entry.claudeCliSessionId).toBeUndefined();
+    expect(reset.payload?.entry.cliSessionBindings).toBeUndefined();
+    expect(reset.payload?.entry.cliSessionIds).toBeUndefined();
+
+    const store = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
+      string,
+      {
+        claudeCliSessionId?: string;
+        cliSessionBindings?: Record<string, unknown>;
+        cliSessionIds?: Record<string, string>;
+      }
+    >;
+    const nextEntry = store["agent:main:dashboard:child:42"];
+    expect(nextEntry?.claudeCliSessionId).toBeUndefined();
+    expect(nextEntry?.cliSessionBindings).toBeUndefined();
+    expect(nextEntry?.cliSessionIds).toBeUndefined();
+
+    ws.close();
+  });
+
   test("sessions.preview resolves legacy mixed-case main alias with custom mainKey", async () => {
     const { dir, storePath } = await createSessionStoreDir();
     testState.agentsConfig = { list: [{ id: "ops", default: true }] };

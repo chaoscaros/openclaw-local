@@ -7,6 +7,7 @@ import { getAcpRuntimeBackend } from "../acp/runtime/registry.js";
 import { readAcpSessionEntry, upsertAcpSessionMeta } from "../acp/runtime/session-meta.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { clearBootstrapSnapshot } from "../agents/bootstrap-cache.js";
+import { clearAllCliSessions } from "../agents/cli-session.js";
 import { abortEmbeddedPiRun, waitForEmbeddedPiRunEnd } from "../agents/pi-embedded.js";
 import { stopSubagentsForRequester } from "../auto-reply/reply/abort.js";
 import { clearSessionQueues } from "../auto-reply/reply/queue.js";
@@ -646,6 +647,11 @@ export async function performGatewaySessionReset(params: {
       totalTokens: 0,
       totalTokensFresh: true,
     };
+    // Normal resets should start a fresh provider-side CLI conversation; spawned
+    // subagents keep bindings so orchestrated resets do not lose continuity.
+    if (!isSubagentSessionKey(primaryKey)) {
+      clearAllCliSessions(nextEntry);
+    }
     store[primaryKey] = nextEntry;
     return nextEntry;
   });
