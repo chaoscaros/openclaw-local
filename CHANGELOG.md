@@ -30,6 +30,7 @@ Docs: https://docs.openclaw.ai
 - Control UI: keep collapsed sidebar groups collapsed even when the active page is inside that group.
 - Browser: preserve a profile `cdpPort` when its `cdpUrl` omits a port, while still letting explicitly written URL ports win.
 - Memory: surface directory creation failures from the memory host SDK instead of hiding permission or disk errors until later database work.
+- Memory/search: scan fallback vector rows in bounded batches and yield between batches so large memory indexes do not block the Node.js event loop when sqlite-vec is unavailable.
 - Agents/failover: stop treating local session lock and embedded takeover coordination errors as provider/model failures, avoiding misleading fallback retries when the same session is already being written.
 - Agents: emit strict-agentic execution-contract diagnostics only when the planning-only retry path actually triggers.
 - Gateway/sessions: rotate failed agent sessions whose transcript file is missing instead of trying to resume stale session IDs with no backing transcript.

@@ -9,6 +9,13 @@ const vectorToBlob = (embedding: number[]): Buffer =>
   Buffer.from(new Float32Array(embedding).buffer);
 const FTS_QUERY_TOKEN_RE = /[\p{L}\p{N}_]+/gu;
 const SHORT_CJK_TRIGRAM_RE = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\u3131-\u3163]/u;
+const FALLBACK_VECTOR_BATCH_SIZE = 256;
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+}
 
 export type SearchSource = string;
 
@@ -158,29 +165,96 @@ export async function searchVector(params: {
     }));
   }
 
-  const candidates = listChunks({
+  return await searchChunksByEmbedding({
     db: params.db,
     providerModel: params.providerModel,
     sourceFilter: params.sourceFilterChunks,
+    queryVec: params.queryVec,
+    limit: params.limit,
+    snippetMaxChars: params.snippetMaxChars,
   });
-  const scored = candidates
-    .map((chunk) => ({
-      chunk,
-      score: cosineSimilarity(params.queryVec, chunk.embedding),
-    }))
-    .filter((entry) => Number.isFinite(entry.score));
-  return scored
-    .toSorted((a, b) => b.score - a.score)
-    .slice(0, params.limit)
-    .map((entry) => ({
-      id: entry.chunk.id,
-      path: entry.chunk.path,
-      startLine: entry.chunk.startLine,
-      endLine: entry.chunk.endLine,
-      score: entry.score,
-      snippet: truncateUtf16Safe(entry.chunk.text, params.snippetMaxChars),
-      source: entry.chunk.source,
-    }));
+}
+
+async function searchChunksByEmbedding(params: {
+  db: DatabaseSync;
+  providerModel: string;
+  sourceFilter: { sql: string; params: SearchSource[] };
+  queryVec: number[];
+  limit: number;
+  snippetMaxChars: number;
+}): Promise<SearchRowResult[]> {
+  if (params.limit <= 0) {
+    return [];
+  }
+  const stmt = params.db.prepare(
+    `SELECT rowid, id, path, start_line, end_line, text, embedding, source\n` +
+      `  FROM chunks\n` +
+      ` WHERE model = ? AND rowid > ?${params.sourceFilter.sql}\n` +
+      ` ORDER BY rowid ASC\n` +
+      ` LIMIT ?`,
+  );
+  type ChunkEmbeddingRow = {
+    rowid: number | bigint;
+    id: string;
+    path: string;
+    start_line: number;
+    end_line: number;
+    text: string;
+    embedding: string;
+    source: SearchSource;
+  };
+
+  const topResults: SearchRowResult[] = [];
+  let lastRowid = 0;
+  while (true) {
+    const batch = stmt.all(
+      params.providerModel,
+      lastRowid,
+      ...params.sourceFilter.params,
+      FALLBACK_VECTOR_BATCH_SIZE,
+    ) as ChunkEmbeddingRow[];
+    if (batch.length === 0) {
+      break;
+    }
+
+    for (const row of batch) {
+      const score = cosineSimilarity(params.queryVec, parseEmbedding(row.embedding));
+      if (!Number.isFinite(score)) {
+        continue;
+      }
+      const result: SearchRowResult = {
+        id: row.id,
+        path: row.path,
+        startLine: row.start_line,
+        endLine: row.end_line,
+        score,
+        snippet: truncateUtf16Safe(row.text, params.snippetMaxChars),
+        source: row.source,
+      };
+      if (topResults.length < params.limit) {
+        topResults.push(result);
+        if (topResults.length === params.limit) {
+          topResults.sort((a, b) => b.score - a.score);
+        }
+        continue;
+      }
+      const lowest = topResults.at(-1);
+      if (lowest && result.score > lowest.score) {
+        topResults[topResults.length - 1] = result;
+        topResults.sort((a, b) => b.score - a.score);
+      }
+    }
+
+    const nextRowid = batch.at(-1)?.rowid;
+    lastRowid = typeof nextRowid === "bigint" ? Number(nextRowid) : (nextRowid ?? lastRowid);
+    if (batch.length < FALLBACK_VECTOR_BATCH_SIZE) {
+      break;
+    }
+    await yieldToEventLoop();
+  }
+
+  topResults.sort((a, b) => b.score - a.score);
+  return topResults;
 }
 
 export function listChunks(params: {

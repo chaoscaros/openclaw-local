@@ -157,6 +157,9 @@ should be split by risk area.
     precedence.
   - Memory host SDK directory creation now propagates filesystem failures so
     permission or disk errors are visible at the real source.
+  - Memory-core fallback vector search now scans chunk embeddings in bounded
+    rowid batches and yields between full batches, avoiding long Node.js
+    event-loop stalls when sqlite-vec is unavailable or unusable.
   - Session write-lock timeouts and embedded attempt takeover errors now stay
     classified as local runtime coordination failures, so model fallback does
     not retry every candidate against the same locked session while still
