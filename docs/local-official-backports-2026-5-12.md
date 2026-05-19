@@ -194,6 +194,9 @@ should be split by risk area.
   - Control UI markdown rendering now highlights common code block languages
     using the existing WebChat code-block wrapper, while keeping local copy and
     JSON-collapse controls intact.
+  - Update CLI EACCES recovery hints now tell supervised-install operators to
+    stop the Gateway before sudo/manual npm replacement and include the
+    reinstall/restart outline, with matching install documentation.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -224,7 +227,9 @@ should be split by risk area.
     `extensions/lmstudio/src/setup.ts`,
     `src/gateway/server/ws-connection/message-handler.ts`,
     `ui/src/ui/markdown.ts`, `ui/src/styles/components.css`,
-    `ui/src/types/highlight-js-subpaths.d.ts`.
+    `ui/src/types/highlight-js-subpaths.d.ts`,
+    `src/cli/update-cli/progress.ts`, `src/cli/update-cli/progress.test.ts`,
+    `docs/install/updating.md`.
 
 ## Deferred
 

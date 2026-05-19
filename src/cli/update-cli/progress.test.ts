@@ -64,6 +64,10 @@ describe("inferUpdateFailureHints", () => {
     const hints = inferUpdateFailureHints(result);
     expect(hints.join("\n")).toContain("EACCES");
     expect(hints.join("\n")).toContain("npm config set prefix ~/.local");
+    expect(hints.join("\n")).toContain("stop the Gateway first");
+    expect(hints.join("\n")).toContain("<system-npm>");
+    expect(hints.join("\n")).toContain("gateway install --force");
+    expect(hints.join("\n")).toContain("gateway restart");
   });
 
   it("returns native optional dependency hint for node-gyp failures", () => {
