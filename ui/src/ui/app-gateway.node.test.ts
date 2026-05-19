@@ -196,6 +196,7 @@ function createHost(): TestGatewayHost {
     chatStream: null,
     chatStreamStartedAt: null,
     chatRunId: null,
+    agentLifecycleChatRunId: null,
     chatSideResult: null,
     chatSending: false,
     toolStreamById: new Map(),
@@ -681,6 +682,133 @@ describe("connectGateway", () => {
     });
 
     expect(loadTaskModeDataMock).not.toHaveBeenCalled();
+  });
+
+  it("shows chat pending state for active-session agent lifecycle runs when the chat run was cleared", () => {
+    const { client, host } = connectHostGateway();
+
+    client.emitEvent({
+      event: "agent",
+      payload: {
+        runId: "agent-dev-run-1",
+        seq: 1,
+        stream: "lifecycle",
+        ts: 1,
+        sessionKey: "main",
+        data: { phase: "start" },
+      },
+    });
+
+    expect(host.chatRunId).toBe("agent-dev-run-1");
+    expect(host.chatStream).toBe("");
+    expect(host.chatStreamStartedAt).toEqual(expect.any(Number));
+    expect(host.agentLifecycleChatRunId).toBe("agent-dev-run-1");
+
+    client.emitEvent({
+      event: "agent",
+      payload: {
+        runId: "agent-dev-run-1",
+        seq: 2,
+        stream: "lifecycle",
+        ts: 2,
+        sessionKey: "main",
+        data: { phase: "end" },
+      },
+    });
+
+    expect(host.chatRunId).toBeNull();
+    expect(host.chatStream).toBeNull();
+    expect(host.chatStreamStartedAt).toBeNull();
+    expect(host.agentLifecycleChatRunId).toBeNull();
+  });
+
+  it("does not show chat pending state for another session's agent lifecycle run", () => {
+    const { client, host } = connectHostGateway();
+
+    client.emitEvent({
+      event: "agent",
+      payload: {
+        runId: "agent-dev-run-other",
+        seq: 1,
+        stream: "lifecycle",
+        ts: 1,
+        sessionKey: "other-session",
+        data: { phase: "start" },
+      },
+    });
+
+    expect(host.chatRunId).toBeNull();
+    expect(host.chatStream).toBeNull();
+    expect(host.agentLifecycleChatRunId).toBeNull();
+  });
+
+  it("records a lifecycle run without replacing an already tracked chat run", () => {
+    const { client, host } = connectHostGateway();
+    host.chatRunId = "chat-run-active";
+    host.chatStream = "";
+
+    client.emitEvent({
+      event: "agent",
+      payload: {
+        runId: "agent-dev-run-2",
+        seq: 1,
+        stream: "lifecycle",
+        ts: 1,
+        sessionKey: "main",
+        data: { phase: "start" },
+      },
+    });
+
+    expect(host.chatRunId).toBe("chat-run-active");
+    expect(host.agentLifecycleChatRunId).toBe("agent-dev-run-2");
+  });
+
+  it("restores chat pending state when an early chat final clears the initial run", () => {
+    const { client, host } = connectHostGateway();
+    host.chatRunId = "chat-run-initial";
+    host.chatStream = "";
+
+    client.emitEvent({
+      event: "agent",
+      payload: {
+        runId: "agent-dev-run-3",
+        seq: 1,
+        stream: "lifecycle",
+        ts: 1,
+        sessionKey: "main",
+        data: { phase: "start" },
+      },
+    });
+
+    client.emitEvent({
+      event: "chat",
+      payload: {
+        runId: "chat-run-initial",
+        sessionKey: "main",
+        state: "final",
+      },
+    });
+
+    expect(host.chatRunId).toBe("agent-dev-run-3");
+    expect(host.chatStream).toBe("");
+    expect(host.chatStreamStartedAt).toEqual(expect.any(Number));
+    expect(host.agentLifecycleChatRunId).toBe("agent-dev-run-3");
+
+    client.emitEvent({
+      event: "agent",
+      payload: {
+        runId: "agent-dev-run-3",
+        seq: 2,
+        stream: "lifecycle",
+        ts: 2,
+        sessionKey: "main",
+        data: { phase: "end" },
+      },
+    });
+
+    expect(host.chatRunId).toBeNull();
+    expect(host.chatStream).toBeNull();
+    expect(host.agentLifecycleChatRunId).toBeNull();
   });
 
   it.each(["normal", "task"] as const)(

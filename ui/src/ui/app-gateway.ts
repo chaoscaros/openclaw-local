@@ -102,6 +102,7 @@ type GatewayHost = {
   sessionKey: string;
   sessionsResult?: SessionsListResult | null;
   chatRunId: string | null;
+  agentLifecycleChatRunId?: string | null;
   refreshSessionsAfterChat: Set<string>;
   taskCarryoverAfterChatByRun: Map<string, { taskId: string; sourceSessionKey: string }>;
   devExecuteCarryoverAfterChatByRun: Map<
@@ -311,6 +312,7 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
       // Reset orphaned chat run state from before disconnect.
       // Any in-flight run's final event was lost during the disconnect window.
       host.chatRunId = null;
+      host.agentLifecycleChatRunId = null;
       (host as unknown as { chatStream: string | null }).chatStream = null;
       (host as unknown as { chatStreamStartedAt: number | null }).chatStreamStartedAt = null;
       (host as GatewayHostWithSideResults).chatSideResultTerminalRuns?.clear();
@@ -588,6 +590,78 @@ function maybeCaptureChangeReviewFromAgentMutationEvent(
   void host.captureChangeReview?.(payload.sessionKey ?? host.sessionKey, payload.runId);
 }
 
+function syncChatPendingFromAgentLifecycle(
+  host: GatewayHost,
+  payload: AgentEventPayload | undefined,
+) {
+  if (!payload || payload.stream !== "lifecycle") {
+    return;
+  }
+  const phase = typeof payload.data?.phase === "string" ? payload.data.phase : "";
+  if (phase !== "start" && phase !== "end" && phase !== "error") {
+    return;
+  }
+
+  const sessionKey = typeof payload.sessionKey === "string" ? payload.sessionKey.trim() : "";
+  const matchesCurrentSession = sessionKey
+    ? doSessionKeysMatch(sessionKey, host.sessionKey)
+    : false;
+  const pendingHost = host as GatewayHost & {
+    chatStream: string | null;
+    chatStreamStartedAt: number | null;
+  };
+
+  if (phase === "start") {
+    if (!matchesCurrentSession) {
+      return;
+    }
+    host.agentLifecycleChatRunId = payload.runId;
+    if (host.chatRunId) {
+      return;
+    }
+    host.chatRunId = payload.runId;
+    pendingHost.chatStream = "";
+    pendingHost.chatStreamStartedAt = Date.now();
+    return;
+  }
+
+  if (host.agentLifecycleChatRunId !== payload.runId) {
+    return;
+  }
+  if (sessionKey && !matchesCurrentSession) {
+    return;
+  }
+  host.agentLifecycleChatRunId = null;
+  if (host.chatRunId === payload.runId) {
+    host.chatRunId = null;
+    pendingHost.chatStream = null;
+    pendingHost.chatStreamStartedAt = null;
+  }
+}
+
+function restoreAgentLifecycleChatPending(
+  host: GatewayHost,
+  payload: ChatEventPayload | undefined,
+) {
+  const lifecycleRunId = host.agentLifecycleChatRunId;
+  if (!lifecycleRunId || host.chatRunId) {
+    return;
+  }
+  if (payload?.runId === lifecycleRunId) {
+    return;
+  }
+  if (payload?.sessionKey && !doSessionKeysMatch(payload.sessionKey, host.sessionKey)) {
+    return;
+  }
+  const pendingHost = host as GatewayHost & {
+    chatStream: string | null;
+    chatStreamStartedAt: number | null;
+  };
+  host.chatRunId = lifecycleRunId;
+  pendingHost.chatStream = "";
+  pendingHost.chatStreamStartedAt = Date.now();
+}
+
 function handleChatGatewayEvent(host: GatewayHost, payload: ChatEventPayload | undefined) {
   if (payload?.sessionKey) {
     setLastActiveSessionKey(
@@ -605,6 +679,11 @@ function handleChatGatewayEvent(host: GatewayHost, payload: ChatEventPayload | u
     return;
   }
   const state = handleChatEvent(host as unknown as ChatState, payload);
+  if (isTerminalChatState(state) && payload?.runId === host.agentLifecycleChatRunId) {
+    host.agentLifecycleChatRunId = null;
+  } else if (isTerminalChatState(state)) {
+    restoreAgentLifecycleChatPending(host, payload);
+  }
   const historyReloaded = handleTerminalChatEvent(host, payload, state);
   if (state === "final" && !historyReloaded && shouldReloadHistoryForFinalEvent(payload)) {
     void loadChatHistory(host as unknown as ChatState).finally(() =>
@@ -644,6 +723,7 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
     }
     const agentPayload = evt.payload as AgentEventPayload | undefined;
     handleAgentEvent(host as unknown as Parameters<typeof handleAgentEvent>[0], agentPayload);
+    syncChatPendingFromAgentLifecycle(host, agentPayload);
     maybeCaptureChangeReviewFromAgentMutationEvent(host, agentPayload);
     return;
   }
