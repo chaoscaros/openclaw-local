@@ -81,7 +81,8 @@ Then verify the service:
 openclaw --version
 curl -fsS http://127.0.0.1:18789/readyz
 openclaw plugins list --json
-openclaw doctor --deep --lint --json
+openclaw gateway status --deep --json
+openclaw doctor --lint --json
 ```
 
 ## Auto-updater

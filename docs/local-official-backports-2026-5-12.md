@@ -196,7 +196,8 @@ should be split by risk area.
     JSON-collapse controls intact.
   - Update CLI EACCES recovery hints now tell supervised-install operators to
     stop the Gateway before sudo/manual npm replacement and include the
-    reinstall/restart outline, with matching install documentation.
+    reinstall/restart outline, with matching install documentation and split
+    recovery verification commands.
   - `openclaw skills install/update` now accepts `--global` for ClawHub-managed
     skills, targeting the shared managed skills directory instead of the active
     workspace while preserving the existing workspace default.
