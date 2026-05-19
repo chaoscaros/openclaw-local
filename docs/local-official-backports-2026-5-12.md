@@ -170,6 +170,9 @@ should be split by risk area.
   - Paired iOS/iPadOS and Android clients can refresh same-family OS version
     labels on reconnect without triggering metadata-upgrade approval, while
     device-family and non-mobile platform changes remain approval-bound.
+  - Strict-agentic embedded runs now log execution-contract diagnostics only
+    when a planning-only retry is triggered, reducing normal activation noise
+    while keeping blocked-run debugging context.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
