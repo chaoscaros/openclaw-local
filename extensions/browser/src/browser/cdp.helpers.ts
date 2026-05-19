@@ -16,6 +16,21 @@ import { resolveBrowserRateLimitMessage } from "./rate-limit-message.js";
 
 export { isLoopbackHost };
 
+/**
+ * WHATWG URL hides protocol-default ports on `.port`, so inspect the raw
+ * authority to distinguish an omitted port from an explicitly written one.
+ */
+function hasRawExplicitPort(raw: string): boolean {
+  const authority = raw.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split(/[/?#]/, 1)[0] ?? "";
+  const hostPort = authority.includes("@")
+    ? authority.slice(authority.lastIndexOf("@") + 1)
+    : authority;
+  if (hostPort.startsWith("[")) {
+    return /^\[[^\]]+\]:\d+$/.test(hostPort);
+  }
+  return /:\d+$/.test(hostPort);
+}
+
 export function parseBrowserHttpUrl(raw: string, label: string) {
   const trimmed = raw.trim();
   const parsed = new URL(trimmed);
@@ -36,10 +51,33 @@ export function parseBrowserHttpUrl(raw: string, label: string) {
     throw new Error(`${label} has invalid port: ${parsed.port}`);
   }
 
+  const normalized = parsed.toString().replace(/\/$/, "");
+  const hasExplicitPort = hasRawExplicitPort(trimmed);
+  let normalizedWithPort: string;
+  if (hasExplicitPort && !parsed.port) {
+    const prefix = `${parsed.protocol}//`;
+    const rest = normalized.slice(prefix.length);
+    const atIndex = rest.indexOf("@");
+    const hostStart = atIndex >= 0 ? atIndex + 1 : 0;
+    const hostPart = rest.slice(hostStart);
+    const hostLength = hostPart.startsWith("[")
+      ? hostPart.indexOf("]") + 1
+      : (() => {
+          const index = hostPart.search(/[:/]/);
+          return index < 0 ? hostPart.length : index;
+        })();
+    const insertAt = hostStart + hostLength;
+    normalizedWithPort = `${prefix}${rest.slice(0, insertAt)}:${port}${rest.slice(insertAt)}`;
+  } else {
+    normalizedWithPort = normalized;
+  }
+
   return {
     parsed,
     port,
-    normalized: parsed.toString().replace(/\/$/, ""),
+    hasExplicitPort,
+    normalized,
+    normalizedWithPort,
   };
 }
 

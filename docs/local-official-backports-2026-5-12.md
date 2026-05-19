@@ -152,6 +152,9 @@ should be split by risk area.
   - Control UI sidebar groups now stay collapsed when the active page belongs to
     that group, matching the official navigation behavior while preserving the
     local sidebar layout.
+  - Browser CDP profile resolution now keeps a configured `cdpPort` when
+    `cdpUrl` omits the port, but still gives explicitly written URL ports
+    precedence.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -169,7 +172,8 @@ should be split by risk area.
     `extensions/codex/src/app-server/protocol.ts`,
     `extensions/codex/src/app-server/run-attempt.ts`,
     `extensions/codex/src/app-server/thread-lifecycle.ts`, `ui/src/ui/app-gateway.ts`,
-    `ui/src/ui/app-render.ts`.
+    `ui/src/ui/app-render.ts`, `extensions/browser/src/browser/cdp.helpers.ts`,
+    `extensions/browser/src/browser/config.ts`.
 
 ## Deferred
 

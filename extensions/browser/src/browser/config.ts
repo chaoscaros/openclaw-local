@@ -340,8 +340,17 @@ export function resolveProfile(
   } else if (rawProfileUrl) {
     const parsed = parseBrowserHttpUrl(rawProfileUrl, `browser.profiles.${profileName}.cdpUrl`);
     cdpHost = parsed.parsed.hostname;
-    cdpPort = parsed.port;
-    cdpUrl = parsed.normalized;
+    if (parsed.hasExplicitPort) {
+      cdpPort = parsed.port;
+      cdpUrl = parsed.normalizedWithPort;
+    } else if (cdpPort) {
+      const rebuilt = new URL(rawProfileUrl);
+      rebuilt.port = String(cdpPort);
+      cdpUrl = rebuilt.toString().replace(/\/$/, "");
+    } else {
+      cdpPort = parsed.port;
+      cdpUrl = parsed.normalized;
+    }
   } else if (cdpPort) {
     cdpUrl = `${resolved.cdpProtocol}://${resolved.cdpHost}:${cdpPort}`;
   } else {

@@ -216,6 +216,91 @@ describe("browser config", () => {
     expect(profile?.cdpIsLoopback).toBe(true);
   });
 
+  describe("cdpPort vs cdpUrl port precedence", () => {
+    it("lets an explicitly written URL port win over cdpPort", () => {
+      const resolved = resolveBrowserConfig({
+        profiles: {
+          openclaw: {
+            cdpPort: 18800,
+            cdpUrl: "http://127.0.0.1:9222",
+            color: "#FF4500",
+          },
+        },
+      });
+
+      const profile = resolveProfile(resolved, "openclaw");
+      expect(profile?.cdpPort).toBe(9222);
+      expect(profile?.cdpUrl).toBe("http://127.0.0.1:9222");
+    });
+
+    it("preserves explicitly written default URL ports", () => {
+      const resolved = resolveBrowserConfig({
+        profiles: {
+          secure: {
+            cdpPort: 18800,
+            cdpUrl: "https://user:pass@remote-browser.example.com:443/json/version?token=abc#frag",
+            color: "#0066CC",
+          },
+          local: {
+            cdpPort: 18800,
+            cdpUrl: "http://127.0.0.1:80/json/version",
+            color: "#FF4500",
+          },
+        },
+      });
+
+      const secure = resolveProfile(resolved, "secure");
+      expect(secure?.cdpPort).toBe(443);
+      expect(secure?.cdpUrl).toBe(
+        "https://user:pass@remote-browser.example.com:443/json/version?token=abc#frag",
+      );
+
+      const local = resolveProfile(resolved, "local");
+      expect(local?.cdpPort).toBe(80);
+      expect(local?.cdpUrl).toBe("http://127.0.0.1:80/json/version");
+    });
+
+    it("injects cdpPort when cdpUrl omits a port", () => {
+      const resolved = resolveBrowserConfig({
+        profiles: {
+          openclaw: {
+            cdpPort: 18800,
+            cdpUrl: "http://user:pass@127.0.0.1/json/version",
+            color: "#FF4500",
+          },
+          ipv6: {
+            cdpPort: 18801,
+            cdpUrl: "http://[::1]",
+            color: "#0066CC",
+          },
+        },
+      });
+
+      const profile = resolveProfile(resolved, "openclaw");
+      expect(profile?.cdpPort).toBe(18800);
+      expect(profile?.cdpUrl).toBe("http://user:pass@127.0.0.1:18800/json/version");
+
+      const ipv6 = resolveProfile(resolved, "ipv6");
+      expect(ipv6?.cdpPort).toBe(18801);
+      expect(ipv6?.cdpUrl).toBe("http://[::1]:18801");
+    });
+
+    it("falls back to the protocol default when neither URL nor config specifies a port", () => {
+      const resolved = resolveBrowserConfig({
+        profiles: {
+          remote: {
+            cdpUrl: "https://remote-browser.example.com",
+            color: "#0066CC",
+          },
+        },
+      });
+
+      const profile = resolveProfile(resolved, "remote");
+      expect(profile?.cdpPort).toBe(443);
+      expect(profile?.cdpUrl).toBe("https://remote-browser.example.com");
+    });
+  });
+
   it("prefers cdpPort over stale WebSocket devtools cdpUrl when both are set", () => {
     const resolved = resolveBrowserConfig({
       profiles: {
