@@ -11,6 +11,7 @@ import { defaultRuntime } from "../runtime.js";
 import { normalizeOptionalString } from "../shared/string-coerce.js";
 import { formatDocsLink } from "../terminal/links.js";
 import { theme } from "../terminal/theme.js";
+import { CONFIG_DIR } from "../utils.js";
 import { formatSkillInfo, formatSkillsCheck, formatSkillsList } from "./skills-cli.format.js";
 
 export type {
@@ -44,6 +45,10 @@ async function runSkillsAction(render: (report: SkillStatusReport) => string): P
 function resolveActiveWorkspaceDir(): string {
   const config = loadConfig();
   return resolveAgentWorkspaceDir(config, resolveDefaultAgentId(config));
+}
+
+function resolveClawHubTargetWorkspaceDir(opts: { global?: boolean }): string {
+  return opts.global ? CONFIG_DIR : resolveActiveWorkspaceDir();
 }
 
 /**
@@ -92,13 +97,14 @@ export function registerSkillsCli(program: Command) {
 
   skills
     .command("install")
-    .description("Install a skill from ClawHub into the active workspace")
+    .description("Install a skill from ClawHub into the active workspace or shared directory")
     .argument("<slug>", "ClawHub skill slug")
     .option("--version <version>", "Install a specific version")
     .option("--force", "Overwrite an existing workspace skill", false)
-    .action(async (slug: string, opts: { version?: string; force?: boolean }) => {
+    .option("--global", "Install into the shared managed skills directory", false)
+    .action(async (slug: string, opts: { version?: string; force?: boolean; global?: boolean }) => {
       try {
-        const workspaceDir = resolveActiveWorkspaceDir();
+        const workspaceDir = resolveClawHubTargetWorkspaceDir(opts);
         const result = await installSkillFromClawHub({
           workspaceDir,
           slug,
@@ -122,10 +128,11 @@ export function registerSkillsCli(program: Command) {
 
   skills
     .command("update")
-    .description("Update ClawHub-installed skills in the active workspace")
+    .description("Update ClawHub-installed skills in the active workspace or shared directory")
     .argument("[slug]", "Single skill slug")
     .option("--all", "Update all tracked ClawHub skills", false)
-    .action(async (slug: string | undefined, opts: { all?: boolean }) => {
+    .option("--global", "Update skills in the shared managed skills directory", false)
+    .action(async (slug: string | undefined, opts: { all?: boolean; global?: boolean }) => {
       try {
         if (!slug && !opts.all) {
           defaultRuntime.error("Provide a skill slug or use --all.");
@@ -137,7 +144,7 @@ export function registerSkillsCli(program: Command) {
           defaultRuntime.exit(1);
           return;
         }
-        const workspaceDir = resolveActiveWorkspaceDir();
+        const workspaceDir = resolveClawHubTargetWorkspaceDir(opts);
         const tracked = await readTrackedClawHubSkillSlugs(workspaceDir);
         if (opts.all && tracked.length === 0) {
           defaultRuntime.log("No tracked ClawHub skills to update.");

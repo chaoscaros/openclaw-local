@@ -197,6 +197,9 @@ should be split by risk area.
   - Update CLI EACCES recovery hints now tell supervised-install operators to
     stop the Gateway before sudo/manual npm replacement and include the
     reinstall/restart outline, with matching install documentation.
+  - `openclaw skills install/update` now accepts `--global` for ClawHub-managed
+    skills, targeting the shared managed skills directory instead of the active
+    workspace while preserving the existing workspace default.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -229,7 +232,9 @@ should be split by risk area.
     `ui/src/ui/markdown.ts`, `ui/src/styles/components.css`,
     `ui/src/types/highlight-js-subpaths.d.ts`,
     `src/cli/update-cli/progress.ts`, `src/cli/update-cli/progress.test.ts`,
-    `docs/install/updating.md`.
+    `docs/install/updating.md`, `src/cli/skills-cli.ts`,
+    `src/cli/skills-cli.commands.test.ts`, `docs/cli/skills.md`,
+    `docs/tools/skills.md`, `docs/help/faq.md`.
 
 ## Deferred
 

@@ -104,6 +104,11 @@ vi.mock("../runtime.js", () => ({
   defaultRuntime: mocks.defaultRuntime,
 }));
 
+vi.mock("../utils.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils.js")>()),
+  CONFIG_DIR: "/tmp/openclaw-config",
+}));
+
 vi.mock("../config/config.js", () => ({
   loadConfig: () => mocks.loadConfigMock(),
 }));
@@ -210,6 +215,32 @@ describe("skills cli commands", () => {
     ).toBe(true);
   });
 
+  it("installs a skill into the shared global skills directory", async () => {
+    installSkillFromClawHubMock.mockResolvedValue({
+      ok: true,
+      slug: "calendar",
+      version: "1.2.3",
+      targetDir: "/tmp/openclaw-config/skills/calendar",
+    });
+
+    await runCommand(["skills", "install", "calendar", "--global"]);
+
+    expect(resolveDefaultAgentIdMock).not.toHaveBeenCalled();
+    expect(resolveAgentWorkspaceDirMock).not.toHaveBeenCalled();
+    expect(installSkillFromClawHubMock).toHaveBeenCalledWith({
+      workspaceDir: "/tmp/openclaw-config",
+      slug: "calendar",
+      version: undefined,
+      force: false,
+      logger: expect.any(Object),
+    });
+    expect(
+      runtimeLogs.some((line) =>
+        line.includes("Installed calendar@1.2.3 -> /tmp/openclaw-config/skills/calendar"),
+      ),
+    ).toBe(true);
+  });
+
   it("updates all tracked ClawHub skills", async () => {
     readTrackedClawHubSkillSlugsMock.mockResolvedValue(["calendar"]);
     updateSkillsFromClawHubMock.mockResolvedValue([
@@ -229,6 +260,64 @@ describe("skills cli commands", () => {
     expect(updateSkillsFromClawHubMock).toHaveBeenCalledWith({
       workspaceDir: "/tmp/workspace",
       slug: undefined,
+      logger: expect.any(Object),
+    });
+    expect(runtimeLogs.some((line) => line.includes("Updated calendar: 1.2.2 -> 1.2.3"))).toBe(
+      true,
+    );
+    expect(runtimeErrors).toEqual([]);
+  });
+
+  it("updates tracked ClawHub skills in the shared global skills directory", async () => {
+    readTrackedClawHubSkillSlugsMock.mockResolvedValue(["calendar"]);
+    updateSkillsFromClawHubMock.mockResolvedValue([
+      {
+        ok: true,
+        slug: "calendar",
+        previousVersion: "1.2.2",
+        version: "1.2.3",
+        changed: true,
+        targetDir: "/tmp/openclaw-config/skills/calendar",
+      },
+    ]);
+
+    await runCommand(["skills", "update", "--all", "--global"]);
+
+    expect(resolveDefaultAgentIdMock).not.toHaveBeenCalled();
+    expect(resolveAgentWorkspaceDirMock).not.toHaveBeenCalled();
+    expect(readTrackedClawHubSkillSlugsMock).toHaveBeenCalledWith("/tmp/openclaw-config");
+    expect(updateSkillsFromClawHubMock).toHaveBeenCalledWith({
+      workspaceDir: "/tmp/openclaw-config",
+      slug: undefined,
+      logger: expect.any(Object),
+    });
+    expect(runtimeLogs.some((line) => line.includes("Updated calendar: 1.2.2 -> 1.2.3"))).toBe(
+      true,
+    );
+    expect(runtimeErrors).toEqual([]);
+  });
+
+  it("updates a single tracked ClawHub skill in the shared global skills directory", async () => {
+    readTrackedClawHubSkillSlugsMock.mockResolvedValue(["calendar"]);
+    updateSkillsFromClawHubMock.mockResolvedValue([
+      {
+        ok: true,
+        slug: "calendar",
+        previousVersion: "1.2.2",
+        version: "1.2.3",
+        changed: true,
+        targetDir: "/tmp/openclaw-config/skills/calendar",
+      },
+    ]);
+
+    await runCommand(["skills", "update", "calendar", "--global"]);
+
+    expect(resolveDefaultAgentIdMock).not.toHaveBeenCalled();
+    expect(resolveAgentWorkspaceDirMock).not.toHaveBeenCalled();
+    expect(readTrackedClawHubSkillSlugsMock).toHaveBeenCalledWith("/tmp/openclaw-config");
+    expect(updateSkillsFromClawHubMock).toHaveBeenCalledWith({
+      workspaceDir: "/tmp/openclaw-config",
+      slug: "calendar",
       logger: expect.any(Object),
     });
     expect(runtimeLogs.some((line) => line.includes("Updated calendar: 1.2.2 -> 1.2.3"))).toBe(
