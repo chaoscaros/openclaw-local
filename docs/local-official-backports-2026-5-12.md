@@ -65,6 +65,18 @@ should be split by risk area.
     sends no longer strip HTML formatting before delivery.
   - Files: `extensions/telegram/src/format.ts`,
     `extensions/telegram/src/outbound-adapter.ts`.
+- WebChat chunk override and outbound channel registry fallback from
+  `424c6d0a5f` / `b2c5ba6d4c`
+  - Local impact: WebChat outbound replies now honor configured
+    `textChunkLimit` / `chunkMode` overrides, and plugin channel sends can fall
+    back from a pinned setup-only registry entry to the active runtime registry
+    when the setup shell cannot send.
+  - Files: `src/auto-reply/chunk.ts`,
+    `src/auto-reply/chunk.test.ts`,
+    `src/channels/plugins/registry-loader.ts`,
+    `src/infra/outbound/channel-bootstrap.runtime.ts`,
+    `src/infra/outbound/channel-bootstrap.runtime.test.ts`,
+    `src/plugins/runtime.channel-pin.test.ts`.
 
 ## Local Hardening
 
