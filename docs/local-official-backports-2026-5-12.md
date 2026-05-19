@@ -160,6 +160,9 @@ should be split by risk area.
   - Memory-core fallback vector search now scans chunk embeddings in bounded
     rowid batches and yields between full batches, avoiding long Node.js
     event-loop stalls when sqlite-vec is unavailable or unusable.
+  - Memory Wiki `wiki_lint` tool output now reports vault-internal lint reports
+    as relative paths while keeping the lower-level linter result absolute for
+    CLI/file callers.
   - Session write-lock timeouts and embedded attempt takeover errors now stay
     classified as local runtime coordination failures, so model fallback does
     not retry every candidate against the same locked session while still
