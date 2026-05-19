@@ -40,6 +40,7 @@ Docs: https://docs.openclaw.ai
 - Gateway/config: expose `reloadKind` in config schema lookups so clients can distinguish restart-required, hot-reloadable, and no-op fields.
 - Skills: reject empty or whitespace-only skill names and descriptions during quick validation.
 - Browser CLI: add `openclaw browser evaluate --timeout-ms` so long-running page functions can extend both the evaluate action and outer request timeout budgets.
+- Onboarding/models: accept Codex OAuth profiles as valid auth for canonical OpenAI models while keeping custom OpenAI-compatible endpoints isolated.
 
 ## 2026.4.15
 

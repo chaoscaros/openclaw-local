@@ -188,6 +188,9 @@ should be split by risk area.
   - Browser CLI `evaluate` now accepts `--timeout-ms`, forwards it to the
     browser action body, and keeps the outer request timeout slightly longer so
     long-running page functions do not race the transport timeout.
+  - Onboarding model checks now treat Codex OAuth profiles as valid auth for
+    canonical OpenAI provider models, while still keeping custom
+    OpenAI-compatible `models.providers.openai.baseUrl` endpoints separate.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -209,6 +212,8 @@ should be split by risk area.
     `extensions/browser/src/browser/config.ts`,
     `extensions/browser/src/cli/browser-cli-actions-input/register.form-wait-eval.ts`,
     `extensions/browser/src/cli/browser-cli-actions-input/shared.ts`,
+    `src/commands/auth-choice.model-check.ts`,
+    `src/commands/auth-choice.model-check.test.ts`,
     `src/memory-host-sdk/host/internal.ts`,
     `src/agents/session-write-lock-error.ts`, `src/agents/session-write-lock.ts`,
     `src/agents/failover-error.ts`, `src/agents/model-fallback.ts`,
