@@ -190,6 +190,68 @@ describe("skills-cli", () => {
       const output = formatSkillInfo(report, "info-emoji", {});
       expect(output).toContain("🎛️");
     });
+
+    it("resolves skill info case-insensitively", () => {
+      const report = createMockReport([
+        createMockSkill({
+          name: "Excel XLSX",
+          skillKey: "Excel-XLSX",
+          description: "Spreadsheet helpers",
+        }),
+      ]);
+
+      const output = formatSkillInfo(report, "excel-xlsx", {});
+      expect(output).toContain("Spreadsheet helpers");
+    });
+
+    it("resolves skill info across separator variants", () => {
+      const report = createMockReport([
+        createMockSkill({
+          name: "Excel XLSX",
+          skillKey: "excel_xlsx",
+          description: "Spreadsheet helpers",
+        }),
+      ]);
+
+      const output = formatSkillInfo(report, "excel-xlsx", {});
+      expect(output).toContain("Spreadsheet helpers");
+    });
+
+    it("returns not found for ambiguous case-insensitive matches", () => {
+      const report = createMockReport([
+        createMockSkill({ name: "First Skill", skillKey: "Excel-XLSX", description: "first" }),
+        createMockSkill({ name: "Second Skill", skillKey: "excel-xlsx", description: "second" }),
+      ]);
+
+      const output = formatSkillInfo(report, "EXCEL-XLSX", {});
+      expect(output).toContain("not found");
+      expect(output).not.toContain("first");
+      expect(output).not.toContain("second");
+    });
+
+    it("returns not found for ambiguous normalized matches", () => {
+      const report = createMockReport([
+        createMockSkill({ name: "Excel/XLSX", skillKey: "excel-slash", description: "first" }),
+        createMockSkill({
+          name: "Excel_XLSX",
+          skillKey: "excel-underscore",
+          description: "second",
+        }),
+      ]);
+
+      const output = formatSkillInfo(report, "excel-xlsx", {});
+      expect(output).toContain("not found");
+      expect(output).not.toContain("first");
+      expect(output).not.toContain("second");
+    });
+
+    it("sanitizes user-supplied skill name in not-found text output", () => {
+      const report = createMockReport([]);
+      const output = formatSkillInfo(report, "evil\u001b[31m\u009f", {});
+
+      expect(output).toContain('Skill "evil" not found');
+      expect(output).not.toContain("\u001b");
+    });
   });
 
   describe("formatSkillsCheck", () => {
@@ -313,6 +375,16 @@ describe("skills-cli", () => {
       expect(parsed.emoji).toBe("🎙");
       expect(parsed.description).toBe("hi");
       expect(parsed.homepage).toBe("https://example.com/docs");
+    });
+
+    it("sanitizes user-supplied skill name in not-found JSON output", () => {
+      const report = createMockReport([]);
+      const output = formatSkillInfo(report, "evil\u001b[31m\u009f", { json: true });
+      const parsed = JSON.parse(output) as { error: string; skill: string };
+
+      expect(parsed.error).toBe("not found");
+      expect(parsed.skill).toBe("evil");
+      expect(output).not.toContain("\u001b");
     });
   });
 });

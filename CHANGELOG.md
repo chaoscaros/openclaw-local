@@ -23,6 +23,7 @@ Docs: https://docs.openclaw.ai
 - Providers/Anthropic: preserve native image input for current Claude model rows when stale local catalog data marks them text-only.
 - Models: show the effective OpenAI/Codex auth profile in `/models` provider headers instead of falling back to the OpenAI env-key label.
 - Cron: link isolated scheduled task runs to their stable cron session so task status and cleanup can follow the backing agent run.
+- CLI/skills: require unique case-insensitive fallback matches in `openclaw skills info` so case-only collisions return not-found instead of showing the wrong skill.
 
 ## 2026.4.15
 
