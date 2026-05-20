@@ -274,6 +274,9 @@ should be split by risk area.
     into one dropdown.
   - Usage details context lists now truncate long skill/tool/file names in the
     row layout while preserving the full name as a hover title.
+  - Usage daily chart tooltips now render as one viewport-floating popover with
+    focus/keyboard support, avoiding clipped tooltip content inside compact
+    chart containers.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -335,6 +338,8 @@ should be split by risk area.
     `ui/src/ui/views/chat.test.ts`, `ui/src/styles/chat/layout.css`,
     `ui/src/ui/views/usage-render-details.ts`,
     `ui/src/ui/views/usage-render-details.test.ts`,
+    `ui/src/ui/views/usage-render-overview.ts`,
+    `ui/src/ui/views/usage-render-overview.test.ts`,
     `ui/src/styles/usage.css`.
 
 ## Deferred

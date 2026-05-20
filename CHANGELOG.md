@@ -60,6 +60,7 @@ Docs: https://docs.openclaw.ai
 - Follow-up queue: collect unresolved-origin queued messages with compatible routed messages and resume batching after a true cross-channel drain.
 - Control UI/chat: add an agent filter to the chat header session picker so multi-agent installs only show the active agent's ordinary sessions and switch agents without stale dropdown entries.
 - Control UI/usage: truncate long context tool, skill, and file names in the usage details panel while preserving the full name as a hover title.
+- Control UI/usage: render daily chart tooltips as viewport-floating popovers with keyboard focus support so tall bars and narrow panels no longer clip tooltip content.
 
 ## 2026.4.15
 
