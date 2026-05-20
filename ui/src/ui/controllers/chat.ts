@@ -295,11 +295,21 @@ function buildApiAttachments(attachments?: ChatAttachment[]) {
           return {
             type: "image",
             mimeType: parsed.mimeType,
+            fileName: att.fileName,
             content: parsed.content,
           };
         })
         .filter((a): a is NonNullable<typeof a> => a !== null)
     : undefined;
+}
+
+function isInlineDataUrl(value: string): boolean {
+  return /^\s*data:/iu.test(value);
+}
+
+function formatInlineImageAttachmentPlaceholder(attachment: ChatAttachment): string {
+  const label = attachment.fileName?.trim();
+  return label ? `Attached image: ${label}` : "Attached image";
 }
 
 async function requestChatSend(
@@ -419,6 +429,10 @@ export async function sendChatMessage(
   // Add image previews to the message for display
   if (hasAttachments) {
     for (const att of attachments) {
+      if (att.mimeType.startsWith("image/") && isInlineDataUrl(att.dataUrl)) {
+        contentBlocks.push({ type: "text", text: formatInlineImageAttachmentPlaceholder(att) });
+        continue;
+      }
       contentBlocks.push({
         type: "image",
         source: { type: "base64", media_type: att.mimeType, data: att.dataUrl },

@@ -284,6 +284,9 @@ should be split by risk area.
     truth after refresh: `running` rows recover the visible in-progress state,
     while terminal rows suppress stale stop controls from an orphaned local run
     id.
+  - WebChat optimistic image sends now render a lightweight attachment
+    placeholder instead of embedding the full `data:` URL in chat state, while
+    preserving the attachment payload sent to the Gateway.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -351,7 +354,8 @@ should be split by risk area.
     `ui/src/styles/chat-layout.test.ts`, `ui/src/ui/session-run-state.ts`,
     `ui/src/ui/session-run-state.test.ts`, `ui/src/ui/app-chat.ts`,
     `ui/src/ui/app-chat.test.ts`, `ui/src/ui/app-gateway.ts`,
-    `ui/src/ui/app-render.ts`.
+    `ui/src/ui/app-render.ts`, `ui/src/ui/controllers/chat.ts`,
+    `ui/src/ui/controllers/chat.test.ts`.
 
 ## Deferred
 

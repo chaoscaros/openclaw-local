@@ -807,6 +807,77 @@ describe("sendChatMessage", () => {
     expect(state.dreamingAssistReason).toBe("no_strategy");
   });
 
+  it("keeps inline image data URLs out of optimistic chat messages", async () => {
+    const request = vi.fn().mockResolvedValue({ runId: "run-1", status: "started" });
+    const state = createState({
+      connected: true,
+      client: { request } as unknown as ChatState["client"],
+    });
+    const imageBase64 = "A".repeat(1024 * 1024);
+    const imageDataUrl = `data:image/png;base64,${imageBase64}`;
+
+    const result = await sendChatMessage(state, "", [
+      {
+        id: "att-image",
+        dataUrl: imageDataUrl,
+        mimeType: "image/png",
+        fileName: "photo.png",
+      },
+    ]);
+
+    expect(typeof result).toBe("string");
+    expect(request).toHaveBeenCalledTimes(1);
+    const firstCall = request.mock.calls[0];
+    expect(firstCall?.[0]).toBe("chat.send");
+    const sendParams = firstCall?.[1] as Record<string, unknown>;
+    expect(sendParams.message).toBe("");
+    expect(sendParams.attachments).toEqual([
+      {
+        type: "image",
+        mimeType: "image/png",
+        fileName: "photo.png",
+        content: imageBase64,
+      },
+    ]);
+    expect(state.chatMessages).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: [{ type: "text", text: "Attached image: photo.png" }],
+        timestamp: expect.any(Number),
+        __openclawOptimistic: true,
+      }),
+    ]);
+    expect(JSON.stringify(state.chatMessages)).not.toContain("data:image/png;base64");
+
+    const captionedRequest = vi.fn().mockResolvedValue({ runId: "run-2", status: "started" });
+    const captionedState = createState({
+      connected: true,
+      client: { request: captionedRequest } as unknown as ChatState["client"],
+    });
+
+    await expect(
+      sendChatMessage(captionedState, "describe", [
+        {
+          id: "att-captioned-image",
+          dataUrl: imageDataUrl,
+          mimeType: "image/png",
+          fileName: "photo.png",
+        },
+      ]),
+    ).resolves.toEqual(expect.any(String));
+    expect(captionedState.chatMessages).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: [
+          { type: "text", text: "describe" },
+          { type: "text", text: "Attached image: photo.png" },
+        ],
+        timestamp: expect.any(Number),
+      }),
+    ]);
+    expect(JSON.stringify(captionedState.chatMessages)).not.toContain("data:image/png;base64");
+  });
+
   it("formats structured non-auth connect failures for chat send", async () => {
     const request = vi.fn().mockRejectedValue(
       new GatewayRequestError({

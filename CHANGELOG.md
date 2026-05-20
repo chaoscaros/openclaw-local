@@ -63,6 +63,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/usage: render daily chart tooltips as viewport-floating popovers with keyboard focus support so tall bars and narrow panels no longer clip tooltip content.
 - Control UI/chat: keep the mobile PWA composer above under-reported iOS safe areas so bottom controls do not sit under the home indicator.
 - Control UI/chat: recover in-progress chat indicators from running session rows after refresh and suppress stale stop controls once the session row reaches a terminal status.
+- Control UI/WebChat: avoid storing large inline `data:` image previews in optimistic chat messages while still sending the image attachment payload to the Gateway.
 
 ## 2026.4.15
 
