@@ -14,6 +14,7 @@ import {
 } from "../chat-model.test-helpers.ts";
 import { resetAssistantAttachmentAvailabilityCacheForTest } from "../chat/grouped-render.ts";
 import { normalizeMessage } from "../chat/message-normalizer.ts";
+import { buildSidebarContent } from "../chat/tool-cards.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import type { ModelCatalogEntry } from "../types.ts";
 import type { SessionsListResult } from "../types.ts";
@@ -3236,6 +3237,38 @@ describe("chat view", () => {
         kind: "markdown",
       }),
     );
+  });
+
+  it("copies markdown code blocks from the chat sidebar", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } } as unknown as Navigator);
+
+    try {
+      const container = document.createElement("div");
+      render(
+        renderChat(
+          createProps({
+            sidebarOpen: true,
+            sidebarContent: buildSidebarContent('```ts\nconst token = "abc";\n```'),
+            onCloseSidebar: () => undefined,
+            onSplitRatioChange: () => undefined,
+          }),
+        ),
+        container,
+      );
+
+      const copyButton = container.querySelector<HTMLButtonElement>(
+        ".chat-sidebar .code-block-copy",
+      );
+      expect(copyButton).not.toBeNull();
+
+      copyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+
+      expect(writeText).toHaveBeenCalledWith('const token = "abc";');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("lets a split tool call collapse even when a separate tool output shares its toolCallId", async () => {

@@ -362,7 +362,8 @@ should be split by risk area.
     `ui/src/ui/app-render.ts`, `ui/src/ui/controllers/chat.ts`,
     `ui/src/ui/controllers/chat.test.ts`, `ui/src/ui/views/usage.ts`,
     `ui/src/ui/views/usage.test.ts`, `ui/src/ui/views/overview-cards.ts`,
-    `ui/src/ui/views/overview-cards.test.ts`.
+    `ui/src/ui/views/overview-cards.test.ts`, `ui/src/ui/views/chat.ts`,
+    `ui/src/ui/views/chat.test.ts`.
 
 ## Deferred
 
