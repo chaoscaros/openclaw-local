@@ -1,6 +1,7 @@
 import { html, nothing, type TemplateResult } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { t } from "../../i18n/index.ts";
+import { resolveSessionDisplayName } from "../app-render.helpers.ts";
 import { formatCost, formatTokens, formatRelativeTimestamp } from "../format.ts";
 import { formatNextRun } from "../presenter.ts";
 import type {
@@ -145,7 +146,7 @@ export function renderOverviewCards(props: OverviewCardsProps) {
                 (s) => html`
                   <li class="ov-recent__row">
                     <span class="ov-recent__key"
-                      >${blurDigits(s.displayName || s.label || s.key)}</span
+                      >${blurDigits(resolveSessionDisplayName(s.key, s))}</span
                     >
                     <span class="ov-recent__model">${s.model ?? ""}</span>
                     <span class="ov-recent__time"

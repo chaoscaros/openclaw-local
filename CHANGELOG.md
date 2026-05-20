@@ -65,6 +65,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/chat: recover in-progress chat indicators from running session rows after refresh and suppress stale stop controls once the session row reaches a terminal status.
 - Control UI/WebChat: avoid storing large inline `data:` image previews in optimistic chat messages while still sending the image attachment payload to the Gateway.
 - Control UI/usage: remove the duplicated inner Usage page heading so the shared dashboard shell remains the only page title.
+- Control UI/overview: render recent session names with the same label, display-name, and channel fallback resolver used by the chat session picker.
 
 ## 2026.4.15
 
