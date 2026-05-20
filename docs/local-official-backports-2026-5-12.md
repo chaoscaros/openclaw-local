@@ -287,6 +287,8 @@ should be split by risk area.
   - WebChat optimistic image sends now render a lightweight attachment
     placeholder instead of embedding the full `data:` URL in chat state, while
     preserving the attachment payload sent to the Gateway.
+  - Usage view now relies on the shared dashboard shell title and removes the
+    duplicated inner page heading.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -355,7 +357,8 @@ should be split by risk area.
     `ui/src/ui/session-run-state.test.ts`, `ui/src/ui/app-chat.ts`,
     `ui/src/ui/app-chat.test.ts`, `ui/src/ui/app-gateway.ts`,
     `ui/src/ui/app-render.ts`, `ui/src/ui/controllers/chat.ts`,
-    `ui/src/ui/controllers/chat.test.ts`.
+    `ui/src/ui/controllers/chat.test.ts`, `ui/src/ui/views/usage.ts`,
+    `ui/src/ui/views/usage.test.ts`.
 
 ## Deferred
 
