@@ -300,6 +300,101 @@ describe("handleSendChat", () => {
     expect(host.chatMessage).toBe("");
   });
 
+  it("guides a normal message into the active run instead of queueing the next turn", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "chat.send") {
+        return {};
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    const host = makeHost({
+      client: { request } as unknown as ChatHost["client"],
+      chatRunId: "run-main",
+      chatStream: "Working...",
+      chatMessage: "also check the tests",
+      chatAttachments: [
+        {
+          id: "att-active",
+          mimeType: "image/png",
+          dataUrl: "data:image/png;base64,AAA",
+        },
+      ],
+    });
+
+    await handleSendChat(host);
+
+    expect(request).toHaveBeenCalledWith(
+      "chat.send",
+      expect.objectContaining({
+        sessionKey: "agent:main",
+        message: "also check the tests",
+        attachments: [expect.objectContaining({ type: "image", mimeType: "image/png" })],
+        deliver: false,
+        idempotencyKey: expect.any(String),
+      }),
+    );
+    expect(host.chatQueue).toEqual([
+      expect.objectContaining({
+        text: "also check the tests",
+        pendingRunId: "run-main",
+        attachments: [expect.objectContaining({ id: "att-active" })],
+      }),
+    ]);
+    expect(host.chatRunId).toBe("run-main");
+    expect(host.chatStream).toBe("Working...");
+    expect(host.chatMessages).toEqual([]);
+    expect(host.chatMessage).toBe("");
+    expect(host.chatAttachments).toEqual([]);
+  });
+
+  it("restores the draft when guiding an active run fails", async () => {
+    const host = makeHost({
+      client: {
+        request: vi.fn(async (method: string) => {
+          if (method === "chat.send") {
+            throw new Error("gateway busy");
+          }
+          throw new Error(`Unexpected request: ${method}`);
+        }),
+      } as unknown as ChatHost["client"],
+      chatRunId: "run-main",
+      chatStream: "Working...",
+      chatMessage: "also check the tests",
+    });
+
+    await handleSendChat(host);
+
+    expect(host.chatQueue).toEqual([]);
+    expect(host.chatRunId).toBe("run-main");
+    expect(host.chatStream).toBe("Working...");
+    expect(host.chatMessage).toBe("also check the tests");
+    expect(host.lastError).toContain("gateway busy");
+  });
+
+  it("keeps queueing normal messages while the first active send is still awaiting ack", async () => {
+    const request = vi.fn(async (method: string) => {
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    const host = makeHost({
+      client: { request } as unknown as ChatHost["client"],
+      chatRunId: "run-main",
+      chatSending: true,
+      chatStream: "",
+      chatMessage: "wait for the ack first",
+    });
+
+    await handleSendChat(host);
+
+    expect(request).not.toHaveBeenCalled();
+    expect(host.chatQueue).toEqual([
+      expect.objectContaining({
+        text: "wait for the ack first",
+      }),
+    ]);
+    expect(host.chatQueue[0]?.pendingRunId).toBeUndefined();
+    expect(host.chatMessage).toBe("");
+  });
+
   it("sends /btw without adopting a main chat run when idle", async () => {
     const request = vi.fn(async (method: string) => {
       if (method === "chat.send") {

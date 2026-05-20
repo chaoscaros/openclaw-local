@@ -67,7 +67,7 @@ describe("chat run controls", () => {
     expect(onResetSession).toHaveBeenCalledTimes(1);
   });
 
-  it("switches to queue and stop actions while aborting is available", () => {
+  it("switches to send and stop actions while aborting is available", () => {
     const container = document.createElement("div");
     const onAbort = vi.fn();
     const onSend = vi.fn();
@@ -88,7 +88,7 @@ describe("chat run controls", () => {
     expect(container.querySelector('button[title="New session"]')).toBeNull();
     expect(container.querySelector('button[title="Reset session"]')).toBeNull();
 
-    getButton(container, 'button[title="Queue"]').click();
+    getButton(container, 'button[title="Send"]').click();
     expect(onStoreDraft).toHaveBeenCalledWith(" follow up ");
     expect(onSend).toHaveBeenCalledTimes(1);
 

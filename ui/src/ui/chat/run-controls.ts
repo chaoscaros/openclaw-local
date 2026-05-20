@@ -73,11 +73,11 @@ export function renderChatRunControls(props: ChatRunControlsProps) {
                 props.onSend();
               }}
               ?disabled=${!props.canSend || props.sending}
-              title=${t("chatUi.queue")}
-              aria-label=${t("chatUi.queueMessage")}
+              title=${t("chatUi.send")}
+              aria-label=${t("chatUi.sendMessage")}
             >
               ${icons.send}
-              <span class="agent-chat__control-label">${t("chatUi.queue")}</span>
+              <span class="agent-chat__control-label">${t("chatUi.send")}</span>
             </button>
             <button
               class="chat-send-btn chat-send-btn--stop"
@@ -97,13 +97,11 @@ export function renderChatRunControls(props: ChatRunControlsProps) {
                 props.onSend();
               }}
               ?disabled=${!props.canSend || props.sending}
-              title=${props.isBusy ? t("chatUi.queue") : t("chatUi.send")}
-              aria-label=${props.isBusy ? t("chatUi.queueMessage") : t("chatUi.sendMessage")}
+              title=${t("chatUi.send")}
+              aria-label=${t("chatUi.sendMessage")}
             >
               ${icons.send}
-              <span class="agent-chat__control-label"
-                >${props.isBusy ? t("chatUi.queue") : t("chatUi.send")}</span
-              >
+              <span class="agent-chat__control-label">${t("chatUi.send")}</span>
             </button>
           `}
     </div>

@@ -48,6 +48,7 @@ Docs: https://docs.openclaw.ai
 - CLI/skills: add `--global` to ClawHub skill installs and updates so operators can target the shared managed skills directory directly.
 - CLI/update and plugins: bypass npm freshness filters during OpenClaw-managed package and plugin installs so freshly published releases remain installable even when user npm config has release-age guards.
 - CLI/plugins: allow official Brave and Slack plugin reinstall commands to recover source-only runtime shadow config errors, matching the existing bundled plugin recovery path.
+- Control UI/chat: send follow-up text into the active run by default once the current run is established, keeping a visible pending marker instead of silently waiting for the next turn.
 
 ## 2026.4.15
 

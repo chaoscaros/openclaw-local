@@ -222,6 +222,10 @@ should be split by risk area.
   - `openclaw skills install/update` now accepts `--global` for ClawHub-managed
     skills, targeting the shared managed skills directory instead of the active
     workspace while preserving the existing workspace default.
+  - Control UI chat sends can now guide text into an already established active
+    run using the existing soft-steer path, while preserving a visible pending
+    marker and falling back to the queued next-turn path during the initial send
+    acknowledgement window.
   - Channel delivery state now has a normalized route metadata layer, preserving
     target, account, and thread/topic details while keeping local legacy
     `deliveryContext` and built-in Telegram/Slack/Mattermost parent-thread
@@ -243,7 +247,8 @@ should be split by risk area.
     `extensions/codex/src/app-server/protocol.ts`,
     `extensions/codex/src/app-server/run-attempt.ts`,
     `extensions/codex/src/app-server/thread-lifecycle.ts`, `ui/src/ui/app-gateway.ts`,
-    `ui/src/ui/app-render.ts`, `extensions/browser/src/browser/cdp.helpers.ts`,
+    `ui/src/ui/app-render.ts`, `ui/src/ui/app-chat.ts`,
+    `ui/src/ui/chat/run-controls.ts`, `extensions/browser/src/browser/cdp.helpers.ts`,
     `extensions/browser/src/browser/config.ts`,
     `extensions/browser/src/cli/browser-cli-actions-input/register.form-wait-eval.ts`,
     `extensions/browser/src/cli/browser-cli-actions-input/shared.ts`,
@@ -312,9 +317,10 @@ should be split by risk area.
     turns, expose the pending/inserted state through the gateway/UI protocol,
     and preserve channel delivery semantics for Telegram, cron, approvals, and
     tool calls before implementing the scheduler change.
-  - Status: keep as a dedicated follow-up after the current official alignment
-    iteration is closed, because it crosses session scheduling, gateway state,
-    and UI behavior.
+  - Status: first Control UI slice is implemented for already established active
+    runs by reusing the existing soft-steer path. Remaining work should address
+    queued pre-start turns, gateway-level inserted state, channel delivery
+    semantics, and richer UI affordances.
 
 ## Validation Notes
 

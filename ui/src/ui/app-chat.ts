@@ -141,9 +141,14 @@ function enqueueChatMessage(
   ];
 }
 
-function enqueuePendingRunMessage(host: ChatHost, text: string, pendingRunId: string) {
+function enqueuePendingRunMessage(
+  host: ChatHost,
+  text: string,
+  pendingRunId: string,
+  attachments?: ChatAttachment[],
+) {
   const trimmed = text.trim();
-  if (!trimmed) {
+  if (!trimmed && !attachments?.length) {
     return;
   }
   host.chatQueue = [
@@ -152,9 +157,14 @@ function enqueuePendingRunMessage(host: ChatHost, text: string, pendingRunId: st
       id: generateUUID(),
       text: trimmed,
       createdAt: Date.now(),
+      attachments: attachments?.map((att) => ({ ...att })),
       pendingRunId,
     },
   ];
+}
+
+function canGuideActiveChatRun(host: ChatHost): boolean {
+  return Boolean(host.chatRunId) && !host.chatSending;
 }
 
 async function sendChatMessageNow(
@@ -226,6 +236,42 @@ async function sendChatMessageNow(
       });
       host.devExecuteCarryoverAfterChatByRun = map;
     }
+  }
+  return ok;
+}
+
+async function guideActiveChatRun(
+  host: ChatHost,
+  message: string,
+  opts?: {
+    previousDraft?: string;
+    attachments?: ChatAttachment[];
+    previousAttachments?: ChatAttachment[];
+  },
+) {
+  const pendingRunId = host.chatRunId;
+  if (!pendingRunId) {
+    return false;
+  }
+  const runId = await sendDetachedChatMessage(
+    host as unknown as ChatState,
+    message,
+    opts?.attachments,
+  );
+  const ok = Boolean(runId);
+  if (!ok && opts?.previousDraft != null) {
+    host.chatMessage = opts.previousDraft;
+  }
+  if (!ok && opts?.previousAttachments) {
+    host.chatAttachments = opts.previousAttachments;
+  }
+  if (ok) {
+    setLastActiveSessionKey(
+      host as unknown as Parameters<typeof setLastActiveSessionKey>[0],
+      host.sessionKey,
+    );
+    enqueuePendingRunMessage(host, message, pendingRunId, opts?.attachments);
+    scheduleChatScroll(host as unknown as Parameters<typeof scheduleChatScroll>[0], true);
   }
   return ok;
 }
@@ -436,6 +482,14 @@ export async function handleSendChat(
     }
 
     if (isChatBusy(host)) {
+      if (canGuideActiveChatRun(host)) {
+        await guideActiveChatRun(host, message, {
+          previousDraft: messageOverride == null ? previousDraft : undefined,
+          attachments: hasAttachments ? attachmentsToSend : undefined,
+          previousAttachments: messageOverride == null ? attachments : undefined,
+        });
+        return;
+      }
       enqueueChatMessage(host, message, attachmentsToSend, refreshSessions);
       return;
     }
