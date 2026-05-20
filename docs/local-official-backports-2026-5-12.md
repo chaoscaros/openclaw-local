@@ -237,6 +237,9 @@ should be split by risk area.
     hint so same-channel replies fail closed if the original Slack thread
     timestamp is missing, while `topLevel` and `threadId: null` remain explicit
     root-post escape hatches.
+  - Nextcloud Talk now registers a channel-owned `react` message action adapter
+    that dispatches to the existing Talk reaction sender, while keeping sends
+    on the outbound path and rejecting unsupported reaction removal explicitly.
   - TUI normal-message submits now preserve the draft while an active or
     optimistic chat run is busy, show the existing abort-first hint, and keep
     slash commands routable during the busy state.

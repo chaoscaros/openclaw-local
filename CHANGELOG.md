@@ -54,6 +54,7 @@ Docs: https://docs.openclaw.ai
 - Plugins/Slack: use a stable `minHostVersion` floor in the bundled Slack manifest so stricter plugin validation no longer blocks startup.
 - Cron/outbound: skip plugin target normalization when scheduled-run source delivery already has an exact recipient match, while still preserving Telegram topic matching.
 - Slack: fail closed when a same-channel threaded turn loses its Slack thread timestamp, and let `topLevel` / `threadId: null` explicitly send at the channel root.
+- Nextcloud Talk: wire the shared `message react` action to the existing Talk reaction sender, with clear errors for unsupported reaction removal.
 
 ## 2026.4.15
 
