@@ -50,6 +50,7 @@ Docs: https://docs.openclaw.ai
 - CLI/plugins: allow official Brave and Slack plugin reinstall commands to recover source-only runtime shadow config errors, matching the existing bundled plugin recovery path.
 - Control UI/chat: send follow-up text into the active run by default once the current run is established, keeping a visible pending marker instead of silently waiting for the next turn.
 - TUI: preserve normal-message drafts while a chat run is busy and show an abort-first hint instead of clearing input or starting another run.
+- Channels: preserve implicit default accounts when top-level credentials coexist with named accounts, keeping legacy default channel setups active during multi-account migration.
 
 ## 2026.4.15
 

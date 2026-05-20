@@ -41,7 +41,11 @@ export type ResolvedWhatsAppAccount = {
 export const DEFAULT_WHATSAPP_MEDIA_MAX_MB = 50;
 
 const { listConfiguredAccountIds, listAccountIds, resolveDefaultAccountId } =
-  createAccountListHelpers("whatsapp");
+  createAccountListHelpers("whatsapp", {
+    implicitDefaultAccount: {
+      channelKeys: ["authDir"],
+    },
+  });
 export const listWhatsAppAccountIds = listAccountIds;
 export const resolveDefaultWhatsAppAccountId = resolveDefaultAccountId;
 

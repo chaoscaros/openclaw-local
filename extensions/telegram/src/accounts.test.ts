@@ -4,6 +4,7 @@ import { withEnv } from "openclaw/plugin-sdk/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createTelegramActionGate,
+  listEnabledTelegramAccounts,
   listTelegramAccountIds,
   mergeTelegramAccountConfig,
   resolveTelegramMediaRuntimeOptions,
@@ -122,6 +123,49 @@ describe("resolveTelegramAccount", () => {
     const lines = warnMock.mock.calls.map(([line]) => String(line));
     expect(lines).toContain("listTelegramAccountIds [ 'work' ]");
     expect(lines).toContain("resolve { accountId: 'work', enabled: true, tokenSource: 'config' }");
+  });
+
+  it("keeps the implicit default account when named accounts are added to top-level credentials", () => {
+    withEnv({ TELEGRAM_BOT_TOKEN: "" }, () => {
+      const cfg: OpenClawConfig = {
+        channels: {
+          telegram: {
+            botToken: "tok-default",
+            accounts: {
+              fusion: {
+                enabled: false,
+                name: "Fusion",
+                botToken: "tok-fusion",
+              },
+            },
+          },
+        },
+        bindings: [{ agentId: "fusion", match: { channel: "telegram", accountId: "fusion" } }],
+      };
+
+      expect(listTelegramAccountIds(cfg)).toEqual(["default", "fusion"]);
+      expect(resolveDefaultTelegramAccountId(cfg)).toBe("default");
+      expectNoMissingDefaultWarning();
+
+      const accounts = listEnabledTelegramAccounts(cfg);
+      expect(accounts.map((account) => account.accountId)).toEqual(["default"]);
+      expect(accounts[0]?.token).toBe("tok-default");
+      expect(accounts[0]?.tokenSource).toBe("config");
+    });
+  });
+
+  it("keeps the implicit default account when TELEGRAM_BOT_TOKEN coexists with named accounts", () => {
+    withEnv({ TELEGRAM_BOT_TOKEN: "tok-env" }, () => {
+      const cfg: OpenClawConfig = {
+        channels: {
+          telegram: { accounts: { work: { botToken: "tok-work" } } },
+        },
+      };
+
+      expect(listTelegramAccountIds(cfg)).toEqual(["default", "work"]);
+      expect(resolveDefaultTelegramAccountId(cfg)).toBe("default");
+      expectNoMissingDefaultWarning();
+    });
   });
 });
 

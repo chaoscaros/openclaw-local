@@ -2,6 +2,7 @@ import util from "node:util";
 import {
   createAccountActionGate,
   DEFAULT_ACCOUNT_ID,
+  hasConfiguredAccountValue,
   listCombinedAccountIds,
   normalizeAccountId,
   normalizeOptionalAccountId,
@@ -77,10 +78,23 @@ function listConfiguredAccountIds(cfg: OpenClawConfig): string[] {
   return [...ids];
 }
 
+function hasImplicitDefaultTelegramAccount(cfg: OpenClawConfig): boolean {
+  const telegram = cfg.channels?.telegram;
+  if (!telegram) {
+    return hasConfiguredAccountValue(process.env.TELEGRAM_BOT_TOKEN);
+  }
+  return (
+    hasConfiguredAccountValue(telegram.botToken) ||
+    hasConfiguredAccountValue(telegram.tokenFile) ||
+    hasConfiguredAccountValue(process.env.TELEGRAM_BOT_TOKEN)
+  );
+}
+
 export function listTelegramAccountIds(cfg: OpenClawConfig): string[] {
   const ids = listCombinedAccountIds({
     configuredAccountIds: listConfiguredAccountIds(cfg),
     additionalAccountIds: listBoundAccountIds(cfg, "telegram"),
+    implicitAccountId: hasImplicitDefaultTelegramAccount(cfg) ? DEFAULT_ACCOUNT_ID : undefined,
     fallbackAccountIdWhenEmpty: DEFAULT_ACCOUNT_ID,
   });
   debugAccounts("listTelegramAccountIds", ids);

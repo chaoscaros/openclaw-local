@@ -1,6 +1,7 @@
 import {
   createAccountListHelpers,
   DEFAULT_ACCOUNT_ID,
+  hasConfiguredAccountValue,
   normalizeAccountId,
   normalizeChatType,
   resolveMergedAccountConfig,
@@ -26,7 +27,24 @@ export type ResolvedSlackAccount = {
   config: SlackAccountConfig;
 } & SlackAccountSurfaceFields;
 
-const { listAccountIds, resolveDefaultAccountId } = createAccountListHelpers("slack");
+const { listAccountIds, resolveDefaultAccountId } = createAccountListHelpers("slack", {
+  hasImplicitDefaultAccount: (cfg) => {
+    const slack = cfg.channels?.slack;
+    const hasBotToken =
+      hasConfiguredAccountValue(slack?.botToken) ||
+      hasConfiguredAccountValue(process.env.SLACK_BOT_TOKEN);
+    if (!hasBotToken) {
+      return false;
+    }
+    if (slack?.mode === "http") {
+      return hasConfiguredAccountValue(slack.signingSecret);
+    }
+    return (
+      hasConfiguredAccountValue(slack?.appToken) ||
+      hasConfiguredAccountValue(process.env.SLACK_APP_TOKEN)
+    );
+  },
+});
 export const listSlackAccountIds = listAccountIds;
 export const resolveDefaultSlackAccountId = resolveDefaultAccountId;
 

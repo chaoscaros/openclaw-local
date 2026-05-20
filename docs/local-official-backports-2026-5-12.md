@@ -233,6 +233,10 @@ should be split by risk area.
     target, account, and thread/topic details while keeping local legacy
     `deliveryContext` and built-in Telegram/Slack/Mattermost parent-thread
     fallback behavior.
+  - Channel account listing now preserves implicit `default` accounts when
+    top-level credentials coexist with named accounts, keeping legacy
+    single-account setups active during Discord, Slack, Telegram, WhatsApp,
+    Zalo, and other multi-account migrations.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -271,6 +275,17 @@ should be split by risk area.
     `docs/install/updating.md`, `src/cli/skills-cli.ts`,
     `src/cli/skills-cli.commands.test.ts`, `docs/cli/skills.md`,
     `docs/tools/skills.md`, `docs/help/faq.md`,
+    `src/channels/plugins/account-helpers.ts`,
+    `src/channels/plugins/account-helpers.test.ts`,
+    `src/plugin-sdk/account-core.ts`, `src/plugin-sdk/account-helpers.ts`,
+    `extensions/discord/src/accounts.ts`, `extensions/feishu/src/accounts.ts`,
+    `extensions/googlechat/src/accounts.ts`, `extensions/imessage/src/accounts.ts`,
+    `extensions/irc/src/accounts.ts`, `extensions/mattermost/src/mattermost/accounts.ts`,
+    `extensions/nextcloud-talk/src/accounts.ts`, `extensions/qa-channel/src/accounts.ts`,
+    `extensions/signal/src/accounts.ts`, `extensions/slack/src/accounts.ts`,
+    `extensions/telegram/src/accounts.ts`, `extensions/telegram/src/accounts.test.ts`,
+    `extensions/whatsapp/src/accounts.ts`,
+    `extensions/zalo/src/accounts.ts`, `extensions/zalouser/src/accounts.ts`,
     `src/plugin-sdk/channel-route.ts`, `src/channels/route-projection.ts`,
     `src/utils/delivery-context.shared.ts`, `src/config/sessions/store.ts`,
     `src/config/sessions/store-load.ts`, `src/config/sessions/types.ts`,
