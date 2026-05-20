@@ -2060,6 +2060,16 @@
   .chat-compose__field textarea {
     min-height: 64px;
   }
+
+  .agent-chat__input {
+    margin: 0 8px calc(14px + var(--safe-area-bottom));
+  }
+}
+
+@media (display-mode: standalone) and (max-width: 768px) {
+  .agent-chat__input {
+    margin-bottom: calc(14px + max(var(--safe-area-bottom), 34px));
+  }
 }
 
 @media (max-width: 640px) {

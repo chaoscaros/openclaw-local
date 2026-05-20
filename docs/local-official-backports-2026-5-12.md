@@ -277,6 +277,9 @@ should be split by risk area.
   - Usage daily chart tooltips now render as one viewport-floating popover with
     focus/keyboard support, avoiding clipped tooltip content inside compact
     chart containers.
+  - Mobile standalone PWA chat layouts now keep the composer above
+    under-reported iOS safe-area insets, preserving the local composer/task
+    toolbar structure.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -340,7 +343,8 @@ should be split by risk area.
     `ui/src/ui/views/usage-render-details.test.ts`,
     `ui/src/ui/views/usage-render-overview.ts`,
     `ui/src/ui/views/usage-render-overview.test.ts`,
-    `ui/src/styles/usage.css`.
+    `ui/src/styles/usage.css`, `ui/src/styles/chat/layout.css`,
+    `ui/src/styles/chat-layout.test.ts`.
 
 ## Deferred
 
