@@ -201,6 +201,10 @@ should be split by risk area.
   - `openclaw skills install/update` now accepts `--global` for ClawHub-managed
     skills, targeting the shared managed skills directory instead of the active
     workspace while preserving the existing workspace default.
+  - Channel delivery state now has a normalized route metadata layer, preserving
+    target, account, and thread/topic details while keeping local legacy
+    `deliveryContext` and built-in Telegram/Slack/Mattermost parent-thread
+    fallback behavior.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -235,7 +239,13 @@ should be split by risk area.
     `src/cli/update-cli/progress.ts`, `src/cli/update-cli/progress.test.ts`,
     `docs/install/updating.md`, `src/cli/skills-cli.ts`,
     `src/cli/skills-cli.commands.test.ts`, `docs/cli/skills.md`,
-    `docs/tools/skills.md`, `docs/help/faq.md`.
+    `docs/tools/skills.md`, `docs/help/faq.md`,
+    `src/plugin-sdk/channel-route.ts`, `src/channels/route-projection.ts`,
+    `src/utils/delivery-context.shared.ts`, `src/config/sessions/store.ts`,
+    `src/config/sessions/store-load.ts`, `src/config/sessions/types.ts`,
+    `src/channels/session.ts`, `src/channels/session.types.ts`,
+    `src/agents/subagent-announce-delivery.ts`, `src/agents/acp-spawn.ts`,
+    `src/agents/tools/sessions-list-tool.ts`.
 
 ## Deferred
 
@@ -264,7 +274,8 @@ should be split by risk area.
 3. Plugin install/update batch: evaluate managed peer reconciliation and runtime
    install scanning.
 4. Telegram batch: evaluate the remaining post-5.12 group media and forum-topic
-   routing refinements against local Telegram customizations.
+   routing refinements against the new local route metadata layer and Telegram
+   customizations.
 5. Heartbeat/automation batch: evaluate heartbeat response tool mode together
    with local cron and heartbeat customizations.
 

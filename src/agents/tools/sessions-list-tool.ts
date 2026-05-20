@@ -10,6 +10,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { callGateway } from "../../gateway/call.js";
 import { resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 import { normalizeOptionalLowercaseString, readStringValue } from "../../shared/string-coerce.js";
+import { deliveryContextFromSession } from "../../utils/delivery-context.shared.js";
 import {
   describeSessionsListTool,
   SESSIONS_LIST_TOOL_DISPLAY_SUMMARY,
@@ -161,10 +162,7 @@ export function createSessionsListTool(opts?: {
             : undefined;
         const originChannel =
           typeof entryOrigin?.provider === "string" ? entryOrigin.provider : undefined;
-        const deliveryContext =
-          entry.deliveryContext && typeof entry.deliveryContext === "object"
-            ? (entry.deliveryContext as Record<string, unknown>)
-            : undefined;
+        const deliveryContext = deliveryContextFromSession(entry);
         const deliveryChannel = readStringValue(deliveryContext?.channel);
         const deliveryTo = readStringValue(deliveryContext?.to);
         const deliveryAccountId = readStringValue(deliveryContext?.accountId);

@@ -54,6 +54,12 @@ of the generic/raw id. If both hooks exist, core uses
 falls back to `resolveParentConversationCandidates(...)` when the canonical hook
 omits them.
 
+Use `openclaw/plugin-sdk/channel-route` for stable `ChannelRouteRef` helpers
+when plugin code needs to compare or persist a delivery target with account and
+thread/topic metadata. Core mirrors that normalized route into legacy
+`deliveryContext` fields so older channel code keeps working while newer code
+can avoid ad hoc string keys.
+
 ## Approvals and channel capabilities
 
 Most channel plugins do not need approval-specific code.

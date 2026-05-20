@@ -61,6 +61,7 @@ export async function recordInboundSession(params: {
   await runtime.updateLastRoute({
     storePath,
     sessionKey: targetSessionKey,
+    route: update.route,
     deliveryContext: {
       channel: update.channel,
       to: update.to,

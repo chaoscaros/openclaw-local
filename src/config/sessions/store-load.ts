@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { ChannelRouteRef } from "../../plugin-sdk/channel-route.js";
 import { normalizeSessionDeliveryFields } from "../../utils/delivery-context.shared.js";
+import { normalizeDeliveryChannelRoute } from "../../utils/delivery-context.shared.js";
 import { getFileStatSnapshot } from "../cache-utils.js";
 import {
   isSessionStoreCacheEnabled,
@@ -19,10 +21,7 @@ const log = createSubsystemLogger("sessions/store");
 const LOAD_TIME_SESSION_PRUNE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
 const LOAD_TIME_SESSION_MAX_ENTRIES = 500;
 
-function pruneLoadTimeStaleEntries(
-  store: Record<string, SessionEntry>,
-  maxAgeMs: number,
-): number {
+function pruneLoadTimeStaleEntries(store: Record<string, SessionEntry>, maxAgeMs: number): number {
   const cutoffMs = Date.now() - maxAgeMs;
   let pruned = 0;
   for (const [key, entry] of Object.entries(store)) {
@@ -40,7 +39,9 @@ function capLoadTimeEntryCount(store: Record<string, SessionEntry>, maxEntries: 
     return 0;
   }
   const sorted = keys.toSorted(
-    (left, right) => (store[right]?.updatedAt ?? Number.NEGATIVE_INFINITY) - (store[left]?.updatedAt ?? Number.NEGATIVE_INFINITY),
+    (left, right) =>
+      (store[right]?.updatedAt ?? Number.NEGATIVE_INFINITY) -
+      (store[left]?.updatedAt ?? Number.NEGATIVE_INFINITY),
   );
   const toDrop = sorted.slice(maxEntries);
   for (const key of toDrop) {
@@ -53,8 +54,26 @@ function isSessionStoreRecord(value: unknown): value is Record<string, SessionEn
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function sameDeliveryChannelRoute(
+  left: ChannelRouteRef | undefined,
+  right: ChannelRouteRef | undefined,
+): boolean {
+  return (
+    (left?.channel ?? undefined) === (right?.channel ?? undefined) &&
+    (left?.accountId ?? undefined) === (right?.accountId ?? undefined) &&
+    (left?.target?.to ?? undefined) === (right?.target?.to ?? undefined) &&
+    (left?.target?.rawTo ?? undefined) === (right?.target?.rawTo ?? undefined) &&
+    (left?.target?.chatType ?? undefined) === (right?.target?.chatType ?? undefined) &&
+    (left?.thread?.id ?? undefined) === (right?.thread?.id ?? undefined) &&
+    (left?.thread?.kind ?? undefined) === (right?.thread?.kind ?? undefined) &&
+    (left?.thread?.source ?? undefined) === (right?.thread?.source ?? undefined)
+  );
+}
+
 function normalizeSessionEntryDelivery(entry: SessionEntry): SessionEntry {
+  const entryRoute = normalizeDeliveryChannelRoute(entry.route);
   const normalized = normalizeSessionDeliveryFields({
+    route: entryRoute,
     channel: entry.channel,
     lastChannel: entry.lastChannel,
     lastTo: entry.lastTo,
@@ -69,6 +88,7 @@ function normalizeSessionEntryDelivery(entry: SessionEntry): SessionEntry {
     (entry.deliveryContext?.accountId ?? undefined) === nextDelivery?.accountId &&
     (entry.deliveryContext?.threadId ?? undefined) === nextDelivery?.threadId;
   const sameLast =
+    sameDeliveryChannelRoute(entryRoute, normalized.route) &&
     entry.lastChannel === normalized.lastChannel &&
     entry.lastTo === normalized.lastTo &&
     entry.lastAccountId === normalized.lastAccountId &&
@@ -78,6 +98,7 @@ function normalizeSessionEntryDelivery(entry: SessionEntry): SessionEntry {
   }
   return {
     ...entry,
+    route: normalized.route,
     deliveryContext: nextDelivery,
     lastChannel: normalized.lastChannel,
     lastTo: normalized.lastTo,

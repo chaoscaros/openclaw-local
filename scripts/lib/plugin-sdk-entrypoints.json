@@ -137,6 +137,7 @@
   "channel-pairing",
   "channel-policy",
   "channel-send-result",
+  "channel-route",
   "channel-targets",
   "feishu",
   "feishu-conversation",

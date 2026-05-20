@@ -7,6 +7,7 @@ Docs: https://docs.openclaw.ai
 ### Changes
 
 - Control UI: highlight WebChat markdown code blocks for common languages while keeping the existing copy and JSON-collapse controls.
+- Channels: add normalized channel route metadata so sessions can preserve target, account, and thread/topic delivery details alongside legacy delivery context fields.
 
 ### Fixes
 

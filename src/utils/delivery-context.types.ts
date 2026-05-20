@@ -1,4 +1,9 @@
-export type DeliveryContext = {
+import type { ChannelRouteRef, ChannelRouteTargetInput } from "../plugin-sdk/channel-route.js";
+
+export type DeliveryContext = Pick<
+  ChannelRouteTargetInput,
+  "accountId" | "channel" | "threadId" | "to"
+> & {
   channel?: string;
   to?: string;
   accountId?: string;
@@ -6,6 +11,7 @@ export type DeliveryContext = {
 };
 
 export type DeliveryContextSessionSource = {
+  route?: ChannelRouteRef;
   channel?: string;
   lastChannel?: string;
   lastTo?: string;

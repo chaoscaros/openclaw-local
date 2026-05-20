@@ -43,7 +43,10 @@ import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
 } from "../../shared/string-coerce.js";
-import { normalizeSessionDeliveryFields } from "../../utils/delivery-context.shared.js";
+import {
+  normalizeDeliveryChannelRoute,
+  normalizeSessionDeliveryFields,
+} from "../../utils/delivery-context.shared.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
 import { resolveCommandAuthorization } from "../command-auth.js";
 import type { MsgContext, TemplateContext } from "../templating.js";
@@ -84,6 +87,15 @@ function stripThreadIdFromOrigin(origin: SessionEntry["origin"]): SessionEntry["
   }
   const { threadId: _threadId, ...rest } = origin;
   return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
+function stripThreadFromSessionRoute(route: SessionEntry["route"]): SessionEntry["route"] {
+  const normalized = normalizeDeliveryChannelRoute(route);
+  if (!normalized?.thread) {
+    return normalized;
+  }
+  const { thread: _drop, ...withoutThread } = normalized;
+  return Object.keys(withoutThread).length > 0 ? withoutThread : undefined;
 }
 
 function resolveExplicitSessionEndReason(
@@ -549,6 +561,7 @@ export async function initSessionState(params: {
     : ctx.MessageThreadId || (isThread ? baseEntry?.lastThreadId : undefined);
   const deliveryFields = isSystemEvent
     ? normalizeSessionDeliveryFields({
+        route: isThread ? baseEntry?.route : stripThreadFromSessionRoute(baseEntry?.route),
         channel: baseEntry?.channel,
         lastChannel: baseEntry?.lastChannel,
         lastTo: baseEntry?.lastTo,
@@ -615,6 +628,7 @@ export async function initSessionState(params: {
     subject: baseEntry?.subject,
     groupChannel: baseEntry?.groupChannel,
     space: baseEntry?.space,
+    route: deliveryFields.route,
     deliveryContext: deliveryFields.deliveryContext,
     // Track originating channel for subagent announce routing.
     lastChannel,
@@ -635,6 +649,7 @@ export async function initSessionState(params: {
   if (isSystemEvent && !isThread) {
     sessionEntry = {
       ...sessionEntry,
+      route: stripThreadFromSessionRoute(sessionEntry.route),
       lastThreadId: undefined,
       deliveryContext: stripThreadIdFromDeliveryContext(sessionEntry.deliveryContext),
       origin: stripThreadIdFromOrigin(sessionEntry.origin),
