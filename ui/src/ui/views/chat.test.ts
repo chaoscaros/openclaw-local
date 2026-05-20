@@ -126,13 +126,21 @@ function createChatHeaderState(
       changeReviewModeEnabled: false,
     },
     chatMessage: "",
+    chatAttachments: [],
     chatStream: null,
+    chatStreamSegments: [],
     chatStreamStartedAt: null,
     chatRunId: null,
     chatQueue: [],
     chatMessages: [],
+    chatToolMessages: [],
     chatLoading: false,
     chatThinkingLevel: null,
+    chatSideResult: null,
+    chatSideResultTerminalRuns: new Set<string>(),
+    compactionStatus: null,
+    fallbackStatus: null,
+    chatChangeReview: null,
     lastError: null,
     chatAvatarUrl: null,
     basePath: "",
@@ -1396,6 +1404,66 @@ describe("chat view", () => {
     );
   });
 
+  it("switches the chat header to the selected agent's latest ordinary session", async () => {
+    const { state } = createChatHeaderState({ omitSessionFromList: true });
+    state.sessionKey = "agent:solo:main";
+    state.settings.sessionKey = state.sessionKey;
+    state.agentsList = {
+      defaultId: "solo",
+      mainKey: "agent:solo:main",
+      scope: "all",
+      agents: [
+        { id: "solo", name: "Solo" },
+        { id: "ops", identity: { name: "Ops" } },
+      ],
+    };
+    state.sessionsResult = {
+      ts: 0,
+      path: "",
+      count: 4,
+      defaults: { modelProvider: "openai", model: "gpt-5", contextTokens: null },
+      sessions: [
+        {
+          key: "agent:solo:main",
+          kind: "direct",
+          updatedAt: 1,
+        },
+        {
+          key: "agent:ops:dashboard:old",
+          kind: "direct",
+          updatedAt: 10,
+          label: "Ops Old",
+        },
+        {
+          key: "agent:ops:dashboard:newer",
+          kind: "direct",
+          updatedAt: 20,
+          label: "Ops Newer",
+        },
+        {
+          key: "agent:ops:subagent:worker",
+          kind: "direct",
+          updatedAt: 30,
+          label: "Worker",
+        },
+      ],
+    };
+    const container = document.createElement("div");
+    render(renderChatSessionSelect(state), container);
+
+    const agentSelect = container.querySelector<HTMLSelectElement>(
+      'select[data-chat-agent-filter="true"]',
+    );
+    expect(agentSelect).not.toBeNull();
+    expect(agentSelect?.value).toBe("solo");
+
+    agentSelect!.value = "ops";
+    agentSelect!.dispatchEvent(new Event("change", { bubbles: true }));
+    await flushTasks();
+
+    expect(state.sessionKey).toBe("agent:ops:dashboard:newer");
+  });
+
   it("reloads effective tools after a chat-header model switch for the active tools panel", async () => {
     vi.stubGlobal(
       "fetch",
@@ -1639,7 +1707,7 @@ describe("chat view", () => {
     expect(labels).not.toContain("Subagent:");
   });
 
-  it("disambiguates duplicate grouped labels with the scoped key suffix", () => {
+  it("hides sibling subagent sessions from the grouped chat session selector", () => {
     const { state } = createChatHeaderState({ omitSessionFromList: true });
     state.sessionKey = "agent:main:subagent:4f2146de-887b-4176-9abe-91140082959b";
     state.settings.sessionKey = state.sessionKey;
@@ -1666,21 +1734,20 @@ describe("chat view", () => {
     const container = document.createElement("div");
     render(renderChatSessionSelect(state), container);
 
-    const [sessionSelect] = Array.from(container.querySelectorAll<HTMLSelectElement>("select"));
+    const sessionSelect = container.querySelector<HTMLSelectElement>(
+      'select[data-chat-session-select="true"]',
+    );
     const labels = Array.from(sessionSelect?.querySelectorAll("option") ?? []).map((option) =>
       option.textContent?.trim(),
     );
 
-    expect(labels).toContain(
-      "Subagent: cron-config-check · subagent:4f2146de-887b-4176-9abe-91140082959b",
-    );
-    expect(labels).toContain(
+    expect(labels).toContain("Subagent: cron-config-check");
+    expect(labels).not.toContain(
       "Subagent: cron-config-check · subagent:6fb8b84b-c31f-410f-b7df-1553c82e43c9",
     );
-    expect(labels).not.toContain("Subagent: cron-config-check");
   });
 
-  it("prefixes duplicate agent session labels with the agent name", () => {
+  it("renders an agent filter and keeps session options scoped to the active agent", () => {
     const { state } = createChatHeaderState({ omitSessionFromList: true });
     state.sessionKey = "agent:alpha:main";
     state.settings.sessionKey = state.sessionKey;
@@ -1714,17 +1781,26 @@ describe("chat view", () => {
     const container = document.createElement("div");
     render(renderChatSessionSelect(state), container);
 
-    const [sessionSelect] = Array.from(container.querySelectorAll<HTMLSelectElement>("select"));
+    const agentSelect = container.querySelector<HTMLSelectElement>(
+      'select[data-chat-agent-filter="true"]',
+    );
+    const agentLabels = Array.from(agentSelect?.querySelectorAll("option") ?? []).map((option) =>
+      option.textContent?.trim(),
+    );
+    const sessionSelect = container.querySelector<HTMLSelectElement>(
+      'select[data-chat-session-select="true"]',
+    );
     const labels = Array.from(sessionSelect?.querySelectorAll("option") ?? []).map((option) =>
       option.textContent?.trim(),
     );
 
-    expect(labels).toContain("Deep Chat (alpha) / main");
-    expect(labels).toContain("Coding (beta) / main");
-    expect(labels).not.toContain("main");
+    expect(agentLabels).toContain("Deep Chat (alpha)");
+    expect(agentLabels).toContain("Coding (beta)");
+    expect(labels).toContain("main");
+    expect(labels).not.toContain("Coding (beta) / main");
   });
 
-  it("keeps agent-prefixed labels unique when a custom label already matches the prefix", () => {
+  it("keeps scoped labels unique inside the active agent", () => {
     const { state } = createChatHeaderState({ omitSessionFromList: true });
     state.sessionKey = "agent:alpha:main";
     state.settings.sessionKey = state.sessionKey;
@@ -1757,21 +1833,23 @@ describe("chat view", () => {
           key: "agent:alpha:named-main",
           kind: "direct",
           updatedAt: null,
-          label: "Deep Chat (alpha) / main",
+          label: "main",
         },
       ],
     };
     const container = document.createElement("div");
     render(renderChatSessionSelect(state), container);
 
-    const [sessionSelect] = Array.from(container.querySelectorAll<HTMLSelectElement>("select"));
+    const sessionSelect = container.querySelector<HTMLSelectElement>(
+      'select[data-chat-session-select="true"]',
+    );
     const labels = Array.from(sessionSelect?.querySelectorAll("option") ?? []).map((option) =>
       option.textContent?.trim(),
     );
 
-    expect(labels.filter((label) => label === "Deep Chat (alpha) / main")).toHaveLength(1);
-    expect(labels).toContain("Deep Chat (alpha) / main · named-main");
-    expect(labels).toContain("Coding (beta) / main");
+    expect(labels.filter((label) => label === "main")).toHaveLength(1);
+    expect(labels).toContain("main · named-main");
+    expect(labels).not.toContain("Coding (beta) / main");
   });
 
   it("keeps tool cards collapsed by default and expands them inline on demand", async () => {

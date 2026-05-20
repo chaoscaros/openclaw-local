@@ -1895,16 +1895,29 @@
 
 .chat-controls__session-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.2fr) minmax(168px, 1fr) minmax(124px, 0.8fr) minmax(
-      260px,
-      1.5fr
-    );
-  grid-template-areas: "session model thinking task";
+  grid-template-columns:
+    minmax(118px, 0.8fr) minmax(180px, 1.2fr) minmax(168px, 1fr) minmax(124px, 0.8fr)
+    minmax(260px, 1.5fr);
+  grid-template-areas: "agent session model thinking task";
   align-items: center;
   gap: 8px;
   width: 100%;
   min-width: 0;
   min-height: 36px;
+}
+
+.chat-controls__session-row--single-agent {
+  grid-template-columns: minmax(180px, 1.2fr) minmax(168px, 1fr) minmax(124px, 0.8fr) minmax(
+      260px,
+      1.5fr
+    );
+  grid-template-areas: "session model thinking task";
+}
+
+.chat-controls__agent {
+  grid-area: agent;
+  min-width: 0;
+  max-width: none;
 }
 
 .chat-controls__session-picker {
@@ -2024,6 +2037,15 @@
 @media (max-width: 768px) {
   .chat-controls__session-row {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "agent"
+      "session"
+      "model"
+      "thinking"
+      "task";
+  }
+
+  .chat-controls__session-row--single-agent {
     grid-template-areas:
       "session"
       "model"

@@ -268,6 +268,10 @@ should be split by risk area.
     top-level credentials coexist with named accounts, keeping legacy
     single-account setups active during Discord, Slack, Telegram, WhatsApp,
     Zalo, and other multi-account migrations.
+  - Control UI chat session controls now include a separate agent filter, keep
+    session options scoped to the selected agent, and switch to that agent's
+    latest ordinary session instead of mixing subagent/cron/other-agent entries
+    into one dropdown.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -322,7 +326,11 @@ should be split by risk area.
     `src/config/sessions/store-load.ts`, `src/config/sessions/types.ts`,
     `src/channels/session.ts`, `src/channels/session.types.ts`,
     `src/agents/subagent-announce-delivery.ts`, `src/agents/acp-spawn.ts`,
-    `src/agents/tools/sessions-list-tool.ts`.
+    `src/agents/tools/sessions-list-tool.ts`,
+    `ui/src/i18n/locales/en.ts`, `ui/src/i18n/locales/zh-CN.ts`,
+    `ui/src/ui/app-render.helpers.ts`,
+    `ui/src/ui/app-render.helpers.node.test.ts`,
+    `ui/src/ui/views/chat.test.ts`, `ui/src/styles/chat/layout.css`.
 
 ## Deferred
 

@@ -58,6 +58,7 @@ Docs: https://docs.openclaw.ai
 - Slack: fail closed when a same-channel threaded turn loses its Slack thread timestamp, and let `topLevel` / `threadId: null` explicitly send at the channel root.
 - Nextcloud Talk: wire the shared `message react` action to the existing Talk reaction sender, with clear errors for unsupported reaction removal.
 - Follow-up queue: collect unresolved-origin queued messages with compatible routed messages and resume batching after a true cross-channel drain.
+- Control UI/chat: add an agent filter to the chat header session picker so multi-agent installs only show the active agent's ordinary sessions and switch agents without stale dropdown entries.
 
 ## 2026.4.15
 

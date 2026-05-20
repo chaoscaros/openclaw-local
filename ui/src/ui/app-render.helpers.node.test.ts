@@ -385,7 +385,7 @@ describe("resolveSessionOptionGroups", () => {
   it("hides internal dreaming narrative sessions from the switcher while keeping normal sessions", () => {
     const state = {
       sessionsHideCron: true,
-      agentsList: { agents: [{ id: "main", name: "Main" }] },
+      agentsList: { defaultId: "main", agents: [{ id: "main", name: "Main" }] },
     } as unknown as AppViewState;
     const groups = resolveSessionOptionGroups(state, "main", {
       ts: 1,
@@ -402,6 +402,39 @@ describe("resolveSessionOptionGroups", () => {
     expect(keys).toContain("main");
     expect(keys).toContain("agent:main:telegram:direct:user-1");
     expect(keys).not.toContain("agent:main:dreaming-narrative-light-abc");
+  });
+
+  it("filters chat session options to the active agent", () => {
+    const state = {
+      sessionsHideCron: true,
+      agentsList: {
+        defaultId: "solo",
+        agents: [
+          { id: "solo", name: "Solo" },
+          { id: "ops", name: "Ops" },
+        ],
+      },
+    } as unknown as AppViewState;
+    const groups = resolveSessionOptionGroups(state, "agent:ops:dashboard:current", {
+      ts: 1,
+      path: "",
+      count: 5,
+      defaults: {},
+      sessions: [
+        row({ key: "agent:solo:dashboard:old", label: "Solo Old", updatedAt: 1 }),
+        row({ key: "agent:ops:dashboard:current", label: "Ops Current", updatedAt: 5 }),
+        row({ key: "agent:ops:dashboard:recent", label: "Ops Recent", updatedAt: 4 }),
+        row({ key: "agent:ops:subagent:worker", label: "Worker", updatedAt: 3 }),
+        row({ key: "agent:ops:cron:daily", label: "Ops Cron", updatedAt: 2 }),
+      ],
+    } as SessionsListResult);
+
+    const keys = groups.flatMap((group) => group.options.map((option) => option.key));
+    expect(keys).toContain("agent:ops:dashboard:current");
+    expect(keys).toContain("agent:ops:dashboard:recent");
+    expect(keys).not.toContain("agent:solo:dashboard:old");
+    expect(keys).not.toContain("agent:ops:subagent:worker");
+    expect(keys).not.toContain("agent:ops:cron:daily");
   });
 });
 

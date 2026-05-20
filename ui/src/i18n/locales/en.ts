@@ -1116,6 +1116,7 @@ export const en: TranslationMap = {
     onboardingDisabled: "Disabled during setup",
     switchedSession: "Switched to {session}",
     selectors: {
+      agentFilter: "Chat agent",
       session: "Chat session",
       model: "Chat model",
       thinkingLevel: "Chat thinking level",

@@ -1112,6 +1112,7 @@ export const zh_CN: TranslationMap = {
     onboardingDisabled: "引导期间禁用",
     switchedSession: "已切换到 {session}",
     selectors: {
+      agentFilter: "聊天智能体",
       session: "聊天会话",
       model: "聊天模型",
       thinkingLevel: "聊天思考级别",
