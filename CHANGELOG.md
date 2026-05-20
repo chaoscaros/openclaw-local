@@ -55,6 +55,7 @@ Docs: https://docs.openclaw.ai
 - Cron/outbound: skip plugin target normalization when scheduled-run source delivery already has an exact recipient match, while still preserving Telegram topic matching.
 - Slack: fail closed when a same-channel threaded turn loses its Slack thread timestamp, and let `topLevel` / `threadId: null` explicitly send at the channel root.
 - Nextcloud Talk: wire the shared `message react` action to the existing Talk reaction sender, with clear errors for unsupported reaction removal.
+- Follow-up queue: collect unresolved-origin queued messages with compatible routed messages and resume batching after a true cross-channel drain.
 
 ## 2026.4.15
 

@@ -240,6 +240,9 @@ should be split by risk area.
   - Nextcloud Talk now registers a channel-owned `react` message action adapter
     that dispatches to the existing Talk reaction sender, while keeping sends
     on the outbound path and rejecting unsupported reaction removal explicitly.
+  - Follow-up queue collect mode now batches unresolved-origin messages with the
+    compatible resolved route and resumes batching after a true cross-channel
+    drain, improving the running/queued message insertion path.
   - TUI normal-message submits now preserve the draft while an active or
     optimistic chat run is busy, show the existing abort-first hint, and keep
     slash commands routable during the busy state.

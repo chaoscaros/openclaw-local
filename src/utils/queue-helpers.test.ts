@@ -4,6 +4,7 @@ import {
   buildQueueSummaryPrompt,
   clearQueueSummaryState,
   drainCollectItemIfNeeded,
+  hasCrossChannelItems,
   previewQueueSummaryPrompt,
 } from "./queue-helpers.js";
 
@@ -165,5 +166,27 @@ describe("drainCollectItemIfNeeded", () => {
 
     expect(result).toBe("empty");
     expect(forced).toBe(true);
+  });
+});
+
+describe("hasCrossChannelItems", () => {
+  const resolveKey = (item: { key?: string; cross?: boolean }) => item;
+
+  it("does not treat unresolved items as cross-channel when keyed items agree", () => {
+    expect(hasCrossChannelItems([{ key: undefined }, { key: "slack|channel:A" }], resolveKey)).toBe(
+      false,
+    );
+  });
+
+  it("detects multiple resolved destination keys", () => {
+    expect(
+      hasCrossChannelItems([{ key: "slack|channel:A" }, { key: "slack|channel:B" }], resolveKey),
+    ).toBe(true);
+  });
+
+  it("honors explicit cross markers", () => {
+    expect(hasCrossChannelItems([{ cross: true }, { key: "slack|channel:A" }], resolveKey)).toBe(
+      true,
+    );
   });
 });

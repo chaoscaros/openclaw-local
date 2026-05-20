@@ -157,6 +157,9 @@ export function scheduleFollowupDrain(
           // Check if messages span multiple channels.
           // If so, process individually to preserve per-message routing.
           const isCrossChannel = hasCrossChannelItems(queue.items, resolveCrossChannelKey);
+          if (collectState.forceIndividualCollect && !isCrossChannel && queue.items.length > 1) {
+            collectState.forceIndividualCollect = false;
+          }
 
           const collectDrainResult = await drainCollectQueueStep({
             collectState,
