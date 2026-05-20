@@ -233,6 +233,10 @@ should be split by risk area.
     run using the existing soft-steer path, while preserving a visible pending
     marker and falling back to the queued next-turn path during the initial send
     acknowledgement window.
+  - Slack threaded turns now carry a `sameChannelThreadRequired` tool-context
+    hint so same-channel replies fail closed if the original Slack thread
+    timestamp is missing, while `topLevel` and `threadId: null` remain explicit
+    root-post escape hatches.
   - TUI normal-message submits now preserve the draft while an active or
     optimistic chat run is busy, show the existing abort-first hint, and keep
     slash commands routable during the busy state.

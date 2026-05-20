@@ -89,19 +89,47 @@ describe("buildSlackThreadingToolContext", () => {
   });
 
   it("uses all mode when MessageThreadId is present", () => {
-    expect(
-      resolveReplyToModeWithConfig({
-        slackConfig: {
+    const cfg = {
+      channels: {
+        slack: {
           replyToMode: "all",
           replyToModeByChatType: { direct: "off" },
         },
+      },
+    } as OpenClawConfig;
+    const result = buildSlackThreadingToolContext({
+      cfg,
+      accountId: null,
+      context: {
+        ChatType: "direct",
+        ThreadLabel: "thread-label",
+        MessageThreadId: "1771999998.834199",
+      },
+    });
+
+    expect(result.replyToMode).toBe("all");
+    expect(result.currentThreadTs).toBe("1771999998.834199");
+    expect(result.sameChannelThreadRequired).toBe(true);
+  });
+
+  it("does not require thread context when MessageThreadId is absent", () => {
+    expect(
+      buildSlackThreadingToolContext({
+        cfg: {
+          channels: {
+            slack: {
+              replyToMode: "all",
+              replyToModeByChatType: { direct: "off" },
+            },
+          },
+        } as OpenClawConfig,
+        accountId: null,
         context: {
           ChatType: "direct",
-          ThreadLabel: "thread-label",
-          MessageThreadId: "1771999998.834199",
+          ThreadLabel: "label-without-real-thread",
         },
-      }),
-    ).toBe("all");
+      }).sameChannelThreadRequired,
+    ).toBe(false);
   });
 
   it("does not force all mode from ThreadLabel alone", () => {

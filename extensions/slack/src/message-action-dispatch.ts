@@ -1,4 +1,5 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+import { readBooleanParam } from "openclaw/plugin-sdk/boolean-param";
 import type { ChannelMessageActionContext } from "openclaw/plugin-sdk/channel-contract";
 import { normalizeInteractiveReply } from "openclaw/plugin-sdk/interactive-runtime";
 import { readNumberParam, readStringParam } from "openclaw/plugin-sdk/param-readers";
@@ -51,6 +52,8 @@ export async function handleSlackMessageAction(params: {
     }
     const threadId = readStringParam(actionParams, "threadId");
     const replyTo = readStringParam(actionParams, "replyTo");
+    const topLevel =
+      readBooleanParam(actionParams, "topLevel") === true || actionParams.threadId === null;
     return await invoke(
       {
         action: "sendMessage",
@@ -59,6 +62,7 @@ export async function handleSlackMessageAction(params: {
         mediaUrl: mediaUrl ?? undefined,
         accountId,
         threadTs: threadId ?? replyTo ?? undefined,
+        ...(topLevel ? { topLevel: true } : {}),
         ...(blocks ? { blocks } : {}),
       },
       cfg,
@@ -210,6 +214,8 @@ export async function handleSlackMessageAction(params: {
     }
     const threadId =
       readStringParam(actionParams, "threadId") ?? readStringParam(actionParams, "replyTo");
+    const topLevel =
+      readBooleanParam(actionParams, "topLevel") === true || actionParams.threadId === null;
     return await invoke(
       {
         action: "uploadFile",
@@ -222,6 +228,7 @@ export async function handleSlackMessageAction(params: {
         filename: readStringParam(actionParams, "filename"),
         title: readStringParam(actionParams, "title"),
         threadTs: threadId ?? undefined,
+        ...(topLevel ? { topLevel: true } : {}),
         accountId,
       },
       cfg,

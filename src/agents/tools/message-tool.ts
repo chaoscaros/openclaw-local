@@ -112,6 +112,12 @@ function buildSendSchema(options: { includeInteractive: boolean }) {
     filePath: Type.Optional(Type.String()),
     replyTo: Type.Optional(Type.String()),
     threadId: Type.Optional(Type.String()),
+    topLevel: Type.Optional(
+      Type.Boolean({
+        description:
+          "For channels with thread auto-reply behavior, force a root/top-level send instead of inheriting the current thread.",
+      }),
+    ),
     asVoice: Type.Optional(Type.Boolean()),
     silent: Type.Optional(Type.Boolean()),
     quoteText: Type.Optional(
@@ -407,6 +413,7 @@ type MessageToolOptions = {
   currentMessageId?: string | number;
   replyToMode?: "off" | "first" | "all" | "batched";
   hasRepliedRef?: { value: boolean };
+  sameChannelThreadRequired?: boolean;
   sandboxRoot?: string;
   requireExplicitTarget?: boolean;
   requesterSenderId?: string;
@@ -755,7 +762,8 @@ export function createMessageTool(options?: MessageToolOptions): AnyAgentTool {
         options?.currentThreadTs ||
         hasCurrentMessageId ||
         options?.replyToMode ||
-        options?.hasRepliedRef
+        options?.hasRepliedRef ||
+        options?.sameChannelThreadRequired
           ? {
               currentChannelId: options?.currentChannelId,
               currentChannelProvider: options?.currentChannelProvider,
@@ -763,6 +771,7 @@ export function createMessageTool(options?: MessageToolOptions): AnyAgentTool {
               currentMessageId: options?.currentMessageId,
               replyToMode: options?.replyToMode,
               hasRepliedRef: options?.hasRepliedRef,
+              sameChannelThreadRequired: options?.sameChannelThreadRequired,
               // Direct tool invocations should not add cross-context decoration.
               // The agent is composing a message, not forwarding from another chat.
               skipCrossContextDecoration: true,

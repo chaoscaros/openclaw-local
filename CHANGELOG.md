@@ -53,6 +53,7 @@ Docs: https://docs.openclaw.ai
 - Channels: preserve implicit default accounts when top-level credentials coexist with named accounts, keeping legacy default channel setups active during multi-account migration.
 - Plugins/Slack: use a stable `minHostVersion` floor in the bundled Slack manifest so stricter plugin validation no longer blocks startup.
 - Cron/outbound: skip plugin target normalization when scheduled-run source delivery already has an exact recipient match, while still preserving Telegram topic matching.
+- Slack: fail closed when a same-channel threaded turn loses its Slack thread timestamp, and let `topLevel` / `threadId: null` explicitly send at the channel root.
 
 ## 2026.4.15
 

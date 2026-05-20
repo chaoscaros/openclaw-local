@@ -31,5 +31,6 @@ export function buildSlackThreadingToolContext(params: {
     currentThreadTs: threadId != null ? String(threadId) : undefined,
     replyToMode: effectiveReplyToMode,
     hasRepliedRef: params.hasRepliedRef,
+    sameChannelThreadRequired: hasExplicitThreadTarget,
   };
 }

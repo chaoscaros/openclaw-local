@@ -195,6 +195,35 @@ describe("handleSlackAction", () => {
     });
   });
 
+  it("fails closed for same-channel sends from thread-required contexts with no thread ts", async () => {
+    await expect(
+      handleSlackAction(
+        { action: "sendMessage", to: "channel:C123", content: "keep private" },
+        slackConfig(),
+        {
+          currentChannelId: "C123",
+          replyToMode: "all",
+          sameChannelThreadRequired: true,
+        },
+      ),
+    ).rejects.toThrow("Slack thread context is required");
+    expect(sendSlackMessage).not.toHaveBeenCalled();
+  });
+
+  it("allows explicit top-level sends from thread-required contexts", async () => {
+    await handleSlackAction(
+      { action: "sendMessage", to: "channel:C123", content: "root", topLevel: true },
+      slackConfig(),
+      {
+        currentChannelId: "C123",
+        replyToMode: "all",
+        sameChannelThreadRequired: true,
+      },
+    );
+
+    expectLastSlackSend("root");
+  });
+
   it("returns a friendly error when downloadFile cannot fetch the attachment", async () => {
     downloadSlackFile.mockResolvedValueOnce(null);
     const result = await handleSlackAction(

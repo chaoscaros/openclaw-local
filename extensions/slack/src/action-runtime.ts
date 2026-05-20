@@ -80,6 +80,8 @@ export type SlackActionContext = {
   replyToMode?: "off" | "first" | "all" | "batched";
   /** Mutable ref to track if a reply was sent for single-use reply modes. */
   hasRepliedRef?: { value: boolean };
+  /** True when same-channel root posting would leak a thread-originated reply. */
+  sameChannelThreadRequired?: boolean;
   /** Allowed local media directories for file uploads. */
   mediaLocalRoots?: readonly string[];
   mediaReadFile?: (filePath: string) => Promise<Buffer>;
@@ -95,13 +97,16 @@ function resolveThreadTsFromContext(
   explicitThreadTs: string | undefined,
   targetChannel: string,
   context: SlackActionContext | undefined,
+  opts?: { suppressImplicitThread?: boolean },
 ): string | undefined {
   // Agent explicitly provided threadTs - use it
   if (explicitThreadTs) {
     return explicitThreadTs;
   }
-  // No context or missing required fields
-  if (!context?.currentThreadTs || !context?.currentChannelId) {
+  if (opts?.suppressImplicitThread) {
+    return undefined;
+  }
+  if (!context?.currentChannelId) {
     return undefined;
   }
 
@@ -115,6 +120,14 @@ function resolveThreadTsFromContext(
 
   // Different channel - don't inject
   if (normalizedTarget !== context.currentChannelId) {
+    return undefined;
+  }
+  if (!context.currentThreadTs) {
+    if (context.sameChannelThreadRequired) {
+      throw new Error(
+        "Slack thread context is required for same-channel replies from a threaded Slack turn. Set topLevel=true or threadId=null to post at the channel root.",
+      );
+    }
     return undefined;
   }
 
@@ -243,6 +256,9 @@ export async function handleSlackAction(
           readStringParam(params, "threadTs"),
           to,
           context,
+          {
+            suppressImplicitThread: params.topLevel === true || params.threadTs === null,
+          },
         );
         const result = await slackActionRuntime.sendSlackMessage(to, content ?? "", {
           ...writeOpts,
@@ -288,6 +304,9 @@ export async function handleSlackAction(
           readStringParam(params, "threadTs"),
           to,
           context,
+          {
+            suppressImplicitThread: params.topLevel === true || params.threadTs === null,
+          },
         );
         const result = await slackActionRuntime.sendSlackMessage(to, initialComment ?? "", {
           ...writeOpts,

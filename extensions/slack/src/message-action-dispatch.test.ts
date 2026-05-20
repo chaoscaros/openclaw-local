@@ -9,6 +9,64 @@ function createInvokeSpy() {
 }
 
 describe("handleSlackMessageAction", () => {
+  it("maps send topLevel to Slack sendMessage", async () => {
+    const invoke = createInvokeSpy();
+
+    await handleSlackMessageAction({
+      providerId: "slack",
+      ctx: {
+        action: "send",
+        cfg: {},
+        params: {
+          to: "channel:C1",
+          message: "root reply",
+          topLevel: true,
+        },
+      } as never,
+      invoke: invoke as never,
+    });
+
+    expect(invoke).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "sendMessage",
+        to: "channel:C1",
+        content: "root reply",
+        topLevel: true,
+      }),
+      expect.any(Object),
+      undefined,
+    );
+  });
+
+  it("maps null send threadId to Slack topLevel", async () => {
+    const invoke = createInvokeSpy();
+
+    await handleSlackMessageAction({
+      providerId: "slack",
+      ctx: {
+        action: "send",
+        cfg: {},
+        params: {
+          to: "channel:C1",
+          message: "root reply",
+          threadId: null,
+        },
+      } as never,
+      invoke: invoke as never,
+    });
+
+    expect(invoke).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "sendMessage",
+        to: "channel:C1",
+        topLevel: true,
+        threadTs: undefined,
+      }),
+      expect.any(Object),
+      undefined,
+    );
+  });
+
   it("maps upload-file to the internal uploadFile action", async () => {
     const invoke = createInvokeSpy();
 
@@ -69,6 +127,35 @@ describe("handleSlackMessageAction", () => {
         filePath: "/tmp/chart.png",
         initialComment: "chart attached",
         threadTs: "333.444",
+      }),
+      expect.any(Object),
+      undefined,
+    );
+  });
+
+  it("maps upload-file topLevel to Slack uploadFile", async () => {
+    const invoke = createInvokeSpy();
+
+    await handleSlackMessageAction({
+      providerId: "slack",
+      ctx: {
+        action: "upload-file",
+        cfg: {},
+        params: {
+          to: "channel:C1",
+          filePath: "/tmp/report.png",
+          topLevel: true,
+        },
+      } as never,
+      invoke: invoke as never,
+    });
+
+    expect(invoke).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "uploadFile",
+        to: "channel:C1",
+        filePath: "/tmp/report.png",
+        topLevel: true,
       }),
       expect.any(Object),
       undefined,
