@@ -164,6 +164,56 @@ function flushTasks() {
   return new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
+function domRect(params: {
+  left?: number;
+  top?: number;
+  width?: number;
+  height?: number;
+}): DOMRect {
+  const left = params.left ?? 0;
+  const top = params.top ?? 0;
+  const width = params.width ?? 0;
+  const height = params.height ?? 0;
+  const rect = {
+    x: left,
+    y: top,
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+    toJSON: () => rect,
+  };
+  return rect as DOMRect;
+}
+
+function stubDeleteConfirmGeometry(params: {
+  trigger: { left: number; top: number; width: number; height: number };
+  popover: { width: number; height: number };
+  viewport: { left?: number; top?: number; width: number; height: number };
+}) {
+  vi.stubGlobal("innerWidth", params.viewport.width);
+  vi.stubGlobal("innerHeight", params.viewport.height);
+  vi.stubGlobal("visualViewport", {
+    height: params.viewport.height,
+    offsetLeft: params.viewport.left ?? 0,
+    offsetTop: params.viewport.top ?? 0,
+    width: params.viewport.width,
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      if (this.classList.contains("chat-group-delete")) {
+        return domRect(params.trigger);
+      }
+      if (this.classList.contains("chat-delete-confirm")) {
+        return domRect(params.popover);
+      }
+      return domRect({});
+    },
+  );
+}
+
 function createProps(overrides: Partial<ChatProps> = {}): ChatProps {
   return {
     sessionKey: "main",
@@ -385,6 +435,26 @@ describe("chat view", () => {
     expect(text).not.toContain("Task goal");
     expect(text).not.toContain("Timeline");
     expect(text).not.toContain("Technical context");
+  });
+
+  it("focuses the composer when clicking non-control composer chrome", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    try {
+      render(renderChat(createProps()), container);
+      await flushTasks();
+
+      const input = container.querySelector<HTMLElement>(".agent-chat__input");
+      const textarea = container.querySelector<HTMLTextAreaElement>(".agent-chat__input textarea");
+      expect(input).not.toBeNull();
+      expect(textarea).not.toBeNull();
+
+      input?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+      expect(document.activeElement).toBe(textarea);
+    } finally {
+      container.remove();
+    }
   });
 
   it("renders the chat task context bar in the header row", async () => {
@@ -1165,6 +1235,53 @@ describe("chat view", () => {
     );
     expect(confirm).not.toBeNull();
     expect(confirm?.classList.contains("chat-delete-confirm--right")).toBe(true);
+  });
+
+  it("keeps delete confirm inside the viewport near bottom and right edges", () => {
+    try {
+      getSafeLocalStorage()?.removeItem("openclaw:skipDeleteConfirm");
+    } catch {
+      /* noop */
+    }
+    stubDeleteConfirmGeometry({
+      trigger: { left: 260, top: 190, width: 24, height: 24 },
+      popover: { width: 200, height: 80 },
+      viewport: { width: 320, height: 240 },
+    });
+    try {
+      const container = document.createElement("div");
+      render(
+        renderChat(
+          createProps({
+            messages: [
+              {
+                role: "assistant",
+                content: "hello from assistant",
+                timestamp: 1000,
+              },
+            ],
+          }),
+        ),
+        container,
+      );
+
+      const deleteButton = container.querySelector<HTMLButtonElement>(
+        ".chat-group.assistant .chat-group-delete",
+      );
+      expect(deleteButton).not.toBeNull();
+      deleteButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+      const confirm = container.querySelector<HTMLElement>(
+        ".chat-group.assistant .chat-delete-confirm",
+      );
+      expect(confirm).not.toBeNull();
+      expect(confirm?.dataset.placement).toBe("above");
+      expect(confirm?.style.top).toBe("104px");
+      expect(confirm?.style.left).toBe("112px");
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("patches the current session model from the chat header picker", async () => {

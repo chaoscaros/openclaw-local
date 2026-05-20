@@ -50,6 +50,19 @@ import { agentLogoUrl, resolveAgentAvatarUrl } from "./agents-utils.ts";
 import { renderMarkdownSidebar } from "./markdown-sidebar.ts";
 import "../components/resizable-divider.ts";
 
+const COMPOSER_CHROME_INTERACTIVE_SELECTOR = [
+  "a[href]",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "summary",
+  "[contenteditable='true']",
+  "[role='button']",
+  "[role='listbox']",
+  "[role='option']",
+].join(",");
+
 type DreamingAssistReason = "disabled" | "no_strategy" | "scope_mismatch" | "expired";
 type ChangeReviewHunk = {
   hunkId: string;
@@ -1154,6 +1167,23 @@ export const cleanupChatModuleState = resetChatViewState;
 function adjustTextareaHeight(el: HTMLTextAreaElement) {
   el.style.height = "auto";
   el.style.height = `${Math.min(el.scrollHeight, 150)}px`;
+}
+
+function focusComposerFromChrome(event: MouseEvent, canSend: boolean) {
+  if (!canSend || event.defaultPrevented) {
+    return;
+  }
+  const target = event.target;
+  const currentTarget = event.currentTarget;
+  if (!(target instanceof Element) || !(currentTarget instanceof HTMLElement)) {
+    return;
+  }
+  if (target.closest(COMPOSER_CHROME_INTERACTIVE_SELECTOR)) {
+    return;
+  }
+  currentTarget.querySelector<HTMLTextAreaElement>(":scope > textarea")?.focus({
+    preventScroll: true,
+  });
 }
 
 function resetComposerHeight() {
@@ -2575,7 +2605,10 @@ export function renderChat(props: ChatProps) {
         : nothing}
 
       <!-- Input bar -->
-      <div class="agent-chat__input">
+      <div
+        class="agent-chat__input"
+        @click=${(event: MouseEvent) => focusComposerFromChrome(event, props.canSend)}
+      >
         ${renderSlashMenu(requestUpdate, props)} ${renderAttachmentPreview(props)}
 
         <input
@@ -2614,6 +2647,7 @@ export function renderChat(props: ChatProps) {
               ?disabled=${!props.connected}
             >
               ${icons.paperclip}
+              <span class="agent-chat__control-label">${t("chatUi.attachFile")}</span>
             </button>
 
             ${isSttSupported()

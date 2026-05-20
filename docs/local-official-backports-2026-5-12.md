@@ -229,6 +229,9 @@ should be split by risk area.
   - Control UI markdown rendering now highlights common code block languages
     using the existing WebChat code-block wrapper, while keeping local copy and
     JSON-collapse controls intact.
+  - Control UI chat composer now focuses from non-interactive composer chrome,
+    wraps long inline code inside chat bubbles, and clamps message delete
+    confirmations to the viewport while preserving the local task/mode toolbar.
   - Update CLI EACCES recovery hints now tell supervised-install operators to
     stop the Gateway before sudo/manual npm replacement and include the
     reinstall/restart outline, with matching install documentation and split
