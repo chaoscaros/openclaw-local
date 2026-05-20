@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import "../test-helpers/load-styles.ts";
+import { createMainSessionRow } from "./chat-model.test-helpers.ts";
 import { mountApp as mountTestApp, registerAppMountHooks } from "./test-helpers/app-mount.ts";
+import type { SessionsListResult } from "./types.ts";
 
 registerAppMountHooks();
 
@@ -32,6 +34,47 @@ function expectConfirmedGatewayChange(app: ReturnType<typeof mountApp>) {
   expect(app.settings.token).toBe("abc123");
   expect(window.location.search).toBe("");
   expect(window.location.hash).toBe("");
+}
+
+function createSidebarSessionsResult(): SessionsListResult {
+  const now = Date.now();
+  return {
+    ts: now,
+    path: "",
+    count: 5,
+    defaults: {
+      modelProvider: null,
+      model: null,
+      contextTokens: null,
+    },
+    sessions: [
+      createMainSessionRow({
+        key: "agent:solo:main",
+        label: "Current",
+        updatedAt: now,
+      }),
+      createMainSessionRow({
+        key: "agent:solo:dashboard:alpha",
+        label: "Alpha",
+        updatedAt: now - 1000,
+      }),
+      createMainSessionRow({
+        key: "agent:solo:dashboard:beta",
+        label: "Beta",
+        updatedAt: now - 2000,
+      }),
+      createMainSessionRow({
+        key: "agent:solo:cron:daily",
+        label: "Daily",
+        updatedAt: now - 3000,
+      }),
+      createMainSessionRow({
+        key: "agent:solo:dreaming-narrative-light",
+        label: "Dream",
+        updatedAt: now - 4000,
+      }),
+    ],
+  };
 }
 
 describe("control UI routing", () => {
@@ -181,6 +224,63 @@ describe("control UI routing", () => {
     expect(app.querySelector(".sidebar-brand__copy")).not.toBeNull();
   });
 
+  it("renders sidebar session shortcuts and opens the named new-session dialog", async () => {
+    const app = mountApp("/chat?session=agent:solo:main");
+    app.sessionKey = "agent:solo:main";
+    app.sessionsResult = createSidebarSessionsResult();
+    app.agentsList = {
+      defaultId: "solo",
+      mainKey: "agent:solo:main",
+      scope: "agent",
+      agents: [
+        { id: "solo", name: "Solo" },
+        { id: "ops", identity: { name: "Ops" } },
+      ],
+    };
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const shortcuts = app.querySelector(".sidebar-sessions");
+    const recent = Array.from(app.querySelectorAll<HTMLAnchorElement>(".sidebar-recent-session"));
+    expect(shortcuts).not.toBeNull();
+    expect(recent).toHaveLength(2);
+    expect(recent.map((item) => item.textContent?.trim() ?? "")).toEqual([
+      expect.stringContaining("Alpha"),
+      expect.stringContaining("Beta"),
+    ]);
+    expect(app.textContent).not.toContain("Daily");
+
+    app.querySelector<HTMLButtonElement>(".sidebar-new-session")?.click();
+    await app.updateComplete;
+
+    expect(app.chatNewSessionDialogOpen).toBe(true);
+    expect(app.querySelector(".chat-new-session-modal")).not.toBeNull();
+    expect(app.querySelector<HTMLSelectElement>(".chat-new-session-modal__field select")).not.toBe(
+      null,
+    );
+  });
+
+  it("switches to a recent sidebar session without dropping local task navigation", async () => {
+    const app = mountApp("/tasks?session=agent:solo:main");
+    app.sessionKey = "agent:solo:main";
+    app.sessionsResult = createSidebarSessionsResult();
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const recent = app.querySelector<HTMLAnchorElement>(".sidebar-recent-session");
+    expect(recent).not.toBeNull();
+    expect(app.querySelector('a.nav-item[href="/tasks"]')).not.toBeNull();
+    expect(app.querySelector('a.nav-item[href="/archives"]')).not.toBeNull();
+
+    recent?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+    await app.updateComplete;
+
+    expect(app.tab).toBe("chat");
+    expect(app.sessionKey).toBe("agent:solo:dashboard:alpha");
+    expect(window.location.pathname).toBe("/chat");
+    expect(window.location.search).toBe("?session=agent%3Asolo%3Adashboard%3Aalpha");
+  });
+
   it("does not render a desktop sidebar resizer or inject a custom nav width", async () => {
     const app = mountApp("/chat");
     await app.updateComplete;
@@ -202,6 +302,7 @@ describe("control UI routing", () => {
 
     expect(app.querySelector(".nav-section__label")).toBeNull();
     expect(app.querySelector(".sidebar-brand__logo")).toBeNull();
+    expect(app.querySelector(".sidebar-sessions")).toBeNull();
   });
 
   it("keeps footer utilities available in collapsed mode", async () => {

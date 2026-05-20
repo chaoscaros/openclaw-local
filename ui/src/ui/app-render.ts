@@ -15,6 +15,9 @@ import {
   renderChatSessionSelect,
   renderTab,
   createChatSession,
+  isCronSessionKey,
+  isDreamingNarrativeSessionKey,
+  resolveSessionDisplayName,
   resolveAssistantAttachmentAuthToken,
   renderSidebarConnectionStatus,
   renderTopbarThemeModeToggle,
@@ -120,8 +123,15 @@ import {
 import { resolveSessionTask, type TaskItem } from "./controllers/tasks.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
 import "./components/dashboard-header.ts";
+import { formatRelativeTimestamp } from "./format.ts";
 import { icons } from "./icons.ts";
-import { normalizeBasePath, TAB_GROUPS, subtitleForTab, titleForTab } from "./navigation.ts";
+import {
+  normalizeBasePath,
+  pathForTab,
+  TAB_GROUPS,
+  subtitleForTab,
+  titleForTab,
+} from "./navigation.ts";
 import { isPluginEnabledInConfigSnapshot } from "./plugin-activation.ts";
 import { agentLogoUrl } from "./views/agents-utils.ts";
 import {
@@ -216,6 +226,7 @@ const CRON_TIMEZONE_SUGGESTIONS = [
   "Europe/Berlin",
   "Asia/Tokyo",
 ];
+const SIDEBAR_RECENT_SESSION_LIMIT = 2;
 
 function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value.trim());
@@ -402,6 +413,105 @@ function resolveAssistantAvatarUrl(state: AppViewState): string | undefined {
     return candidate;
   }
   return identity?.avatarUrl;
+}
+
+type SidebarSessionRow = NonNullable<AppViewState["sessionsResult"]>["sessions"][number];
+
+function isSidebarRecentSession(row: SidebarSessionRow, currentSessionKey: string): boolean {
+  return (
+    row.key !== currentSessionKey &&
+    !isCronSessionKey(row.key) &&
+    !isDreamingNarrativeSessionKey(row.key)
+  );
+}
+
+function isSidebarNewSessionDisabled(state: AppViewState): boolean {
+  return (
+    !state.connected ||
+    state.sessionsLoading ||
+    state.chatNewSessionCreating ||
+    state.chatResetting ||
+    state.chatLoading ||
+    state.chatSending ||
+    Boolean(state.chatRunId) ||
+    state.chatStream !== null ||
+    state.chatQueue.length > 0
+  );
+}
+
+function renderSidebarSessions(state: AppViewState) {
+  if (state.settings.navCollapsed) {
+    return nothing;
+  }
+
+  const newSessionDisabled = isSidebarNewSessionDisabled(state);
+  const recentSessions = (state.sessionsResult?.sessions ?? [])
+    .filter((row) => isSidebarRecentSession(row, state.sessionKey))
+    .slice(0, SIDEBAR_RECENT_SESSION_LIMIT);
+  const chatPath = pathForTab("chat", state.basePath);
+
+  return html`
+    <div class="sidebar-sessions" aria-label=${t("usage.sessions.recentShort")}>
+      <button
+        type="button"
+        class="sidebar-new-session"
+        ?disabled=${newSessionDisabled}
+        title=${t("chatUi.newSession")}
+        aria-label=${t("chatUi.newSession")}
+        @click=${() => {
+          if (newSessionDisabled) {
+            return;
+          }
+          state.chatNewSessionDialogOpen = true;
+        }}
+      >
+        <span class="sidebar-new-session__icon" aria-hidden="true">${icons.plus}</span>
+        <span class="sidebar-new-session__label">${t("chatUi.newSession")}</span>
+      </button>
+      ${recentSessions.length
+        ? html`
+            <div class="sidebar-recent-sessions">
+              <div class="sidebar-recent-sessions__label">${t("usage.sessions.recentShort")}</div>
+              ${recentSessions.map((row) => {
+                const label = resolveSessionDisplayName(row.key, row);
+                const updated = row.updatedAt ? formatRelativeTimestamp(row.updatedAt) : "";
+                const href = `${chatPath}?session=${encodeURIComponent(row.key)}`;
+                return html`
+                  <a
+                    class="sidebar-recent-session"
+                    href=${href}
+                    title=${label}
+                    @click=${(event: MouseEvent) => {
+                      if (
+                        event.defaultPrevented ||
+                        event.button !== 0 ||
+                        event.metaKey ||
+                        event.ctrlKey ||
+                        event.shiftKey ||
+                        event.altKey
+                      ) {
+                        return;
+                      }
+                      event.preventDefault();
+                      switchChatSession(state, row.key);
+                      state.setTab("chat");
+                    }}
+                  >
+                    <span class="sidebar-recent-session__dot" aria-hidden="true"></span>
+                    <span class="sidebar-recent-session__content">
+                      <span class="sidebar-recent-session__name">${label}</span>
+                      ${updated
+                        ? html` <span class="sidebar-recent-session__meta">${updated}</span> `
+                        : nothing}
+                    </span>
+                  </a>
+                `;
+              })}
+            </div>
+          `
+        : nothing}
+    </div>
+  `;
 }
 
 export function renderApp(state: AppViewState) {
@@ -1086,6 +1196,7 @@ export function renderApp(state: AppViewState) {
               </button>
             </div>
             <div class="sidebar-shell__body">
+              ${renderSidebarSessions(state)}
               <nav class="sidebar-nav">
                 ${TAB_GROUPS.map((group) => {
                   const isGroupCollapsed = state.settings.navGroupsCollapsed[group.label] ?? false;
