@@ -369,7 +369,7 @@ async function runPackageInstallUpdate(params: {
 
   const updateStep = await runUpdateStep({
     name: "global update",
-    argv: globalInstallArgs(installTarget, installSpec),
+    argv: globalInstallArgs(installTarget, installSpec, pkgRoot),
     env: installEnv,
     timeoutMs: params.timeoutMs,
     progress: params.progress,
@@ -495,7 +495,7 @@ async function runGitUpdate(params: {
     });
     const installStep = await runUpdateStep({
       name: "global install",
-      argv: globalInstallArgs(installTarget, updateRoot),
+      argv: globalInstallArgs(installTarget, updateRoot, installTarget.packageRoot),
       cwd: updateRoot,
       env: installEnv,
       timeoutMs: effectiveTimeout,

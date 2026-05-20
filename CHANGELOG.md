@@ -46,6 +46,7 @@ Docs: https://docs.openclaw.ai
 - Onboarding/models: accept Codex OAuth profiles as valid auth for canonical OpenAI models while keeping custom OpenAI-compatible endpoints isolated.
 - Update CLI: tell operators to stop managed gateways before sudo/manual npm recovery after global install permission failures.
 - CLI/skills: add `--global` to ClawHub skill installs and updates so operators can target the shared managed skills directory directly.
+- CLI/update and plugins: bypass npm freshness filters during OpenClaw-managed package and plugin installs so freshly published releases remain installable even when user npm config has release-age guards.
 
 ## 2026.4.15
 

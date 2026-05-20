@@ -18,7 +18,7 @@ function canonicalizeComparableDir(dirPath: string): string {
 }
 
 export function expectSingleNpmInstallIgnoreScriptsCall(params: {
-  calls: Array<[unknown, { cwd?: string } | undefined]>;
+  calls: Array<[unknown, { cwd?: string; env?: NodeJS.ProcessEnv } | undefined]>;
   expectedTargetDir: string;
 }) {
   const npmCalls = params.calls.filter((call) => Array.isArray(call[0]) && call[0][0] === "npm");
@@ -28,8 +28,13 @@ export function expectSingleNpmInstallIgnoreScriptsCall(params: {
     throw new Error("expected npm install call");
   }
   const [argv, opts] = first;
-  expect(argv).toEqual(["npm", "install", "--omit=dev", "--silent", "--ignore-scripts"]);
+  expect(argv).toEqual(["npm", "install", "--omit=dev", "--loglevel=error", "--ignore-scripts"]);
   expect(opts?.cwd).toBeTruthy();
+  expect(opts?.env).toMatchObject({
+    COREPACK_ENABLE_DOWNLOAD_PROMPT: "0",
+    NPM_CONFIG_IGNORE_SCRIPTS: "true",
+    npm_config_ignore_scripts: "true",
+  });
   const cwd = String(opts?.cwd);
   const expectedTargetDir = params.expectedTargetDir;
   expect(canonicalizeComparableDir(path.dirname(cwd))).toBe(

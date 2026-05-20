@@ -188,8 +188,38 @@ describe("packNpmSpecToArchive", () => {
       expect.objectContaining({
         cwd,
         timeoutMs: 300_000,
+        env: expect.objectContaining({
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0",
+          NPM_CONFIG_IGNORE_SCRIPTS: "true",
+        }),
       }),
     );
+  });
+
+  it("overrides scoped npm release-age config while packing metadata", async () => {
+    const cwd = await createFixtureDir();
+    await fs.writeFile(path.join(cwd, ".npmrc"), "min-release-age=7\n", "utf-8");
+    const archivePath = path.join(cwd, "openclaw-plugin-1.2.3.tgz");
+    await fs.writeFile(archivePath, "", "utf-8");
+    mockPackCommandResult({
+      stdout: JSON.stringify([
+        {
+          id: "openclaw-plugin@1.2.3",
+          filename: "openclaw-plugin-1.2.3.tgz",
+        },
+      ]),
+    });
+
+    await expect(runPack("openclaw-plugin@1.2.3", cwd)).resolves.toMatchObject({
+      ok: true,
+      archivePath,
+    });
+
+    const options = runCommandWithTimeoutMock.mock.calls.at(-1)?.[1] as
+      | { env?: NodeJS.ProcessEnv }
+      | undefined;
+    expect(options?.env?.npm_config_before).toBe("");
+    expect(options?.env?.npm_config_min_release_age).toBe("0");
   });
 
   it("falls back to parsing final stdout line when npm json output is unavailable", async () => {

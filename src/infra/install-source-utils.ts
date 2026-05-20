@@ -4,6 +4,7 @@ import path from "node:path";
 import { runCommandWithTimeout } from "../process/exec.js";
 import { resolveUserPath } from "../utils.js";
 import { fileExists, resolveArchiveKind } from "./archive.js";
+import { applyNpmFreshnessBypassEnv, type NpmProjectInstallEnvOptions } from "./npm-install-env.js";
 
 export type NpmSpecResolution = {
   name?: string;
@@ -32,6 +33,17 @@ export function buildNpmResolutionFields(resolution?: NpmSpecResolution): NpmRes
     shasum: resolution?.shasum,
     resolvedAt: resolution?.resolvedAt,
   };
+}
+
+export function createNpmMetadataEnv(
+  scope: Pick<NpmProjectInstallEnvOptions, "npmConfigCwd"> = {},
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    COREPACK_ENABLE_DOWNLOAD_PROMPT: "0",
+    NPM_CONFIG_IGNORE_SCRIPTS: "true",
+  };
+  applyNpmFreshnessBypassEnv(env, new Date(), scope);
+  return env;
 }
 
 export type NpmIntegrityDrift = {
@@ -220,10 +232,7 @@ export async function packNpmSpecToArchive(params: {
     {
       timeoutMs: Math.max(params.timeoutMs, 300_000),
       cwd: params.cwd,
-      env: {
-        COREPACK_ENABLE_DOWNLOAD_PROMPT: "0",
-        NPM_CONFIG_IGNORE_SCRIPTS: "true",
-      },
+      env: createNpmMetadataEnv({ npmConfigCwd: params.cwd }),
     },
   );
   if (res.code !== 0) {

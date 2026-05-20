@@ -3,6 +3,7 @@ import path from "node:path";
 import { runCommandWithTimeout } from "../process/exec.js";
 import { fileExists } from "./archive.js";
 import { assertCanonicalPathWithinBase } from "./install-safe-path.js";
+import { createSafeNpmInstallArgs, createSafeNpmInstallEnv } from "./safe-package-install.js";
 
 const INSTALL_BASE_CHANGED_ERROR_MESSAGE = "install base directory changed during install";
 const INSTALL_BASE_CHANGED_ABORT_WARNING =
@@ -245,10 +246,13 @@ export async function installPackageDir(params: {
           return await runCommandWithTimeout(
             // Plugins install into isolated directories, so omitting peer deps can strip
             // runtime requirements that npm would otherwise materialize for the package.
-            ["npm", "install", "--omit=dev", "--silent", "--ignore-scripts"],
+            // `--loglevel=error` stays quiet on success while preserving useful npm
+            // failure text for bad dependency specs.
+            ["npm", ...createSafeNpmInstallArgs({ omitDev: true, loglevel: "error" })],
             {
               timeoutMs: Math.max(params.timeoutMs, 300_000),
               cwd: stageDir,
+              env: createSafeNpmInstallEnv(process.env, { npmConfigCwd: stageDir }),
             },
           );
         } finally {

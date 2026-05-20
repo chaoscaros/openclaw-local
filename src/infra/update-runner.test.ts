@@ -13,6 +13,7 @@ type CommandResponse = { stdout?: string; stderr?: string; code?: number | null 
 type CommandResult = { stdout: string; stderr: string; code: number | null };
 const WHATSAPP_LIGHT_RUNTIME_API = bundledDistPluginFile("whatsapp", "light-runtime-api.js");
 const fixtureRootTracker = createSuiteTempRootTracker({ prefix: "openclaw-update-" });
+const NPM_FRESHNESS_BYPASS_ARG_PATTERN = /^--(?:min-release-age=0|before=.+)$/u;
 
 function toCommandResult(response?: CommandResponse): CommandResult {
   return {
@@ -30,6 +31,14 @@ function createRunner(responses: Record<string, CommandResponse>) {
     return toCommandResult(responses[key]);
   };
   return { runner, calls };
+}
+
+function isNpmInstallCommandWithFreshness(command: string, expectedBase: string): boolean {
+  const prefix = `${expectedBase} `;
+  if (!command.startsWith(prefix)) {
+    return false;
+  }
+  return NPM_FRESHNESS_BYPASS_ARG_PATTERN.test(command.slice(prefix.length));
 }
 
 describe("runGatewayUpdate", () => {
@@ -278,10 +287,10 @@ describe("runGatewayUpdate", () => {
       if (key === "pnpm root -g") {
         return { stdout: "", stderr: "", code: 1 };
       }
-      if (key === baseInstallKey) {
+      if (isNpmInstallCommandWithFreshness(key, baseInstallKey)) {
         return (await params.onBaseInstall?.()) ?? { stdout: "ok", stderr: "", code: 0 };
       }
-      if (key === omitOptionalInstallKey) {
+      if (isNpmInstallCommandWithFreshness(key, omitOptionalInstallKey)) {
         return (
           (await params.onOmitOptionalInstall?.()) ?? { stdout: "", stderr: "not found", code: 1 }
         );
@@ -1029,6 +1038,10 @@ describe("runGatewayUpdate", () => {
         await params.onInstall?.(options);
         return { stdout: "ok", stderr: "", code: 0 };
       }
+      if (isNpmInstallCommandWithFreshness(key, params.installCommand)) {
+        await params.onInstall?.(options);
+        return { stdout: "ok", stderr: "", code: 0 };
+      }
       return { stdout: "", stderr: "", code: 0 };
     };
     return { calls, runCommand };
@@ -1060,7 +1073,9 @@ describe("runGatewayUpdate", () => {
     expect(result.mode).toBe("npm");
     expect(result.before?.version).toBe("1.0.0");
     expect(result.after?.version).toBe("2.0.0");
-    expect(calls.some((call) => call === expectedInstallCommand)).toBe(true);
+    expect(
+      calls.some((call) => isNpmInstallCommandWithFreshness(call, expectedInstallCommand)),
+    ).toBe(true);
   });
 
   it("updates global npm installs from the GitHub main package spec", async () => {
@@ -1072,9 +1087,14 @@ describe("runGatewayUpdate", () => {
 
     expect(result.status).toBe("ok");
     expect(result.mode).toBe("npm");
-    expect(calls).toContain(
-      "npm i -g github:openclaw/openclaw#main --no-fund --no-audit --loglevel=error",
-    );
+    expect(
+      calls.some((call) =>
+        isNpmInstallCommandWithFreshness(
+          call,
+          "npm i -g github:openclaw/openclaw#main --no-fund --no-audit --loglevel=error",
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("falls back to global npm update when git is missing from PATH", async () => {
@@ -1091,7 +1111,14 @@ describe("runGatewayUpdate", () => {
 
     expect(result.status).toBe("ok");
     expect(result.mode).toBe("npm");
-    expect(calls).toContain("npm i -g openclaw@latest --no-fund --no-audit --loglevel=error");
+    expect(
+      calls.some((call) =>
+        isNpmInstallCommandWithFreshness(
+          call,
+          "npm i -g openclaw@latest --no-fund --no-audit --loglevel=error",
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("cleans stale npm rename dirs before global update", async () => {
@@ -1160,7 +1187,14 @@ describe("runGatewayUpdate", () => {
     expect(result.steps.at(-1)?.stderrTail).toContain(
       "expected installed version 2026.3.23-2, found 2.0.0",
     );
-    expect(calls).toContain("npm i -g openclaw@2026.3.23-2 --no-fund --no-audit --loglevel=error");
+    expect(
+      calls.some((call) =>
+        isNpmInstallCommandWithFreshness(
+          call,
+          "npm i -g openclaw@2026.3.23-2 --no-fund --no-audit --loglevel=error",
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("fails global npm update when bundled runtime sidecars are missing after install", async () => {
@@ -1258,7 +1292,9 @@ describe("runGatewayUpdate", () => {
       },
     );
 
-    expect(calls).toContain(expectedInstallCommand);
+    expect(
+      calls.some((call) => isNpmInstallCommandWithFreshness(call, expectedInstallCommand)),
+    ).toBe(true);
   });
 
   it("updates global bun installs when detected", async () => {

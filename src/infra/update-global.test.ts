@@ -35,6 +35,10 @@ describe("update global helpers", () => {
     envSnapshot = undefined;
   });
 
+  function expectNpmFreshnessBypassArg() {
+    return expect.stringMatching(/^--(?:min-release-age=0|before=.+)$/u);
+  }
+
   it("prefers explicit package spec overrides", () => {
     envSnapshot = captureEnv(["OPENCLAW_UPDATE_PACKAGE_SPEC"]);
     process.env.OPENCLAW_UPDATE_PACKAGE_SPEC = "file:/tmp/openclaw.tgz";
@@ -209,6 +213,7 @@ describe("update global helpers", () => {
           "--no-fund",
           "--no-audit",
           "--loglevel=error",
+          expectNpmFreshnessBypassArg(),
         ]);
         expect(globalInstallFallbackArgs("npm", "openclaw@latest", pkgRoot)).toEqual([
           brewNpm,
@@ -219,6 +224,7 @@ describe("update global helpers", () => {
           "--no-fund",
           "--no-audit",
           "--loglevel=error",
+          expectNpmFreshnessBypassArg(),
         ]);
       });
     } finally {
@@ -254,6 +260,7 @@ describe("update global helpers", () => {
         "--no-fund",
         "--no-audit",
         "--loglevel=error",
+        expectNpmFreshnessBypassArg(),
       ]);
     });
   });
@@ -295,6 +302,7 @@ describe("update global helpers", () => {
           "--no-fund",
           "--no-audit",
           "--loglevel=error",
+          expectNpmFreshnessBypassArg(),
         ]);
       });
     } finally {
@@ -315,6 +323,7 @@ describe("update global helpers", () => {
       "--no-fund",
       "--no-audit",
       "--loglevel=error",
+      expectNpmFreshnessBypassArg(),
     ]);
     expect(globalInstallArgs("pnpm", "openclaw@latest")).toEqual([
       "pnpm",
@@ -338,6 +347,7 @@ describe("update global helpers", () => {
       "--no-fund",
       "--no-audit",
       "--loglevel=error",
+      expectNpmFreshnessBypassArg(),
     ]);
     expect(globalInstallFallbackArgs("pnpm", "openclaw@latest")).toBeNull();
     expect(

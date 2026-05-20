@@ -59,6 +59,18 @@ should be split by risk area.
     dependency now fail and roll back if OpenClaw cannot create the plugin-local
     `node_modules/openclaw` link, instead of leaving a broken plugin installed.
   - Files: `src/plugins/install.ts`, `src/plugins/install.test.ts`.
+- Managed npm freshness bypass from `85a3d5312f`
+  - Local impact: npm pack metadata reads, staged plugin dependency installs,
+    and global npm updates now override stale npm `before` / `min-release-age`
+    policies only inside OpenClaw-managed child npm processes, while preserving
+    local custom plugin install flow and rollback behavior.
+  - Files: `src/infra/npm-install-env.ts`,
+    `src/infra/safe-package-install.ts`,
+    `src/infra/install-source-utils.ts`,
+    `src/infra/install-package-dir.ts`,
+    `src/infra/update-global.ts`,
+    `src/cli/update-cli/update-command.ts`,
+    `src/infra/update-runner.ts`.
 - Telegram HTML reply preservation from `7c606f834c` / `3c3cef1785`
   - Local impact: supported Telegram HTML tags survive markdown rendering and
     chunking, unsupported tags remain escaped, and durable outbound Telegram
@@ -271,8 +283,9 @@ should be split by risk area.
 1. Reply payload contract batch: evaluate rich outbound content end to end.
 2. Codex runtime/auth batch: evaluate app-server auth refresh, MCP server
    projection, and Codex media auth profile fixes.
-3. Plugin install/update batch: evaluate managed peer reconciliation and runtime
-   install scanning.
+3. Plugin install/update batch: evaluate remaining runtime install scanning and
+   managed npm root reconciliation pieces that are not present in the local
+   structure yet.
 4. Telegram batch: evaluate the remaining post-5.12 group media and forum-topic
    routing refinements against the new local route metadata layer and Telegram
    customizations.

@@ -320,9 +320,14 @@ describe("installPackageDir", () => {
 
     expect(result).toEqual({ ok: true });
     expect(vi.mocked(runCommandWithTimeout)).toHaveBeenCalledWith(
-      ["npm", "install", "--omit=dev", "--silent", "--ignore-scripts"],
+      ["npm", "install", "--omit=dev", "--loglevel=error", "--ignore-scripts"],
       expect.objectContaining({
         cwd: expect.stringContaining(".openclaw-install-stage-"),
+        env: expect.objectContaining({
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0",
+          NPM_CONFIG_IGNORE_SCRIPTS: "true",
+          npm_config_ignore_scripts: "true",
+        }),
       }),
     );
   });
