@@ -272,6 +272,8 @@ should be split by risk area.
     session options scoped to the selected agent, and switch to that agent's
     latest ordinary session instead of mixing subagent/cron/other-agent entries
     into one dropdown.
+  - Usage details context lists now truncate long skill/tool/file names in the
+    row layout while preserving the full name as a hover title.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -330,7 +332,10 @@ should be split by risk area.
     `ui/src/i18n/locales/en.ts`, `ui/src/i18n/locales/zh-CN.ts`,
     `ui/src/ui/app-render.helpers.ts`,
     `ui/src/ui/app-render.helpers.node.test.ts`,
-    `ui/src/ui/views/chat.test.ts`, `ui/src/styles/chat/layout.css`.
+    `ui/src/ui/views/chat.test.ts`, `ui/src/styles/chat/layout.css`,
+    `ui/src/ui/views/usage-render-details.ts`,
+    `ui/src/ui/views/usage-render-details.test.ts`,
+    `ui/src/styles/usage.css`.
 
 ## Deferred
 

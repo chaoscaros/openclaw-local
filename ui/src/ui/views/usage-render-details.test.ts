@@ -1,8 +1,12 @@
-import { describe, it, expect } from "vitest";
+/* @vitest-environment jsdom */
+
+import { render } from "lit";
+import { describe, it, expect, vi } from "vitest";
 import {
   computeFilteredUsage,
   CHART_BAR_WIDTH_RATIO,
   CHART_MAX_BAR_WIDTH,
+  renderContextPanel,
 } from "./usage-render-details.ts";
 import type { TimeSeriesPoint, UsageSessionEntry } from "./usageTypes.ts";
 
@@ -132,5 +136,59 @@ describe("chart bar sizing", () => {
         expect(barGap).toBeGreaterThanOrEqual(0);
       }
     }
+  });
+});
+
+describe("renderContextPanel", () => {
+  it("preserves full context item names in title attributes", () => {
+    const contextWeight = {
+      source: "estimate",
+      generatedAt: 1,
+      systemPrompt: {
+        chars: 100,
+        projectContextChars: 50,
+        nonProjectContextChars: 50,
+      },
+      injectedWorkspaceFiles: [
+        {
+          name: "very-long-workspace-file-name-that-should-remain-readable.ts",
+          path: "/tmp/very-long-workspace-file-name-that-should-remain-readable.ts",
+          missing: false,
+          rawChars: 1200,
+          injectedChars: 900,
+          truncated: false,
+        },
+      ],
+      skills: {
+        promptChars: 600,
+        entries: [
+          {
+            name: "very-long-skill-name-that-should-not-break-the-context-panel",
+            blockChars: 600,
+          },
+        ],
+      },
+      tools: {
+        listChars: 100,
+        schemaChars: 400,
+        entries: [
+          {
+            name: "very_long_tool_name_that_should_have_a_hover_title",
+            summaryChars: 100,
+            schemaChars: 400,
+          },
+        ],
+      },
+    } satisfies NonNullable<UsageSessionEntry["contextWeight"]>;
+    const container = document.createElement("div");
+
+    render(renderContextPanel(contextWeight, baseUsage, false, vi.fn()), container);
+
+    const titles = Array.from(container.querySelectorAll(".context-breakdown-item .mono")).map(
+      (node) => node.getAttribute("title"),
+    );
+    expect(titles).toContain("very-long-skill-name-that-should-not-break-the-context-panel");
+    expect(titles).toContain("very_long_tool_name_that_should_have_a_hover_title");
+    expect(titles).toContain("very-long-workspace-file-name-that-should-remain-readable.ts");
   });
 });
