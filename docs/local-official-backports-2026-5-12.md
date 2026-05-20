@@ -5,6 +5,13 @@ This note tracks selective backports from official OpenClaw `v2026.5.6` through
 merge plan: local custom modules take priority, and broad official changes
 should be split by risk area.
 
+## Version Policy
+
+- `package.json` version tracks the latest official OpenClaw tag that this local
+  branch has fully closed out. Partial cherry-picks from later official commits
+  stay documented here and must not bump the package version by themselves.
+- Current checkpoint: `v2026.5.12`.
+
 ## Already Backported
 
 - `2e6916571e` `fix: resolve SecretRef catalog auth`
