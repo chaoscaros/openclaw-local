@@ -1081,16 +1081,46 @@ describe("chat view", () => {
     expect(container.textContent).not.toContain("New session");
   });
 
-  it("shows a new session button when aborting is unavailable", () => {
+  it("opens a named new session dialog when aborting is unavailable", () => {
     const container = document.createElement("div");
     const onNewSession = vi.fn();
     const onClearHistory = vi.fn();
+    const requestUpdate = vi.fn(() => {
+      render(
+        renderChat(
+          createProps({
+            canAbort: false,
+            onNewSession,
+            onClearHistory,
+            onRequestUpdate: requestUpdate,
+            agentsList: {
+              defaultId: "main",
+              agents: [
+                { id: "main", name: "Main" },
+                { id: "ops", identity: { name: "Ops" } },
+              ],
+            },
+            currentAgentId: "main",
+          }),
+        ),
+        container,
+      );
+    });
     render(
       renderChat(
         createProps({
           canAbort: false,
           onNewSession,
           onClearHistory,
+          onRequestUpdate: requestUpdate,
+          agentsList: {
+            defaultId: "main",
+            agents: [
+              { id: "main", name: "Main" },
+              { id: "ops", identity: { name: "Ops" } },
+            ],
+          },
+          currentAgentId: "main",
         }),
       ),
       container,
@@ -1101,7 +1131,27 @@ describe("chat view", () => {
     );
     expect(newSessionButton).not.toBeUndefined();
     newSessionButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(onNewSession).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".chat-new-session-modal")).not.toBeNull();
+    expect(onNewSession).not.toHaveBeenCalled();
+
+    const nameInput = container.querySelector<HTMLInputElement>(
+      ".chat-new-session-modal__field input",
+    );
+    expect(nameInput).not.toBeNull();
+    nameInput!.value = "项目任务";
+    nameInput!.dispatchEvent(new InputEvent("input", { bubbles: true }));
+
+    const agentSelect = container.querySelector<HTMLSelectElement>(
+      ".chat-new-session-modal__field select",
+    );
+    expect(agentSelect).not.toBeNull();
+    agentSelect!.value = "ops";
+    agentSelect!.dispatchEvent(new Event("change", { bubbles: true }));
+
+    container
+      .querySelector<HTMLFormElement>(".chat-new-session-modal__panel")
+      ?.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
+    expect(onNewSession).toHaveBeenCalledWith({ agentId: "ops", label: "项目任务" });
     const resetSessionButton = container.querySelector<HTMLButtonElement>(
       'button[data-chat-reset-session-button="true"]',
     );

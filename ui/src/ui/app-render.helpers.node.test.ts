@@ -488,7 +488,7 @@ describe("switchChatSession", () => {
     });
     expect(loadChatHistoryMock).toHaveBeenCalledWith(state);
     expect(loadSessionsMock).toHaveBeenCalledWith(state, {
-      activeMinutes: 120,
+      activeMinutes: 0,
       limit: 100,
       includeGlobal: true,
       includeUnknown: true,
@@ -660,7 +660,7 @@ describe("createChatSession", () => {
         emitCommandHooks: true,
       },
       {
-        activeMinutes: 120,
+        activeMinutes: 0,
         limit: 100,
         includeGlobal: true,
         includeUnknown: true,
@@ -686,5 +686,35 @@ describe("createChatSession", () => {
     expect(created).toBe(false);
     expect(createSessionAndRefreshMock).not.toHaveBeenCalled();
     expect(state.lastError).toContain("active run");
+  });
+
+  it("passes requested label and agent without linking a different-agent parent session", async () => {
+    const state = createChatSessionState();
+    createSessionAndRefreshMock.mockResolvedValue("agent:ops:dashboard:new");
+    refreshChatAvatarMock.mockResolvedValue(undefined);
+    refreshSlashCommandsMock.mockResolvedValue(undefined);
+    loadChatHistoryMock.mockResolvedValue(undefined);
+    loadSessionsMock.mockResolvedValue(undefined);
+
+    const created = await createChatSession(state, {
+      agentId: "ops",
+      label: "项目复盘",
+    });
+
+    expect(created).toBe(true);
+    expect(createSessionAndRefreshMock).toHaveBeenCalledWith(
+      state,
+      {
+        agentId: "ops",
+        label: "项目复盘",
+      },
+      {
+        activeMinutes: 0,
+        limit: 100,
+        includeGlobal: true,
+        includeUnknown: true,
+      },
+    );
+    expect(state.setCurrentTaskForSession).not.toHaveBeenCalled();
   });
 });

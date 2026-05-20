@@ -107,6 +107,9 @@ export type AppViewState = {
     hunkId?: string | null;
     groupId?: string | null;
   } | null;
+  chatNewSessionDialogOpen: boolean;
+  chatNewSessionCreating: boolean;
+  chatResetting: boolean;
   loadChangeReviewStatus?: (sessionKey?: string) => Promise<void>;
   openChangeReview: () => void;
   closeChangeReview: () => void;

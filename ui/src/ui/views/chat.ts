@@ -107,6 +107,11 @@ type ChangeReviewAction = {
   groupId?: string | null;
 };
 
+type NewSessionCreateOptions = {
+  agentId?: string;
+  label?: string;
+};
+
 function renderDreamingAssistReason(reason?: DreamingAssistReason | null): string {
   switch (reason) {
     case "disabled":
@@ -217,7 +222,12 @@ export type ChatProps = {
   onAbort?: () => void;
   onQueueRemove: (id: string) => void;
   onDismissSideResult?: () => void;
-  onNewSession: () => void;
+  newSessionDialogOpen?: boolean;
+  newSessionCreating?: boolean;
+  resetSessionBusy?: boolean;
+  onOpenNewSessionDialog?: () => void;
+  onCloseNewSessionDialog?: () => void;
+  onNewSession: (options?: NewSessionCreateOptions) => void | Promise<boolean>;
   onClearHistory?: () => void;
   agentsList: {
     agents: Array<{ id: string; name?: string; identity?: { name?: string; avatarUrl?: string } }>;
@@ -1129,6 +1139,10 @@ interface ChatEphemeralState {
   pinnedExpanded: boolean;
   taskDetailsExpanded: boolean;
   taskWorkspaceTab: "details" | "timeline" | "technical";
+  newSessionDialogOpen: boolean;
+  newSessionDialogSeed: string | null;
+  newSessionName: string;
+  newSessionAgentId: string;
 }
 
 function createChatEphemeralState(): ChatEphemeralState {
@@ -1146,6 +1160,10 @@ function createChatEphemeralState(): ChatEphemeralState {
     pinnedExpanded: false,
     taskDetailsExpanded: true,
     taskWorkspaceTab: "details",
+    newSessionDialogOpen: false,
+    newSessionDialogSeed: null,
+    newSessionName: "",
+    newSessionAgentId: "",
   };
 }
 
@@ -1184,6 +1202,194 @@ function focusComposerFromChrome(event: MouseEvent, canSend: boolean) {
   currentTarget.querySelector<HTMLTextAreaElement>(":scope > textarea")?.focus({
     preventScroll: true,
   });
+}
+
+function isNewSessionDialogOpen(props: ChatProps): boolean {
+  return props.newSessionDialogOpen ?? vs.newSessionDialogOpen;
+}
+
+function openNewSessionDialog(props: ChatProps, requestUpdate: () => void) {
+  if (props.newSessionCreating) {
+    return;
+  }
+  if (props.onOpenNewSessionDialog) {
+    props.onOpenNewSessionDialog();
+    return;
+  }
+  vs.newSessionDialogOpen = true;
+  requestUpdate();
+}
+
+function closeNewSessionDialog(props: ChatProps, requestUpdate: () => void) {
+  if (props.newSessionCreating) {
+    return;
+  }
+  if (props.onCloseNewSessionDialog) {
+    props.onCloseNewSessionDialog();
+  } else {
+    vs.newSessionDialogOpen = false;
+  }
+  vs.newSessionDialogSeed = null;
+  requestUpdate();
+}
+
+function getNewSessionAgentOptions(props: ChatProps) {
+  const agents = props.agentsList?.agents ?? [];
+  if (agents.length > 0) {
+    return agents;
+  }
+  return props.currentAgentId ? [{ id: props.currentAgentId }] : [];
+}
+
+function resolveNewSessionAgentLabel(agent: {
+  id: string;
+  name?: string;
+  identity?: { name?: string };
+}): string {
+  const name = agent.identity?.name?.trim() || agent.name?.trim() || "";
+  return name && name !== agent.id ? `${name} (${agent.id})` : agent.id;
+}
+
+function syncNewSessionDraft(props: ChatProps) {
+  const open = isNewSessionDialogOpen(props);
+  if (!open) {
+    vs.newSessionDialogSeed = null;
+    return;
+  }
+  const agents = getNewSessionAgentOptions(props);
+  const fallbackAgentId = props.agentsList?.defaultId || agents[0]?.id || props.currentAgentId;
+  const selectedAgentId = agents.some((agent) => agent.id === props.currentAgentId)
+    ? props.currentAgentId
+    : fallbackAgentId;
+  const seed = `${selectedAgentId}:${agents.map((agent) => agent.id).join(",")}`;
+  if (vs.newSessionDialogSeed === seed) {
+    return;
+  }
+  vs.newSessionDialogSeed = seed;
+  vs.newSessionName = "";
+  vs.newSessionAgentId = selectedAgentId;
+}
+
+function renderNewSessionDialog(
+  props: ChatProps,
+  requestUpdate: () => void,
+): TemplateResult | typeof nothing {
+  if (!isNewSessionDialogOpen(props)) {
+    return nothing;
+  }
+  syncNewSessionDraft(props);
+  const agents = getNewSessionAgentOptions(props);
+  const canChooseAgent = agents.length > 1;
+  const creating = Boolean(props.newSessionCreating);
+  const selectedAgentId = vs.newSessionAgentId || agents[0]?.id || props.currentAgentId;
+  const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0] ?? null;
+
+  return html`
+    <div
+      class="chat-new-session-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="chat-new-session-title"
+      @click=${(event: MouseEvent) => {
+        if (event.target === event.currentTarget) {
+          closeNewSessionDialog(props, requestUpdate);
+        }
+      }}
+    >
+      <form
+        class="chat-new-session-modal__panel"
+        @submit=${async (event: SubmitEvent) => {
+          event.preventDefault();
+          if (creating) {
+            return;
+          }
+          const created = await props.onNewSession({
+            agentId: selectedAgentId || undefined,
+            label: vs.newSessionName.trim() || undefined,
+          });
+          if (created !== false) {
+            closeNewSessionDialog(props, requestUpdate);
+          }
+        }}
+      >
+        <div class="chat-new-session-modal__header">
+          <div>
+            <div class="chat-new-session-modal__eyebrow">New session</div>
+            <div id="chat-new-session-title" class="chat-new-session-modal__title">创建新会话</div>
+          </div>
+          <button
+            class="chat-new-session-modal__close"
+            type="button"
+            aria-label=${t("common.cancel")}
+            ?disabled=${creating}
+            @click=${() => closeNewSessionDialog(props, requestUpdate)}
+          >
+            ${icons.x}
+          </button>
+        </div>
+
+        <label class="chat-new-session-modal__field">
+          <span>会话名称</span>
+          <input
+            type="text"
+            autocomplete="off"
+            placeholder="例如：supply_vue 项目任务"
+            .value=${vs.newSessionName}
+            ?disabled=${creating}
+            @input=${(event: InputEvent) => {
+              vs.newSessionName = (event.target as HTMLInputElement).value;
+              requestUpdate();
+            }}
+          />
+        </label>
+
+        <label class="chat-new-session-modal__field">
+          <span>智能体</span>
+          ${canChooseAgent
+            ? html`
+                <select
+                  .value=${selectedAgentId}
+                  ?disabled=${creating}
+                  @change=${(event: Event) => {
+                    vs.newSessionAgentId = (event.target as HTMLSelectElement).value;
+                    requestUpdate();
+                  }}
+                >
+                  ${agents.map(
+                    (agent) =>
+                      html`<option value=${agent.id}>
+                        ${resolveNewSessionAgentLabel(agent)}
+                      </option>`,
+                  )}
+                </select>
+              `
+            : html`
+                <div class="chat-new-session-modal__agent-readonly">
+                  ${selectedAgent ? resolveNewSessionAgentLabel(selectedAgent) : "main"}
+                </div>
+              `}
+        </label>
+
+        <div class="chat-new-session-modal__hint">
+          创建后会自动切换到新会话，并保留当前输入框草稿。
+        </div>
+
+        <div class="chat-new-session-modal__actions">
+          <button
+            class="btn btn--ghost"
+            type="button"
+            ?disabled=${creating}
+            @click=${() => closeNewSessionDialog(props, requestUpdate)}
+          >
+            ${t("common.cancel")}
+          </button>
+          <button class="btn primary" type="submit" ?disabled=${creating}>
+            ${creating ? "创建中..." : "创建会话"}
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
 }
 
 function resetComposerHeight() {
@@ -2724,10 +2930,12 @@ export function renderChat(props: ChatProps) {
             draft: props.draft,
             hasMessages: props.messages.length > 0,
             isBusy,
+            newSessionBusy: props.newSessionCreating,
+            resetSessionBusy: props.resetSessionBusy,
             sending: props.sending,
             onAbort: props.onAbort,
             onExport: () => exportMarkdown(props),
-            onNewSession: props.onNewSession,
+            onNewSession: () => openNewSessionDialog(props, requestUpdate),
             onResetSession: props.onClearHistory,
             onSend: props.onSend,
             onStoreDraft: (draft) => inputHistory.push(draft),
@@ -2743,7 +2951,7 @@ export function renderChat(props: ChatProps) {
     }
   });
 
-  return html`${section}${renderChangeReviewModal({
+  return html`${section}${renderNewSessionDialog(props, requestUpdate)}${renderChangeReviewModal({
     ...props,
     pendingChangeReview: visiblePendingChangeReview,
     pendingChangeReviewOpen: visiblePendingChangeReview ? props.pendingChangeReviewOpen : false,

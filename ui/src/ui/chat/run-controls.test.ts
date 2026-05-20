@@ -96,6 +96,23 @@ describe("chat run controls", () => {
     expect(onAbort).toHaveBeenCalledTimes(1);
   });
 
+  it("disables session actions while a session mutation is running", () => {
+    const container = document.createElement("div");
+    render(
+      renderChatRunControls(
+        createProps({
+          newSessionBusy: true,
+          resetSessionBusy: false,
+        }),
+      ),
+      container,
+    );
+
+    expect(getButton(container, 'button[title="New session"]').disabled).toBe(true);
+    expect(getButton(container, 'button[title="Reset session"]').disabled).toBe(true);
+    expect(container.textContent).toContain("Creating");
+  });
+
   it("renders run-control labels from the active locale", async () => {
     await i18n.setLocale("zh-CN");
     const container = document.createElement("div");

@@ -29,7 +29,6 @@ import {
   handleFirstUpdated,
   handleUpdated,
 } from "./app-lifecycle.ts";
-import { createChatSession } from "./app-render.helpers.ts";
 import { renderApp } from "./app-render.ts";
 import {
   exportLogs as exportLogsInternal,
@@ -297,6 +296,9 @@ export class OpenClawApp extends LitElement {
     hunkId?: string | null;
     groupId?: string | null;
   } | null = null;
+  @state() chatNewSessionDialogOpen = false;
+  @state() chatNewSessionCreating = false;
+  @state() chatResetting = false;
   @state() chatManualRefreshInFlight = false;
   @state() navDrawerOpen = false;
 
@@ -675,7 +677,7 @@ export class OpenClawApp extends LitElement {
           exportChatMarkdown(this.chatMessages, this.assistantName);
           break;
         case "new-session":
-          void createChatSession(this as unknown as AppViewState);
+          this.chatNewSessionDialogOpen = true;
           break;
         case "refresh-tools-effective": {
           void refreshVisibleToolsEffectiveForCurrentSessionInternal(this);

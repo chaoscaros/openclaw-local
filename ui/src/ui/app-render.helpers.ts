@@ -1,12 +1,7 @@
 import { html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import { t } from "../i18n/index.ts";
-import {
-  CHAT_SESSIONS_ACTIVE_MINUTES,
-  CHAT_SESSIONS_REFRESH_LIMIT,
-  refreshChat,
-  refreshChatAvatar,
-} from "./app-chat.ts";
+import { CHAT_SESSIONS_REFRESH_LIMIT, refreshChat, refreshChatAvatar } from "./app-chat.ts";
 import { syncUrlWithSessionKey } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
 import { createChatModelOverride } from "./chat-model-ref.ts";
@@ -120,6 +115,28 @@ const NEW_CHAT_SESSIONS_LOADING_MESSAGE =
   "Session list is still refreshing. Try New Chat again in a moment.";
 const NEW_CHAT_CREATE_FAILED_MESSAGE =
   "New Chat could not create a new session. Try again in a moment.";
+
+export type CreateChatSessionOptions = {
+  agentId?: string;
+  label?: string;
+};
+
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function buildChatSessionRefreshOverrides(state: AppViewState) {
+  return {
+    activeMinutes: 0,
+    limit: Math.max(
+      CHAT_SESSIONS_REFRESH_LIMIT,
+      parsePositiveInteger(state.sessionsFilterLimit, CHAT_SESSIONS_REFRESH_LIMIT),
+    ),
+    includeGlobal: true,
+    includeUnknown: true,
+  };
+}
 
 export function renderTab(state: AppViewState, tab: Tab, opts?: { collapsed?: boolean }) {
   const href = pathForTab(tab, state.basePath);
@@ -1037,7 +1054,10 @@ export function switchChatSession(state: AppViewState, nextSessionKey: string) {
   void refreshSessionOptions(state);
 }
 
-export async function createChatSession(state: AppViewState): Promise<boolean> {
+export async function createChatSession(
+  state: AppViewState,
+  options: CreateChatSessionOptions = {},
+): Promise<boolean> {
   if (!state.client || !state.connected) {
     return false;
   }
@@ -1055,22 +1075,38 @@ export async function createChatSession(state: AppViewState): Promise<boolean> {
   const currentSession = state.sessionsResult?.sessions.find(
     (row) => row.key === previousSessionKey,
   );
-  const parentSessionKey = currentSession ? previousSessionKey : undefined;
+  const previousAgentId = resolveAgentIdFromSessionKey(previousSessionKey);
+  const requestedAgentId = normalizeOptionalString(options.agentId) ?? previousAgentId;
+  const requestedLabel = normalizeOptionalString(options.label);
+  const parentSessionKey =
+    currentSession &&
+    (!requestedAgentId || !previousAgentId || requestedAgentId === previousAgentId)
+      ? previousSessionKey
+      : undefined;
   const currentTaskId =
-    currentSession?.mode === "task" ? (currentSession.taskId?.trim() ?? "") : "";
+    parentSessionKey && currentSession?.mode === "task"
+      ? (currentSession.taskId?.trim() ?? "")
+      : "";
+  const createParams: {
+    agentId?: string;
+    label?: string;
+    parentSessionKey?: string;
+    emitCommandHooks?: boolean;
+  } = {};
+  if (requestedAgentId) {
+    createParams.agentId = requestedAgentId;
+  }
+  if (requestedLabel) {
+    createParams.label = requestedLabel;
+  }
+  if (parentSessionKey) {
+    createParams.parentSessionKey = parentSessionKey;
+    createParams.emitCommandHooks = true;
+  }
   const nextSessionKey = await createSessionAndRefresh(
     state,
-    {
-      agentId: resolveAgentIdFromSessionKey(previousSessionKey),
-      parentSessionKey,
-      emitCommandHooks: parentSessionKey !== undefined ? true : undefined,
-    },
-    {
-      activeMinutes: CHAT_SESSIONS_ACTIVE_MINUTES,
-      limit: CHAT_SESSIONS_REFRESH_LIMIT,
-      includeGlobal: true,
-      includeUnknown: true,
-    },
+    createParams,
+    buildChatSessionRefreshOverrides(state),
   );
   if (
     !nextSessionKey ||
@@ -1105,12 +1141,7 @@ export async function createChatSession(state: AppViewState): Promise<boolean> {
 }
 
 async function refreshSessionOptions(state: AppViewState) {
-  await loadSessions(state, {
-    activeMinutes: CHAT_SESSIONS_ACTIVE_MINUTES,
-    limit: CHAT_SESSIONS_REFRESH_LIMIT,
-    includeGlobal: true,
-    includeUnknown: true,
-  });
+  await loadSessions(state, buildChatSessionRefreshOverrides(state));
 }
 
 function renderChatModelSelect(state: AppViewState) {

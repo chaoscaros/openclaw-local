@@ -232,6 +232,10 @@ should be split by risk area.
   - Control UI chat composer now focuses from non-interactive composer chrome,
     wraps long inline code inside chat bubbles, and clamps message delete
     confirmations to the viewport while preserving the local task/mode toolbar.
+  - Control UI new-session creation now asks for a session name and target
+    agent, shows busy states for new/reset actions, and refreshes chat session
+    options without the active-minutes filter so switching sessions does not
+    make older options disappear until a manual refresh.
   - Update CLI EACCES recovery hints now tell supervised-install operators to
     stop the Gateway before sudo/manual npm replacement and include the
     reinstall/restart outline, with matching install documentation and split

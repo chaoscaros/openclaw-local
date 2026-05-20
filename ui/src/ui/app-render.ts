@@ -2293,11 +2293,40 @@ export function renderApp(state: AppViewState) {
               onDismissSideResult: () => {
                 state.chatSideResult = null;
               },
-              onNewSession: () => void createChatSession(state),
+              newSessionDialogOpen: state.chatNewSessionDialogOpen,
+              newSessionCreating: state.chatNewSessionCreating,
+              resetSessionBusy: state.chatResetting,
+              onOpenNewSessionDialog: () => {
+                if (!state.chatNewSessionCreating) {
+                  state.chatNewSessionDialogOpen = true;
+                }
+              },
+              onCloseNewSessionDialog: () => {
+                if (!state.chatNewSessionCreating) {
+                  state.chatNewSessionDialogOpen = false;
+                }
+              },
+              onNewSession: async (options) => {
+                if (state.chatNewSessionCreating) {
+                  return false;
+                }
+                state.chatNewSessionCreating = true;
+                try {
+                  const created = await createChatSession(state, options);
+                  if (created) {
+                    state.chatNewSessionDialogOpen = false;
+                  }
+                  return created;
+                } finally {
+                  state.chatNewSessionCreating = false;
+                }
+              },
               onClearHistory: async () => {
-                if (!state.client || !state.connected) {
+                if (!state.client || !state.connected || state.chatResetting) {
                   return;
                 }
+                state.chatResetting = true;
+                state.lastError = null;
                 try {
                   await state.client.request("sessions.reset", { key: state.sessionKey });
                   state.chatMessages = [];
@@ -2307,6 +2336,8 @@ export function renderApp(state: AppViewState) {
                   await loadChatHistory(state);
                 } catch (err) {
                   state.lastError = String(err);
+                } finally {
+                  state.chatResetting = false;
                 }
               },
               agentsList: state.agentsList,
