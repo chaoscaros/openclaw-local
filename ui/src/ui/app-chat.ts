@@ -17,6 +17,7 @@ import { loadSessions, type SessionsState } from "./controllers/sessions.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import { normalizeBasePath } from "./navigation.ts";
 import { parseAgentSessionKey } from "./session-key.ts";
+import { resolveSessionRunIndicatorId } from "./session-run-state.ts";
 import type { UiSettings } from "./storage.ts";
 import { normalizeLowercaseStringOrEmpty } from "./string-coerce.ts";
 import type { ChatModelOverride, ModelCatalogEntry } from "./types.ts";
@@ -69,8 +70,13 @@ export type ChatHost = {
 export const CHAT_SESSIONS_ACTIVE_MINUTES = 120;
 export const CHAT_SESSIONS_REFRESH_LIMIT = 100;
 
+function resolveCurrentChatRunIndicatorId(host: ChatHost): string | null {
+  const currentSession = host.sessionsResult?.sessions.find((row) => row.key === host.sessionKey);
+  return resolveSessionRunIndicatorId(host.chatRunId, currentSession);
+}
+
 export function isChatBusy(host: ChatHost) {
-  return host.chatSending || Boolean(host.chatRunId);
+  return host.chatSending || Boolean(resolveCurrentChatRunIndicatorId(host));
 }
 
 export function isChatStopCommand(text: string) {
@@ -164,7 +170,7 @@ function enqueuePendingRunMessage(
 }
 
 function canGuideActiveChatRun(host: ChatHost): boolean {
-  return Boolean(host.chatRunId) && !host.chatSending;
+  return Boolean(resolveCurrentChatRunIndicatorId(host)) && !host.chatSending;
 }
 
 async function sendChatMessageNow(
@@ -249,7 +255,7 @@ async function guideActiveChatRun(
     previousAttachments?: ChatAttachment[];
   },
 ) {
-  const pendingRunId = host.chatRunId;
+  const pendingRunId = resolveCurrentChatRunIndicatorId(host);
   if (!pendingRunId) {
     return false;
   }

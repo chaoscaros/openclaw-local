@@ -280,6 +280,10 @@ should be split by risk area.
   - Mobile standalone PWA chat layouts now keep the composer above
     under-reported iOS safe-area insets, preserving the local composer/task
     toolbar structure.
+  - Control UI run indicators now use the session row status as the source of
+    truth after refresh: `running` rows recover the visible in-progress state,
+    while terminal rows suppress stale stop controls from an orphaned local run
+    id.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -344,7 +348,10 @@ should be split by risk area.
     `ui/src/ui/views/usage-render-overview.ts`,
     `ui/src/ui/views/usage-render-overview.test.ts`,
     `ui/src/styles/usage.css`, `ui/src/styles/chat/layout.css`,
-    `ui/src/styles/chat-layout.test.ts`.
+    `ui/src/styles/chat-layout.test.ts`, `ui/src/ui/session-run-state.ts`,
+    `ui/src/ui/session-run-state.test.ts`, `ui/src/ui/app-chat.ts`,
+    `ui/src/ui/app-chat.test.ts`, `ui/src/ui/app-gateway.ts`,
+    `ui/src/ui/app-render.ts`.
 
 ## Deferred
 

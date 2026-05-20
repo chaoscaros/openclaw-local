@@ -133,6 +133,7 @@ import {
   titleForTab,
 } from "./navigation.ts";
 import { isPluginEnabledInConfigSnapshot } from "./plugin-activation.ts";
+import { resolveSessionRunIndicatorId } from "./session-run-state.ts";
 import { agentLogoUrl } from "./views/agents-utils.ts";
 import {
   resolveAgentConfig,
@@ -533,6 +534,7 @@ export function renderApp(state: AppViewState) {
   const cronNext = state.cronStatus?.nextWakeAtMs ?? null;
   const currentSession =
     state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey) ?? null;
+  const visibleChatRunId = resolveSessionRunIndicatorId(state.chatRunId, currentSession);
   const currentTask = resolveSessionTask(
     state.sessionKey,
     currentSession?.taskId ?? null,
@@ -2293,7 +2295,7 @@ export function renderApp(state: AppViewState) {
               streamSegments: state.chatStreamSegments,
               stream: state.chatStream,
               streamStartedAt: state.chatStreamStartedAt,
-              pendingRunId: state.chatRunId,
+              pendingRunId: visibleChatRunId,
               draft: state.chatMessage,
               queue: state.chatQueue,
               pendingChangeReview: state.chatChangeReview,
@@ -2398,7 +2400,7 @@ export function renderApp(state: AppViewState) {
                 void state.applyChangeReviewHunk(id, path, hunkId),
               onRevertChangeReviewHunk: (id, path, hunkId) =>
                 void state.revertChangeReviewHunk(id, path, hunkId),
-              canAbort: Boolean(state.chatRunId),
+              canAbort: Boolean(visibleChatRunId),
               onAbort: () => void state.handleAbortChat(),
               onQueueRemove: (id) => state.removeQueuedMessage(id),
               onDismissSideResult: () => {

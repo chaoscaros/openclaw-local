@@ -347,6 +347,54 @@ describe("handleSendChat", () => {
     expect(host.chatAttachments).toEqual([]);
   });
 
+  it("guides into a running session recovered from the sessions list", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "chat.send") {
+        return {};
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    const host = makeHost({
+      client: { request } as unknown as ChatHost["client"],
+      chatRunId: null,
+      chatStream: null,
+      chatMessage: "continue with this note",
+      sessionsResult: {
+        ts: 0,
+        path: "",
+        count: 1,
+        defaults: { modelProvider: null, model: null, contextTokens: null },
+        sessions: [
+          {
+            key: "agent:main",
+            kind: "direct",
+            updatedAt: 1,
+            status: "running",
+          },
+        ],
+      },
+    });
+
+    await handleSendChat(host);
+
+    expect(request).toHaveBeenCalledWith(
+      "chat.send",
+      expect.objectContaining({
+        sessionKey: "agent:main",
+        message: "continue with this note",
+        deliver: false,
+      }),
+    );
+    expect(host.chatQueue).toEqual([
+      expect.objectContaining({
+        text: "continue with this note",
+        pendingRunId: "agent:main",
+      }),
+    ]);
+    expect(host.chatRunId).toBeNull();
+    expect(host.chatMessage).toBe("");
+  });
+
   it("restores the draft when guiding an active run fails", async () => {
     const host = makeHost({
       client: {

@@ -125,6 +125,7 @@ vi.mock("./controllers/sessions.ts", async (importOriginal) => {
 type TestGatewayHost = Parameters<typeof connectGateway>[0] & {
   chatSideResult: unknown;
   chatSideResultTerminalRuns: Set<string>;
+  chatQueue: Array<{ id: string; text: string; createdAt: number; pendingRunId?: string }>;
   chatStream: string | null;
   chatStreamStartedAt: number | null;
   chatToolMessages: Record<string, unknown>[];
@@ -971,6 +972,39 @@ describe("connectGateway", () => {
     reconnectClient.emitHello();
 
     expect(host.chatSideResultTerminalRuns.size).toBe(0);
+  });
+
+  it("clears recovered session-key pending markers when the run finishes", () => {
+    const { host, client } = connectHostGateway();
+    host.chatQueue = [
+      {
+        id: "recovered-active-run",
+        text: "guide this running session",
+        createdAt: 1,
+        pendingRunId: "main",
+      },
+      {
+        id: "queued-next",
+        text: "next turn",
+        createdAt: 2,
+      },
+    ];
+
+    client.emitEvent({
+      event: "chat",
+      payload: {
+        runId: "actual-run-id",
+        sessionKey: "main",
+        state: "final",
+      },
+    });
+
+    expect(host.chatQueue).toEqual([
+      expect.objectContaining({
+        id: "queued-next",
+        text: "next turn",
+      }),
+    ]);
   });
 
   it("renders session-scoped tool events for externally started runs", () => {

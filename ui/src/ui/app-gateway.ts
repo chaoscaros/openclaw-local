@@ -490,6 +490,10 @@ function handleTerminalChatEvent(
     host as unknown as Parameters<typeof clearPendingQueueItemsForRun>[0],
     payload?.runId,
   );
+  clearPendingQueueItemsForRun(
+    host as unknown as Parameters<typeof clearPendingQueueItemsForRun>[0],
+    payload?.sessionKey,
+  );
   const runId = payload?.runId;
   if (runId && host.refreshSessionsAfterChat.has(runId)) {
     host.refreshSessionsAfterChat.delete(runId);
