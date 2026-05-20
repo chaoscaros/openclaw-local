@@ -71,6 +71,15 @@ should be split by risk area.
     `src/infra/update-global.ts`,
     `src/cli/update-cli/update-command.ts`,
     `src/infra/update-runner.ts`.
+- Source-only official plugin reinstall recovery from `0240cc578c`
+  - Local impact: official Brave and Slack reinstall requests can use the same
+    invalid-config recovery path as Matrix when stale source-only installs make
+    plugin entries or web-search provider config invalid.
+  - Files: `extensions/brave/package.json`,
+    `extensions/slack/package.json`,
+    `src/cli/plugins-install-command.ts`,
+    `src/cli/plugins-install-config.test.ts`,
+    `src/cli/program/preaction.test.ts`.
 - Telegram HTML reply preservation from `7c606f834c` / `3c3cef1785`
   - Local impact: supported Telegram HTML tags survive markdown rendering and
     chunking, unsupported tags remain escaped, and durable outbound Telegram

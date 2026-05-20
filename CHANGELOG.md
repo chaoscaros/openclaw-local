@@ -47,6 +47,7 @@ Docs: https://docs.openclaw.ai
 - Update CLI: tell operators to stop managed gateways before sudo/manual npm recovery after global install permission failures.
 - CLI/skills: add `--global` to ClawHub skill installs and updates so operators can target the shared managed skills directory directly.
 - CLI/update and plugins: bypass npm freshness filters during OpenClaw-managed package and plugin installs so freshly published releases remain installable even when user npm config has release-age guards.
+- CLI/plugins: allow official Brave and Slack plugin reinstall commands to recover source-only runtime shadow config errors, matching the existing bundled plugin recovery path.
 
 ## 2026.4.15
 
