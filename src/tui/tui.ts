@@ -790,11 +790,18 @@ export async function runTui(opts: TuiOptions) {
     closeOverlay,
   });
   updateAutocompleteProvider();
+  const canSubmitChatMessage = () => !activeChatRunId && !pendingOptimisticUserMessage;
+  const notifyBlockedChatSubmit = () => {
+    chatLog.addSystem("agent is busy — press Esc to abort before sending a new message");
+    tui.requestRender();
+  };
   const submitHandler = createEditorSubmitHandler({
     editor,
     handleCommand,
     sendMessage,
     handleBangLine: runLocalShellLine,
+    canSubmitMessage: canSubmitChatMessage,
+    onBlockedMessageSubmit: notifyBlockedChatSubmit,
   });
   editor.onSubmit = createSubmitBurstCoalescer({
     submit: submitHandler,

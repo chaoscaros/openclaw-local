@@ -532,6 +532,11 @@ export function createCommandHandlers(context: CommandHandlerContext) {
       return;
     }
     const isBtw = isBtwCommand(text);
+    if (!isBtw && (state.activeChatRunId || state.pendingOptimisticUserMessage)) {
+      chatLog.addSystem("agent is busy — press Esc to abort before sending a new message");
+      tui.requestRender();
+      return;
+    }
     const runId = randomUUID();
     try {
       if (!isBtw) {

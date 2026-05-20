@@ -259,6 +259,22 @@ describe("tui command handlers", () => {
     expect(setActivityStatus).toHaveBeenLastCalledWith("disconnected");
   });
 
+  it("rejects normal sends while a run is active", async () => {
+    const { handleCommand, sendChat, addUser, addSystem, requestRender, state } = createHarness({
+      activeChatRunId: "run-active",
+    });
+
+    await handleCommand("/context detail");
+
+    expect(sendChat).not.toHaveBeenCalled();
+    expect(addUser).not.toHaveBeenCalled();
+    expect(addSystem).toHaveBeenCalledWith(
+      "agent is busy — press Esc to abort before sending a new message",
+    );
+    expect(requestRender).toHaveBeenCalled();
+    expect(state.activeChatRunId).toBe("run-active");
+  });
+
   it("rejects invalid /activation values before patching the session", async () => {
     const { handleCommand, patchSession, addSystem } = createHarness();
 

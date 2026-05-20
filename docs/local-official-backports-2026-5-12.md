@@ -226,6 +226,9 @@ should be split by risk area.
     run using the existing soft-steer path, while preserving a visible pending
     marker and falling back to the queued next-turn path during the initial send
     acknowledgement window.
+  - TUI normal-message submits now preserve the draft while an active or
+    optimistic chat run is busy, show the existing abort-first hint, and keep
+    slash commands routable during the busy state.
   - Channel delivery state now has a normalized route metadata layer, preserving
     target, account, and thread/topic details while keeping local legacy
     `deliveryContext` and built-in Telegram/Slack/Mattermost parent-thread
@@ -261,6 +264,8 @@ should be split by risk area.
     `extensions/lmstudio/src/setup.ts`,
     `src/gateway/server/ws-connection/message-handler.ts`,
     `ui/src/ui/markdown.ts`, `ui/src/styles/components.css`,
+    `src/tui/tui-submit.ts`, `src/tui/tui.ts`,
+    `src/tui/tui-command-handlers.ts`,
     `ui/src/types/highlight-js-subpaths.d.ts`,
     `src/cli/update-cli/progress.ts`, `src/cli/update-cli/progress.test.ts`,
     `docs/install/updating.md`, `src/cli/skills-cli.ts`,
