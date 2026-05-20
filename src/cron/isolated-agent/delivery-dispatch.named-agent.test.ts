@@ -1,5 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { matchesMessagingToolDeliveryTarget } from "./delivery-dispatch.js";
+
+const normalizeTargetForProviderMock = vi.hoisted(() =>
+  vi.fn((_provider: string, raw?: string) => raw?.trim()),
+);
 
 // Mock the announce flow dependencies to test the fallback behavior.
 vi.mock("../../agents/subagent-announce.js", () => ({
@@ -8,6 +12,17 @@ vi.mock("../../agents/subagent-announce.js", () => ({
 vi.mock("../../agents/subagent-registry-read.js", () => ({
   countActiveDescendantRuns: vi.fn().mockReturnValue(0),
 }));
+vi.mock("../../infra/outbound/target-normalization.js", () => ({
+  normalizeTargetForProvider: (...args: Parameters<typeof normalizeTargetForProviderMock>) =>
+    normalizeTargetForProviderMock(...args),
+}));
+
+beforeEach(() => {
+  normalizeTargetForProviderMock.mockClear();
+  normalizeTargetForProviderMock.mockImplementation((_provider: string, raw?: string) =>
+    raw?.trim(),
+  );
+});
 
 describe("matchesMessagingToolDeliveryTarget", () => {
   it("matches when channel and to agree", () => {
@@ -80,6 +95,30 @@ describe("matchesMessagingToolDeliveryTarget", () => {
         { channel: "telegram", to: "123456", accountId: "bot-a" },
       ),
     ).toBe(true);
+  });
+
+  it("skips target normalization when stripped raw recipients already match", () => {
+    expect(
+      matchesMessagingToolDeliveryTarget(
+        { provider: "telegram", to: " -1003597428309:topic:462 " },
+        { channel: "telegram", to: " -1003597428309 " },
+      ),
+    ).toBe(true);
+    expect(normalizeTargetForProviderMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to target normalization when raw recipients differ", () => {
+    normalizeTargetForProviderMock.mockImplementation((_provider: string, raw?: string) =>
+      raw?.trim().replace(/^chat:/, ""),
+    );
+
+    expect(
+      matchesMessagingToolDeliveryTarget(
+        { provider: "telegram", to: "chat:-1003597428309" },
+        { channel: "telegram", to: "-1003597428309" },
+      ),
+    ).toBe(true);
+    expect(normalizeTargetForProviderMock).toHaveBeenCalledTimes(2);
   });
 });
 

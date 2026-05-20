@@ -98,6 +98,13 @@ should be split by risk area.
     `src/infra/outbound/channel-bootstrap.runtime.ts`,
     `src/infra/outbound/channel-bootstrap.runtime.test.ts`,
     `src/plugins/runtime.channel-pin.test.ts`.
+- Cron source-delivery exact-match fast path from `e750f481f9`
+  - Local impact: isolated scheduled runs no longer call plugin target
+    normalizers when the message-tool target and resolved delivery recipient
+    already match after Telegram topic suffix trimming. The local version also
+    trims before topic stripping so whitespace-padded topic targets still match.
+  - Files: `src/cron/isolated-agent/delivery-dispatch.ts`,
+    `src/cron/isolated-agent/delivery-dispatch.named-agent.test.ts`.
 
 ## Local Hardening
 

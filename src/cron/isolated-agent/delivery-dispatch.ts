@@ -28,6 +28,24 @@ function normalizeDeliveryTarget(channel: string, to: string): string {
   return normalizeTargetForProvider(channel, toTrimmed) ?? toTrimmed;
 }
 
+function deliveryTargetRecipientsMatch(
+  channel: string,
+  targetTo: string,
+  deliveryTo: string,
+): boolean {
+  const strippedTargetTo = targetTo
+    .trim()
+    .replace(/:topic:\d+$/, "")
+    .trim();
+  const deliveryToTrimmed = deliveryTo.trim();
+  if (strippedTargetTo === deliveryToTrimmed) {
+    return true;
+  }
+  const normalizedTargetTo = normalizeDeliveryTarget(channel, strippedTargetTo);
+  const normalizedDeliveryTo = normalizeDeliveryTarget(channel, deliveryToTrimmed);
+  return normalizedTargetTo === normalizedDeliveryTo;
+}
+
 export function matchesMessagingToolDeliveryTarget(
   target: { provider?: string; to?: string; accountId?: string },
   delivery: { channel?: string; to?: string; accountId?: string },
@@ -43,11 +61,10 @@ export function matchesMessagingToolDeliveryTarget(
   if (delivery.accountId && target.accountId && target.accountId !== delivery.accountId) {
     return false;
   }
-  // Strip :topic:NNN from message targets and normalize Feishu/Lark prefixes on
-  // both sides so cron duplicate suppression compares canonical IDs.
-  const normalizedTargetTo = normalizeDeliveryTarget(channel, target.to.replace(/:topic:\d+$/, ""));
-  const normalizedDeliveryTo = normalizeDeliveryTarget(channel, delivery.to);
-  return normalizedTargetTo === normalizedDeliveryTo;
+  // Strip :topic:NNN from message targets and only fall back to plugin
+  // normalization when raw recipients differ. Most cron source delivery checks
+  // already carry canonical ids, and plugin lookup is comparatively expensive.
+  return deliveryTargetRecipientsMatch(channel, target.to, delivery.to);
 }
 
 export function resolveCronDeliveryBestEffort(job: CronJob): boolean {

@@ -52,6 +52,7 @@ Docs: https://docs.openclaw.ai
 - TUI: preserve normal-message drafts while a chat run is busy and show an abort-first hint instead of clearing input or starting another run.
 - Channels: preserve implicit default accounts when top-level credentials coexist with named accounts, keeping legacy default channel setups active during multi-account migration.
 - Plugins/Slack: use a stable `minHostVersion` floor in the bundled Slack manifest so stricter plugin validation no longer blocks startup.
+- Cron/outbound: skip plugin target normalization when scheduled-run source delivery already has an exact recipient match, while still preserving Telegram topic matching.
 
 ## 2026.4.15
 
