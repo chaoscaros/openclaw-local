@@ -685,6 +685,18 @@ export const zh_CN: TranslationMap = {
     select: "选择",
     close: "关闭",
     queued: "队列中（{count}）",
+    status: {
+      creatingSession: "正在创建会话",
+      resettingSession: "正在重置会话",
+      sessionMutationDetail: "请稍候，已暂停重复点击。",
+      loadingSession: "正在加载会话",
+      loadingSessionDetail: "正在刷新历史和会话信息。",
+      running: "任务进行中",
+      runningDetail: "Assistant 正在处理当前会话。",
+      runningWithQueue: "Assistant 正在处理，后面还有 {count} 条排队消息。",
+      queued: "{count} 条消息排队中",
+      queuedDetail: "当前轮次可用后会继续执行。",
+    },
     placeholders: {
       addMessageOrPasteImages: "添加消息或粘贴更多图片...",
       messageAgent: "给 {agent} 发送消息（回车发送）",
@@ -1098,6 +1110,12 @@ export const zh_CN: TranslationMap = {
     showCronSessions: "显示定时任务会话",
     showCronSessionsHidden: "显示定时任务会话 (已隐藏 {count} 个)",
     onboardingDisabled: "引导期间禁用",
+    switchedSession: "已切换到 {session}",
+    selectors: {
+      session: "聊天会话",
+      model: "聊天模型",
+      thinkingLevel: "聊天思考级别",
+    },
   },
   languages: {
     en: "英语",

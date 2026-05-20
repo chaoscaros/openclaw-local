@@ -656,10 +656,15 @@ export function renderChatSessionSelect(state: AppViewState) {
   const selectedSessionLabel =
     sessionGroups.flatMap((group) => group.options).find((entry) => entry.key === state.sessionKey)
       ?.label ?? state.sessionKey;
+  const flashSession = state.sessionSwitchFlashKey === state.sessionKey;
   return html`
-    <div class="chat-controls__session-row">
-      <label class="field chat-controls__session">
+    <div
+      class="chat-controls__session-row ${flashSession ? "chat-controls__session-row--flash" : ""}"
+    >
+      <label class="field chat-controls__session chat-controls__session-picker">
         <select
+          data-chat-session-select="true"
+          aria-label=${t("chat.selectors.session")}
           .value=${state.sessionKey}
           title=${selectedSessionLabel}
           ?disabled=${!state.connected || sessionGroups.length === 0}
@@ -693,6 +698,9 @@ export function renderChatSessionSelect(state: AppViewState) {
         </select>
       </label>
       ${modelSelect} ${thinkingSelect} ${renderChatTaskHeaderBar(state)}
+    </div>
+    <div class="chat-controls__session-notice" role="status" aria-live="polite">
+      ${state.sessionSwitchNotice?.text ?? ""}
     </div>
   `;
 }
@@ -1038,7 +1046,13 @@ export function renderChatMobileToggle(state: AppViewState) {
 }
 
 export function switchChatSession(state: AppViewState, nextSessionKey: string) {
+  const previousSessionKey = state.sessionKey;
+  const nextSessionRow = state.sessionsResult?.sessions.find((row) => row.key === nextSessionKey);
+  const nextSessionLabel = resolveSessionDisplayName(nextSessionKey, nextSessionRow);
   resetChatStateForSessionSwitch(state, nextSessionKey);
+  if (previousSessionKey !== nextSessionKey) {
+    state.announceSessionSwitch?.(nextSessionKey, nextSessionLabel);
+  }
   void state.loadAssistantIdentity();
   void refreshChatAvatar(state);
   void refreshSlashCommands({
@@ -1161,7 +1175,7 @@ function renderChatModelSelect(state: AppViewState) {
     <label class="field chat-controls__session chat-controls__model">
       <select
         data-chat-model-select="true"
-        aria-label="Chat model"
+        aria-label=${t("chat.selectors.model")}
         title=${selectedLabel}
         ?disabled=${disabled}
         @change=${async (e: Event) => {
@@ -1287,7 +1301,7 @@ function renderChatThinkingSelect(state: AppViewState) {
     <label class="field chat-controls__session chat-controls__thinking-select">
       <select
         data-chat-thinking-select="true"
-        aria-label="Chat thinking level"
+        aria-label=${t("chat.selectors.thinkingLevel")}
         title=${selectedLabel}
         ?disabled=${disabled}
         @change=${async (e: Event) => {

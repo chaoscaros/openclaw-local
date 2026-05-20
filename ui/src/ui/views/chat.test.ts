@@ -367,6 +367,24 @@ describe("chat view", () => {
     expect(text).toContain("未应用：当前会话或任务与策略作用域不匹配");
   });
 
+  it("keeps a visible status strip while a chat run is active", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          pendingRunId: "run-1",
+          queue: [{ id: "queued-1", text: "follow up", createdAt: 1 }],
+        }),
+      ),
+      container,
+    );
+
+    const strip = container.querySelector(".agent-chat__status-strip");
+    expect(strip).not.toBeNull();
+    expect(strip?.textContent).toContain("Task in progress");
+    expect(strip?.textContent).toContain("1 queued");
+  });
+
   it("renders all supported dreaming assist reason messages", async () => {
     await i18n.setLocale("en");
     const disabled = document.createElement("div");
@@ -1363,6 +1381,19 @@ describe("chat view", () => {
     expect(state.sessionsResult?.sessions[0]?.model).toBe("gpt-5-mini");
     expect(state.sessionsResult?.sessions[0]?.modelProvider).toBe("openai");
     vi.unstubAllGlobals();
+  });
+
+  it("shows session switch feedback in the chat header", () => {
+    const { state } = createChatHeaderState();
+    state.sessionSwitchNotice = { id: 1, text: "Switched to Coding" };
+    state.sessionSwitchFlashKey = state.sessionKey;
+    const container = document.createElement("div");
+    render(renderChatSessionSelect(state), container);
+
+    expect(container.querySelector(".chat-controls__session-row--flash")).not.toBeNull();
+    expect(container.querySelector(".chat-controls__session-notice")?.textContent).toContain(
+      "Switched to Coding",
+    );
   });
 
   it("reloads effective tools after a chat-header model switch for the active tools panel", async () => {

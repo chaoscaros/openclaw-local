@@ -685,6 +685,18 @@ export const en: TranslationMap = {
     select: "select",
     close: "close",
     queued: "Queued ({count})",
+    status: {
+      creatingSession: "Creating session",
+      resettingSession: "Resetting session",
+      sessionMutationDetail: "Please wait; duplicate clicks are paused.",
+      loadingSession: "Loading session",
+      loadingSessionDetail: "Refreshing history and session metadata.",
+      running: "Task in progress",
+      runningDetail: "Assistant is working in the current conversation.",
+      runningWithQueue: "Assistant is working; {count} queued message(s) will follow.",
+      queued: "{count} queued message(s)",
+      queuedDetail: "They will run after the current turn is available.",
+    },
     placeholders: {
       addMessageOrPasteImages: "Add a message or paste more images...",
       messageAgent: "Message {agent} (Enter to send)",
@@ -1102,6 +1114,12 @@ export const en: TranslationMap = {
     showCronSessions: "Show cron sessions",
     showCronSessionsHidden: "Show cron sessions ({count} hidden)",
     onboardingDisabled: "Disabled during setup",
+    switchedSession: "Switched to {session}",
+    selectors: {
+      session: "Chat session",
+      model: "Chat model",
+      thinkingLevel: "Chat thinking level",
+    },
   },
   languages: {
     en: "English",

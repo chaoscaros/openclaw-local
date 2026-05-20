@@ -110,7 +110,7 @@ describe("chat run controls", () => {
 
     expect(getButton(container, 'button[title="New session"]').disabled).toBe(true);
     expect(getButton(container, 'button[title="Reset session"]').disabled).toBe(true);
-    expect(container.textContent).toContain("Creating");
+    expect(container.textContent).toContain("Creating session");
   });
 
   it("renders run-control labels from the active locale", async () => {

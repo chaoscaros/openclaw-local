@@ -1,7 +1,7 @@
 import { LitElement } from "lit";
 import { state } from "lit/decorators.js";
 import { resolveAgentIdFromSessionKey } from "../../../src/routing/session-key.js";
-import { i18n, I18nController, isSupportedLocale } from "../i18n/index.ts";
+import { i18n, I18nController, isSupportedLocale, t } from "../i18n/index.ts";
 import {
   handleChannelConfigReload as handleChannelConfigReloadInternal,
   handleChannelConfigSave as handleChannelConfigSaveInternal,
@@ -255,6 +255,9 @@ export class OpenClawApp extends LitElement {
   private eventLogBuffer: EventLogEntry[] = [];
   private toolStreamSyncTimer: number | null = null;
   private sidebarCloseTimer: number | null = null;
+  private sessionSwitchNoticeSeq = 0;
+  private sessionSwitchNoticeTimer: number | null = null;
+  private sessionSwitchFlashTimer: number | null = null;
 
   @state() assistantName = bootAssistantIdentity.name;
   @state() assistantAvatar = bootAssistantIdentity.avatar;
@@ -300,6 +303,8 @@ export class OpenClawApp extends LitElement {
   @state() chatNewSessionCreating = false;
   @state() chatResetting = false;
   @state() chatManualRefreshInFlight = false;
+  @state() sessionSwitchNotice: { id: number; text: string } | null = null;
+  @state() sessionSwitchFlashKey: string | null = null;
   @state() navDrawerOpen = false;
 
   onSlashAction?: (action: string) => void;
@@ -695,6 +700,14 @@ export class OpenClawApp extends LitElement {
 
   disconnectedCallback() {
     document.removeEventListener("keydown", this.globalKeydownHandler);
+    if (this.sessionSwitchNoticeTimer !== null) {
+      window.clearTimeout(this.sessionSwitchNoticeTimer);
+      this.sessionSwitchNoticeTimer = null;
+    }
+    if (this.sessionSwitchFlashTimer !== null) {
+      window.clearTimeout(this.sessionSwitchFlashTimer);
+      this.sessionSwitchFlashTimer = null;
+    }
     handleDisconnected(this as unknown as Parameters<typeof handleDisconnected>[0]);
     super.disconnectedCallback();
   }
@@ -782,6 +795,33 @@ export class OpenClawApp extends LitElement {
       next,
       context,
     );
+  }
+
+  announceSessionSwitch(sessionKey: string, label: string) {
+    const id = ++this.sessionSwitchNoticeSeq;
+    if (this.sessionSwitchNoticeTimer !== null) {
+      window.clearTimeout(this.sessionSwitchNoticeTimer);
+    }
+    if (this.sessionSwitchFlashTimer !== null) {
+      window.clearTimeout(this.sessionSwitchFlashTimer);
+    }
+    this.sessionSwitchNotice = {
+      id,
+      text: t("chat.switchedSession", { session: label }),
+    };
+    this.sessionSwitchFlashKey = sessionKey;
+    this.sessionSwitchFlashTimer = window.setTimeout(() => {
+      if (this.sessionSwitchNotice?.id === id) {
+        this.sessionSwitchFlashKey = null;
+      }
+      this.sessionSwitchFlashTimer = null;
+    }, 200);
+    this.sessionSwitchNoticeTimer = window.setTimeout(() => {
+      if (this.sessionSwitchNotice?.id === id) {
+        this.sessionSwitchNotice = null;
+      }
+      this.sessionSwitchNoticeTimer = null;
+    }, 2800);
   }
 
   setBorderRadius(value: number) {

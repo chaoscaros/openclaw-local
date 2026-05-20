@@ -26,8 +26,12 @@ function storeDraftIfNeeded(props: ChatRunControlsProps) {
 }
 
 export function renderChatRunControls(props: ChatRunControlsProps) {
-  const newSessionLabel = props.newSessionBusy ? "Creating..." : t("chatUi.newSession");
-  const resetSessionLabel = props.resetSessionBusy ? "Resetting..." : t("chatUi.resetSession");
+  const newSessionLabel = props.newSessionBusy
+    ? t("chatUi.status.creatingSession")
+    : t("chatUi.newSession");
+  const resetSessionLabel = props.resetSessionBusy
+    ? t("chatUi.status.resettingSession")
+    : t("chatUi.resetSession");
   const sessionActionBusy = Boolean(props.newSessionBusy || props.resetSessionBusy);
   return html`
     <div class="agent-chat__toolbar-right">

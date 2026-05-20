@@ -121,6 +121,9 @@ export type AppViewState = {
   applyChangeReviewHunk: (id: string, path: string, hunkId: string) => Promise<void>;
   revertChangeReviewHunk: (id: string, path: string, hunkId: string) => Promise<void>;
   chatManualRefreshInFlight: boolean;
+  sessionSwitchNotice: { id: number; text: string } | null;
+  sessionSwitchFlashKey: string | null;
+  announceSessionSwitch?: (sessionKey: string, label: string) => void;
   nodesLoading: boolean;
   nodes: Array<Record<string, unknown>>;
   chatNewMessagesBelow: boolean;

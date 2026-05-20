@@ -1520,6 +1520,84 @@ function renderFallbackIndicator(status: FallbackStatus | null | undefined) {
   `;
 }
 
+type ChatActivityStatus = {
+  label: string;
+  detail: string;
+  tone: "busy" | "queued" | "muted";
+  spin?: boolean;
+};
+
+function resolveChatActivityStatus(props: ChatProps): ChatActivityStatus | null {
+  if (props.newSessionCreating) {
+    return {
+      label: t("chatUi.status.creatingSession"),
+      detail: t("chatUi.status.sessionMutationDetail"),
+      tone: "busy",
+      spin: true,
+    };
+  }
+  if (props.resetSessionBusy) {
+    return {
+      label: t("chatUi.status.resettingSession"),
+      detail: t("chatUi.status.sessionMutationDetail"),
+      tone: "busy",
+      spin: true,
+    };
+  }
+  if (props.loading && props.messages.length === 0 && props.stream === null) {
+    return {
+      label: t("chatUi.status.loadingSession"),
+      detail: t("chatUi.status.loadingSessionDetail"),
+      tone: "muted",
+      spin: true,
+    };
+  }
+  if (props.sending || props.stream !== null || props.pendingRunId) {
+    return {
+      label: t("chatUi.status.running"),
+      detail:
+        props.queue.length > 0
+          ? t("chatUi.status.runningWithQueue", { count: String(props.queue.length) })
+          : t("chatUi.status.runningDetail"),
+      tone: "busy",
+      spin: true,
+    };
+  }
+  if (props.queue.length > 0) {
+    return {
+      label: t("chatUi.status.queued", { count: String(props.queue.length) }),
+      detail: t("chatUi.status.queuedDetail"),
+      tone: "queued",
+    };
+  }
+  return null;
+}
+
+function renderChatActivityStrip(props: ChatProps) {
+  const status = resolveChatActivityStatus(props);
+  if (!status) {
+    return nothing;
+  }
+  return html`
+    <div
+      class="agent-chat__status-strip agent-chat__status-strip--${status.tone}"
+      role="status"
+      aria-live="polite"
+    >
+      <span
+        class="agent-chat__status-strip-icon ${status.spin
+          ? "agent-chat__status-strip-icon--spin"
+          : ""}"
+        aria-hidden="true"
+      >
+        ${status.spin ? icons.loader : icons.circle}
+      </span>
+      <span class="agent-chat__status-strip-label">${status.label}</span>
+      <span class="agent-chat__status-strip-detail">${status.detail}</span>
+    </div>
+  `;
+}
+
 function renderSideResult(
   sideResult: ChatSideResult | null | undefined,
   onDismiss?: () => void,
@@ -2809,6 +2887,7 @@ export function renderChat(props: ChatProps) {
             </button>
           `
         : nothing}
+      ${renderChatActivityStrip(props)}
 
       <!-- Input bar -->
       <div

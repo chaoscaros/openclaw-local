@@ -429,6 +429,7 @@ describe("switchChatSession", () => {
       devSpecFirstEnabled: false,
       changeReviewModeEnabled: false,
     };
+    const announceSessionSwitch = vi.fn();
     const state = {
       sessionKey: "main",
       chatMessage: "draft",
@@ -461,6 +462,16 @@ describe("switchChatSession", () => {
       chatRunId: "run-1",
       chatSideResultTerminalRuns: new Set(["btw-run-1"]),
       chatStreamStartedAt: 1,
+      sessionsResult: {
+        ts: 1,
+        path: "",
+        count: 2,
+        defaults: {},
+        sessions: [
+          row({ key: "main", label: "Main" }),
+          row({ key: "agent:main:test-b", label: "Project B" }),
+        ],
+      } as SessionsListResult,
       settings,
       applySettings(next: typeof settings) {
         state.settings = next;
@@ -468,6 +479,7 @@ describe("switchChatSession", () => {
       loadAssistantIdentity: vi.fn(),
       resetToolStream: vi.fn(),
       resetChatScroll: vi.fn(),
+      announceSessionSwitch,
     } as unknown as AppViewState;
 
     refreshChatAvatarMock.mockResolvedValue(undefined);
@@ -481,6 +493,7 @@ describe("switchChatSession", () => {
     expect(state.chatSideResult).toBeNull();
     expect(state.chatChangeReview).toBeNull();
     expect(state.chatSideResultTerminalRuns.size).toBe(0);
+    expect(announceSessionSwitch).toHaveBeenCalledWith("agent:main:test-b", "Project B");
     expect(refreshChatAvatarMock).toHaveBeenCalledWith(state);
     expect(refreshSlashCommandsMock).toHaveBeenCalledWith({
       client: undefined,
