@@ -175,6 +175,109 @@ describe("deleteSessionsAndRefresh", () => {
 });
 
 describe("loadSessions", () => {
+  it("clears a stale local chat run when the current session refreshes as terminal", async () => {
+    const requestUpdate = vi.fn();
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.list") {
+        return {
+          ts: 2,
+          path: "(multiple)",
+          count: 1,
+          defaults: {},
+          sessions: [
+            {
+              key: "agent:main:main",
+              kind: "direct",
+              updatedAt: 2,
+              hasActiveRun: false,
+              status: "done",
+              endedAt: 2,
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const state = createState(request, {
+      sessionsResult: {
+        ts: 1,
+        path: "(multiple)",
+        count: 1,
+        defaults: {},
+        sessions: [
+          {
+            key: "agent:main:main",
+            kind: "direct",
+            updatedAt: 1,
+            hasActiveRun: true,
+            status: "running",
+          },
+        ],
+      } as never,
+    }) as SessionsState & {
+      sessionKey: string;
+      chatRunId: string | null;
+      chatStream: string | null;
+      chatStreamStartedAt: number | null;
+      requestUpdate: () => void;
+    };
+    state.sessionKey = "agent:main:main";
+    state.chatRunId = "run-1";
+    state.chatStream = "";
+    state.chatStreamStartedAt = 1;
+    state.requestUpdate = requestUpdate;
+
+    await loadSessions(state);
+
+    expect(state.chatRunId).toBeNull();
+    expect(state.chatStream).toBeNull();
+    expect(state.chatStreamStartedAt).toBeNull();
+    expect(requestUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a local chat run when the refreshed current session is still active", async () => {
+    const requestUpdate = vi.fn();
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.list") {
+        return {
+          ts: 2,
+          path: "(multiple)",
+          count: 1,
+          defaults: {},
+          sessions: [
+            {
+              key: "agent:main:main",
+              kind: "direct",
+              updatedAt: 2,
+              hasActiveRun: true,
+              status: "running",
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const state = createState(request) as SessionsState & {
+      sessionKey: string;
+      chatRunId: string | null;
+      chatStream: string | null;
+      chatStreamStartedAt: number | null;
+      requestUpdate: () => void;
+    };
+    state.sessionKey = "agent:main:main";
+    state.chatRunId = "run-1";
+    state.chatStream = "";
+    state.chatStreamStartedAt = 1;
+    state.requestUpdate = requestUpdate;
+
+    await loadSessions(state);
+
+    expect(state.chatRunId).toBe("run-1");
+    expect(state.chatStream).toBe("");
+    expect(state.chatStreamStartedAt).toBe(1);
+    expect(requestUpdate).not.toHaveBeenCalled();
+  });
+
   it("refreshes expanded checkpoint cards when the row summary changes", async () => {
     const request = vi.fn(async (method: string) => {
       if (method === "sessions.list") {

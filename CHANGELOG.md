@@ -77,6 +77,7 @@ Docs: https://docs.openclaw.ai
 - Control UI: keep shared form, config, and usage text-entry controls at 16px on touch-primary devices so iOS Safari does not auto-zoom focused fields.
 - Control UI/chat: size desktop chat header dropdowns to their selected option text while leaving the local task context bar flexible.
 - Control UI/sessions: preserve session key column spacing and use the shared compaction detail styles while keeping local task/mode columns.
+- Control UI/chat: clear stale local run state after session refreshes report the current session as terminal, preventing lingering busy controls.
 
 ## 2026.4.15
 

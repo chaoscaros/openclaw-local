@@ -1,5 +1,6 @@
 import { toNumber } from "../format.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
+import { isSessionRunActive } from "../session-run-state.ts";
 import type {
   SessionCompactionCheckpoint,
   SessionsCompactionBranchResult,
@@ -48,6 +49,14 @@ type CreateSessionResult = {
   key?: string;
 };
 
+type ChatRunReconcileState = SessionsState & {
+  sessionKey?: string;
+  chatRunId?: string | null;
+  chatStream?: string | null;
+  chatStreamStartedAt?: number | null;
+  requestUpdate?: () => void;
+};
+
 function checkpointSummarySignature(
   row:
     | {
@@ -74,6 +83,25 @@ function invalidateCheckpointCacheForKey(state: SessionsState, key: string) {
   delete nextErrors[key];
   state.sessionsCheckpointItemsByKey = nextItems;
   state.sessionsCheckpointErrorByKey = nextErrors;
+}
+
+function reconcileChatRunFromSessionsState(state: SessionsState) {
+  const chatState = state as ChatRunReconcileState;
+  if (!chatState.chatRunId) {
+    return;
+  }
+  const sessionKey = typeof chatState.sessionKey === "string" ? chatState.sessionKey.trim() : "";
+  if (!sessionKey) {
+    return;
+  }
+  const current = state.sessionsResult?.sessions.find((row) => row.key === sessionKey);
+  if (!current || isSessionRunActive(current)) {
+    return;
+  }
+  chatState.chatRunId = null;
+  chatState.chatStream = null;
+  chatState.chatStreamStartedAt = null;
+  chatState.requestUpdate?.();
 }
 
 async function fetchSessionCompactionCheckpoints(state: SessionsState, key: string) {
@@ -181,6 +209,7 @@ export async function loadSessions(state: SessionsState, overrides?: LoadSession
     const res = await client.request<SessionsListResult | undefined>("sessions.list", params);
     if (res) {
       state.sessionsResult = res;
+      reconcileChatRunFromSessionsState(state);
       const nextKeys = new Set(res.sessions.map((row) => row.key));
       for (const key of Object.keys(state.sessionsCheckpointItemsByKey)) {
         if (!nextKeys.has(key)) {

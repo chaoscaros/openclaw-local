@@ -183,6 +183,9 @@ should be split by risk area.
   - Sessions table styling now preserves key-column spacing, reuses the shared
     checkpoint detail classes, and keeps local task/mode columns accounted for
     in expanded rows.
+  - Session refresh reconciliation now clears stale local chat run state when the
+    current session row has reached a terminal status, so busy controls do not
+    linger after the backend finishes.
   - Anthropic provider normalization now preserves native image input for
     current Claude rows when stale local catalog data marks them text-only.
   - `/models openai` provider headers now prefer the effective Codex OAuth
