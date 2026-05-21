@@ -459,7 +459,13 @@ export function attachGatewayWsMessageHandler(params: {
             `protocol mismatch conn=${connId} remote=${remoteAddr ?? "?"} client=${clientLabel} ${connectParams.client.mode} v${connectParams.client.version}`,
           );
           sendHandshakeErrorResponse(ErrorCodes.INVALID_REQUEST, "protocol mismatch", {
-            details: { expectedProtocol: PROTOCOL_VERSION },
+            details: {
+              code: ConnectErrorDetailCodes.PROTOCOL_MISMATCH,
+              clientMinProtocol: minProtocol,
+              clientMaxProtocol: maxProtocol,
+              expectedProtocol: PROTOCOL_VERSION,
+              minimumProbeProtocol: PROTOCOL_VERSION,
+            },
           });
           close(1002, "protocol mismatch");
           return;

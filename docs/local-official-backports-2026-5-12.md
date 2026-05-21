@@ -145,6 +145,20 @@ should be split by risk area.
   - Files: `src/gateway/protocol/schema/sessions.ts`,
     `src/gateway/server-methods/sessions.ts`, `ui/src/ui/app-tool-stream.ts`,
     `ui/src/ui/app-gateway.ts`.
+- Gateway protocol mismatch diagnostics from `a535978352`
+  - Local impact: handshake failures now include structured protocol mismatch
+    details, and the Control UI formats both explicit and legacy bare mismatch
+    errors with the Control UI and Gateway protocol versions.
+  - Files: `src/gateway/protocol/connect-error-details.ts`,
+    `src/gateway/server/ws-connection/message-handler.ts`,
+    `ui/src/ui/gateway.ts`.
+- Local task-mode pending UI polish
+  - Local impact: task-mode chats now rely on the bottom running status bar
+    instead of also showing an assistant "Thinking" placeholder bubble.
+    Active-run history refreshes also keep the pending stream state so the
+    status bar appears immediately after send and does not flicker idle before
+    lifecycle events arrive.
+  - Files: `ui/src/ui/views/chat.ts`, `ui/src/ui/controllers/chat.ts`.
 
 ## Post-5.12 Follow-Up Alignment
 

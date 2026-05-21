@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatConnectErrorMessage,
   readConnectErrorDetailCode,
   readConnectErrorRecoveryAdvice,
 } from "./connect-error-details.js";
@@ -38,5 +39,27 @@ describe("readConnectErrorRecoveryAdvice", () => {
         recommendedNextStep: "retry_with_magic",
       }),
     ).toEqual({ canRetryWithDeviceToken: true, recommendedNextStep: undefined });
+  });
+});
+
+describe("formatConnectErrorMessage", () => {
+  it("formats protocol mismatch details with both client and gateway versions", () => {
+    expect(
+      formatConnectErrorMessage({
+        message: "protocol mismatch",
+        details: {
+          code: "PROTOCOL_MISMATCH",
+          clientMinProtocol: 5,
+          clientMaxProtocol: 5,
+          expectedProtocol: 4,
+          minimumProbeProtocol: 4,
+        },
+      }),
+    ).toBe("protocol mismatch: Control UI v5, Gateway v4, probe min v4");
+  });
+
+  it("falls back to the raw message for unstructured errors", () => {
+    expect(formatConnectErrorMessage({ message: "unauthorized" })).toBe("unauthorized");
+    expect(formatConnectErrorMessage({})).toBe("gateway request failed");
   });
 });

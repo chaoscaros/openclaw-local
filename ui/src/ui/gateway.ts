@@ -7,12 +7,15 @@ import {
 } from "../../../src/gateway/protocol/client-info.js";
 import {
   ConnectErrorDetailCodes,
+  formatConnectErrorMessage,
   readConnectErrorRecoveryAdvice,
   readConnectErrorDetailCode,
 } from "../../../src/gateway/protocol/connect-error-details.js";
 import { clearDeviceAuthToken, loadDeviceAuthToken, storeDeviceAuthToken } from "./device-auth.ts";
 import { loadOrCreateDeviceIdentity, signDevicePayload } from "./device-identity.ts";
 import { generateUUID } from "./uuid.ts";
+
+const CONTROL_UI_PROTOCOL_VERSION = 3;
 
 export type GatewayEventFrame = {
   type: "event";
@@ -51,13 +54,33 @@ export class GatewayRequestError extends Error {
   readonly retryAfterMs?: number;
 
   constructor(error: GatewayErrorInfo) {
-    super(error.message);
+    super(
+      formatConnectErrorMessage({
+        message: error.message,
+        details: enrichProtocolMismatchDetails(error.message, error.details),
+      }),
+    );
     this.name = "GatewayRequestError";
     this.gatewayCode = error.code;
     this.details = error.details;
     this.retryable = error.retryable === true;
     this.retryAfterMs = error.retryAfterMs;
   }
+}
+
+function enrichProtocolMismatchDetails(message: string | undefined, details: unknown): unknown {
+  if (readConnectErrorDetailCode(details) === ConnectErrorDetailCodes.PROTOCOL_MISMATCH) {
+    return details;
+  }
+  if (!message?.toLowerCase().includes("protocol mismatch")) {
+    return details;
+  }
+  return {
+    code: ConnectErrorDetailCodes.PROTOCOL_MISMATCH,
+    clientMinProtocol: CONTROL_UI_PROTOCOL_VERSION,
+    clientMaxProtocol: CONTROL_UI_PROTOCOL_VERSION,
+    ...(details && typeof details === "object" && !Array.isArray(details) ? details : {}),
+  };
 }
 
 export function resolveGatewayErrorDetailCode(
@@ -174,8 +197,8 @@ export type GatewayConnectClientInfo = {
 };
 
 export type GatewayConnectParams = {
-  minProtocol: 3;
-  maxProtocol: 3;
+  minProtocol: typeof CONTROL_UI_PROTOCOL_VERSION;
+  maxProtocol: typeof CONTROL_UI_PROTOCOL_VERSION;
   client: GatewayConnectClientInfo;
   role: string;
   scopes: string[];
@@ -383,8 +406,8 @@ export class GatewayBrowserClient {
 
   private buildConnectParams(plan: ConnectPlan): GatewayConnectParams {
     return {
-      minProtocol: 3,
-      maxProtocol: 3,
+      minProtocol: CONTROL_UI_PROTOCOL_VERSION,
+      maxProtocol: CONTROL_UI_PROTOCOL_VERSION,
       client: plan.client,
       role: plan.role,
       scopes: plan.scopes,

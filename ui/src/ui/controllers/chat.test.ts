@@ -690,6 +690,30 @@ describe("loadChatHistory", () => {
     ]);
     expect(state.chatLoading).toBe(false);
   });
+
+  it("keeps pending stream state during an active run when history is stale", async () => {
+    const mockClient = {
+      request: vi.fn().mockResolvedValue({
+        messages: [],
+        thinkingLevel: null,
+      }),
+    };
+    const state = createState({
+      client: mockClient as unknown as ChatState["client"],
+      connected: true,
+      sessionKey: "main",
+      chatRunId: "run-1",
+      chatStream: "",
+      chatStreamStartedAt: 123,
+    });
+
+    await loadChatHistory(state);
+
+    expect(state.chatRunId).toBe("run-1");
+    expect(state.chatStream).toBe("");
+    expect(state.chatStreamStartedAt).toBe(123);
+    expect(state.chatLoading).toBe(false);
+  });
 });
 
 describe("sendChatMessage", () => {

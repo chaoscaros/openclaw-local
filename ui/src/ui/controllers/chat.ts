@@ -249,13 +249,18 @@ export async function loadChatHistory(state: ChatState) {
       ? mergeOptimisticMessages(filteredMessages, state.chatMessages)
       : filteredMessages;
     state.chatThinkingLevel = res.thinkingLevel ?? null;
-    // Clear all streaming state — history includes tool results and text
-    // inline, so keeping streaming artifacts would cause duplicates.
-    maybeResetToolStream(state);
-    state.chatStream = null;
-    state.chatStreamStartedAt = null;
-    state.dreamingAssistApplied = null;
-    state.dreamingAssistReason = null;
+    // During a just-submitted run, history can still be stale for a short
+    // window before lifecycle/chat events arrive. Keep the pending stream so
+    // the UI does not drop back to an idle-looking state.
+    if (!state.chatRunId) {
+      // History includes tool results and text inline after terminal events, so
+      // clearing streaming artifacts prevents duplicates.
+      maybeResetToolStream(state);
+      state.chatStream = null;
+      state.chatStreamStartedAt = null;
+      state.dreamingAssistApplied = null;
+      state.dreamingAssistReason = null;
+    }
     await state.loadChangeReviewStatus?.(sessionKey);
   } catch (err) {
     if (!shouldApplyChatHistoryResult(state, requestVersion, sessionKey)) {

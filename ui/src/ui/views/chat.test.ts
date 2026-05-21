@@ -2957,6 +2957,31 @@ describe("chat view", () => {
     expect(container.querySelector(".chat-reading-indicator")).not.toBeNull();
   });
 
+  it("hides the pending assistant bubble in task mode while keeping the activity status", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          sessionMode: "task",
+          currentTaskTitle: "Mobile sorting",
+          pendingRunId: "run-123",
+          messages: [
+            {
+              role: "user",
+              content: [{ type: "text", text: "start task" }],
+              timestamp: Date.now(),
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+
+    expect(container.textContent).toContain("start task");
+    expect(container.textContent).toContain("Task in progress");
+    expect(container.querySelector(".chat-reading-indicator")).toBeNull();
+  });
+
   it("revalidates cached unavailable local assistant attachments after retry window", async () => {
     resetAssistantAttachmentAvailabilityCacheForTest();
     vi.useFakeTimers();

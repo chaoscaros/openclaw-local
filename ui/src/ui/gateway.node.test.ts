@@ -80,8 +80,12 @@ vi.mock("./device-identity.ts", () => ({
   signDevicePayload: signDevicePayloadMock,
 }));
 
-const { CONTROL_UI_OPERATOR_SCOPES, GatewayBrowserClient, shouldRetryWithDeviceToken } =
-  await import("./gateway.ts");
+const {
+  CONTROL_UI_OPERATOR_SCOPES,
+  GatewayBrowserClient,
+  GatewayRequestError,
+  shouldRetryWithDeviceToken,
+} = await import("./gateway.ts");
 
 type ConnectFrame = {
   id?: string;
@@ -351,6 +355,15 @@ describe("GatewayBrowserClient", () => {
 
     client.stop();
     vi.useRealTimers();
+  });
+
+  it("adds the current Control UI protocol to bare protocol mismatch errors", () => {
+    const error = new GatewayRequestError({
+      code: "INVALID_REQUEST",
+      message: "protocol mismatch",
+    });
+
+    expect(error.message).toBe("protocol mismatch: Control UI v3");
   });
 
   it("continues reconnecting on first token mismatch when no retry was attempted", async () => {
