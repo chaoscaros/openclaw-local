@@ -24,6 +24,11 @@ import {
   parseAgentSessionKey,
   resolveAgentIdFromSessionKey,
 } from "./session-key.ts";
+import {
+  CHAT_AUTO_SCROLL_MODES,
+  normalizeChatAutoScrollMode,
+  type ChatAutoScrollMode,
+} from "./storage.ts";
 import { normalizeLowercaseStringOrEmpty, normalizeOptionalString } from "./string-coerce.ts";
 import type { ThemeMode } from "./theme.ts";
 import {
@@ -218,6 +223,52 @@ function renderCronFilterIcon(hiddenCount: number) {
           >`
         : ""}
     </span>
+  `;
+}
+
+function chatAutoScrollLabel(mode: ChatAutoScrollMode) {
+  switch (mode) {
+    case "always":
+      return t("chat.autoScrollAlways");
+    case "off":
+      return t("chat.autoScrollOff");
+    case "near-bottom":
+      return t("chat.autoScrollNearBottom");
+  }
+  return t("chat.autoScrollNearBottom");
+}
+
+function renderChatAutoScrollSelect(state: AppViewState) {
+  const mode = normalizeChatAutoScrollMode(state.settings.chatAutoScroll);
+  const label = t("chat.autoScrollMode");
+  return html`
+    <label class="field chat-controls__autoscroll" title=${label}>
+      <span class="agent-chat__sr-only">${label}</span>
+      <select
+        class="chat-controls__autoscroll-select"
+        data-chat-auto-scroll-select="true"
+        aria-label=${label}
+        title=${label}
+        .value=${mode}
+        @change=${(event: Event) => {
+          const nextMode = normalizeChatAutoScrollMode(
+            (event.currentTarget as HTMLSelectElement | null)?.value,
+          );
+          state.applySettings({
+            ...state.settings,
+            chatAutoScroll: nextMode,
+          });
+        }}
+      >
+        ${CHAT_AUTO_SCROLL_MODES.map(
+          (option) => html`
+            <option value=${option} ?selected=${option === mode}>
+              ${chatAutoScrollLabel(option)}
+            </option>
+          `,
+        )}
+      </select>
+    </label>
   `;
 }
 
@@ -816,6 +867,7 @@ export function renderChatControls(state: AppViewState) {
         ${refreshIcon}
       </button>
       <span class="chat-controls__separator">|</span>
+      ${renderChatAutoScrollSelect(state)}
       <button
         class="btn btn--sm btn--icon ${showThinking ? "active" : ""}"
         ?disabled=${disableThinkingToggle}
@@ -948,8 +1000,8 @@ export function renderChatMobileToggle(state: AppViewState) {
             }
           }
         }}
-        title="Chat settings"
-        aria-label="Chat settings"
+        title=${t("chat.settings")}
+        aria-label=${t("chat.settings")}
       >
         <svg
           width="18"
@@ -1001,7 +1053,7 @@ export function renderChatMobileToggle(state: AppViewState) {
               )}
             </select>
           </label>
-          ${renderChatThinkingSelect(state)}
+          ${renderChatThinkingSelect(state)} ${renderChatAutoScrollSelect(state)}
           <div class="chat-controls__thinking">
             <button
               class="btn btn--sm btn--icon ${showThinking ? "active" : ""}"

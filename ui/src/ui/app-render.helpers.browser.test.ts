@@ -1,10 +1,17 @@
 import { render } from "lit";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "../test-helpers/load-styles.ts";
 import { renderChatControls } from "./app-render.helpers.ts";
 import type { AppViewState } from "./app-view-state.ts";
 
 function createState(overrides: Partial<AppViewState> = {}) {
+  const settings = {
+    chatShowThinking: false,
+    chatShowToolCalls: true,
+    chatFocusMode: false,
+    chatAutoScroll: "near-bottom",
+    ...overrides.settings,
+  } as AppViewState["settings"];
   return {
     connected: true,
     chatLoading: false,
@@ -29,14 +36,10 @@ function createState(overrides: Partial<AppViewState> = {}) {
     refreshSessionsAfterChat: new Set<string>(),
     taskCarryoverAfterChatByRun: new Map<string, { taskId: string; sourceSessionKey: string }>(),
     sessionsResult: { ts: 0, path: "", count: 0, defaults: {}, sessions: [] },
-    settings: {
-      chatShowThinking: false,
-      chatShowToolCalls: true,
-      chatFocusMode: false,
-    },
     applySettings: () => undefined,
     requestUpdate: () => undefined,
     ...overrides,
+    settings,
   } as unknown as AppViewState;
 }
 
@@ -62,10 +65,12 @@ describe("chat header controls (browser)", () => {
   it("does not leak cron toggle template logic into the rendered header", () => {
     const container = renderControls();
     const text = container.textContent ?? "";
-    expect(text).not.toContain('showCronSessionsHidden');
-    expect(text).not.toContain('hiddenCronCount');
+    expect(text).not.toContain("showCronSessionsHidden");
+    expect(text).not.toContain("hiddenCronCount");
 
-    const iconButtons = Array.from(container.querySelectorAll<HTMLButtonElement>(`.chat-controls .btn--icon`));
+    const iconButtons = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(`.chat-controls .btn--icon`),
+    );
     const cronButton = iconButtons.at(-1) ?? null;
     expect(cronButton).not.toBeNull();
     expect(cronButton?.getAttribute("title")?.trim()).toBeTruthy();
@@ -81,5 +86,20 @@ describe("chat header controls (browser)", () => {
   ] as const)("sets refresh disabled state while %s", (_name, overrides, disabled) => {
     const button = renderRefreshButton(overrides);
     expect(button.disabled).toBe(disabled);
+  });
+
+  it("renders and applies the chat auto-scroll mode selector", () => {
+    const applySettings = vi.fn();
+    const container = renderControls({ applySettings });
+    const select = container.querySelector<HTMLSelectElement>(
+      '[data-chat-auto-scroll-select="true"]',
+    );
+    expect(select).not.toBeNull();
+    expect(select?.value).toBe("near-bottom");
+
+    select!.value = "off";
+    select!.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(applySettings).toHaveBeenCalledWith(expect.objectContaining({ chatAutoScroll: "off" }));
   });
 });

@@ -1224,6 +1224,19 @@
   white-space: nowrap;
 }
 
+@media (max-width: 1400px) {
+  .content--chat .content-header {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .content--chat .page-meta {
+    align-self: start;
+    height: auto;
+    justify-self: end;
+  }
+}
+
 .chat-controls__session-row {
   display: flex;
   align-items: center;

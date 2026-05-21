@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleChatScroll, scheduleChatScroll, resetChatScroll } from "./app-scroll.ts";
+import type { ChatAutoScrollMode } from "./storage.ts";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -42,6 +43,7 @@ function createScrollHost(
     chatHasAutoScrolled: false,
     chatUserNearBottom: true,
     chatNewMessagesBelow: false,
+    settings: { chatAutoScroll: "near-bottom" as ChatAutoScrollMode },
     logsScrollFrame: null as number | null,
     logsAtBottom: true,
     topbarObserver: null as ResizeObserver | null,
@@ -200,6 +202,54 @@ describe("scheduleChatScroll", () => {
     await host.updateComplete;
 
     expect(host.chatNewMessagesBelow).toBe(true);
+  });
+
+  it("scrolls in always mode even when the user is scrolled up", async () => {
+    const { host, container } = createScrollHost({
+      scrollHeight: 2000,
+      scrollTop: 500,
+      clientHeight: 400,
+    });
+    host.settings.chatAutoScroll = "always";
+    host.chatUserNearBottom = false;
+    host.chatHasAutoScrolled = true;
+
+    scheduleChatScroll(host);
+    await host.updateComplete;
+
+    expect(container.scrollTop).toBe(container.scrollHeight);
+    expect(host.chatNewMessagesBelow).toBe(false);
+  });
+
+  it("does not auto-scroll in off mode", async () => {
+    const { host, container } = createScrollHost({
+      scrollHeight: 2000,
+      scrollTop: 1600,
+      clientHeight: 400,
+    });
+    host.settings.chatAutoScroll = "off";
+    const originalScrollTop = container.scrollTop;
+
+    scheduleChatScroll(host, true);
+    await host.updateComplete;
+
+    expect(container.scrollTop).toBe(originalScrollTop);
+    expect(host.chatNewMessagesBelow).toBe(true);
+  });
+
+  it("lets manual scroll override off mode", async () => {
+    const { host, container } = createScrollHost({
+      scrollHeight: 2000,
+      scrollTop: 500,
+      clientHeight: 400,
+    });
+    host.settings.chatAutoScroll = "off";
+
+    scheduleChatScroll(host, true, false, { source: "manual" });
+    await host.updateComplete;
+
+    expect(container.scrollTop).toBe(container.scrollHeight);
+    expect(host.chatNewMessagesBelow).toBe(false);
   });
 });
 

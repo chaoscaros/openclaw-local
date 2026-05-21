@@ -1103,8 +1103,13 @@ export const zh_CN: TranslationMap = {
   chat: {
     disconnected: "已断开与网关的连接。",
     refreshTitle: "刷新聊天数据",
+    settings: "聊天设置",
     thinkingToggle: "切换助手思考/工作输出",
     toolCallsToggle: "切换工具调用和工具结果",
+    autoScrollMode: "自动滚动模式",
+    autoScrollAlways: "始终跟随",
+    autoScrollNearBottom: "接近底部",
+    autoScrollOff: "关闭",
     focusToggle: "切换专注模式 (隐藏侧边栏 + 页面页眉)",
     hideCronSessions: "隐藏定时任务会话",
     showCronSessions: "显示定时任务会话",

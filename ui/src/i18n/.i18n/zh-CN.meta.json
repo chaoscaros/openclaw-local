@@ -47,12 +47,12 @@
     "taskModeUi.titles.archived",
     "taskModeUi.updatedAt"
   ],
-  "generatedAt": "2026-04-21T09:18:02.903Z",
+  "generatedAt": "2026-05-21T01:19:27.681Z",
   "locale": "zh-CN",
   "model": "gpt-5.4",
   "provider": "openai",
-  "sourceHash": "7ecddd83e61bd3adaed18bb529e35f9adf475983f95671b2facb6bfc17ed82ad",
-  "totalKeys": 950,
-  "translatedKeys": 904,
+  "sourceHash": "193d103b3963e21e1f95769df521df12fd82fb97fe76022e7b59533cb6459115",
+  "totalKeys": 1100,
+  "translatedKeys": 1054,
   "workflow": 1
 }

@@ -295,6 +295,10 @@ should be split by risk area.
   - Timestamped Control UI live stream/tool rows now sort before newer history
     fallbacks, preserving the visible chat order when active runs and refreshed
     transcript history overlap.
+  - Control UI chat now exposes a browser-local auto-scroll mode selector
+    (`always`, `near-bottom`, `off`) in desktop and mobile controls, defaulting
+    to the previous near-bottom behavior while still letting manual scroll-to-bottom
+    override `off`.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -372,7 +376,10 @@ should be split by risk area.
     `ui/src/ui/controllers/chat.test.ts`, `ui/src/ui/views/usage.ts`,
     `ui/src/ui/views/usage.test.ts`, `ui/src/ui/views/overview-cards.ts`,
     `ui/src/ui/views/overview-cards.test.ts`, `ui/src/ui/views/chat.ts`,
-    `ui/src/ui/views/chat.test.ts`.
+    `ui/src/ui/views/chat.test.ts`, `ui/src/ui/app-scroll.ts`,
+    `ui/src/ui/app-scroll.test.ts`, `ui/src/ui/storage.ts`,
+    `ui/src/ui/storage.node.test.ts`, `ui/src/ui/app-render.helpers.browser.test.ts`,
+    `ui/src/i18n/locales/*.ts`, `ui/src/i18n/.i18n/*.meta.json`.
 
 ## Deferred
 

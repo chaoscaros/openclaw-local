@@ -1937,6 +1937,19 @@
   max-width: none;
 }
 
+.chat-controls__autoscroll {
+  min-width: 112px;
+  max-width: 118px;
+}
+
+.chat-controls__autoscroll-select {
+  width: 100%;
+  height: 32px;
+  min-width: 0;
+  padding: 4px 26px 4px 8px;
+  font-size: 12px;
+}
+
 .chat-controls__session-row > .chat-task-context-bar {
   grid-area: task;
   min-width: 0;
@@ -1979,7 +1992,8 @@
 .chat-controls__session select,
 .chat-controls__agent select,
 .chat-controls__model select,
-.chat-controls__thinking-select select {
+.chat-controls__thinking-select select,
+.chat-controls__autoscroll-select {
   box-sizing: border-box;
   height: 36px;
   min-height: 36px;

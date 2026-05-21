@@ -35,6 +35,7 @@ describe("chat layout styles", () => {
     expect(layoutCss).toContain("min-height: 44px;");
     expect(layoutCss).toContain("max-height: none;");
     expect(layoutCss).toContain(".content--chat .content-header .chat-controls__session-notice");
+    expect(layoutCss).toContain("@media (max-width: 1400px)");
     expect(chatCss).toContain(".chat-controls .btn--icon {");
     expect(chatCss).toContain("width: 36px;");
     expect(chatCss).toContain(".chat-controls__separator {");
