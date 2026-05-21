@@ -67,6 +67,21 @@ describe("chat run controls", () => {
     expect(onResetSession).toHaveBeenCalledTimes(1);
   });
 
+  it("can hide the new session action when a primary page action exists", () => {
+    const container = document.createElement("div");
+    render(
+      renderChatRunControls(
+        createProps({
+          showNewSessionAction: false,
+        }),
+      ),
+      container,
+    );
+
+    expect(container.querySelector('button[title="New session"]')).toBeNull();
+    expect(getButton(container, 'button[title="Reset session"]')).not.toBeNull();
+  });
+
   it("switches to send and stop actions while aborting is available", () => {
     const container = document.createElement("div");
     const onAbort = vi.fn();

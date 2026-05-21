@@ -225,6 +225,7 @@ export type ChatProps = {
   newSessionDialogOpen?: boolean;
   newSessionCreating?: boolean;
   resetSessionBusy?: boolean;
+  showNewSessionAction?: boolean;
   onOpenNewSessionDialog?: () => void;
   onCloseNewSessionDialog?: () => void;
   onNewSession: (options?: NewSessionCreateOptions) => void | Promise<boolean>;
@@ -3053,6 +3054,7 @@ export function renderChat(props: ChatProps) {
             isBusy,
             newSessionBusy: props.newSessionCreating,
             resetSessionBusy: props.resetSessionBusy,
+            showNewSessionAction: props.showNewSessionAction,
             sending: props.sending,
             onAbort: props.onAbort,
             onExport: () => exportMarkdown(props),

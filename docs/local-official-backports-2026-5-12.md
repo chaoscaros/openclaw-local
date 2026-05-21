@@ -131,6 +131,13 @@ should be split by risk area.
   - Files: `extensions/codex/src/app-server/client.ts`,
     `src/agents/auth-profiles/oauth-refresh-failure.ts`,
     `src/agents/pi-embedded-helpers/errors.ts`.
+- Control UI chat action placement
+  - Local impact: when the full sidebar is visible, the sidebar owns the primary
+    new-session action and the composer toolbar keeps reset/export/send actions;
+    collapsed-sidebar and focus-mode layouts still expose a composer new-session
+    action so users do not lose the entry point.
+  - Files: `ui/src/ui/app-render.ts`, `ui/src/ui/views/chat.ts`,
+    `ui/src/ui/chat/run-controls.ts`.
 
 ## Post-5.12 Follow-Up Alignment
 

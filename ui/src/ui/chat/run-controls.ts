@@ -10,6 +10,7 @@ export type ChatRunControlsProps = {
   isBusy: boolean;
   newSessionBusy?: boolean;
   resetSessionBusy?: boolean;
+  showNewSessionAction?: boolean;
   sending: boolean;
   onAbort?: () => void;
   onExport: () => void;
@@ -26,6 +27,7 @@ function storeDraftIfNeeded(props: ChatRunControlsProps) {
 }
 
 export function renderChatRunControls(props: ChatRunControlsProps) {
+  const showNewSessionAction = props.showNewSessionAction ?? true;
   const newSessionLabel = props.newSessionBusy
     ? t("chatUi.status.creatingSession")
     : t("chatUi.newSession");
@@ -38,16 +40,20 @@ export function renderChatRunControls(props: ChatRunControlsProps) {
       ${props.canAbort
         ? nothing
         : html`
-            <button
-              class="btn btn--ghost"
-              @click=${props.onNewSession}
-              title=${t("chatUi.newSession")}
-              aria-label=${t("chatUi.newSession")}
-              ?disabled=${props.isBusy || sessionActionBusy}
-            >
-              ${icons.plus}
-              <span class="agent-chat__control-label">${newSessionLabel}</span>
-            </button>
+            ${showNewSessionAction
+              ? html`
+                  <button
+                    class="btn btn--ghost"
+                    @click=${props.onNewSession}
+                    title=${t("chatUi.newSession")}
+                    aria-label=${t("chatUi.newSession")}
+                    ?disabled=${props.isBusy || sessionActionBusy}
+                  >
+                    ${icons.plus}
+                    <span class="agent-chat__control-label">${newSessionLabel}</span>
+                  </button>
+                `
+              : nothing}
             ${props.onResetSession
               ? html`
                   <button

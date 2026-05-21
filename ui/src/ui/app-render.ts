@@ -2411,6 +2411,7 @@ export function renderApp(state: AppViewState) {
               newSessionDialogOpen: state.chatNewSessionDialogOpen,
               newSessionCreating: state.chatNewSessionCreating,
               resetSessionBusy: state.chatResetting,
+              showNewSessionAction: state.settings.navCollapsed || state.settings.chatFocusMode,
               onOpenNewSessionDialog: () => {
                 if (!state.chatNewSessionCreating) {
                   state.chatNewSessionDialogOpen = true;
