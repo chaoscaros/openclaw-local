@@ -742,6 +742,29 @@ describe("sendChatMessage", () => {
     expect(state.chatMessages).toHaveLength(1);
   });
 
+  it("requests a render as soon as the local pending run is staged", async () => {
+    const sent = createDeferred<unknown>();
+    const request = vi.fn(() => sent.promise);
+    const requestUpdate = vi.fn();
+    const state = createState({
+      connected: true,
+      client: { request } as unknown as ChatState["client"],
+      requestUpdate,
+    });
+
+    const pending = sendChatMessage(state, "hello");
+
+    expect(state.chatRunId).toBeTruthy();
+    expect(state.chatSending).toBe(true);
+    expect(state.chatStream).toBe("");
+    expect(requestUpdate).toHaveBeenCalledTimes(1);
+
+    sent.resolve({ runId: state.chatRunId, status: "started" });
+    await pending;
+
+    expect(requestUpdate).toHaveBeenCalledTimes(2);
+  });
+
   it("sends resumeDevExecute when the session has one carried-over dev execute turn", async () => {
     const request = vi.fn().mockResolvedValue({});
     const consumeResumedDevExecuteForSession = vi.fn().mockReturnValue(true);

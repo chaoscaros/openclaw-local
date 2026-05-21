@@ -158,9 +158,10 @@ should be split by risk area.
     assistant "Thinking" placeholder bubble. The legacy reading-indicator
     renderer is also disabled so stale pending items cannot redraw the duplicate
     bubble.
-    Active-run history refreshes also keep the pending stream state so the
-    status bar appears immediately after send and does not flicker idle before
-    lifecycle events arrive.
+    The client also requests an immediate redraw after staging the local pending
+    run, and active-run history refreshes keep that pending stream state so the
+    status bar appears before the Gateway send acknowledgement and does not
+    flicker idle before lifecycle events arrive.
   - Files: `ui/src/ui/chat/grouped-render.ts`, `ui/src/ui/views/chat.ts`,
     `ui/src/ui/controllers/chat.ts`.
 

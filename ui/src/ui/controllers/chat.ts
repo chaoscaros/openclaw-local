@@ -181,6 +181,7 @@ export type ChatState = {
   chatStream: string | null;
   chatStreamStartedAt: number | null;
   lastError: string | null;
+  requestUpdate?: () => void;
 };
 
 export type ChatEventPayload = {
@@ -201,6 +202,10 @@ function maybeResetToolStream(state: ChatState) {
   ) {
     resetToolStream(toolHost as Parameters<typeof resetToolStream>[0]);
   }
+}
+
+function requestChatUiUpdate(state: ChatState) {
+  state.requestUpdate?.();
 }
 
 export async function loadChatHistory(state: ChatState) {
@@ -463,6 +468,7 @@ export async function sendChatMessage(
   state.chatStreamStartedAt = now;
   state.dreamingAssistApplied = null;
   state.dreamingAssistReason = null;
+  requestChatUiUpdate(state);
 
   try {
     const response = await requestChatSend(state, { message: msg, attachments, runId });
@@ -484,9 +490,11 @@ export async function sendChatMessage(
         timestamp: Date.now(),
       },
     ];
+    requestChatUiUpdate(state);
     return null;
   } finally {
     state.chatSending = false;
+    requestChatUiUpdate(state);
   }
 }
 

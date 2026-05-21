@@ -82,7 +82,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/sessions: broadcast manual compaction start/end events and render them through the existing chat compaction progress indicator.
 - Control UI/gateway: show the Control UI and Gateway protocol versions in protocol-mismatch connection errors so stale builds are easier to diagnose.
 - Control UI/chat: use the bottom running status strip as the single pending indicator and disable the legacy "Thinking" bubble renderer before streamed text arrives.
-- Control UI/chat: keep the running status visible immediately after sending when a stale history refresh arrives before run lifecycle events.
+- Control UI/chat: request an immediate redraw after staging a local pending run, keeping the running status visible before the Gateway send acknowledgement and through stale history refreshes.
 
 ## 2026.4.15
 
