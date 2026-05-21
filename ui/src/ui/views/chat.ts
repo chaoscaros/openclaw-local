@@ -3209,9 +3209,6 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
   // This ensures correct visual ordering: text → tool → text → tool → ...
   const segments = props.streamSegments ?? [];
   const maxLen = Math.max(segments.length, tools.length);
-  const hidePendingBubbleInTaskMode =
-    (props.sessionMode ?? "normal") === "task" ||
-    Boolean(props.currentTaskTitle?.trim() || props.currentTask);
   for (let i = 0; i < maxLen; i++) {
     if (i < segments.length && segments[i].text.trim().length > 0) {
       items.push({
@@ -3239,14 +3236,7 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
         text: props.stream,
         startedAt: props.streamStartedAt ?? Date.now(),
       });
-    } else if (!hidePendingBubbleInTaskMode) {
-      items.push({ kind: "reading-indicator", key });
     }
-  } else if (props.pendingRunId && !hidePendingBubbleInTaskMode) {
-    items.push({
-      kind: "reading-indicator",
-      key: `pending:${props.sessionKey}:${props.pendingRunId}`,
-    });
   }
 
   return groupMessages(sortChatItemsByVisibleTime(items));

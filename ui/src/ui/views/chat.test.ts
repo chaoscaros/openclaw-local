@@ -2889,7 +2889,7 @@ describe("chat view", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows a visible waiting indicator before the first streamed token arrives", () => {
+  it("uses the activity strip before the first streamed token arrives", () => {
     const container = document.createElement("div");
     render(
       renderChat(
@@ -2902,9 +2902,9 @@ describe("chat view", () => {
       container,
     );
 
-    expect(container.textContent).toContain("Thinking");
-    expect(container.textContent).toContain("Preparing a reply");
-    expect(container.querySelector(".chat-reading-indicator")).not.toBeNull();
+    expect(container.textContent).toMatch(/Running|Task in progress/);
+    expect(container.textContent).not.toContain("Preparing a reply");
+    expect(container.querySelector(".chat-reading-indicator")).toBeNull();
   });
 
   it("prefers live conversation state over loading skeleton while a run is already pending", () => {
@@ -2930,10 +2930,11 @@ describe("chat view", () => {
 
     expect(container.querySelector(".chat-loading-skeleton")).toBeNull();
     expect(container.textContent).toContain("hello");
-    expect(container.textContent).toContain("Thinking");
+    expect(container.textContent).toMatch(/Running|Task in progress/);
+    expect(container.querySelector(".chat-reading-indicator")).toBeNull();
   });
 
-  it("shows a pending assistant indicator when a run exists before stream text arrives", () => {
+  it("uses the activity strip when a run exists before stream text arrives", () => {
     const container = document.createElement("div");
     render(
       renderChat(
@@ -2953,8 +2954,8 @@ describe("chat view", () => {
     );
 
     expect(container.textContent).toContain("hello again");
-    expect(container.textContent).toContain("Thinking");
-    expect(container.querySelector(".chat-reading-indicator")).not.toBeNull();
+    expect(container.textContent).toMatch(/Running|Task in progress/);
+    expect(container.querySelector(".chat-reading-indicator")).toBeNull();
   });
 
   it("hides the pending assistant bubble in task mode while keeping the activity status", () => {
