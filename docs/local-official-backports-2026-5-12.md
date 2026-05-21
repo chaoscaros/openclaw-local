@@ -172,6 +172,9 @@ should be split by risk area.
   - Control UI run-state recovery now gives terminal session rows precedence
     over stale active-run flags while preserving legacy active-run recovery when
     no terminal status is available.
+  - Control UI logs now use a viewport-responsive stream height with a minimum
+    floor, so larger screens can show more lines without collapsing on short
+    viewports.
   - Anthropic provider normalization now preserves native image input for
     current Claude rows when stale local catalog data marks them text-only.
   - `/models openai` provider headers now prefer the effective Codex OAuth

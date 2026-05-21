@@ -73,6 +73,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/chat: add a browser-local auto-scroll mode selector with always, near-bottom, and off behavior while keeping near-bottom as the default.
 - Control UI: add a browser-local text size setting that scales chat text, inputs, sidebars, and tool cards.
 - Control UI/chat: let terminal session run status override stale active-run flags while still recovering legacy active-run rows after refresh.
+- Control UI/logs: make the Gateway log stream height responsive to the viewport with a minimum height floor.
 
 ## 2026.4.15
 

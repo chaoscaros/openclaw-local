@@ -25,3 +25,13 @@ describe("code block highlight styles", () => {
     );
   });
 });
+
+describe("logs styles", () => {
+  it("keeps the log stream responsive to the viewport", () => {
+    const css = readComponentsCss();
+
+    expect(css).toContain("max-height: calc(100vh - 280px);");
+    expect(css).toContain("min-height: 200px;");
+    expect(css).not.toContain("max-height: 500px;");
+  });
+});
