@@ -812,7 +812,7 @@ describe("connectGateway", () => {
     expect(host.agentLifecycleChatRunId).toBe("agent-dev-run-2");
   });
 
-  it("restores chat pending state when an early chat final clears the initial run", () => {
+  it("does not restore chat pending state after the visible chat final arrives", () => {
     const { client, host } = connectHostGateway();
     host.chatRunId = "chat-run-initial";
     host.chatStream = "";
@@ -838,9 +838,9 @@ describe("connectGateway", () => {
       },
     });
 
-    expect(host.chatRunId).toBe("agent-dev-run-3");
-    expect(host.chatStream).toBe("");
-    expect(host.chatStreamStartedAt).toEqual(expect.any(Number));
+    expect(host.chatRunId).toBeNull();
+    expect(host.chatStream).toBeNull();
+    expect(host.chatStreamStartedAt).toBeNull();
     expect(host.agentLifecycleChatRunId).toBe("agent-dev-run-3");
 
     client.emitEvent({

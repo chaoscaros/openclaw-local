@@ -84,6 +84,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/chat: use the bottom running status strip as the single pending indicator and disable the legacy "Thinking" bubble renderer before streamed text arrives.
 - Control UI/chat: request an immediate redraw after staging a local pending run, keeping the running status visible before the Gateway send acknowledgement and through stale history refreshes.
 - Control UI/chat: let local run lifecycle state override stale session-list rows so the running indicator appears immediately after send and clears as soon as the chat terminal event arrives.
+- Control UI/chat: clear the running status as soon as refreshed history contains the assistant reply, and stop restoring lifecycle pending after that visible final response.
 
 ## 2026.4.15
 

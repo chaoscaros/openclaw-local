@@ -164,7 +164,12 @@ should be split by risk area.
     flicker idle before lifecycle events arrive. Local run lifecycle state now
     overrides stale session-list rows on both start and terminal events, so the
     status strip is not hidden by an old terminal row or kept alive by an old
-    running row.
+    running row. If a refreshed history payload already contains the assistant
+    reply for the local optimistic user turn, the UI treats that visible reply
+    as a completion signal, clears the local pending run, and marks the current
+    session row terminal instead of waiting for a later lifecycle cleanup event.
+    Chat final events also no longer restore a separate agent lifecycle pending
+    marker after the final assistant response is visible.
   - Files: `ui/src/ui/chat/grouped-render.ts`, `ui/src/ui/views/chat.ts`,
     `ui/src/ui/controllers/chat.ts`, `ui/src/ui/session-run-state.ts`,
     `ui/src/ui/app-gateway.ts`.

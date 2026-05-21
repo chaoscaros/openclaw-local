@@ -714,6 +714,134 @@ describe("loadChatHistory", () => {
     expect(state.chatStreamStartedAt).toBe(123);
     expect(state.chatLoading).toBe(false);
   });
+
+  it("clears pending run state when history already contains the assistant reply", async () => {
+    const messages = [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "[Current task binding for this turn]\n[Thu 2026-05-21 15:40 GMT+8] 记一下这个流程",
+          },
+        ],
+        timestamp: 1_004,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "记好了。" }],
+        timestamp: 1_010,
+      },
+    ];
+    const mockClient = {
+      request: vi.fn().mockResolvedValue({ messages, thinkingLevel: null }),
+    };
+    const requestUpdate = vi.fn();
+    const state = createState({
+      client: mockClient as unknown as ChatState["client"],
+      connected: true,
+      sessionKey: "main",
+      chatRunId: "run-1",
+      chatStream: "",
+      chatStreamStartedAt: 1_000,
+      requestUpdate,
+      sessionsResult: {
+        ts: 1,
+        path: "/tmp/sessions.json",
+        count: 1,
+        defaults: { modelProvider: null, model: null, contextTokens: null },
+        sessions: [
+          {
+            key: "main",
+            kind: "direct",
+            updatedAt: 1,
+            status: "running",
+          },
+        ],
+      },
+      chatMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "记一下这个流程" }],
+          timestamp: 1_000,
+          __openclawOptimistic: true,
+          __openclawRunId: "run-1",
+        },
+      ],
+    });
+
+    await loadChatHistory(state);
+
+    expect(state.chatMessages).toEqual(messages);
+    expect(state.chatRunId).toBeNull();
+    expect(state.chatStream).toBeNull();
+    expect(state.chatStreamStartedAt).toBeNull();
+    expect(state.sessionsResult?.sessions[0]).toEqual(
+      expect.objectContaining({
+        status: "done",
+        endedAt: expect.any(Number),
+      }),
+    );
+    expect(requestUpdate).toHaveBeenCalled();
+    expect(state.chatLoading).toBe(false);
+  });
+
+  it("keeps pending run state when the matching history turn is older than the local send", async () => {
+    const messages = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "same request" }],
+        timestamp: 1_000,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "old reply" }],
+        timestamp: 1_010,
+      },
+    ];
+    const mockClient = {
+      request: vi.fn().mockResolvedValue({ messages, thinkingLevel: null }),
+    };
+    const state = createState({
+      client: mockClient as unknown as ChatState["client"],
+      connected: true,
+      sessionKey: "main",
+      chatRunId: "run-1",
+      chatStream: "",
+      chatStreamStartedAt: 10_000,
+      sessionsResult: {
+        ts: 1,
+        path: "/tmp/sessions.json",
+        count: 1,
+        defaults: { modelProvider: null, model: null, contextTokens: null },
+        sessions: [
+          {
+            key: "main",
+            kind: "direct",
+            updatedAt: 1,
+            status: "running",
+          },
+        ],
+      },
+      chatMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "same request" }],
+          timestamp: 10_000,
+          __openclawOptimistic: true,
+          __openclawRunId: "run-1",
+        },
+      ],
+    });
+
+    await loadChatHistory(state);
+
+    expect(state.chatRunId).toBe("run-1");
+    expect(state.chatStream).toBe("");
+    expect(state.chatStreamStartedAt).toBe(10_000);
+    expect(state.chatMessages).toEqual(messages);
+    expect(state.sessionsResult?.sessions[0]?.status).toBe("running");
+  });
 });
 
 describe("sendChatMessage", () => {

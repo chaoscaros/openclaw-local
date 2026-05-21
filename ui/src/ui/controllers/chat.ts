@@ -4,6 +4,7 @@ import { extractText } from "../chat/message-extract.ts";
 import { formatConnectError } from "../connect-error.ts";
 import { GatewayRequestError, type GatewayBrowserClient } from "../gateway.ts";
 import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
+import type { SessionsListResult } from "../types.ts";
 import type { ChatAttachment } from "../ui-types.ts";
 import { generateUUID } from "../uuid.ts";
 import {
@@ -93,6 +94,121 @@ function extractComparableMessageText(message: unknown): string {
   return typeof text === "string" ? text.trim() : "";
 }
 
+function getMessageTimestamp(message: unknown): number | null {
+  if (!message || typeof message !== "object") {
+    return null;
+  }
+  const timestamp = (message as Record<string, unknown>).timestamp;
+  return typeof timestamp === "number" && Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function isRoleMessage(message: unknown, role: "assistant" | "user"): boolean {
+  if (!message || typeof message !== "object") {
+    return false;
+  }
+  return normalizeLowercaseStringOrEmpty((message as Record<string, unknown>).role) === role;
+}
+
+function findPendingOptimisticUserMessage(state: ChatState): unknown {
+  if (!state.chatRunId) {
+    return null;
+  }
+  for (let index = state.chatMessages.length - 1; index >= 0; index--) {
+    const message = state.chatMessages[index];
+    if (!message || typeof message !== "object") {
+      continue;
+    }
+    const record = message as Record<string, unknown>;
+    if (
+      record.__openclawOptimistic === true &&
+      record.__openclawRunId === state.chatRunId &&
+      isRoleMessage(message, "user")
+    ) {
+      return message;
+    }
+  }
+  return null;
+}
+
+function isMatchingPersistedUserTurn(candidate: unknown, pendingUser: unknown): boolean {
+  if (!isRoleMessage(candidate, "user")) {
+    return false;
+  }
+  const pendingText = extractComparableMessageText(pendingUser);
+  if (pendingText) {
+    const candidateText = extractComparableMessageText(candidate);
+    if (!candidateText.includes(pendingText) && !pendingText.includes(candidateText)) {
+      return false;
+    }
+  }
+  const pendingTimestamp = getMessageTimestamp(pendingUser);
+  const candidateTimestamp = getMessageTimestamp(candidate);
+  if (
+    pendingTimestamp != null &&
+    candidateTimestamp != null &&
+    candidateTimestamp + 5_000 < pendingTimestamp
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function historyContainsAssistantReplyForPendingRun(
+  state: ChatState,
+  historyMessages: unknown[],
+): boolean {
+  const pendingUser = findPendingOptimisticUserMessage(state);
+  if (!pendingUser) {
+    return false;
+  }
+  let pendingUserIndex = -1;
+  for (let index = historyMessages.length - 1; index >= 0; index--) {
+    if (isMatchingPersistedUserTurn(historyMessages[index], pendingUser)) {
+      pendingUserIndex = index;
+      break;
+    }
+  }
+  if (pendingUserIndex < 0) {
+    return false;
+  }
+  return historyMessages
+    .slice(pendingUserIndex + 1)
+    .some((message) => isRoleMessage(message, "assistant"));
+}
+
+function markCurrentSessionRunDoneFromHistory(state: ChatState) {
+  const sessionsResult = state.sessionsResult;
+  if (!sessionsResult) {
+    return false;
+  }
+  const sessionKey = state.sessionKey.trim();
+  if (!sessionKey) {
+    return false;
+  }
+  const endedAt = Date.now();
+  let changed = false;
+  const sessions = sessionsResult.sessions.map((row) => {
+    if (!doSessionKeysMatch(row.key, sessionKey)) {
+      return row;
+    }
+    changed = true;
+    return {
+      ...row,
+      hasActiveRun: false,
+      status: "done" as const,
+      endedAt,
+    };
+  });
+  if (!changed) {
+    return false;
+  }
+  state.sessionsResult = {
+    ...sessionsResult,
+    sessions,
+  };
+  return true;
+}
+
 function mergeOptimisticMessages(
   historyMessages: unknown[],
   existingMessages: unknown[],
@@ -180,6 +296,7 @@ export type ChatState = {
   chatRunId: string | null;
   chatStream: string | null;
   chatStreamStartedAt: number | null;
+  sessionsResult?: SessionsListResult | null;
   lastError: string | null;
   requestUpdate?: () => void;
 };
@@ -250,21 +367,31 @@ export async function loadChatHistory(state: ChatState) {
     }
     const messages = Array.isArray(res.messages) ? res.messages : [];
     const filteredMessages = messages.filter((message) => !shouldHideHistoryMessage(message));
-    state.chatMessages = state.chatRunId
-      ? mergeOptimisticMessages(filteredMessages, state.chatMessages)
-      : filteredMessages;
+    const completedFromHistory = historyContainsAssistantReplyForPendingRun(
+      state,
+      filteredMessages,
+    );
+    state.chatMessages =
+      state.chatRunId && !completedFromHistory
+        ? mergeOptimisticMessages(filteredMessages, state.chatMessages)
+        : filteredMessages;
     state.chatThinkingLevel = res.thinkingLevel ?? null;
     // During a just-submitted run, history can still be stale for a short
     // window before lifecycle/chat events arrive. Keep the pending stream so
     // the UI does not drop back to an idle-looking state.
-    if (!state.chatRunId) {
+    if (!state.chatRunId || completedFromHistory) {
       // History includes tool results and text inline after terminal events, so
       // clearing streaming artifacts prevents duplicates.
       maybeResetToolStream(state);
+      state.chatRunId = null;
       state.chatStream = null;
       state.chatStreamStartedAt = null;
       state.dreamingAssistApplied = null;
       state.dreamingAssistReason = null;
+      if (completedFromHistory) {
+        markCurrentSessionRunDoneFromHistory(state);
+      }
+      requestChatUiUpdate(state);
     }
     await state.loadChangeReviewStatus?.(sessionKey);
   } catch (err) {

@@ -698,29 +698,6 @@ function syncChatPendingFromAgentLifecycle(
   }
 }
 
-function restoreAgentLifecycleChatPending(
-  host: GatewayHost,
-  payload: ChatEventPayload | undefined,
-) {
-  const lifecycleRunId = host.agentLifecycleChatRunId;
-  if (!lifecycleRunId || host.chatRunId) {
-    return;
-  }
-  if (payload?.runId === lifecycleRunId) {
-    return;
-  }
-  if (payload?.sessionKey && !doSessionKeysMatch(payload.sessionKey, host.sessionKey)) {
-    return;
-  }
-  const pendingHost = host as GatewayHost & {
-    chatStream: string | null;
-    chatStreamStartedAt: number | null;
-  };
-  host.chatRunId = lifecycleRunId;
-  pendingHost.chatStream = "";
-  pendingHost.chatStreamStartedAt = Date.now();
-}
-
 function handleChatGatewayEvent(host: GatewayHost, payload: ChatEventPayload | undefined) {
   if (payload?.sessionKey) {
     setLastActiveSessionKey(
@@ -740,8 +717,6 @@ function handleChatGatewayEvent(host: GatewayHost, payload: ChatEventPayload | u
   const state = handleChatEvent(host as unknown as ChatState, payload);
   if (isTerminalChatState(state) && payload?.runId === host.agentLifecycleChatRunId) {
     host.agentLifecycleChatRunId = null;
-  } else if (isTerminalChatState(state)) {
-    restoreAgentLifecycleChatPending(host, payload);
   }
   const historyReloaded = handleTerminalChatEvent(host, payload, state);
   if (state === "final" && !historyReloaded && shouldReloadHistoryForFinalEvent(payload)) {
