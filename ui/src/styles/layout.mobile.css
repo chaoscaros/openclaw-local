@@ -390,15 +390,18 @@
   }
 
   .chat-mobile-controls-wrapper .chat-controls-dropdown .chat-controls__thinking {
-    display: flex;
-    flex-direction: row;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: center;
+    justify-content: stretch;
+    gap: 8px;
+    width: 100%;
     padding: 4px 0;
-    justify-content: center;
   }
 
   .chat-mobile-controls-wrapper .chat-controls-dropdown .btn--icon {
-    min-width: 44px;
+    width: 100%;
+    min-width: 0;
     height: 44px;
   }
   .content {
