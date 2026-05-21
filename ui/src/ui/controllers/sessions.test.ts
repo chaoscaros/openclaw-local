@@ -278,6 +278,87 @@ describe("loadSessions", () => {
     expect(requestUpdate).not.toHaveBeenCalled();
   });
 
+  it("preserves a local terminal override when a stale refresh still reports running", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.list") {
+        return {
+          ts: 2,
+          path: "(multiple)",
+          count: 1,
+          defaults: {},
+          sessions: [
+            {
+              key: "agent:main:main",
+              kind: "direct",
+              updatedAt: 2,
+              hasActiveRun: true,
+              status: "running",
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const state = createState(request, {
+      sessionRunTerminalOverrides: {
+        "agent:main:main": { status: "done", endedAt: 123 },
+      },
+    });
+
+    await loadSessions(state);
+
+    expect(state.sessionsResult?.sessions[0]).toEqual(
+      expect.objectContaining({
+        hasActiveRun: false,
+        status: "done",
+        endedAt: 123,
+      }),
+    );
+    expect(state.sessionRunTerminalOverrides?.["agent:main:main"]).toEqual({
+      status: "done",
+      endedAt: 123,
+    });
+  });
+
+  it("clears a local terminal override once the server also reports terminal", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.list") {
+        return {
+          ts: 2,
+          path: "(multiple)",
+          count: 1,
+          defaults: {},
+          sessions: [
+            {
+              key: "agent:main:main",
+              kind: "direct",
+              updatedAt: 2,
+              hasActiveRun: false,
+              status: "done",
+              endedAt: 200,
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const state = createState(request, {
+      sessionRunTerminalOverrides: {
+        "agent:main:main": { status: "done", endedAt: 123 },
+      },
+    });
+
+    await loadSessions(state);
+
+    expect(state.sessionsResult?.sessions[0]).toEqual(
+      expect.objectContaining({
+        status: "done",
+        endedAt: 200,
+      }),
+    );
+    expect(state.sessionRunTerminalOverrides).toBeUndefined();
+  });
+
   it("refreshes expanded checkpoint cards when the row summary changes", async () => {
     const request = vi.fn(async (method: string) => {
       if (method === "sessions.list") {

@@ -782,6 +782,12 @@ describe("loadChatHistory", () => {
         endedAt: expect.any(Number),
       }),
     );
+    expect(state.sessionRunTerminalOverrides?.main).toEqual(
+      expect.objectContaining({
+        status: "done",
+        endedAt: expect.any(Number),
+      }),
+    );
     expect(requestUpdate).toHaveBeenCalled();
     expect(state.chatLoading).toBe(false);
   });

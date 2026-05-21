@@ -1,6 +1,10 @@
 import { toNumber } from "../format.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import { isSessionRunActive } from "../session-run-state.ts";
+import {
+  applySessionRunTerminalOverrides,
+  type SessionRunTerminalOverride,
+} from "../session-run-terminal-overrides.ts";
 import type {
   SessionCompactionCheckpoint,
   SessionsCompactionBranchResult,
@@ -28,6 +32,7 @@ export type SessionsState = {
   sessionsCheckpointLoadingKey: string | null;
   sessionsCheckpointBusyKey: string | null;
   sessionsCheckpointErrorByKey: Record<string, string>;
+  sessionRunTerminalOverrides?: Record<string, SessionRunTerminalOverride>;
 };
 
 type LoadSessionsOverrides = {
@@ -208,16 +213,16 @@ export async function loadSessions(state: SessionsState, overrides?: LoadSession
     }
     const res = await client.request<SessionsListResult | undefined>("sessions.list", params);
     if (res) {
-      state.sessionsResult = res;
+      state.sessionsResult = applySessionRunTerminalOverrides(state, res);
       reconcileChatRunFromSessionsState(state);
-      const nextKeys = new Set(res.sessions.map((row) => row.key));
+      const nextKeys = new Set(state.sessionsResult.sessions.map((row) => row.key));
       for (const key of Object.keys(state.sessionsCheckpointItemsByKey)) {
         if (!nextKeys.has(key)) {
           invalidateCheckpointCacheForKey(state, key);
         }
       }
       let expandedNeedsRefetch = false;
-      for (const row of res.sessions) {
+      for (const row of state.sessionsResult.sessions) {
         const previous = previousRows.get(row.key);
         if (checkpointSummarySignature(previous) !== checkpointSummarySignature(row)) {
           invalidateCheckpointCacheForKey(state, row.key);

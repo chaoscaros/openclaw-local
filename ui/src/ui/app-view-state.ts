@@ -13,6 +13,7 @@ import type {
 import type { EmbedSandboxMode } from "./embed-sandbox.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
+import type { SessionRunTerminalOverride } from "./session-run-terminal-overrides.ts";
 import type { SidebarContent } from "./sidebar-content.ts";
 import type { UiSettings } from "./storage.ts";
 import type { ThemeTransitionContext } from "./theme-transition.ts";
@@ -79,6 +80,7 @@ export type AppViewState = {
   chatStream: string | null;
   chatStreamStartedAt: number | null;
   chatRunId: string | null;
+  sessionRunTerminalOverrides?: Record<string, SessionRunTerminalOverride>;
   chatSideResult: ChatSideResult | null;
   chatSideResultTerminalRuns: Set<string>;
   compactionStatus: CompactionStatus | null;

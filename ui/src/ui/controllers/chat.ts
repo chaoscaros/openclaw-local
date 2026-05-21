@@ -3,6 +3,11 @@ import { resetToolStream } from "../app-tool-stream.ts";
 import { extractText } from "../chat/message-extract.ts";
 import { formatConnectError } from "../connect-error.ts";
 import { GatewayRequestError, type GatewayBrowserClient } from "../gateway.ts";
+import {
+  clearSessionRunTerminalOverride,
+  recordSessionRunTerminalOverride,
+  type SessionRunTerminalOverride,
+} from "../session-run-terminal-overrides.ts";
 import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
 import type { SessionsListResult } from "../types.ts";
 import type { ChatAttachment } from "../ui-types.ts";
@@ -186,6 +191,7 @@ function markCurrentSessionRunDoneFromHistory(state: ChatState) {
     return false;
   }
   const endedAt = Date.now();
+  recordSessionRunTerminalOverride(state, sessionKey, "done", endedAt);
   let changed = false;
   const sessions = sessionsResult.sessions.map((row) => {
     if (!doSessionKeysMatch(row.key, sessionKey)) {
@@ -296,6 +302,7 @@ export type ChatState = {
   chatRunId: string | null;
   chatStream: string | null;
   chatStreamStartedAt: number | null;
+  sessionRunTerminalOverrides?: Record<string, SessionRunTerminalOverride>;
   sessionsResult?: SessionsListResult | null;
   lastError: string | null;
   requestUpdate?: () => void;
@@ -557,6 +564,7 @@ export async function sendChatMessage(
 
   const now = Date.now();
   const runId = generateUUID();
+  clearSessionRunTerminalOverride(state, state.sessionKey);
 
   // Build user message content blocks
   const contentBlocks: Array<{ type: string; text?: string; source?: unknown }> = [];

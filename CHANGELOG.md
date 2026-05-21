@@ -85,6 +85,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/chat: request an immediate redraw after staging a local pending run, keeping the running status visible before the Gateway send acknowledgement and through stale history refreshes.
 - Control UI/chat: let local run lifecycle state override stale session-list rows so the running indicator appears immediately after send and clears as soon as the chat terminal event arrives.
 - Control UI/chat: clear the running status as soon as refreshed history contains the assistant reply, and stop restoring lifecycle pending after that visible final response.
+- Control UI/chat: preserve local terminal run overrides across stale `sessions.list` refreshes so a completed visible reply cannot be put back into the running state by delayed session metadata.
 
 ## 2026.4.15
 

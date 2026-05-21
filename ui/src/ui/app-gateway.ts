@@ -63,6 +63,11 @@ import {
 } from "./gateway.ts";
 import { GatewayBrowserClient } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
+import {
+  hasSessionRunTerminalOverride,
+  recordSessionRunTerminalOverride,
+  type SessionRunTerminalOverride,
+} from "./session-run-terminal-overrides.ts";
 import type { UiSettings } from "./storage.ts";
 import type {
   AgentsListResult,
@@ -108,6 +113,7 @@ type GatewayHost = {
   serverVersion: string | null;
   sessionKey: string;
   sessionsResult?: SessionsListResult | null;
+  sessionRunTerminalOverrides?: Record<string, SessionRunTerminalOverride>;
   chatRunId: string | null;
   agentLifecycleChatRunId?: string | null;
   refreshSessionsAfterChat: Set<string>;
@@ -148,7 +154,9 @@ function isTerminalChatState(
   return state === "final" || state === "aborted" || state === "error";
 }
 
-function terminalChatStateToSessionStatus(state: "final" | "aborted" | "error"): SessionRunStatus {
+function terminalChatStateToSessionStatus(
+  state: "final" | "aborted" | "error",
+): Exclude<SessionRunStatus, "running"> {
   if (state === "final") {
     return "done";
   }
@@ -504,6 +512,7 @@ function markSessionRunTerminalForChatEvent(
   }
   const status = terminalChatStateToSessionStatus(state);
   const endedAt = Date.now();
+  recordSessionRunTerminalOverride(host, eventSessionKey, status, endedAt);
   let changed = false;
   const sessions = host.sessionsResult.sessions.map((row) => {
     if (!doSessionKeysMatch(row.key, eventSessionKey)) {
@@ -672,6 +681,9 @@ function syncChatPendingFromAgentLifecycle(
 
   if (phase === "start") {
     if (!matchesCurrentSession) {
+      return;
+    }
+    if (hasSessionRunTerminalOverride(host, sessionKey)) {
       return;
     }
     host.agentLifecycleChatRunId = payload.runId;

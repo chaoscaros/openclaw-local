@@ -812,6 +812,30 @@ describe("connectGateway", () => {
     expect(host.agentLifecycleChatRunId).toBe("agent-dev-run-2");
   });
 
+  it("ignores delayed lifecycle starts after a local terminal override", () => {
+    const { client, host } = connectHostGateway();
+    host.sessionRunTerminalOverrides = {
+      main: { status: "done", endedAt: 100 },
+    };
+
+    client.emitEvent({
+      event: "agent",
+      payload: {
+        runId: "agent-dev-run-late",
+        seq: 1,
+        stream: "lifecycle",
+        ts: 1,
+        sessionKey: "main",
+        data: { phase: "start" },
+      },
+    });
+
+    expect(host.chatRunId).toBeNull();
+    expect(host.chatStream).toBeNull();
+    expect(host.chatStreamStartedAt).toBeNull();
+    expect(host.agentLifecycleChatRunId).toBeNull();
+  });
+
   it("does not restore chat pending state after the visible chat final arrives", () => {
     const { client, host } = connectHostGateway();
     host.chatRunId = "chat-run-initial";
