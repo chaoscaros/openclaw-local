@@ -278,6 +278,99 @@ describe("loadSessions", () => {
     expect(requestUpdate).not.toHaveBeenCalled();
   });
 
+  it("keeps a local chat run while the send ack is still pending", async () => {
+    const requestUpdate = vi.fn();
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.list") {
+        return {
+          ts: 2,
+          path: "(multiple)",
+          count: 1,
+          defaults: {},
+          sessions: [
+            {
+              key: "agent:main:main",
+              kind: "direct",
+              updatedAt: 2,
+              hasActiveRun: false,
+              status: "done",
+              endedAt: 2,
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const state = createState(request) as SessionsState & {
+      sessionKey: string;
+      chatSending: boolean;
+      chatRunId: string | null;
+      chatStream: string | null;
+      chatStreamStartedAt: number | null;
+      requestUpdate: () => void;
+    };
+    state.sessionKey = "agent:main:main";
+    state.chatSending = true;
+    state.chatRunId = "run-1";
+    state.chatStream = "";
+    state.chatStreamStartedAt = Date.now();
+    state.requestUpdate = requestUpdate;
+
+    await loadSessions(state);
+
+    expect(state.chatRunId).toBe("run-1");
+    expect(state.chatStream).toBe("");
+    expect(state.chatStreamStartedAt).toEqual(expect.any(Number));
+    expect(requestUpdate).not.toHaveBeenCalled();
+  });
+
+  it("keeps a just-staged local chat run through stale terminal session refreshes", async () => {
+    const requestUpdate = vi.fn();
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.list") {
+        return {
+          ts: 2,
+          path: "(multiple)",
+          count: 1,
+          defaults: {},
+          sessions: [
+            {
+              key: "agent:main:main",
+              kind: "direct",
+              updatedAt: 2,
+              hasActiveRun: false,
+              status: "done",
+              endedAt: 2,
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const state = createState(request) as SessionsState & {
+      sessionKey: string;
+      chatSending: boolean;
+      chatRunId: string | null;
+      chatStream: string | null;
+      chatStreamStartedAt: number | null;
+      requestUpdate: () => void;
+    };
+    const startedAt = Date.now();
+    state.sessionKey = "agent:main:main";
+    state.chatSending = false;
+    state.chatRunId = "run-1";
+    state.chatStream = "";
+    state.chatStreamStartedAt = startedAt;
+    state.requestUpdate = requestUpdate;
+
+    await loadSessions(state);
+
+    expect(state.chatRunId).toBe("run-1");
+    expect(state.chatStream).toBe("");
+    expect(state.chatStreamStartedAt).toBe(startedAt);
+    expect(requestUpdate).not.toHaveBeenCalled();
+  });
+
   it("preserves a local terminal override when a stale refresh still reports running", async () => {
     const request = vi.fn(async (method: string) => {
       if (method === "sessions.list") {

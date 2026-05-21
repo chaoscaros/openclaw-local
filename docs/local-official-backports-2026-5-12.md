@@ -173,10 +173,13 @@ should be split by risk area.
     marker is preserved across later stale `sessions.list` refreshes until the
     server reports its own terminal row or the user starts a new turn, preventing
     delayed session metadata from re-showing "任务进行中" after the reply is
-    already visible.
+    already visible. Freshly staged local runs also get a short reconcile grace
+    window, so stale `sessions.list` results from task switching cannot hide the
+    running strip before the Gateway has reported the new run as active.
   - Files: `ui/src/ui/chat/grouped-render.ts`, `ui/src/ui/views/chat.ts`,
     `ui/src/ui/controllers/chat.ts`, `ui/src/ui/session-run-state.ts`,
-    `ui/src/ui/session-run-terminal-overrides.ts`, `ui/src/ui/app-gateway.ts`.
+    `ui/src/ui/session-run-terminal-overrides.ts`, `ui/src/ui/app-gateway.ts`,
+    `ui/src/ui/controllers/sessions.ts`.
 
 ## Post-5.12 Follow-Up Alignment
 

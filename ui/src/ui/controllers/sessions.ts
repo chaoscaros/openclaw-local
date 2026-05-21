@@ -56,11 +56,14 @@ type CreateSessionResult = {
 
 type ChatRunReconcileState = SessionsState & {
   sessionKey?: string;
+  chatSending?: boolean;
   chatRunId?: string | null;
   chatStream?: string | null;
   chatStreamStartedAt?: number | null;
   requestUpdate?: () => void;
 };
+
+const LOCAL_CHAT_RUN_RECONCILE_GRACE_MS = 2 * 60 * 1000;
 
 function checkpointSummarySignature(
   row:
@@ -95,12 +98,23 @@ function reconcileChatRunFromSessionsState(state: SessionsState) {
   if (!chatState.chatRunId) {
     return;
   }
+  if (chatState.chatSending) {
+    return;
+  }
   const sessionKey = typeof chatState.sessionKey === "string" ? chatState.sessionKey.trim() : "";
   if (!sessionKey) {
     return;
   }
   const current = state.sessionsResult?.sessions.find((row) => row.key === sessionKey);
   if (!current || isSessionRunActive(current)) {
+    return;
+  }
+  const startedAt = chatState.chatStreamStartedAt;
+  if (
+    typeof startedAt === "number" &&
+    Number.isFinite(startedAt) &&
+    Date.now() - startedAt < LOCAL_CHAT_RUN_RECONCILE_GRACE_MS
+  ) {
     return;
   }
   chatState.chatRunId = null;
