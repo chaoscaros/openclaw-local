@@ -10,8 +10,14 @@ describe("session run state", () => {
     expect(isSessionRunActive({ hasActiveRun: true, status: "done" })).toBe(false);
   });
 
-  it("suppresses a stale local run id when the session row is terminal", () => {
-    expect(resolveSessionRunIndicatorId("run-stale", { status: "done", key: "main" })).toBeNull();
+  it("prefers a local run id over stale session-row status", () => {
+    expect(resolveSessionRunIndicatorId("run-local", { status: "done", key: "main" })).toBe(
+      "run-local",
+    );
+  });
+
+  it("suppresses terminal session rows when no local run id is active", () => {
+    expect(resolveSessionRunIndicatorId(null, { status: "done", key: "main" })).toBeNull();
   });
 
   it("recovers a visible run id from a running session row after refresh", () => {

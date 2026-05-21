@@ -8,6 +8,7 @@ import {
   resolveControlUiClientVersion,
 } from "./app-gateway.ts";
 import type { GatewayHelloOk } from "./gateway.ts";
+import type { SessionsListResult } from "./types.ts";
 
 const { loadChatHistoryMock, loadTaskModeDataMock, loadSessionsMock, patchSessionMock } =
   vi.hoisted(() => ({
@@ -669,6 +670,52 @@ describe("connectGateway", () => {
       expect(loadTaskModeDataMock).toHaveBeenCalledWith(host);
     },
   );
+
+  it("marks the current session row terminal when the active chat run finishes", () => {
+    const { client, host } = connectHostGateway();
+    const requestUpdate = vi.fn();
+    (host as TestGatewayHost & { requestUpdate: () => void }).requestUpdate = requestUpdate;
+    host.chatRunId = "run-task-1";
+    host.sessionsResult = {
+      ...(host.sessionsResult ?? {
+        ts: 1,
+        path: "",
+        count: 1,
+        defaults: { modelProvider: null, model: null, contextTokens: null },
+        sessions: [],
+      }),
+      sessions: [
+        {
+          key: "main",
+          kind: "direct",
+          updatedAt: Date.now(),
+          mode: "task",
+          taskId: "task-current",
+          hasActiveRun: true,
+          status: "running",
+        },
+      ],
+    } as never;
+
+    client.emitEvent({
+      event: "chat",
+      payload: {
+        runId: "run-task-1",
+        sessionKey: "main",
+        state: "final",
+      },
+    });
+
+    expect(host.chatRunId).toBeNull();
+    const sessionRow = (host.sessionsResult as SessionsListResult).sessions[0];
+    expect(sessionRow).toMatchObject({
+      key: "main",
+      hasActiveRun: false,
+      status: "done",
+      endedAt: expect.any(Number),
+    });
+    expect(requestUpdate).toHaveBeenCalledTimes(1);
+  });
 
   it("does not reload task-mode data for terminal chat events from other sessions", () => {
     const { client, host } = connectHostGateway();

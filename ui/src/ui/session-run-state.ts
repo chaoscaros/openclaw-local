@@ -22,14 +22,14 @@ export function resolveSessionRunIndicatorId(
   currentRunId: string | null | undefined,
   state: SessionRunState | null | undefined,
 ): string | null {
+  if (currentRunId) {
+    return currentRunId;
+  }
   if (state?.status && !isSessionRunActive(state)) {
     return null;
   }
   if (state?.endedAt != null) {
     return null;
-  }
-  if (currentRunId) {
-    return currentRunId;
   }
   if (!state) {
     return null;

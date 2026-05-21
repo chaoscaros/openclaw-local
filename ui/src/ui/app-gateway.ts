@@ -69,6 +69,7 @@ import type {
   PresenceEntry,
   HealthSummary,
   SessionsListResult,
+  SessionRunStatus,
   StatusSummary,
   UpdateAvailable,
 } from "./types.ts";
@@ -145,6 +146,16 @@ function isTerminalChatState(
   state: ChatEventPayload["state"] | ReturnType<typeof handleChatEvent> | null | undefined,
 ): state is "final" | "aborted" | "error" {
   return state === "final" || state === "aborted" || state === "error";
+}
+
+function terminalChatStateToSessionStatus(state: "final" | "aborted" | "error"): SessionRunStatus {
+  if (state === "final") {
+    return "done";
+  }
+  if (state === "aborted") {
+    return "killed";
+  }
+  return "failed";
 }
 
 function doSessionKeysMatch(a: string | undefined | null, b: string | undefined | null): boolean {
@@ -479,6 +490,43 @@ function maybeCaptureChangeReview(
   void host.captureChangeReview?.(payload?.sessionKey ?? host.sessionKey, payload?.runId);
 }
 
+function markSessionRunTerminalForChatEvent(
+  host: GatewayHost,
+  payload: ChatEventPayload | undefined,
+  state: ReturnType<typeof handleChatEvent>,
+) {
+  if (!isTerminalChatState(state) || !host.sessionsResult) {
+    return;
+  }
+  const eventSessionKey = payload?.sessionKey?.trim() || host.sessionKey;
+  if (!eventSessionKey || !doSessionKeysMatch(eventSessionKey, host.sessionKey)) {
+    return;
+  }
+  const status = terminalChatStateToSessionStatus(state);
+  const endedAt = Date.now();
+  let changed = false;
+  const sessions = host.sessionsResult.sessions.map((row) => {
+    if (!doSessionKeysMatch(row.key, eventSessionKey)) {
+      return row;
+    }
+    changed = true;
+    return {
+      ...row,
+      hasActiveRun: false,
+      status,
+      endedAt,
+    };
+  });
+  if (!changed) {
+    return;
+  }
+  host.sessionsResult = {
+    ...host.sessionsResult,
+    sessions,
+  };
+  (host as GatewayHost & { requestUpdate?: () => void }).requestUpdate?.();
+}
+
 function handleTerminalChatEvent(
   host: GatewayHost,
   payload: ChatEventPayload | undefined,
@@ -500,6 +548,7 @@ function handleTerminalChatEvent(
     host as unknown as Parameters<typeof clearPendingQueueItemsForRun>[0],
     payload?.sessionKey,
   );
+  markSessionRunTerminalForChatEvent(host, payload, state);
   const runId = payload?.runId;
   if (runId && host.refreshSessionsAfterChat.has(runId)) {
     host.refreshSessionsAfterChat.delete(runId);

@@ -161,9 +161,13 @@ should be split by risk area.
     The client also requests an immediate redraw after staging the local pending
     run, and active-run history refreshes keep that pending stream state so the
     status bar appears before the Gateway send acknowledgement and does not
-    flicker idle before lifecycle events arrive.
+    flicker idle before lifecycle events arrive. Local run lifecycle state now
+    overrides stale session-list rows on both start and terminal events, so the
+    status strip is not hidden by an old terminal row or kept alive by an old
+    running row.
   - Files: `ui/src/ui/chat/grouped-render.ts`, `ui/src/ui/views/chat.ts`,
-    `ui/src/ui/controllers/chat.ts`.
+    `ui/src/ui/controllers/chat.ts`, `ui/src/ui/session-run-state.ts`,
+    `ui/src/ui/app-gateway.ts`.
 
 ## Post-5.12 Follow-Up Alignment
 
