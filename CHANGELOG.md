@@ -75,6 +75,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/chat: let terminal session run status override stale active-run flags while still recovering legacy active-run rows after refresh.
 - Control UI/logs: make the Gateway log stream height responsive to the viewport with a minimum height floor.
 - Control UI: keep shared form, config, and usage text-entry controls at 16px on touch-primary devices so iOS Safari does not auto-zoom focused fields.
+- Control UI/chat: size desktop chat header dropdowns to their selected option text while leaving the local task context bar flexible.
 
 ## 2026.4.15
 

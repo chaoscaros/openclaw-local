@@ -42,6 +42,16 @@ describe("chat layout styles", () => {
     expect(chatCss).toContain("height: 22px;");
   });
 
+  it("sizes desktop chat header selects to their selected option while preserving the task bar", () => {
+    const css = readChatLayoutCss();
+
+    expect(css).toContain('grid-template-areas: "agent session model thinking task";');
+    expect(css).toContain("minmax(260px, 1fr);");
+    expect(css).toContain("width: fit-content;");
+    expect(css).toContain("justify-self: start;");
+    expect(css).toContain("field-sizing: content;");
+  });
+
   it("lays out local mobile chat header action icons as an even grid", () => {
     const css = readCss("src/styles/layout.mobile.css");
 

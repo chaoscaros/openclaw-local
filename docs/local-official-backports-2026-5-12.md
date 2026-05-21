@@ -178,6 +178,8 @@ should be split by risk area.
   - Touch-primary Control UI form/config/usage text inputs now stay at 16px to
     avoid iOS focus zoom, while the chat composer keeps the text-scale input-size
     variable.
+  - Desktop chat header dropdowns now size to the selected option text while the
+    local task context bar keeps the remaining flexible space.
   - Anthropic provider normalization now preserves native image input for
     current Claude rows when stale local catalog data marks them text-only.
   - `/models openai` provider headers now prefer the effective Codex OAuth
