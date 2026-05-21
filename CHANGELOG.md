@@ -69,6 +69,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/chat: enable the existing code-block copy button inside markdown sidebars as well as normal chat bubbles.
 - Control UI/chat: align the desktop chat header controls and mobile settings dropdown to a compact, consistent button rhythm while preserving local task controls.
 - Control UI/config: discard stale redacted placeholders from form-mode config saves while preserving restorable saved secrets.
+- Control UI/chat: order timestamped live stream and tool items before newer history fallbacks so chat stays in visible time order.
 
 ## 2026.4.15
 

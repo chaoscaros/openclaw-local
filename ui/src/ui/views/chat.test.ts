@@ -2444,6 +2444,91 @@ describe("chat view", () => {
     expect(assistantBubbles[1]?.textContent).toContain("Later unrelated reply.");
   });
 
+  it("orders live tool messages before newer history messages", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          showToolCalls: true,
+          messages: [
+            {
+              id: "newer-history-reply",
+              role: "assistant",
+              content: [{ type: "text", text: "Newer history reply." }],
+              timestamp: 2_000,
+            },
+          ],
+          toolMessages: [
+            {
+              id: "older-live-tool",
+              role: "tool",
+              toolCallId: "call-older-tool",
+              toolName: "shell",
+              content: "Older live tool output.",
+              timestamp: 1_000,
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+
+    const groups = Array.from(
+      container.querySelectorAll<HTMLElement>(".chat-thread-inner > .chat-group"),
+    );
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.classList.contains("tool")).toBe(true);
+    expect(groups[1]?.classList.contains("assistant")).toBe(true);
+    expect(groups[1]?.textContent).toContain("Newer history reply.");
+  });
+
+  it("orders completed stream segments before newer history messages", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          messages: [
+            {
+              id: "newer-history-reply",
+              role: "assistant",
+              content: [{ type: "text", text: "Newer history reply." }],
+              timestamp: 2_000,
+            },
+          ],
+          streamSegments: [{ text: "Older streamed output.", ts: 1_000 }],
+        }),
+      ),
+      container,
+    );
+
+    const groups = Array.from(
+      container.querySelectorAll<HTMLElement>(".chat-thread-inner > .chat-group"),
+    );
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.textContent).toContain("Older streamed output.");
+    expect(groups[1]?.textContent).toContain("Newer history reply.");
+  });
+
+  it("orders timestamped live items before history messages without timestamps", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          messages: [{ id: "missing-timestamp", role: "assistant", content: "Missing timestamp." }],
+          streamSegments: [{ text: "Timestamped stream.", ts: Number.MAX_SAFE_INTEGER }],
+        }),
+      ),
+      container,
+    );
+
+    const groups = Array.from(
+      container.querySelectorAll<HTMLElement>(".chat-thread-inner > .chat-group"),
+    );
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.textContent).toContain("Timestamped stream.");
+    expect(groups[1]?.textContent).toContain("Missing timestamp.");
+  });
+
   it("does not auto-render generic view handles from non-canvas payloads", () => {
     const container = document.createElement("div");
     render(

@@ -292,6 +292,9 @@ should be split by risk area.
   - Overview recent sessions now reuse the chat session display-name resolver,
     avoiding raw compound channel keys when label/displayName fallbacks are
     available.
+  - Timestamped Control UI live stream/tool rows now sort before newer history
+    fallbacks, preserving the visible chat order when active runs and refreshed
+    transcript history overlap.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,

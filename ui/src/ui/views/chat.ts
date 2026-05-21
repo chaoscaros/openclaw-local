@@ -1125,6 +1125,48 @@ function findNearestAssistantMessageIndex(
   return assistantEntries[assistantEntries.length - 1]?.index ?? null;
 }
 
+function rawMessageTimestamp(message: unknown): number | null {
+  const timestamp = (message as { timestamp?: unknown }).timestamp;
+  return typeof timestamp === "number" && Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function chatItemTimestamp(item: ChatItem): number | null {
+  switch (item.kind) {
+    case "message":
+      return item.key === "chat:history:notice"
+        ? Number.NEGATIVE_INFINITY
+        : rawMessageTimestamp(item.message);
+    case "divider":
+      return item.timestamp;
+    case "stream":
+      return item.startedAt;
+    case "reading-indicator":
+      return null;
+  }
+  return null;
+}
+
+function sortChatItemsByVisibleTime(items: ChatItem[]): ChatItem[] {
+  return items
+    .map((item, index) => ({ item, index, timestamp: chatItemTimestamp(item) }))
+    .toSorted((left, right) => {
+      if (left.timestamp == null && right.timestamp == null) {
+        return left.index - right.index;
+      }
+      if (left.timestamp == null) {
+        return 1;
+      }
+      if (right.timestamp == null) {
+        return -1;
+      }
+      if (left.timestamp !== right.timestamp) {
+        return left.timestamp - right.timestamp;
+      }
+      return left.index - right.index;
+    })
+    .map(({ item }) => item);
+}
+
 interface ChatEphemeralState {
   sttRecording: boolean;
   sttInterimText: string;
@@ -3202,7 +3244,7 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
     });
   }
 
-  return groupMessages(items);
+  return groupMessages(sortChatItemsByVisibleTime(items));
 }
 
 function messageKey(message: unknown, index: number): string {
