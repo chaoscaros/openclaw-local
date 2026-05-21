@@ -12,7 +12,10 @@ import {
   DEEPSEEK_CHAT_MODEL,
   DEFAULT_CHAT_MODEL_CATALOG,
 } from "../chat-model.test-helpers.ts";
-import { resetAssistantAttachmentAvailabilityCacheForTest } from "../chat/grouped-render.ts";
+import {
+  renderReadingIndicatorGroup,
+  resetAssistantAttachmentAvailabilityCacheForTest,
+} from "../chat/grouped-render.ts";
 import { normalizeMessage } from "../chat/message-normalizer.ts";
 import { buildSidebarContent } from "../chat/tool-cards.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
@@ -2903,6 +2906,15 @@ describe("chat view", () => {
     );
 
     expect(container.textContent).toMatch(/Running|Task in progress/);
+    expect(container.textContent).not.toContain("Preparing a reply");
+    expect(container.querySelector(".chat-reading-indicator")).toBeNull();
+  });
+
+  it("does not render the legacy reading indicator bubble", () => {
+    const container = document.createElement("div");
+
+    render(renderReadingIndicatorGroup(), container);
+
     expect(container.textContent).not.toContain("Preparing a reply");
     expect(container.querySelector(".chat-reading-indicator")).toBeNull();
   });

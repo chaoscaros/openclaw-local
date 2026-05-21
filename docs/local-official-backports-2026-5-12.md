@@ -155,11 +155,14 @@ should be split by risk area.
 - Local task-mode pending UI polish
   - Local impact: chats now rely on the bottom running status bar as the single
     pending indicator before streamed text arrives, instead of also showing an
-    assistant "Thinking" placeholder bubble.
+    assistant "Thinking" placeholder bubble. The legacy reading-indicator
+    renderer is also disabled so stale pending items cannot redraw the duplicate
+    bubble.
     Active-run history refreshes also keep the pending stream state so the
     status bar appears immediately after send and does not flicker idle before
     lifecycle events arrive.
-  - Files: `ui/src/ui/views/chat.ts`, `ui/src/ui/controllers/chat.ts`.
+  - Files: `ui/src/ui/chat/grouped-render.ts`, `ui/src/ui/views/chat.ts`,
+    `ui/src/ui/controllers/chat.ts`.
 
 ## Post-5.12 Follow-Up Alignment
 

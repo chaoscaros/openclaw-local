@@ -89,29 +89,8 @@ function extractImages(message: unknown): ImageBlock[] {
   return images;
 }
 
-export function renderReadingIndicatorGroup(assistant?: AssistantIdentity, basePath?: string) {
-  const name = assistant?.name ?? "Assistant";
-  return html`
-    <div class="chat-group assistant">
-      ${renderAvatar("assistant", assistant, basePath)}
-      <div class="chat-group-messages">
-        <div
-          class="chat-bubble chat-reading-indicator"
-          role="status"
-          aria-live="polite"
-          aria-label=${`${name} is working`}
-        >
-          <span class="chat-reading-indicator__dots" aria-hidden="true">
-            <span></span><span></span><span></span>
-          </span>
-          <div class="chat-reading-indicator__content">
-            <div class="chat-reading-indicator__label">Thinking</div>
-            <div class="chat-reading-indicator__subtle">Preparing a reply</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+export function renderReadingIndicatorGroup(_assistant?: AssistantIdentity, _basePath?: string) {
+  return nothing;
 }
 
 export function renderStreamingGroup(
