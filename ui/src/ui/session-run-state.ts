@@ -3,12 +3,19 @@ import type { SessionRunStatus } from "./types.ts";
 type SessionRunState = {
   key?: string;
   sessionId?: string;
+  hasActiveRun?: boolean;
   status?: SessionRunStatus;
   endedAt?: number | null;
 };
 
 export function isSessionRunActive(state: SessionRunState | null | undefined): boolean {
-  return state?.status === "running" && state.endedAt == null;
+  if (!state || state.endedAt != null) {
+    return false;
+  }
+  if (state.status) {
+    return state.status === "running";
+  }
+  return state.hasActiveRun === true;
 }
 
 export function resolveSessionRunIndicatorId(

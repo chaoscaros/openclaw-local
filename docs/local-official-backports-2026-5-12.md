@@ -169,6 +169,9 @@ should be split by risk area.
   - Control UI now includes the official browser-local text size setting in the
     local Appearance page, scaling chat text, inputs, sidebars, and tool cards
     without replacing local task/session controls.
+  - Control UI run-state recovery now gives terminal session rows precedence
+    over stale active-run flags while preserving legacy active-run recovery when
+    no terminal status is available.
   - Anthropic provider normalization now preserves native image input for
     current Claude rows when stale local catalog data marks them text-only.
   - `/models openai` provider headers now prefer the effective Codex OAuth

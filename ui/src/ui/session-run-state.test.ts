@@ -6,6 +6,8 @@ describe("session run state", () => {
     expect(isSessionRunActive({ status: "running" })).toBe(true);
     expect(isSessionRunActive({ status: "running", endedAt: 1 })).toBe(false);
     expect(isSessionRunActive({ status: "done" })).toBe(false);
+    expect(isSessionRunActive({ hasActiveRun: true })).toBe(true);
+    expect(isSessionRunActive({ hasActiveRun: true, status: "done" })).toBe(false);
   });
 
   it("suppresses a stale local run id when the session row is terminal", () => {
@@ -15,6 +17,12 @@ describe("session run state", () => {
   it("recovers a visible run id from a running session row after refresh", () => {
     expect(resolveSessionRunIndicatorId(null, { status: "running", key: "agent:main" })).toBe(
       "agent:main",
+    );
+  });
+
+  it("recovers from legacy active-run rows when no terminal status is available", () => {
+    expect(resolveSessionRunIndicatorId(null, { hasActiveRun: true, key: "agent:legacy" })).toBe(
+      "agent:legacy",
     );
   });
 
