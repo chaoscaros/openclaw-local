@@ -45,6 +45,8 @@ describe("config view", () => {
     setThemeMode: vi.fn(),
     borderRadius: 50,
     setBorderRadius: vi.fn(),
+    textScale: 100,
+    setTextScale: vi.fn(),
     gatewayUrl: "",
     assistantName: "OpenClaw",
   });
@@ -159,9 +161,27 @@ describe("config view", () => {
     expect(text).toContain("选择主题风格。");
     expect(text).toContain("圆角");
     expect(text).toContain("轻微");
+    expect(text).toContain("文字大小");
     expect(text).toContain("连接");
     expect(text).toContain("助手");
     expect(text).not.toContain("Choose a theme family.");
+  });
+
+  it("lets appearance update the browser-local text scale", () => {
+    const setTextScale = vi.fn();
+    const { container } = renderConfigView({
+      includeSections: ["__appearance__"],
+      activeSection: "__appearance__",
+      setTextScale,
+    });
+
+    const largeButton = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
+      (btn) => btn.textContent?.includes("Large"),
+    );
+    expect(largeButton).not.toBeUndefined();
+
+    largeButton?.click();
+    expect(setTextScale).toHaveBeenCalledWith(110);
   });
 
   it("allows save when form is unsafe", () => {

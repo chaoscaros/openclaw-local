@@ -93,7 +93,7 @@ import {
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
 import type { SidebarContent } from "./sidebar-content.ts";
-import { loadSettings, type UiSettings } from "./storage.ts";
+import { loadSettings, normalizeTextScale, type UiSettings } from "./storage.ts";
 import { VALID_THEME_NAMES, type ResolvedTheme, type ThemeMode, type ThemeName } from "./theme.ts";
 import type {
   AgentsListResult,
@@ -829,6 +829,14 @@ export class OpenClawApp extends LitElement {
     applySettingsInternal(this as unknown as Parameters<typeof applySettingsInternal>[0], {
       ...this.settings,
       borderRadius: value,
+    });
+    this.requestUpdate();
+  }
+
+  setTextScale(value: number) {
+    applySettingsInternal(this as unknown as Parameters<typeof applySettingsInternal>[0], {
+      ...this.settings,
+      textScale: normalizeTextScale(value),
     });
     this.requestUpdate();
   }

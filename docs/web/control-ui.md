@@ -82,6 +82,12 @@ locale picker lives in the Gateway Access card, not under Appearance.
 - The selected locale is saved in browser storage and reused on future visits.
 - Missing translation keys fall back to English.
 
+## Browser appearance
+
+Appearance settings such as theme, corner roundness, and text size are stored in
+browser-local storage. Text size scales chat text, composer inputs, sidebars, and
+tool cards while preserving mobile browser input zoom safety.
+
 ## What it can do (today)
 
 - Chat with the model via Gateway WS (`chat.history`, `chat.send`, `chat.abort`, `chat.inject`)

@@ -166,6 +166,9 @@ should be split by risk area.
   - Control UI now routes session-scoped tool events into the live tool stream,
     so pages that attach to an already running session can render tool activity
     without waiting for transcript history to reload.
+  - Control UI now includes the official browser-local text size setting in the
+    local Appearance page, scaling chat text, inputs, sidebars, and tool cards
+    without replacing local task/session controls.
   - Anthropic provider normalization now preserves native image input for
     current Claude rows when stale local catalog data marks them text-only.
   - `/models openai` provider headers now prefer the effective Codex OAuth

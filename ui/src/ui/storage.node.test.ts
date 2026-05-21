@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStorageMock } from "../test-helpers/storage.ts";
-import { loadSettings, normalizeChatAutoScrollMode, saveSettings } from "./storage.ts";
+import {
+  loadSettings,
+  normalizeChatAutoScrollMode,
+  normalizeTextScale,
+  saveSettings,
+} from "./storage.ts";
 
 function setTestLocation(params: { protocol: string; host: string; pathname: string }) {
   vi.stubGlobal("location", {
@@ -137,6 +142,7 @@ describe("loadSettings default gateway URL derivation", () => {
       navWidth: 220,
       navGroupsCollapsed: {},
       borderRadius: 50,
+      textScale: 100,
       sessionsByGateway: {
         "wss://gateway.example:8443/openclaw": {
           sessionKey: "agent",
@@ -299,6 +305,7 @@ describe("loadSettings default gateway URL derivation", () => {
       navWidth: 220,
       navGroupsCollapsed: {},
       borderRadius: 50,
+      textScale: 100,
       sessionsByGateway: {
         [gwUrl]: {
           sessionKey: "main",
@@ -342,6 +349,54 @@ describe("loadSettings default gateway URL derivation", () => {
 
     expect(loadSettings()).toMatchObject({ chatAutoScroll: "off" });
     expect(normalizeChatAutoScrollMode("sideways")).toBe("near-bottom");
+  });
+
+  it("persists and normalizes the browser-local text scale", async () => {
+    setTestLocation({
+      protocol: "https:",
+      host: "gateway.example:8443",
+      pathname: "/",
+    });
+
+    const gwUrl = expectedGatewayUrl("");
+    const scopedKey = `openclaw.control.settings.v1:${gwUrl}`;
+    localStorage.setItem(
+      scopedKey,
+      JSON.stringify({
+        gatewayUrl: gwUrl,
+        textScale: 123,
+      }),
+    );
+
+    expect(loadSettings()).toMatchObject({ textScale: 125 });
+
+    saveSettings({
+      gatewayUrl: gwUrl,
+      token: "",
+      sessionKey: "main",
+      lastActiveSessionKey: "main",
+      theme: "claw",
+      themeMode: "system",
+      chatFocusMode: false,
+      chatShowThinking: true,
+      chatShowToolCalls: true,
+      chatAutoScroll: "near-bottom",
+      dreamingAssistEnabled: true,
+      planModeEnabled: false,
+      executionGoalModeEnabled: false,
+      devSpecFirstEnabled: false,
+      changeReviewModeEnabled: false,
+      splitRatio: 0.6,
+      navCollapsed: false,
+      navWidth: 220,
+      navGroupsCollapsed: {},
+      borderRadius: 50,
+      textScale: 140,
+    });
+
+    expect(JSON.parse(localStorage.getItem(scopedKey) ?? "{}")).toMatchObject({ textScale: 140 });
+    expect(normalizeTextScale("huge")).toBe(100);
+    expect(normalizeTextScale(91)).toBe(90);
   });
 
   it("clears the current-tab token when saving an empty token", async () => {

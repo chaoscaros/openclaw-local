@@ -60,7 +60,7 @@
   align-items: center;
   gap: 6px;
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--control-ui-text-md);
   line-height: 1.2;
 }
 
@@ -90,7 +90,7 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--control-ui-text-xs);
   color: var(--muted);
   opacity: 1;
   transition:
@@ -152,12 +152,12 @@
 }
 
 .chat-tool-card__status-text {
-  font-size: 11px;
+  font-size: var(--control-ui-text-xs);
   margin-top: 10px;
 }
 
 .chat-tool-card__detail {
-  font-size: 12px;
+  font-size: var(--control-ui-text-sm);
   color: var(--muted);
   margin-top: 6px;
 }

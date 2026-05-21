@@ -1,7 +1,12 @@
 import { html, nothing, type TemplateResult } from "lit";
 import { t } from "../../i18n/index.ts";
 import { icons } from "../icons.ts";
-import { BORDER_RADIUS_STOPS, type BorderRadiusStop } from "../storage.ts";
+import {
+  BORDER_RADIUS_STOPS,
+  TEXT_SCALE_STOPS,
+  type BorderRadiusStop,
+  type TextScaleStop,
+} from "../storage.ts";
 import type { ThemeTransitionContext } from "../theme-transition.ts";
 import type { ThemeMode, ThemeName } from "../theme.ts";
 import type { ConfigUiHints } from "../types.ts";
@@ -22,6 +27,14 @@ const BORDER_RADIUS_LABEL_KEYS: Record<BorderRadiusStop, string> = {
   50: "configPage.ui.appearance.radius.default",
   75: "configPage.ui.appearance.radius.round",
   100: "configPage.ui.appearance.radius.full",
+};
+
+const TEXT_SCALE_LABEL_KEYS: Record<TextScaleStop, string> = {
+  90: "configPage.ui.appearance.textScale.small",
+  100: "configPage.ui.appearance.textScale.default",
+  110: "configPage.ui.appearance.textScale.large",
+  125: "configPage.ui.appearance.textScale.xl",
+  140: "configPage.ui.appearance.textScale.xxl",
 };
 
 export type ConfigProps = {
@@ -63,6 +76,8 @@ export type ConfigProps = {
   setThemeMode: (mode: ThemeMode, context?: ThemeTransitionContext) => void;
   borderRadius: number;
   setBorderRadius: (value: number) => void;
+  textScale: number;
+  setTextScale: (value: number) => void;
   gatewayUrl: string;
   assistantName: string;
   configPath?: string | null;
@@ -628,6 +643,27 @@ function renderAppearanceSection(props: ConfigProps) {
                   <span class="settings-roundness__label"
                     >${t(BORDER_RADIUS_LABEL_KEYS[stop])}</span
                   >
+                </button>
+              `,
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-appearance__section">
+        <h3 class="settings-appearance__heading">${t("configPage.ui.appearance.textSize")}</h3>
+        <p class="settings-appearance__hint">${t("configPage.ui.appearance.textSizeHint")}</p>
+        <div class="settings-text-scale">
+          <div class="settings-text-scale__options">
+            ${TEXT_SCALE_STOPS.map(
+              (stop) => html`
+                <button
+                  type="button"
+                  class="settings-text-scale__btn ${stop === props.textScale ? "active" : ""}"
+                  @click=${() => props.setTextScale(stop)}
+                >
+                  <span class="settings-text-scale__sample">${t(TEXT_SCALE_LABEL_KEYS[stop])}</span>
+                  <span class="settings-text-scale__label">${stop}%</span>
                 </button>
               `,
             )}

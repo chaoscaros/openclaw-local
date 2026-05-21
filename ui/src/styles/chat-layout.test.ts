@@ -54,4 +54,19 @@ describe("chat layout styles", () => {
     );
     expect(css).toContain("height: 44px;");
   });
+
+  it("wires browser-local text scale variables into chat surfaces", () => {
+    const baseCss = readCss("src/styles/base.css");
+    const layoutCss = readChatLayoutCss();
+    const textCss = readCss("src/styles/chat/text.css");
+    const sidebarCss = readCss("src/styles/chat/sidebar.css");
+    const toolCardsCss = readCss("src/styles/chat/tool-cards.css");
+
+    expect(baseCss).toContain("--control-ui-text-scale: 1;");
+    expect(baseCss).toContain("--control-ui-input-text-size: max(16px");
+    expect(textCss).toContain("font-size: var(--chat-text-size);");
+    expect(layoutCss).toContain("font-size: var(--control-ui-input-text-size);");
+    expect(sidebarCss).toContain("font-size: var(--control-ui-text-md);");
+    expect(toolCardsCss).toContain("font-size: var(--control-ui-text-md);");
+  });
 });

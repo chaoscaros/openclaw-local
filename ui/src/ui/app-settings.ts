@@ -37,8 +37,8 @@ import { loadLogs, type LogsState } from "./controllers/logs.ts";
 import { loadNodes, type NodesState } from "./controllers/nodes.ts";
 import { loadPresence, type PresenceState } from "./controllers/presence.ts";
 import { loadSessions, type SessionsState } from "./controllers/sessions.ts";
-import { loadTaskModeData, type TasksState } from "./controllers/tasks.ts";
 import { loadSkills, type SkillsState } from "./controllers/skills.ts";
+import { loadTaskModeData, type TasksState } from "./controllers/tasks.ts";
 import { loadUsage, type UsageState } from "./controllers/usage.ts";
 import {
   inferBasePathFromPathname,
@@ -48,7 +48,7 @@ import {
   tabFromPath,
   type Tab,
 } from "./navigation.ts";
-import { saveSettings, type UiSettings } from "./storage.ts";
+import { normalizeTextScale, saveSettings, type UiSettings } from "./storage.ts";
 import { normalizeOptionalString } from "./string-coerce.ts";
 import { startThemeTransition, type ThemeTransitionContext } from "./theme-transition.ts";
 import { resolveTheme, type ResolvedTheme, type ThemeMode, type ThemeName } from "./theme.ts";
@@ -125,6 +125,7 @@ async function loadSessionsForLiveChatContext(app: SettingsAppHost) {
 export function applySettings(host: SettingsHost, next: UiSettings) {
   const normalized = {
     ...next,
+    textScale: normalizeTextScale(next.textScale),
     lastActiveSessionKey:
       normalizeOptionalString(next.lastActiveSessionKey) ??
       normalizeOptionalString(next.sessionKey) ??
@@ -137,7 +138,8 @@ export function applySettings(host: SettingsHost, next: UiSettings) {
     host.themeMode = next.themeMode;
     applyResolvedTheme(host, resolveTheme(next.theme, next.themeMode));
   }
-  applyBorderRadius(next.borderRadius);
+  applyBorderRadius(normalized.borderRadius);
+  applyTextScale(normalized.textScale);
   host.applySessionKey = host.settings.lastActiveSessionKey;
 }
 
@@ -404,6 +406,7 @@ export function syncThemeWithSettings(host: SettingsHost) {
   host.themeMode = host.settings.themeMode ?? "system";
   applyResolvedTheme(host, resolveTheme(host.theme, host.themeMode));
   applyBorderRadius(host.settings.borderRadius ?? 50);
+  applyTextScale(host.settings.textScale);
   syncSystemThemeListener(host);
 }
 
@@ -426,6 +429,14 @@ export function applyBorderRadius(value: number) {
   root.style.setProperty("--radius-xl", `${Math.round(BASE_RADII.xl * scale)}px`);
   root.style.setProperty("--radius-full", `${Math.round(BASE_RADII.full * scale)}px`);
   root.style.setProperty("--radius", `${Math.round(BASE_RADII.default * scale)}px`);
+}
+
+export function applyTextScale(value: unknown) {
+  if (typeof document === "undefined") {
+    return;
+  }
+  const root = document.documentElement;
+  root.style.setProperty("--control-ui-text-scale", (normalizeTextScale(value) / 100).toFixed(2));
 }
 
 export function applyResolvedTheme(host: SettingsHost, resolved: ResolvedTheme) {

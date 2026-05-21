@@ -7,6 +7,7 @@ import {
   setTabFromRoute,
   syncThemeWithSettings,
 } from "./app-settings.ts";
+import type { TextScaleStop } from "./storage.ts";
 import type { ThemeMode, ThemeName } from "./theme.ts";
 
 type Tab =
@@ -50,6 +51,7 @@ type SettingsHost = {
     navWidth: number;
     navGroupsCollapsed: Record<string, boolean>;
     borderRadius: number;
+    textScale?: TextScaleStop;
   };
   theme: ThemeName & ThemeMode;
   themeMode: ThemeMode;
@@ -152,6 +154,7 @@ const createHost = (tab: Tab): SettingsHost => ({
     navWidth: 220,
     navGroupsCollapsed: {},
     borderRadius: 50,
+    textScale: 100,
   },
   theme: "claw" as unknown as ThemeName & ThemeMode,
   themeMode: "system",
@@ -250,6 +253,29 @@ describe("setTabFromRoute", () => {
     expect(host.theme).toBe("dash");
     expect(host.themeMode).toBe("light");
     expect(host.themeResolved).toBe("dash-light");
+  });
+
+  it("applies the browser-local text scale from settings", () => {
+    const root = {
+      dataset: {} as DOMStringMap,
+      style: {
+        colorScheme: "",
+        setProperty: vi.fn(),
+      } as unknown as CSSStyleDeclaration & {
+        colorScheme: string;
+        setProperty: ReturnType<typeof vi.fn>;
+      },
+    };
+    vi.stubGlobal("document", { documentElement: root } as unknown as Document);
+
+    const host = createHost("chat");
+    applySettings(host, {
+      ...host.settings,
+      textScale: 125,
+    });
+
+    expect(root.style.setProperty).toHaveBeenCalledWith("--control-ui-text-scale", "1.25");
+    expect(host.settings.textScale).toBe(125);
   });
 
   it("applies named system themes on OS preference changes", () => {

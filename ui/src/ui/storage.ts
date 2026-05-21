@@ -29,6 +29,9 @@ import { parseThemeSelection, type ThemeMode, type ThemeName } from "./theme.ts"
 export const BORDER_RADIUS_STOPS = [0, 25, 50, 75, 100] as const;
 export type BorderRadiusStop = (typeof BORDER_RADIUS_STOPS)[number];
 
+export const TEXT_SCALE_STOPS = [90, 100, 110, 125, 140] as const;
+export type TextScaleStop = (typeof TEXT_SCALE_STOPS)[number];
+
 export const CHAT_AUTO_SCROLL_MODES = ["always", "near-bottom", "off"] as const;
 export type ChatAutoScrollMode = (typeof CHAT_AUTO_SCROLL_MODES)[number];
 
@@ -42,6 +45,22 @@ function snapBorderRadius(value: number): BorderRadiusStop {
   let best: BorderRadiusStop = BORDER_RADIUS_STOPS[0];
   let bestDist = Math.abs(value - best);
   for (const stop of BORDER_RADIUS_STOPS) {
+    const dist = Math.abs(value - stop);
+    if (dist < bestDist) {
+      best = stop;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+export function normalizeTextScale(value: unknown, fallback: TextScaleStop = 100): TextScaleStop {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  let best: TextScaleStop = TEXT_SCALE_STOPS[0];
+  let bestDist = Math.abs(value - best);
+  for (const stop of TEXT_SCALE_STOPS) {
     const dist = Math.abs(value - stop);
     if (dist < bestDist) {
       best = stop;
@@ -72,6 +91,7 @@ export type UiSettings = {
   navWidth: number; // Sidebar width when expanded (240–400px)
   navGroupsCollapsed: Record<string, boolean>; // Which nav groups are collapsed
   borderRadius: number; // Corner roundness (0–100, default 50)
+  textScale?: TextScaleStop; // Browser-local text scale percentage
   locale?: string;
 };
 
@@ -216,6 +236,7 @@ export function loadSettings(): UiSettings {
     navWidth: 220,
     navGroupsCollapsed: {},
     borderRadius: 50,
+    textScale: 100,
   };
 
   try {
@@ -299,6 +320,7 @@ export function loadSettings(): UiSettings {
         parsed.borderRadius <= 100
           ? snapBorderRadius(parsed.borderRadius)
           : defaults.borderRadius,
+      textScale: normalizeTextScale(parsed.textScale, defaults.textScale),
       locale: isSupportedLocale(parsed.locale) ? parsed.locale : undefined,
     };
     if ("token" in parsed) {
@@ -365,6 +387,7 @@ function persistSettings(next: UiSettings) {
     navWidth: next.navWidth,
     navGroupsCollapsed: next.navGroupsCollapsed,
     borderRadius: next.borderRadius,
+    textScale: normalizeTextScale(next.textScale),
     sessionsByGateway,
     ...(next.locale ? { locale: next.locale } : {}),
   };
