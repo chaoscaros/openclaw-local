@@ -208,4 +208,73 @@ describe("sessions view", () => {
     expect(text).toContain("agent:solo:main");
     expect(text).not.toContain("agent:solo:dreaming-narrative-light-abc");
   });
+
+  it("renders the sessions table with stable key and compaction layout hooks", async () => {
+    const container = document.createElement("div");
+    render(
+      renderSessions(
+        buildProps(
+          buildResult({
+            key: "agent:solo:very-long-session-key-that-should-not-wrap",
+            kind: "direct",
+            displayName: "Very long display name for the active session",
+            updatedAt: Date.now(),
+            compactionCheckpointCount: 0,
+          }),
+        ),
+      ),
+      container,
+    );
+    await Promise.resolve();
+
+    const table = container.querySelector("table");
+    expect(table?.classList.contains("sessions-table")).toBe(true);
+    const row = container.querySelector("tbody tr.session-data-row");
+    expect(row).not.toBeNull();
+    const keyCell = container.querySelector<HTMLElement>(".session-key-cell");
+    expect(keyCell?.title).toBe("agent:solo:very-long-session-key-that-should-not-wrap");
+    expect(container.querySelector(".session-compaction-count")?.textContent?.trim()).toBe(
+      "No checkpoints yet",
+    );
+  });
+
+  it("expands checkpoint details across all local sessions columns", async () => {
+    const container = document.createElement("div");
+    render(
+      renderSessions({
+        ...buildProps(
+          buildResult({
+            key: "agent:solo:main",
+            kind: "direct",
+            updatedAt: Date.now(),
+            compactionCheckpointCount: 1,
+          }),
+        ),
+        expandedCheckpointKey: "agent:solo:main",
+        checkpointItemsByKey: {
+          "agent:solo:main": [
+            {
+              checkpointId: "cp-1",
+              sessionKey: "agent:solo:main",
+              sessionId: "session-1",
+              createdAt: Date.now(),
+              reason: "manual",
+              summary: "Kept useful context.",
+              preCompaction: { sessionId: "session-1" },
+              postCompaction: { sessionId: "session-1" },
+            },
+          ],
+        },
+      }),
+      container,
+    );
+    await Promise.resolve();
+
+    const detailsRow = container.querySelector<HTMLTableRowElement>(
+      ".session-checkpoint-details-row",
+    );
+    expect(detailsRow).not.toBeNull();
+    expect(detailsRow?.querySelector("td")?.getAttribute("colspan")).toBe("13");
+    expect(detailsRow?.querySelector(".session-checkpoint-card")).not.toBeNull();
+  });
 });

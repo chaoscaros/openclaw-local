@@ -76,6 +76,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/logs: make the Gateway log stream height responsive to the viewport with a minimum height floor.
 - Control UI: keep shared form, config, and usage text-entry controls at 16px on touch-primary devices so iOS Safari does not auto-zoom focused fields.
 - Control UI/chat: size desktop chat header dropdowns to their selected option text while leaving the local task context bar flexible.
+- Control UI/sessions: preserve session key column spacing and use the shared compaction detail styles while keeping local task/mode columns.
 
 ## 2026.4.15
 

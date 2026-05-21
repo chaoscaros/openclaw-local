@@ -247,6 +247,13 @@ function formatCheckpointDelta(checkpoint: SessionCompactionCheckpoint): string 
   return "token delta unavailable";
 }
 
+function formatCheckpointCount(count: number): string {
+  if (count <= 0) {
+    return t("tasksView.noCheckpoints");
+  }
+  return `${count} checkpoint${count === 1 ? "" : "s"}`;
+}
+
 export function renderSessions(props: SessionsProps) {
   const rawRows = (props.result?.sessions ?? []).filter(
     (row) => !isDreamingNarrativeSessionKey(row.key),
@@ -389,7 +396,7 @@ export function renderSessions(props: SessionsProps) {
           : nothing}
 
         <div class="data-table-container">
-          <table class="data-table">
+          <table class="data-table sessions-table">
             <thead>
               <tr>
                 <th class="data-table-checkbox-col">
@@ -418,7 +425,7 @@ export function renderSessions(props: SessionsProps) {
                 ${sortHeader("tokens", "Tokens")}
                 <th>Mode</th>
                 <th>Current task</th>
-                <th>Compaction</th>
+                <th class="session-compaction-col">Compaction</th>
                 <th>Thinking</th>
                 <th>Fast</th>
                 <th>Verbose</th>
@@ -512,7 +519,7 @@ function renderRows(row: GatewaySessionRow, props: SessionsProps) {
           : "data-table-badge--unknown";
 
   return [
-    html`<tr>
+    html`<tr class="session-data-row">
       <td class="data-table-checkbox-col">
         <input
           type="checkbox"
@@ -522,11 +529,12 @@ function renderRows(row: GatewaySessionRow, props: SessionsProps) {
         />
       </td>
       <td class="data-table-key-col">
-        <div class="mono session-key-cell">
+        <div class="mono session-key-cell" title=${row.key}>
           ${canLink
             ? html`<a
                 href=${chatUrl}
                 class="session-link"
+                title=${row.key}
                 @click=${(e: MouseEvent) => {
                   if (
                     e.defaultPrevented ||
@@ -547,7 +555,9 @@ function renderRows(row: GatewaySessionRow, props: SessionsProps) {
               >`
             : row.key}
           ${showDisplayName
-            ? html`<span class="muted session-key-display-name">${displayName}</span>`
+            ? html`<span class="muted session-key-display-name" title=${displayName}
+                >${displayName}</span
+              >`
             : nothing}
         </div>
       </td>
@@ -595,27 +605,23 @@ function renderRows(row: GatewaySessionRow, props: SessionsProps) {
         </div>
       </td>
       <td>
-        <div style="display: grid; gap: 6px;">
-          <span class="muted" style="font-size: 12px;">
-            ${checkpointCount > 0
-              ? `${checkpointCount} checkpoint${checkpointCount === 1 ? "" : "s"}`
-              : "none"}
-          </span>
+        <div class="session-compaction-cell">
+          <button
+            class="session-compaction-trigger"
+            title=${isExpanded ? "Hide checkpoints" : "Show checkpoints"}
+            ?disabled=${props.checkpointLoadingKey === row.key}
+            @click=${() => props.onToggleCheckpointDetails(row.key)}
+          >
+            <span class="session-compaction-count">${formatCheckpointCount(checkpointCount)}</span>
+          </button>
           ${latestCheckpoint
             ? html`
-                <span style="font-size: 12px;">
+                <span class="muted" style="font-size: 12px;">
                   ${formatCheckpointReason(latestCheckpoint.reason)} ·
                   ${formatRelativeTimestamp(latestCheckpoint.createdAt)}
                 </span>
               `
             : nothing}
-          <button
-            class="btn btn--sm"
-            ?disabled=${props.checkpointLoadingKey === row.key}
-            @click=${() => props.onToggleCheckpointDetails(row.key)}
-          >
-            ${isExpanded ? "Hide checkpoints" : "Show checkpoints"}
-          </button>
         </div>
       </td>
       <td>
@@ -691,11 +697,9 @@ function renderRows(row: GatewaySessionRow, props: SessionsProps) {
     </tr>`,
     ...(isExpanded
       ? [
-          html`<tr>
-            <td colspan="11" style="padding: 0;">
-              <div
-                style="padding: 14px 16px; border-top: 1px solid var(--border); background: var(--surface-2, rgba(127, 127, 127, 0.05));"
-              >
+          html`<tr class="session-checkpoint-details-row">
+            <td colspan="13">
+              <div class="session-details-panel">
                 ${props.checkpointLoadingKey === row.key
                   ? html`<div class="muted">Loading checkpoints…</div>`
                   : checkpointError
@@ -705,29 +709,25 @@ function renderRows(row: GatewaySessionRow, props: SessionsProps) {
                           No compaction checkpoints recorded for this session.
                         </div>`
                       : html`
-                          <div style="display: grid; gap: 10px;">
+                          <div class="session-checkpoint-list">
                             ${checkpointItems.map(
                               (checkpoint) => html`
-                                <div
-                                  style="border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; display: grid; gap: 8px;"
-                                >
-                                  <div
-                                    style="display: flex; gap: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap;"
-                                  >
+                                <div class="session-checkpoint-card">
+                                  <div class="session-checkpoint-card__header">
                                     <strong>
                                       ${formatCheckpointReason(checkpoint.reason)} ·
                                       ${formatRelativeTimestamp(checkpoint.createdAt)}
                                     </strong>
-                                    <span class="muted" style="font-size: 12px;">
+                                    <span class="muted session-checkpoint-card__delta">
                                       ${formatCheckpointDelta(checkpoint)}
                                     </span>
                                   </div>
                                   ${checkpoint.summary
-                                    ? html`<div style="white-space: pre-wrap;">
+                                    ? html`<div class="session-checkpoint-card__summary">
                                         ${checkpoint.summary}
                                       </div>`
                                     : html`<div class="muted">No summary captured.</div>`}
-                                  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                  <div class="session-checkpoint-card__actions">
                                     <button
                                       class="btn btn--sm"
                                       ?disabled=${props.checkpointBusyKey ===

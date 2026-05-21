@@ -2360,8 +2360,10 @@
 
 .session-key-cell .session-link,
 .session-key-display-name {
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-key-display-name {
@@ -2431,7 +2433,11 @@
 }
 
 .sessions-table {
-  min-width: 1240px;
+  min-width: 1480px;
+}
+
+.sessions-table tbody tr.session-data-row > td {
+  white-space: nowrap;
 }
 
 .data-table th {

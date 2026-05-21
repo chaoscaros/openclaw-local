@@ -45,3 +45,16 @@ describe("field input styles", () => {
     expect(css).toContain("font-size: 16px;");
   });
 });
+
+describe("sessions table styles", () => {
+  it("preserves key-column spacing without wrapping rows", () => {
+    const css = readComponentsCss();
+
+    expect(css).toContain(
+      ".session-key-cell .session-link,\n.session-key-display-name {\n  min-width: 0;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;",
+    );
+    expect(css).toContain(".sessions-table {\n  min-width: 1480px;");
+    expect(css).toContain(".sessions-table tbody tr.session-data-row > td {");
+    expect(css).toContain("scrollbar-gutter: stable both-edges;");
+  });
+});
