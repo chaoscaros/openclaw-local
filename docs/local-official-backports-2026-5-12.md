@@ -175,6 +175,9 @@ should be split by risk area.
   - Control UI logs now use a viewport-responsive stream height with a minimum
     floor, so larger screens can show more lines without collapsing on short
     viewports.
+  - Touch-primary Control UI form/config/usage text inputs now stay at 16px to
+    avoid iOS focus zoom, while the chat composer keeps the text-scale input-size
+    variable.
   - Anthropic provider normalization now preserves native image input for
     current Claude rows when stale local catalog data marks them text-only.
   - `/models openai` provider headers now prefer the effective Codex OAuth

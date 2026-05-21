@@ -35,3 +35,13 @@ describe("logs styles", () => {
     expect(css).not.toContain("max-height: 500px;");
   });
 });
+
+describe("field input styles", () => {
+  it("keeps shared form controls at iOS-safe text size on touch-primary devices", () => {
+    const css = readComponentsCss();
+
+    expect(css).toContain("@media (hover: none) and (pointer: coarse)");
+    expect(css).toContain(".field input,\n  .field textarea,\n  .field select");
+    expect(css).toContain("font-size: 16px;");
+  });
+});

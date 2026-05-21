@@ -224,6 +224,16 @@
   padding: 6px 10px;
 }
 
+@media (hover: none) and (pointer: coarse) {
+  .usage-date-input,
+  .usage-select,
+  .usage-query-input,
+  .usage-filters-inline select,
+  .usage-filters-inline input[type="text"] {
+    font-size: 16px;
+  }
+}
+
 .usage-date-input:hover,
 .usage-select:hover {
   border-color: var(--border-strong);
