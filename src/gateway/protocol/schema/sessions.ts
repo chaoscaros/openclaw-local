@@ -35,6 +35,19 @@ export const SessionCompactionCheckpointSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const SessionOperationEventSchema = Type.Object(
+  {
+    operationId: NonEmptyString,
+    operation: Type.Literal("compact"),
+    phase: Type.Union([Type.Literal("start"), Type.Literal("end")]),
+    sessionKey: NonEmptyString,
+    ts: Type.Integer({ minimum: 0 }),
+    completed: Type.Optional(Type.Boolean()),
+    reason: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
 export const SessionsListParamsSchema = Type.Object(
   {
     limit: Type.Optional(Type.Integer({ minimum: 1 })),

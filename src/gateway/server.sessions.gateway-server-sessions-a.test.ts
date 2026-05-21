@@ -14,6 +14,7 @@ import {
   connectOk,
   embeddedRunMock,
   installGatewayTestHooks,
+  onceMessage,
   piSdkMock,
   rpcReq,
   startConnectedServerWithClient,
@@ -1515,6 +1516,23 @@ describe("gateway server sessions", () => {
     });
 
     const { ws } = await openClient();
+    await rpcReq(ws, "sessions.subscribe");
+    const startEventPromise = onceMessage(
+      ws,
+      (message) =>
+        message.type === "event" &&
+        message.event === "session.operation" &&
+        (message.payload as { operation?: unknown; phase?: unknown })?.operation === "compact" &&
+        (message.payload as { operation?: unknown; phase?: unknown })?.phase === "start",
+    );
+    const endEventPromise = onceMessage(
+      ws,
+      (message) =>
+        message.type === "event" &&
+        message.event === "session.operation" &&
+        (message.payload as { operation?: unknown; phase?: unknown })?.operation === "compact" &&
+        (message.payload as { operation?: unknown; phase?: unknown })?.phase === "end",
+    );
     const compacted = await rpcReq<{
       ok: true;
       key: string;
@@ -1527,6 +1545,38 @@ describe("gateway server sessions", () => {
     expect(compacted.ok).toBe(true);
     expect(compacted.payload?.key).toBe("agent:main:main");
     expect(compacted.payload?.compacted).toBe(true);
+    const startEvent = await startEventPromise;
+    const endEvent = await endEventPromise;
+    const startPayload = startEvent.payload as {
+      operation?: string;
+      phase?: string;
+      operationId?: string;
+      sessionKey?: string;
+      ts?: number;
+    };
+    const endPayload = endEvent.payload as {
+      operation?: string;
+      phase?: string;
+      operationId?: string;
+      sessionKey?: string;
+      completed?: boolean;
+      ts?: number;
+    };
+    expect(startPayload).toMatchObject({
+      operation: "compact",
+      phase: "start",
+      sessionKey: "agent:main:main",
+    });
+    expect(endPayload).toMatchObject({
+      operation: "compact",
+      phase: "end",
+      sessionKey: "agent:main:main",
+      completed: true,
+    });
+    expect(startPayload.operationId).toBeTruthy();
+    expect(endPayload.operationId).toBe(startPayload.operationId);
+    expect(typeof startPayload.ts).toBe("number");
+    expect(typeof endPayload.ts).toBe("number");
     expect(embeddedRunMock.compactEmbeddedPiSession).toHaveBeenCalledTimes(1);
     expect(embeddedRunMock.compactEmbeddedPiSession).toHaveBeenCalledWith(
       expect.objectContaining({

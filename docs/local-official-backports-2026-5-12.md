@@ -138,6 +138,13 @@ should be split by risk area.
     action so users do not lose the entry point.
   - Files: `ui/src/ui/app-render.ts`, `ui/src/ui/views/chat.ts`,
     `ui/src/ui/chat/run-controls.ts`.
+- Manual session compaction progress from `e71d10fd4d`
+  - Local impact: manual compaction now emits subscribed `session.operation`
+    start/end events, and the Control UI maps those events into the existing
+    compaction progress indicator with default-session alias matching preserved.
+  - Files: `src/gateway/protocol/schema/sessions.ts`,
+    `src/gateway/server-methods/sessions.ts`, `ui/src/ui/app-tool-stream.ts`,
+    `ui/src/ui/app-gateway.ts`.
 
 ## Post-5.12 Follow-Up Alignment
 

@@ -408,7 +408,8 @@ implemented in `src/gateway/server-methods/*.ts`.
 
 - `chat`: UI chat updates such as `chat.inject` and other transcript-only chat
   events.
-- `session.message` and `session.tool`: transcript/event-stream updates for a
+- `session.message`, `session.operation`, and `session.tool`:
+  transcript/event-stream or long-running session-operation updates for a
   subscribed session.
 - `sessions.changed`: session index or metadata changed.
 - `presence`: system presence snapshot updates.

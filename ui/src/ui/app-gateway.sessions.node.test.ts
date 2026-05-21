@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const loadSessionsMock = vi.fn();
 const loadChatHistoryMock = vi.fn();
+const handleSessionOperationEventMock = vi.fn();
 
 vi.mock("./app-chat.ts", () => ({
   CHAT_SESSIONS_ACTIVE_MINUTES: 10,
@@ -18,6 +19,7 @@ vi.mock("./app-settings.ts", () => ({
 }));
 vi.mock("./app-tool-stream.ts", () => ({
   handleAgentEvent: vi.fn(),
+  handleSessionOperationEvent: handleSessionOperationEventMock,
   resetToolStream: vi.fn(),
 }));
 vi.mock("./controllers/agents.ts", () => ({
@@ -184,6 +186,28 @@ describe("handleGatewayEvent session.message", () => {
     });
 
     expect(loadChatHistoryMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleGatewayEvent session.operation", () => {
+  it("routes session operation events to tool-stream state", () => {
+    handleSessionOperationEventMock.mockReset();
+    const host = createHost();
+    const payload = {
+      operationId: "operation-1",
+      operation: "compact",
+      phase: "start",
+      sessionKey: "agent:main:main",
+    };
+
+    handleGatewayEvent(host, {
+      type: "event",
+      event: "session.operation",
+      payload,
+      seq: 1,
+    });
+
+    expect(handleSessionOperationEventMock).toHaveBeenCalledWith(host, payload);
   });
 });
 

@@ -1,8 +1,22 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { handleAgentEvent, type FallbackStatus, type ToolStreamEntry } from "./app-tool-stream.ts";
+import {
+  handleAgentEvent,
+  handleSessionOperationEvent,
+  type FallbackStatus,
+  type ToolStreamEntry,
+} from "./app-tool-stream.ts";
 
 type ToolStreamHost = Parameters<typeof handleAgentEvent>[0];
 type MutableHost = ToolStreamHost & {
+  hello?: {
+    snapshot?: {
+      sessionDefaults?: {
+        defaultAgentId?: string;
+        mainKey?: string;
+        mainSessionKey?: string;
+      };
+    };
+  } | null;
   compactionStatus?: unknown;
   compactionClearTimer?: number | null;
   fallbackStatus?: FallbackStatus | null;
@@ -139,6 +153,115 @@ describe("app-tool-stream fallback lifecycle handling", () => {
 
     expect(host.fallbackStatus?.phase).toBe("cleared");
     expect(host.fallbackStatus?.previous).toBe("deepinfra/moonshotai/Kimi-K2.5");
+    vi.useRealTimers();
+  });
+
+  it("shows manual session operation compaction progress while idle", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(123_000);
+    const host = createHost({
+      sessionKey: "main",
+      hello: {
+        snapshot: {
+          sessionDefaults: {
+            defaultAgentId: "main",
+            mainKey: "main",
+            mainSessionKey: "agent:main:main",
+          },
+        },
+      },
+    });
+
+    handleSessionOperationEvent(host, {
+      operationId: "operation-1",
+      operation: "compact",
+      phase: "start",
+      sessionKey: "agent:main:main",
+      ts: 123_000,
+    });
+
+    expect(host.compactionStatus).toEqual({
+      phase: "active",
+      runId: "operation-1",
+      startedAt: 123_000,
+      completedAt: null,
+    });
+
+    handleSessionOperationEvent(host, {
+      operationId: "operation-1",
+      operation: "compact",
+      phase: "end",
+      sessionKey: "agent:main:main",
+      ts: 123_000,
+      completed: true,
+    });
+
+    expect(host.compactionStatus).toEqual({
+      phase: "complete",
+      runId: "operation-1",
+      startedAt: 123_000,
+      completedAt: 123_000,
+    });
+
+    vi.useRealTimers();
+  });
+
+  it("ignores manual session operation compaction for other sessions", () => {
+    vi.useFakeTimers();
+    const host = createHost({ sessionKey: "agent:main:main" });
+
+    handleSessionOperationEvent(host, {
+      operationId: "operation-1",
+      operation: "compact",
+      phase: "start",
+      sessionKey: "agent:other:main",
+      ts: Date.now(),
+    });
+
+    expect(host.compactionStatus).toBeNull();
+    expect(host.compactionClearTimer).toBeNull();
+
+    vi.useRealTimers();
+  });
+
+  it("ignores stale manual session operation completion after a newer start", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(123_000);
+    const host = createHost({ sessionKey: "agent:main:main" });
+
+    handleSessionOperationEvent(host, {
+      operationId: "operation-1",
+      operation: "compact",
+      phase: "start",
+      sessionKey: "agent:main:main",
+      ts: 123_000,
+    });
+    handleSessionOperationEvent(host, {
+      operationId: "operation-2",
+      operation: "compact",
+      phase: "start",
+      sessionKey: "agent:main:main",
+      ts: 123_000,
+    });
+    handleSessionOperationEvent(host, {
+      operationId: "operation-1",
+      operation: "compact",
+      phase: "end",
+      sessionKey: "agent:main:main",
+      ts: 123_000,
+      completed: true,
+    });
+
+    expect(host.compactionStatus).toEqual({
+      phase: "active",
+      runId: "operation-2",
+      startedAt: 123_000,
+      completedAt: null,
+    });
+    vi.advanceTimersByTime(5 * 60_000);
+    expect(host.compactionStatus).toBeNull();
+    expect(host.compactionClearTimer).toBeNull();
+
     vi.useRealTimers();
   });
 

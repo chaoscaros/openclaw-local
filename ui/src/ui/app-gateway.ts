@@ -16,7 +16,13 @@ import {
   setLastActiveSessionKey,
   syncUrlWithSessionKey,
 } from "./app-settings.ts";
-import { handleAgentEvent, resetToolStream, type AgentEventPayload } from "./app-tool-stream.ts";
+import {
+  handleAgentEvent,
+  handleSessionOperationEvent,
+  resetToolStream,
+  type AgentEventPayload,
+  type SessionOperationEventPayload,
+} from "./app-tool-stream.ts";
 import { shouldReloadHistoryForFinalEvent } from "./chat-event-reload.ts";
 import { parseChatSideResult, type ChatSideResult } from "./chat/side-result.ts";
 import { formatConnectError } from "./connect-error.ts";
@@ -750,6 +756,14 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
 
   if (evt.event === "session.message") {
     handleSessionMessageGatewayEvent(host, evt.payload as { sessionKey?: string } | undefined);
+    return;
+  }
+
+  if (evt.event === "session.operation") {
+    handleSessionOperationEvent(
+      host as unknown as Parameters<typeof handleSessionOperationEvent>[0],
+      evt.payload as SessionOperationEventPayload | undefined,
+    );
     return;
   }
 
