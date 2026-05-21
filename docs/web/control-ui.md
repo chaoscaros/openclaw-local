@@ -98,6 +98,7 @@ locale picker lives in the Gateway Access card, not under Appearance.
 - Config: apply + restart with validation (`config.apply`) and wake the last active session
 - Config writes include a base-hash guard to prevent clobbering concurrent edits
 - Config writes (`config.set`/`config.apply`/`config.patch`) also preflight active SecretRef resolution for refs in the submitted config payload; unresolved active submitted refs are rejected before write
+- Form saves discard stale redacted placeholders that cannot be restored from the saved config while preserving redacted values that still map to saved secrets
 - Config schema + form rendering (`config.schema` / `config.schema.lookup`,
   including field `title` / `description`, matched UI hints, immediate child
   summaries, docs metadata on nested object/wildcard/array/composition nodes,
