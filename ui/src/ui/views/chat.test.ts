@@ -2982,6 +2982,24 @@ describe("chat view", () => {
     expect(container.querySelector(".chat-reading-indicator")).toBeNull();
   });
 
+  it("hides the pending assistant bubble when a task is bound before session mode syncs", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          sessionMode: "normal",
+          currentTaskTitle: "Mobile sorting",
+          stream: "",
+          streamStartedAt: Date.now(),
+        }),
+      ),
+      container,
+    );
+
+    expect(container.textContent).toContain("Task in progress");
+    expect(container.querySelector(".chat-reading-indicator")).toBeNull();
+  });
+
   it("revalidates cached unavailable local assistant attachments after retry window", async () => {
     resetAssistantAttachmentAvailabilityCacheForTest();
     vi.useFakeTimers();

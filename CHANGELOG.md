@@ -81,7 +81,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/chat: avoid showing duplicate new-session actions when the sidebar already provides the primary create-session button.
 - Control UI/sessions: broadcast manual compaction start/end events and render them through the existing chat compaction progress indicator.
 - Control UI/gateway: show the Control UI and Gateway protocol versions in protocol-mismatch connection errors so stale builds are easier to diagnose.
-- Control UI/chat: hide the duplicate pending assistant bubble in task mode while keeping the bottom running status bar visible.
+- Control UI/chat: hide the duplicate pending assistant bubble whenever a task is bound, even before session mode fields finish syncing, while keeping the bottom running status bar visible.
 - Control UI/chat: keep the running status visible immediately after sending when a stale history refresh arrives before run lifecycle events.
 
 ## 2026.4.15

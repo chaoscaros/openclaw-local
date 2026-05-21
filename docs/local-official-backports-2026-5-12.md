@@ -154,7 +154,9 @@ should be split by risk area.
     `ui/src/ui/gateway.ts`.
 - Local task-mode pending UI polish
   - Local impact: task-mode chats now rely on the bottom running status bar
-    instead of also showing an assistant "Thinking" placeholder bubble.
+    instead of also showing an assistant "Thinking" placeholder bubble. The UI
+    suppresses the duplicate bubble whenever a task is bound, even if the
+    session mode row is still catching up.
     Active-run history refreshes also keep the pending stream state so the
     status bar appears immediately after send and does not flicker idle before
     lifecycle events arrive.

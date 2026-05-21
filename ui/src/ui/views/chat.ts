@@ -3209,7 +3209,9 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
   // This ensures correct visual ordering: text → tool → text → tool → ...
   const segments = props.streamSegments ?? [];
   const maxLen = Math.max(segments.length, tools.length);
-  const hidePendingBubbleInTaskMode = (props.sessionMode ?? "normal") === "task";
+  const hidePendingBubbleInTaskMode =
+    (props.sessionMode ?? "normal") === "task" ||
+    Boolean(props.currentTaskTitle?.trim() || props.currentTask);
   for (let i = 0; i < maxLen; i++) {
     if (i < segments.length && segments[i].text.trim().length > 0) {
       items.push({
