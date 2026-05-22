@@ -89,6 +89,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/chat: preserve freshly staged local runs through stale session refreshes so the running status appears immediately after sending, including right after switching tasks.
 - Control UI/chat: collapse task-mode header actions into a compact task context popover so the active task controls no longer dominate the chat toolbar.
 - Control UI/chat: reserve bubble space for assistant copy/open actions so short replies no longer overlap their action buttons.
+- Control UI/gateway: stop retrying stale auth-token mismatch connections unless a bounded device-token retry is actually available.
 
 ## 2026.4.15
 

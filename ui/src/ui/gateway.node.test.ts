@@ -366,13 +366,15 @@ describe("GatewayBrowserClient", () => {
     expect(error.message).toBe("protocol mismatch: Control UI v3");
   });
 
-  it("continues reconnecting on first token mismatch when no retry was attempted", async () => {
+  it("stops reconnecting on token mismatch when no device-token retry is available", async () => {
     vi.useFakeTimers();
     localStorage.clear();
+    const onClose = vi.fn();
 
     const client = new GatewayBrowserClient({
       url: "ws://127.0.0.1:18789",
       token: "shared-auth-token",
+      onClose,
     });
 
     const { ws: ws1, connectFrame: firstConnect } = await startConnect(client);
@@ -390,8 +392,19 @@ describe("GatewayBrowserClient", () => {
     await vi.waitFor(() => expect(ws1.readyState).toBe(3));
     ws1.emitClose(4008, "connect failed");
 
-    await vi.advanceTimersByTimeAsync(800);
-    expect(wsInstances).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(wsInstances).toHaveLength(1);
+    expect(onClose).toHaveBeenCalledWith({
+      code: 4008,
+      reason: "connect failed",
+      error: {
+        code: "INVALID_REQUEST",
+        message: "unauthorized",
+        details: { code: "AUTH_TOKEN_MISMATCH" },
+        retryable: false,
+        retryAfterMs: undefined,
+      },
+    });
 
     client.stop();
     vi.useRealTimers();

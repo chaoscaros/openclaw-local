@@ -242,6 +242,8 @@ should be split by risk area.
   - Session refresh reconciliation now clears stale local chat run state when the
     current session row has reached a terminal status, so busy controls do not
     linger after the backend finishes.
+  - Control UI and gateway clients now stop stale token-mismatch reconnect loops
+    unless a bounded device-token retry has actually been prepared.
   - Anthropic provider normalization now preserves native image input for
     current Claude rows when stale local catalog data marks them text-only.
   - `/models openai` provider headers now prefer the effective Codex OAuth
