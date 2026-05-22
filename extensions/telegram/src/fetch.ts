@@ -430,6 +430,11 @@ export type TelegramTransport = {
   sourceFetch: typeof fetch;
   dispatcherAttempts?: TelegramDispatcherAttempt[];
   /**
+   * Promote this transport to its next fallback dispatcher before the next
+   * request. Returns false when no fallback path exists.
+   */
+  forceFallback?: (reason: string) => boolean;
+  /**
    * Release dispatchers owned by this transport. Caller-provided proxy fetches
    * own their own lifecycle, so those transports return a no-op close.
    */
@@ -574,6 +579,19 @@ export function resolveTelegramTransport(
   });
 
   let stickyAttemptIndex = 0;
+  const forceFallback = (reason: string): boolean => {
+    const nextIndex = stickyAttemptIndex + 1;
+    if (nextIndex >= transportAttempts.length) {
+      return false;
+    }
+    const nextAttempt = transportAttempts[nextIndex];
+    const suffix = reason ? ` (${reason})` : "";
+    if (nextAttempt.logMessage) {
+      log.warn(`${nextAttempt.logMessage}${suffix}`);
+    }
+    stickyAttemptIndex = nextIndex;
+    return true;
+  };
   const resolvedFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const callerProvidedDispatcher = Boolean(
       (init as RequestInitWithDispatcher | undefined)?.dispatcher,
@@ -654,6 +672,7 @@ export function resolveTelegramTransport(
     fetch: resolvedFetch,
     sourceFetch,
     dispatcherAttempts: transportAttempts.map((attempt) => attempt.exportAttempt),
+    forceFallback,
     close,
   };
 }

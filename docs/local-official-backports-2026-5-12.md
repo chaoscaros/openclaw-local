@@ -93,6 +93,15 @@ should be split by risk area.
     sends no longer strip HTML formatting before delivery.
   - Files: `extensions/telegram/src/format.ts`,
     `extensions/telegram/src/outbound-adapter.ts`.
+- Telegram shared API timeout wrapper from `42f6d90917`
+  - Local impact: polling/startup Bot API requests and direct outbound send
+    clients now share the same timeout, abort, network-error tagging, and
+    fallback-dispatcher promotion path, so direct `deleteMessage` and related
+    control-plane sends cannot hang indefinitely on wedged Telegram network
+    paths.
+  - Files: `extensions/telegram/src/client-fetch.ts`,
+    `extensions/telegram/src/bot.ts`, `extensions/telegram/src/send.ts`,
+    `extensions/telegram/src/fetch.ts`.
 - WebChat chunk override and outbound channel registry fallback from
   `424c6d0a5f` / `b2c5ba6d4c`
   - Local impact: WebChat outbound replies now honor configured
