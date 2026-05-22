@@ -2246,6 +2246,40 @@ describe("chat view", () => {
     expect(container.textContent).toContain("Tic-Tac-Toe");
   });
 
+  it("reserves assistant bubble space when chat actions render", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          messages: [
+            {
+              id: "assistant-short-actions",
+              role: "assistant",
+              content: "Short reply",
+              timestamp: 1_000,
+            },
+            {
+              id: "user-short-no-actions",
+              role: "user",
+              content: "Short reply",
+              timestamp: 1_001,
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+
+    const assistantBubble = container.querySelector<HTMLElement>(
+      ".chat-group.assistant .chat-bubble",
+    );
+    const userBubble = container.querySelector<HTMLElement>(".chat-group.user .chat-bubble");
+    expect(assistantBubble?.classList.contains("has-copy")).toBe(true);
+    expect(assistantBubble?.querySelector(".chat-bubble-actions")).toBeInstanceOf(HTMLElement);
+    expect(userBubble?.classList.contains("has-copy")).toBe(false);
+    expect(userBubble?.querySelector(".chat-bubble-actions")).toBeNull();
+  });
+
   it("renders assistant_message canvas results inside the assistant bubble when tool rows are hidden", () => {
     const container = document.createElement("div");
     render(

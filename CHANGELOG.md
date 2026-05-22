@@ -88,6 +88,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/chat: preserve local terminal run overrides across stale `sessions.list` refreshes so a completed visible reply cannot be put back into the running state by delayed session metadata.
 - Control UI/chat: preserve freshly staged local runs through stale session refreshes so the running status appears immediately after sending, including right after switching tasks.
 - Control UI/chat: collapse task-mode header actions into a compact task context popover so the active task controls no longer dominate the chat toolbar.
+- Control UI/chat: reserve bubble space for assistant copy/open actions so short replies no longer overlap their action buttons.
 
 ## 2026.4.15
 

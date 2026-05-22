@@ -233,6 +233,9 @@ should be split by risk area.
     variable.
   - Desktop chat header dropdowns now size to the selected option text while the
     local task context bar keeps the remaining flexible space.
+  - Assistant chat bubbles now apply the existing copy/open-action spacing class
+    whenever those action buttons render, preventing short replies from
+    overlapping hover controls.
   - Sessions table styling now preserves key-column spacing, reuses the shared
     checkpoint detail classes, and keeps local task/mode columns accounted for
     in expanded rows.
