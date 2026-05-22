@@ -115,6 +115,13 @@ should be split by risk area.
     stringify Telegram forum topic thread ids before calling the agent gateway,
     keeping message-tool-only delivery aligned with route metadata expectations.
   - Files: `src/agents/subagent-announce-delivery.ts`.
+- Telegram missing topic thread fail-closed behavior from `69cea57f69`
+  - Local impact: text, media, sticker, poll, and draft materialization sends no
+    longer strip `message_thread_id` after Telegram reports `message thread not
+found`, preventing topic-targeted replies from being silently delivered to
+    the base chat.
+  - Files: `extensions/telegram/src/send.ts`,
+    `extensions/telegram/src/draft-stream.ts`.
 - WebChat chunk override and outbound channel registry fallback from
   `424c6d0a5f` / `b2c5ba6d4c`
   - Local impact: WebChat outbound replies now honor configured

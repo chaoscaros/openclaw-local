@@ -8,7 +8,6 @@ import { normalizeTelegramReplyToMessageId } from "./outbound-params.js";
 const TELEGRAM_STREAM_MAX_CHARS = 4096;
 const DEFAULT_THROTTLE_MS = 1000;
 const TELEGRAM_DRAFT_ID_MAX = 2_147_483_647;
-const THREAD_NOT_FOUND_RE = /400:\s*Bad Request:\s*message thread not found/i;
 const DRAFT_METHOD_UNAVAILABLE_RE =
   /(unknown method|method .*not (found|available|supported)|unsupported)/i;
 const DRAFT_CHAT_UNSUPPORTED_RE = /(can't be used|can be used only)/i;
@@ -22,18 +21,6 @@ type TelegramSendMessageDraft = (
     parse_mode?: "HTML";
   },
 ) => Promise<unknown>;
-
-type TelegramSendMessageParams = Parameters<Bot["api"]["sendMessage"]>[2];
-
-function hasNumericMessageThreadId(
-  params: TelegramSendMessageParams | undefined,
-): params is TelegramSendMessageParams & { message_thread_id: number } {
-  return (
-    typeof params === "object" &&
-    params !== null &&
-    typeof (params as { message_thread_id?: unknown }).message_thread_id === "number"
-  );
-}
 
 /**
  * Keep draft-id allocation shared across bundled chunks so concurrent preview
@@ -181,10 +168,9 @@ export function createTelegramDraftStream(params: {
     renderedParseMode: "HTML" | undefined;
     sendGeneration: number;
   };
-  const sendRenderedMessageWithThreadFallback = async (sendArgs: {
+  const sendRenderedMessage = async (sendArgs: {
     renderedText: string;
     renderedParseMode: "HTML" | undefined;
-    fallbackWarnMessage: string;
   }) => {
     const sendParams = sendArgs.renderedParseMode
       ? {
@@ -192,28 +178,7 @@ export function createTelegramDraftStream(params: {
           parse_mode: sendArgs.renderedParseMode,
         }
       : replyParams;
-    const usedThreadParams = hasNumericMessageThreadId(sendParams);
-    try {
-      return {
-        sent: await params.api.sendMessage(chatId, sendArgs.renderedText, sendParams),
-        usedThreadParams,
-      };
-    } catch (err) {
-      if (!usedThreadParams || !THREAD_NOT_FOUND_RE.test(String(err))) {
-        throw err;
-      }
-      const threadlessParams: TelegramSendMessageParams = { ...sendParams };
-      delete threadlessParams.message_thread_id;
-      params.warn?.(sendArgs.fallbackWarnMessage);
-      return {
-        sent: await params.api.sendMessage(
-          chatId,
-          sendArgs.renderedText,
-          Object.keys(threadlessParams).length > 0 ? threadlessParams : undefined,
-        ),
-        usedThreadParams: false,
-      };
-    }
+    return await params.api.sendMessage(chatId, sendArgs.renderedText, sendParams);
   };
   const sendMessageTransportPreview = async ({
     renderedText,
@@ -231,14 +196,12 @@ export function createTelegramDraftStream(params: {
       return true;
     }
     messageSendAttempted = true;
-    let sent: Awaited<ReturnType<typeof sendRenderedMessageWithThreadFallback>>["sent"];
+    let sent: Awaited<ReturnType<typeof sendRenderedMessage>>;
     try {
-      ({ sent } = await sendRenderedMessageWithThreadFallback({
+      sent = await sendRenderedMessage({
         renderedText,
         renderedParseMode,
-        fallbackWarnMessage:
-          "telegram stream preview send failed with message_thread_id, retrying without thread",
-      }));
+      });
     } catch (err) {
       // Pre-connect failures (DNS, refused) and explicit Telegram rejections (4xx)
       // guarantee the message was never delivered — clear the flag so
@@ -424,11 +387,9 @@ export function createTelegramDraftStream(params: {
     }
     const renderedParseMode = lastSentText ? lastSentParseMode : undefined;
     try {
-      const { sent, usedThreadParams } = await sendRenderedMessageWithThreadFallback({
+      const sent = await sendRenderedMessage({
         renderedText,
         renderedParseMode,
-        fallbackWarnMessage:
-          "telegram stream preview materialize send failed with message_thread_id, retrying without thread",
       });
       const sentId = sent?.message_id;
       if (typeof sentId === "number" && Number.isFinite(sentId)) {
@@ -438,7 +399,7 @@ export function createTelegramDraftStream(params: {
         if (resolvedDraftApi != null && streamDraftId != null) {
           const clearDraftId = streamDraftId;
           const clearThreadParams =
-            usedThreadParams && threadParams?.message_thread_id != null
+            threadParams?.message_thread_id != null
               ? { message_thread_id: threadParams.message_thread_id }
               : undefined;
           try {

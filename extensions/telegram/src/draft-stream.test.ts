@@ -196,11 +196,9 @@ describe("createTelegramDraftStream", () => {
     expect(api.editMessageText).toHaveBeenCalledWith(123, 17, "Hello again");
   });
 
-  it("retries DM message preview send without thread when thread is not found", async () => {
+  it("fails DM message preview send instead of retrying without thread", async () => {
     const api = createMockDraftApi();
-    api.sendMessage
-      .mockRejectedValueOnce(new Error("400: Bad Request: message thread not found"))
-      .mockResolvedValueOnce({ message_id: 17 });
+    api.sendMessage.mockRejectedValueOnce(new Error("400: Bad Request: message thread not found"));
     const warn = vi.fn();
     const stream = createDraftStream(api, {
       thread: { id: 42, scope: "dm" },
@@ -211,11 +209,12 @@ describe("createTelegramDraftStream", () => {
     stream.update("Hello");
     await stream.flush();
 
-    expect(api.sendMessage).toHaveBeenNthCalledWith(1, 123, "Hello", { message_thread_id: 42 });
-    expect(api.sendMessage).toHaveBeenNthCalledWith(2, 123, "Hello", undefined);
+    expect(api.sendMessage).toHaveBeenCalledTimes(1);
+    expect(api.sendMessage).toHaveBeenCalledWith(123, "Hello", { message_thread_id: 42 });
     expect(warn).toHaveBeenCalledWith(
-      "telegram stream preview send failed with message_thread_id, retrying without thread",
+      "telegram stream preview failed: 400: Bad Request: message thread not found",
     );
+    expect(warn.mock.calls.some(([message]) => String(message).includes("retrying"))).toBe(false);
   });
 
   it("keeps allow_sending_without_reply on message previews that target a reply", async () => {
@@ -278,11 +277,9 @@ describe("createTelegramDraftStream", () => {
     expect(clearCall?.[3]).toEqual({ message_thread_id: 42 });
   });
 
-  it("retries materialize send without thread when dm thread lookup fails", async () => {
+  it("fails materialize send instead of retrying without thread", async () => {
     const api = createMockDraftApi();
-    api.sendMessage
-      .mockRejectedValueOnce(new Error("400: Bad Request: message thread not found"))
-      .mockResolvedValueOnce({ message_id: 55 });
+    api.sendMessage.mockRejectedValueOnce(new Error("400: Bad Request: message thread not found"));
     const warn = vi.fn();
     const stream = createDraftStream(api, {
       thread: { id: 42, scope: "dm" },
@@ -294,16 +291,16 @@ describe("createTelegramDraftStream", () => {
     await stream.flush();
     const materializedId = await stream.materialize?.();
 
-    expect(materializedId).toBe(55);
-    expect(api.sendMessage).toHaveBeenNthCalledWith(1, 123, "Hello", { message_thread_id: 42 });
-    expect(api.sendMessage).toHaveBeenNthCalledWith(2, 123, "Hello", undefined);
+    expect(materializedId).toBeUndefined();
+    expect(api.sendMessage).toHaveBeenCalledTimes(1);
+    expect(api.sendMessage).toHaveBeenCalledWith(123, "Hello", { message_thread_id: 42 });
     const draftCalls = api.sendMessageDraft.mock.calls;
     const clearCall = draftCalls.find((call) => call[2] === "");
-    expect(clearCall).toBeDefined();
-    expect(clearCall?.[3]).toBeUndefined();
+    expect(clearCall).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(
-      "telegram stream preview materialize send failed with message_thread_id, retrying without thread",
+      "telegram stream preview materialize failed: 400: Bad Request: message thread not found",
     );
+    expect(warn.mock.calls.some(([message]) => String(message).includes("retrying"))).toBe(false);
   });
 
   it("returns existing preview id when materializing message transport", async () => {

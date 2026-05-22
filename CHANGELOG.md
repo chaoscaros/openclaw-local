@@ -99,6 +99,7 @@ Docs: https://docs.openclaw.ai
 - Auto-reply/CLI: bridge Claude CLI assistant text stream events into the reasoning preview lane while keeping Codex CLI and silent runs out of reasoning previews.
 - Channels/config: treat explicit `enabled: true` channel sections as configured while keeping `enabled: false` ignored.
 - CLI/channels: prefer running Gateway channel-account status in `openclaw channels list` text output while keeping JSON output config-only and falling back cleanly when Gateway is unavailable.
+- Telegram: fail closed when topic-thread sends return `message thread not found` instead of silently retrying at the base chat.
 
 ## 2026.4.15
 
