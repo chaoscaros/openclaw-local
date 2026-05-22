@@ -34,7 +34,7 @@ import {
   updateSessionStore,
 } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
-import { emitAgentEvent, registerAgentRunContext } from "../../infra/agent-events.js";
+import { emitAgentEvent, onAgentEvent, registerAgentRunContext } from "../../infra/agent-events.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { CommandLaneClearedError, GatewayDrainingError } from "../../process/command-queue.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -84,6 +84,10 @@ const GPT_CHAT_BREVITY_ACK_MAX_CHARS = 420;
 const GPT_CHAT_BREVITY_ACK_MAX_SENTENCES = 3;
 const GPT_CHAT_BREVITY_SOFT_MAX_CHARS = 900;
 const GPT_CHAT_BREVITY_SOFT_MAX_SENTENCES = 6;
+
+function shouldBridgeCliAssistantTextToReasoning(provider: string): boolean {
+  return normalizeLowercaseStringOrEmpty(provider) === "claude-cli";
+}
 
 export type RuntimeFallbackAttempt = {
   provider: string;
@@ -854,6 +858,53 @@ export async function runAgentTurnWithFallback(params: {
                 : undefined;
             return (async () => {
               let lifecycleTerminalEmitted = false;
+              const createAssistantTextBridge = (deliver: (text: string) => Promise<void>) => {
+                let lastText: string | undefined;
+                let unsubscribed = false;
+                let delivery = Promise.resolve();
+                const rawUnsubscribe = onAgentEvent((evt) => {
+                  if (evt.runId !== runId || evt.stream !== "assistant") {
+                    return;
+                  }
+                  if (params.followupRun.run.silentExpected) {
+                    return;
+                  }
+                  const text = typeof evt.data.text === "string" ? evt.data.text : undefined;
+                  if (text === undefined || text === lastText) {
+                    return;
+                  }
+                  lastText = text;
+                  delivery = delivery.then(() => deliver(text)).catch(() => undefined);
+                });
+                return {
+                  unsubscribe() {
+                    if (unsubscribed) {
+                      return;
+                    }
+                    unsubscribed = true;
+                    rawUnsubscribe();
+                  },
+                  async drain() {
+                    await delivery;
+                  },
+                };
+              };
+              const noopBridge = {
+                unsubscribe: () => undefined,
+                drain: async () => undefined,
+              };
+              const assistantBridge = createAssistantTextBridge(async (text) => {
+                const textForTyping = await handlePartialForTyping({ text } as ReplyPayload);
+                if (textForTyping === undefined || !params.opts?.onPartialReply) {
+                  return;
+                }
+                await params.opts.onPartialReply({ text: textForTyping });
+              });
+              const reasoningBridge = shouldBridgeCliAssistantTextToReasoning(provider)
+                ? createAssistantTextBridge(async (text) => {
+                    await params.opts?.onReasoningStream?.({ text });
+                  })
+                : noopBridge;
               try {
                 const result = await runCliAgent({
                   sessionId: params.followupRun.run.sessionId,
@@ -891,6 +942,11 @@ export async function runAgentTurnWithFallback(params: {
                   result.meta?.systemPromptReport,
                 );
 
+                assistantBridge.unsubscribe();
+                reasoningBridge.unsubscribe();
+                await assistantBridge.drain();
+                await reasoningBridge.drain();
+
                 // CLI backends don't emit streaming assistant events, so we need to
                 // emit one with the final text so server-chat can populate its buffer
                 // and send the response to TUI/WebSocket clients.
@@ -916,6 +972,10 @@ export async function runAgentTurnWithFallback(params: {
 
                 return result;
               } catch (err) {
+                assistantBridge.unsubscribe();
+                reasoningBridge.unsubscribe();
+                await assistantBridge.drain();
+                await reasoningBridge.drain();
                 if (rollbackFallbackCandidateSelection) {
                   try {
                     await rollbackFallbackCandidateSelection();
@@ -938,6 +998,8 @@ export async function runAgentTurnWithFallback(params: {
                 lifecycleTerminalEmitted = true;
                 throw err;
               } finally {
+                assistantBridge.unsubscribe();
+                reasoningBridge.unsubscribe();
                 // Defensive backstop: never let a CLI run complete without a terminal
                 // lifecycle event, otherwise downstream consumers can hang.
                 if (!lifecycleTerminalEmitted) {

@@ -246,6 +246,9 @@ should be split by risk area.
     unless a bounded device-token retry has actually been prepared.
   - Control UI loopback retry checks now validate `127.x.y.z` as numeric IPv4
     addresses instead of trusting arbitrary DNS names that begin with `127.`.
+  - CLI auto-reply runs now bridge Claude CLI assistant text stream events into
+    the reasoning preview lane, while keeping Codex CLI and silent runs out of
+    reasoning previews.
   - Anthropic provider normalization now preserves native image input for
     current Claude rows when stale local catalog data marks them text-only.
   - `/models openai` provider headers now prefer the effective Codex OAuth
