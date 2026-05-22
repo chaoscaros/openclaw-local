@@ -130,6 +130,12 @@ found`, preventing topic-targeted replies from being silently delivered to
     `extensions/telegram/src/telegram-ingress-worker.runtime.ts`,
     `src/gateway/server-channels.ts`,
     `src/gateway/server-reload-handlers.ts`.
+- Telegram raw update log redaction from `74949eda2f`
+  - Local impact: verbose raw update logging keeps diagnostic shape while
+    redacting user/chat identifiers, names, text, callbacks, links, file ids,
+    location fields, and uncommon Telegram update identifiers.
+  - Files: `extensions/telegram/src/bot.ts`,
+    `extensions/telegram/src/raw-update-log.ts`.
 - WebChat chunk override and outbound channel registry fallback from
   `424c6d0a5f` / `b2c5ba6d4c`
   - Local impact: WebChat outbound replies now honor configured
