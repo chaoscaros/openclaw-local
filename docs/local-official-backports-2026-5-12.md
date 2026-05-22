@@ -252,6 +252,10 @@ should be split by risk area.
   - Channel configuration detection now treats explicit `enabled: true` channel
     sections as configured across both the generic config check and the local
     potential-channel presence scanner, while keeping `enabled: false` ignored.
+  - `openclaw channels list` text output now prefers live Gateway
+    `channels.status` account snapshots when available, including runtime-only
+    account names and unavailable credential-source markers, while JSON output
+    stays config-derived and offline text output falls back to local snapshots.
   - Anthropic provider normalization now preserves native image input for
     current Claude rows when stale local catalog data marks them text-only.
   - `/models openai` provider headers now prefer the effective Codex OAuth

@@ -5,6 +5,7 @@ import { buildChannelAccountSnapshot } from "../../channels/plugins/status.js";
 import type { ChannelPlugin } from "../../channels/plugins/types.plugin.js";
 import type { ChannelAccountSnapshot } from "../../channels/plugins/types.public.js";
 import { withProgress } from "../../cli/progress.js";
+import { callGateway } from "../../gateway/call.js";
 import { formatUsageReportLines, loadProviderUsageSummary } from "../../infra/provider-usage.js";
 import { defaultRuntime, type RuntimeEnv, writeRuntimeJson } from "../../runtime.js";
 import { formatDocsLink } from "../../terminal/links.js";
@@ -15,6 +16,49 @@ export type ChannelsListOptions = {
   json?: boolean;
   usage?: boolean;
 };
+
+type RuntimeChannelStatus = {
+  channelAccounts?: Record<string, unknown>;
+};
+
+function normalizeRuntimeAccounts(
+  payload: RuntimeChannelStatus | null,
+): Map<string, ChannelAccountSnapshot[]> {
+  const out = new Map<string, ChannelAccountSnapshot[]>();
+  const rawAccounts = payload?.channelAccounts;
+  if (!rawAccounts || typeof rawAccounts !== "object") {
+    return out;
+  }
+
+  for (const [channelId, accounts] of Object.entries(rawAccounts)) {
+    if (!Array.isArray(accounts)) {
+      continue;
+    }
+    const normalized = accounts.filter(
+      (account): account is ChannelAccountSnapshot =>
+        Boolean(account) &&
+        typeof account === "object" &&
+        typeof (account as { accountId?: unknown }).accountId === "string",
+    );
+    if (normalized.length > 0) {
+      out.set(channelId, normalized);
+    }
+  }
+
+  return out;
+}
+
+async function readGatewayChannelStatus(): Promise<RuntimeChannelStatus | null> {
+  try {
+    return await callGateway({
+      method: "channels.status",
+      params: { probe: false, timeoutMs: 5_000 },
+      timeoutMs: 5_000,
+    });
+  } catch {
+    return null;
+  }
+}
 
 const colorValue = (value: string) => {
   if (value === "none") {
@@ -34,14 +78,20 @@ function formatConfigured(value: boolean): string {
   return value ? theme.success("configured") : theme.warn("not configured");
 }
 
-function formatTokenSource(source?: string): string {
+function formatCredentialSource(source?: string, status?: string): string {
   const value = source || "none";
-  return `token=${colorValue(value)}`;
+  if (status === "configured_unavailable" && value !== "none") {
+    return theme.warn(`${value}-unavailable`);
+  }
+  return colorValue(value);
 }
 
-function formatSource(label: string, source?: string): string {
-  const value = source || "none";
-  return `${label}=${colorValue(value)}`;
+function formatTokenSource(source?: string, status?: string): string {
+  return `token=${formatCredentialSource(source, status)}`;
+}
+
+function formatSource(label: string, source?: string, status?: string): string {
+  return `${label}=${formatCredentialSource(source, status)}`;
 }
 
 function formatLinked(value: boolean): string {
@@ -72,13 +122,13 @@ function formatAccountLine(params: {
     bits.push(formatConfigured(snapshot.configured));
   }
   if (snapshot.tokenSource) {
-    bits.push(formatTokenSource(snapshot.tokenSource));
+    bits.push(formatTokenSource(snapshot.tokenSource, snapshot.tokenStatus));
   }
   if (snapshot.botTokenSource) {
-    bits.push(formatSource("bot", snapshot.botTokenSource));
+    bits.push(formatSource("bot", snapshot.botTokenSource, snapshot.botTokenStatus));
   }
   if (snapshot.appTokenSource) {
-    bits.push(formatSource("app", snapshot.appTokenSource));
+    bits.push(formatSource("app", snapshot.appTokenSource, snapshot.appTokenStatus));
   }
   if (snapshot.baseUrl) {
     bits.push(`base=${theme.muted(snapshot.baseUrl)}`);
@@ -135,17 +185,28 @@ export async function channelsListCommand(
   const lines: string[] = [];
   lines.push(theme.heading("Chat channels:"));
 
+  const runtimeAccountsByChannel = normalizeRuntimeAccounts(await readGatewayChannelStatus());
   for (const plugin of plugins) {
-    const accounts = plugin.config.listAccountIds(cfg);
-    if (!accounts || accounts.length === 0) {
+    const configuredAccounts = plugin.config.listAccountIds(cfg);
+    const runtimeAccounts = runtimeAccountsByChannel.get(plugin.id) ?? [];
+    const accounts = [
+      ...new Set([
+        ...(configuredAccounts ?? []),
+        ...runtimeAccounts.map((account) => account.accountId),
+      ]),
+    ];
+    if (accounts.length === 0) {
       continue;
     }
     for (const accountId of accounts) {
-      const snapshot = await buildChannelAccountSnapshot({
-        plugin,
-        cfg,
-        accountId,
-      });
+      const runtimeSnapshot = runtimeAccounts.find((account) => account.accountId === accountId);
+      const snapshot =
+        runtimeSnapshot ??
+        (await buildChannelAccountSnapshot({
+          plugin,
+          cfg,
+          accountId,
+        }));
       lines.push(
         formatAccountLine({
           channel: plugin,

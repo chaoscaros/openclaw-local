@@ -5,12 +5,17 @@ import type { ChannelPlugin } from "../channels/plugins/types.js";
 import { createScopedChannelConfigAdapter } from "../plugin-sdk/channel-config-helpers.js";
 import { setActivePluginRegistry } from "../plugins/runtime.js";
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../routing/session-key.js";
+import { stripAnsi } from "../terminal/ansi.js";
 import { createChannelTestPluginBase, createTestRegistry } from "../test-utils/channel-plugins.js";
 import { configMocks, offsetMocks } from "./channels.mock-harness.js";
 import { baseConfigSnapshot, createTestRuntime } from "./test-runtime-config-helpers.js";
 
 const authMocks = vi.hoisted(() => ({
   loadAuthProfileStore: vi.fn(),
+}));
+
+const gatewayMocks = vi.hoisted(() => ({
+  callGateway: vi.fn(),
 }));
 
 vi.mock("../agents/auth-profiles.js", async () => {
@@ -22,6 +27,10 @@ vi.mock("../agents/auth-profiles.js", async () => {
     loadAuthProfileStore: authMocks.loadAuthProfileStore,
   };
 });
+
+vi.mock("../gateway/call.js", () => ({
+  callGateway: gatewayMocks.callGateway,
+}));
 
 import {
   channelsAddCommand,
@@ -39,12 +48,22 @@ type ChannelSectionConfig = {
   token?: string;
   botToken?: string;
   appToken?: string;
+  tokenSource?: string;
+  tokenStatus?: string;
+  botTokenSource?: string;
+  botTokenStatus?: string;
+  appTokenSource?: string;
+  appTokenStatus?: string;
   account?: string;
   accounts?: Record<string, Record<string, unknown>>;
 };
 
 function formatChannelStatusJoined(channelAccounts: Record<string, unknown>) {
   return formatGatewayChannelsStatusLines({ channelAccounts }).join("\n");
+}
+
+function loggedText(targetRuntime = runtime): string {
+  return stripAnsi(targetRuntime.log.mock.calls.map((call) => String(call[0])).join("\n"));
 }
 
 function listConfiguredAccountIds(channelConfig: ChannelSectionConfig | undefined): string[] {
@@ -316,6 +335,7 @@ describe("channels command", () => {
     configMocks.readConfigFileSnapshot.mockClear();
     configMocks.writeConfigFile.mockClear();
     authMocks.loadAuthProfileStore.mockClear();
+    gatewayMocks.callGateway.mockClear();
     offsetMocks.deleteTelegramUpdateOffset.mockClear();
     runtime.log.mockClear();
     runtime.error.mockClear();
@@ -324,6 +344,7 @@ describe("channels command", () => {
       version: 1,
       profiles: {},
     });
+    gatewayMocks.callGateway.mockRejectedValue(new Error("gateway unavailable"));
     setMinimalChannelsCommandRegistryForTests();
   });
 
@@ -605,6 +626,62 @@ describe("channels command", () => {
     const ids = payload.auth?.map((entry) => entry.id) ?? [];
     expect(ids).toContain("anthropic:default");
     expect(ids).toContain("openai-codex:default");
+    expect(gatewayMocks.callGateway).not.toHaveBeenCalled();
+  });
+
+  it("prefers running gateway channel account snapshots in text output", async () => {
+    configMocks.readConfigFileSnapshot.mockResolvedValue({
+      ...baseConfigSnapshot,
+      config: {},
+    });
+    gatewayMocks.callGateway.mockResolvedValue({
+      channelAccounts: {
+        discord: [
+          {
+            accountId: "default",
+            name: "clawsweeper",
+            configured: true,
+            tokenSource: "env",
+            tokenStatus: "available",
+            enabled: true,
+          },
+        ],
+      },
+    });
+
+    await channelsListCommand({ usage: false }, runtime);
+
+    expect(gatewayMocks.callGateway).toHaveBeenCalledWith({
+      method: "channels.status",
+      params: { probe: false, timeoutMs: 5000 },
+      timeoutMs: 5000,
+    });
+    const output = loggedText();
+    expect(output).toContain("Discord default (clawsweeper):");
+    expect(output).toContain("configured");
+    expect(output).toContain("token=env");
+  });
+
+  it("falls back to local channel snapshots when gateway status is unavailable", async () => {
+    configMocks.readConfigFileSnapshot.mockResolvedValue({
+      ...baseConfigSnapshot,
+      config: {
+        channels: {
+          discord: {
+            token: "discord-token",
+            tokenSource: "config",
+            tokenStatus: "configured_unavailable",
+            enabled: true,
+          },
+        },
+      },
+    });
+
+    await channelsListCommand({ usage: false }, runtime);
+
+    const output = loggedText();
+    expect(output).toContain("Discord default:");
+    expect(output).toContain("token=config-unavailable");
   });
 
   it("stores default account names in accounts when multiple accounts exist", async () => {
