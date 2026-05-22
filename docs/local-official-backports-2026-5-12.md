@@ -244,6 +244,8 @@ should be split by risk area.
     linger after the backend finishes.
   - Control UI and gateway clients now stop stale token-mismatch reconnect loops
     unless a bounded device-token retry has actually been prepared.
+  - Control UI loopback retry checks now validate `127.x.y.z` as numeric IPv4
+    addresses instead of trusting arbitrary DNS names that begin with `127.`.
   - Anthropic provider normalization now preserves native image input for
     current Claude rows when stale local catalog data marks them text-only.
   - `/models openai` provider headers now prefer the effective Codex OAuth

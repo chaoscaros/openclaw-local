@@ -357,6 +357,41 @@ describe("GatewayBrowserClient", () => {
     vi.useRealTimers();
   });
 
+  it("stops reconnecting on token mismatch for DNS hosts beginning with a 127 label", async () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    const client = new GatewayBrowserClient({
+      url: "ws://127.example.invalid:18789",
+      token: "shared-auth-token",
+      onClose,
+    });
+
+    const { ws: firstWs, connectFrame: firstConnect } = await startConnect(client);
+    expect(firstConnect.params?.auth?.token).toBe("shared-auth-token");
+    expect(firstConnect.params?.auth?.deviceToken).toBeUndefined();
+
+    emitRetryableTokenMismatch(firstWs, firstConnect.id);
+    await vi.waitFor(() => expect(firstWs.readyState).toBe(3));
+    firstWs.emitClose(4008, "connect failed");
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(wsInstances).toHaveLength(1);
+    expect(onClose).toHaveBeenCalledWith({
+      code: 4008,
+      reason: "connect failed",
+      error: {
+        code: "INVALID_REQUEST",
+        message: "unauthorized",
+        details: { code: "AUTH_TOKEN_MISMATCH", canRetryWithDeviceToken: true },
+        retryable: false,
+        retryAfterMs: undefined,
+      },
+    });
+
+    client.stop();
+    vi.useRealTimers();
+  });
+
   it("adds the current Control UI protocol to bare protocol mismatch errors", () => {
     const error = new GatewayRequestError({
       code: "INVALID_REQUEST",
@@ -505,6 +540,44 @@ describe("shouldRetryWithDeviceToken", () => {
         url: "ws://127.0.0.1:18789",
       }),
     ).toBe(true);
+  });
+
+  it("allows a bounded retry for loopback IPv4 addresses in the 127 block", () => {
+    expect(
+      shouldRetryWithDeviceToken({
+        deviceTokenRetryBudgetUsed: false,
+        authDeviceToken: undefined,
+        explicitGatewayToken: "shared-auth-token",
+        deviceIdentity: {
+          deviceId: "device-1",
+          privateKey: "private-key", // pragma: allowlist secret
+          publicKey: "public-key", // pragma: allowlist secret
+        },
+        storedToken: "stored-device-token",
+        canRetryWithDeviceTokenHint: true,
+        url: "ws://127.255.10.42:18789",
+      }),
+    ).toBe(true);
+  });
+
+  it("blocks the retry for DNS hosts beginning with a 127 label", () => {
+    for (const url of ["ws://127.example.invalid:18789", "ws://127.0.0.1.example.invalid:18789"]) {
+      expect(
+        shouldRetryWithDeviceToken({
+          deviceTokenRetryBudgetUsed: false,
+          authDeviceToken: undefined,
+          explicitGatewayToken: "shared-auth-token",
+          deviceIdentity: {
+            deviceId: "device-1",
+            privateKey: "private-key", // pragma: allowlist secret
+            publicKey: "public-key", // pragma: allowlist secret
+          },
+          storedToken: "stored-device-token",
+          canRetryWithDeviceTokenHint: true,
+          url,
+        }),
+      ).toBe(false);
+    }
   });
 
   it("blocks the retry after the one-shot budget is spent", () => {
