@@ -28,7 +28,11 @@ export function hasMeaningfulChannelConfig(value: unknown): boolean {
   if (!isRecord(value)) {
     return false;
   }
-  return Object.keys(value).some((key) => key !== "enabled");
+  const keys = Object.keys(value);
+  if (keys.length === 1 && keys[0] === "enabled") {
+    return value.enabled === true;
+  }
+  return keys.some((key) => key !== "enabled");
 }
 
 function listChannelEnvPrefixes(

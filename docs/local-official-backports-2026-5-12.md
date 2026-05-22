@@ -249,6 +249,9 @@ should be split by risk area.
   - CLI auto-reply runs now bridge Claude CLI assistant text stream events into
     the reasoning preview lane, while keeping Codex CLI and silent runs out of
     reasoning previews.
+  - Channel configuration detection now treats explicit `enabled: true` channel
+    sections as configured across both the generic config check and the local
+    potential-channel presence scanner, while keeping `enabled: false` ignored.
   - Anthropic provider normalization now preserves native image input for
     current Claude rows when stale local catalog data marks them text-only.
   - `/models openai` provider headers now prefer the effective Codex OAuth

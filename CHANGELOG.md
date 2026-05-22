@@ -92,6 +92,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/gateway: stop retrying stale auth-token mismatch connections unless a bounded device-token retry is actually available.
 - Control UI/gateway: validate loopback IPv4 retry targets by address shape so DNS hosts starting with `127.` are not treated as trusted device-token retry endpoints.
 - Auto-reply/CLI: bridge Claude CLI assistant text stream events into the reasoning preview lane while keeping Codex CLI and silent runs out of reasoning previews.
+- Channels/config: treat explicit `enabled: true` channel sections as configured while keeping `enabled: false` ignored.
 
 ## 2026.4.15
 

@@ -58,9 +58,9 @@ afterEach(() => {
 });
 
 describe("config presence", () => {
-  it("treats enabled-only channel sections as not meaningfully configured", () => {
+  it("treats explicitly enabled channel sections as meaningfully configured", () => {
     expect(hasMeaningfulChannelConfig({ enabled: false })).toBe(false);
-    expect(hasMeaningfulChannelConfig({ enabled: true })).toBe(false);
+    expect(hasMeaningfulChannelConfig({ enabled: true })).toBe(true);
     expect(hasMeaningfulChannelConfig({})).toBe(false);
     expect(hasMeaningfulChannelConfig({ homeserver: "https://matrix.example.org" })).toBe(true);
   });
@@ -74,6 +74,19 @@ describe("config presence", () => {
       env,
       expectedIds: [],
       expectedConfigured: false,
+      options: { includePersistedAuthState: false },
+    });
+  });
+
+  it("includes enabled-only matrix config when listing configured channels", () => {
+    const env = {} as NodeJS.ProcessEnv;
+    const cfg = { channels: { matrix: { enabled: true } } };
+
+    expectPotentialConfiguredChannelCase({
+      cfg,
+      env,
+      expectedIds: ["matrix"],
+      expectedConfigured: true,
       options: { includePersistedAuthState: false },
     });
   });

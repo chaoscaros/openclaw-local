@@ -78,6 +78,38 @@ describe("isChannelConfigured", () => {
     ).toBe(true);
   });
 
+  it("treats explicit enabled channel config as configured state", () => {
+    expect(
+      isChannelConfigured(
+        {
+          channels: {
+            "openclaw-weixin": {
+              enabled: true,
+            },
+          },
+        },
+        "openclaw-weixin",
+        {},
+      ),
+    ).toBe(true);
+  });
+
+  it("does not treat disabled channel config as configured state", () => {
+    expect(
+      isChannelConfigured(
+        {
+          channels: {
+            "openclaw-weixin": {
+              enabled: false,
+            },
+          },
+        },
+        "openclaw-weixin",
+        {},
+      ),
+    ).toBe(false);
+  });
+
   it("detects persisted Matrix credentials through package metadata", () => {
     expect(
       isChannelConfigured({}, "matrix", { OPENCLAW_STATE_DIR: "state-with-matrix-creds" }),
