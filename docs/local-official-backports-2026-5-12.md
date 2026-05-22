@@ -102,6 +102,14 @@ should be split by risk area.
   - Files: `extensions/telegram/src/client-fetch.ts`,
     `extensions/telegram/src/bot.ts`, `extensions/telegram/src/send.ts`,
     `extensions/telegram/src/fetch.ts`.
+- Telegram 421 fallback retry from `63b728de43`
+  - Local impact: Bot API `421 Misdirected Request` responses and wrapped
+    Telegram fetch errors can promote the transport to its fallback dispatcher
+    and retry once, while strict outbound send retries still avoid broad
+    ambiguous network duplicates.
+  - Files: `extensions/telegram/src/client-fetch.ts`,
+    `extensions/telegram/src/network-errors.ts`,
+    `src/infra/retry-policy.ts`.
 - WebChat chunk override and outbound channel registry fallback from
   `424c6d0a5f` / `b2c5ba6d4c`
   - Local impact: WebChat outbound replies now honor configured

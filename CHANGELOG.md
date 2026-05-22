@@ -22,6 +22,7 @@ Docs: https://docs.openclaw.ai
 - Telegram: require normal command authorization before stop-like messages cancel pending same-chat debounce buffers.
 - Telegram: render HTML parse fallbacks as readable plain text, including link labels and URLs, instead of retrying with raw anchor markup.
 - Telegram: share the Bot API request timeout wrapper between polling and direct send clients so control-plane sends cannot hang indefinitely on wedged network paths.
+- Telegram: retry Bot API `421 Misdirected Request` responses through the fallback transport path instead of treating edge-node misroutes as terminal send failures.
 - Auto-reply/WebChat: honor configured `channels.webchat.textChunkLimit` and `chunkMode` overrides when splitting outbound replies.
 - Outbound/plugins: fall back from pinned setup-only channel entries to the active runtime registry so plugin channels can still send after setup/status registry swaps.
 - Control UI/chat: render session-scoped tool events so operator pages that attach to an already running session show live tool activity instead of waiting for history reload.

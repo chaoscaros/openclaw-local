@@ -28,6 +28,28 @@ function createWrappedTelegramClientFetch(proxyFetch: typeof fetch) {
   return { clientFetch, shutdown };
 }
 
+function createWrappedTelegramClientFetchWithTransport(params: {
+  fetch: typeof fetch;
+  forceFallback?: (reason: string) => boolean;
+}) {
+  const shutdown = new AbortController();
+  botCtorSpy.mockClear();
+  createTelegramBot({
+    token: "tok",
+    fetchAbortSignal: shutdown.signal,
+    telegramTransport: {
+      fetch: params.fetch,
+      sourceFetch: params.fetch,
+      close: async () => undefined,
+      ...(params.forceFallback ? { forceFallback: params.forceFallback } : {}),
+    },
+  });
+  const clientFetch = (botCtorSpy.mock.calls.at(-1)?.[1] as { client?: { fetch?: unknown } })
+    ?.client?.fetch as (input: RequestInfo | URL, init?: RequestInit) => Promise<unknown>;
+  expect(clientFetch).toBeTypeOf("function");
+  return { clientFetch, shutdown };
+}
+
 describe("createTelegramBot fetch abort", () => {
   it("aborts wrapped client fetch when fetchAbortSignal aborts", async () => {
     const fetchSpy = vi.fn(
@@ -87,6 +109,44 @@ describe("createTelegramBot fetch abort", () => {
     expect(observedSignal).toBeInstanceOf(AbortSignal);
     expect(observedSignal.aborted).toBe(true);
     vi.useRealTimers();
+  });
+
+  it("retries Telegram 421 responses after forcing transport fallback", async () => {
+    const forceFallback = vi.fn(() => true);
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("Misdirected Request", { status: 421 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    const { clientFetch } = createWrappedTelegramClientFetchWithTransport({
+      fetch: fetchSpy as typeof fetch,
+      forceFallback,
+    });
+
+    const result = await clientFetch("https://api.telegram.org/bot123456:ABC/sendMessage");
+
+    expect(result).toBeInstanceOf(Response);
+    expect((result as Response).status).toBe(200);
+    expect(forceFallback).toHaveBeenCalledWith("misdirected-request");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries Telegram 421 fetch errors after forcing transport fallback", async () => {
+    const forceFallback = vi.fn(() => true);
+    const fetchSpy = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error("421 Misdirected Request"), { status: 421 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    const { clientFetch } = createWrappedTelegramClientFetchWithTransport({
+      fetch: fetchSpy as typeof fetch,
+      forceFallback,
+    });
+
+    const result = await clientFetch("https://api.telegram.org/bot123456:ABC/sendMessage");
+
+    expect(result).toBeInstanceOf(Response);
+    expect((result as Response).status).toBe(200);
+    expect(forceFallback).toHaveBeenCalledWith("misdirected-request");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
   it("preserves the original fetch error when tagging cannot attach metadata", async () => {
