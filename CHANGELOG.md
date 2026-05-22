@@ -102,6 +102,7 @@ Docs: https://docs.openclaw.ai
 - Telegram: fail closed when topic-thread sends return `message thread not found` instead of silently retrying at the base chat.
 - Telegram/gateway: restart hot-reloaded polling channels without marking them as manually stopped, and restart isolated ingress workers after recoverable exits.
 - Telegram: redact raw update verbose logs before writing user ids, names, message text, callbacks, links, or file identifiers.
+- Tools: keep the `message` tool available when a runtime allowlist explicitly includes it, even under restrictive tool profiles.
 
 ## 2026.4.15
 

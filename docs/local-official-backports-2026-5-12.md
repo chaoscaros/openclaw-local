@@ -136,6 +136,12 @@ found`, preventing topic-targeted replies from being silently delivered to
     location fields, and uncommon Telegram update identifiers.
   - Files: `extensions/telegram/src/bot.ts`,
     `extensions/telegram/src/raw-update-log.ts`.
+- Runtime message tool allowlist preservation from `06e85d5eaf`
+  - Local impact: restrictive tool profiles no longer filter out `message` when
+    the runtime explicitly allows `message`, `group:messaging`,
+    `group:openclaw`, or `*`, preserving Codex/channel delivery paths that
+    intentionally expose the messaging tool.
+  - Files: `src/agents/pi-tools.ts`.
 - WebChat chunk override and outbound channel registry fallback from
   `424c6d0a5f` / `b2c5ba6d4c`
   - Local impact: WebChat outbound replies now honor configured

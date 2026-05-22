@@ -126,6 +126,24 @@ describe("createOpenClawCodingTools", () => {
     expect(names.has("edit")).toBe(true);
     expect(names.has("apply_patch")).toBe(false);
   });
+  it("preserves runtime-allowed message through restrictive profiles", () => {
+    const tools = createOpenClawCodingTools({
+      config: { tools: { profile: "minimal" } } as OpenClawConfig,
+      runtimeToolAllowlist: ["message"],
+    });
+
+    expect(tools.map((tool) => tool.name)).toContain("message");
+  });
+  it("preserves runtime allowlist groups containing message through restrictive profiles", () => {
+    for (const runtimeToolAllowlist of [["group:messaging"], ["group:openclaw"], ["*"]]) {
+      const tools = createOpenClawCodingTools({
+        config: { tools: { profile: "minimal" } } as OpenClawConfig,
+        runtimeToolAllowlist,
+      });
+
+      expect(tools.map((tool) => tool.name)).toContain("message");
+    }
+  });
   it("provides top-level object schemas for all tools", () => {
     const tools = createOpenClawCodingTools();
     const offenders = tools

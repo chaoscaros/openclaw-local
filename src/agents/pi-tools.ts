@@ -65,7 +65,9 @@ import {
 import {
   applyOwnerOnlyToolPolicy,
   collectExplicitAllowlist,
+  expandToolGroups,
   mergeAlsoAllowPolicy,
+  normalizeToolName,
   resolveToolProfilePolicy,
 } from "./tool-policy.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
@@ -484,6 +486,8 @@ export function createOpenClawCodingTools(options?: {
   requireExplicitMessageTarget?: boolean;
   /** If true, omit the message tool from the tool list. */
   disableMessageTool?: boolean;
+  /** Runtime-level allowlist from the provider/channel harness. */
+  runtimeToolAllowlist?: string[];
   /** Keep the message tool available even under restrictive runtime policy. */
   forceMessageTool?: boolean;
   sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
@@ -537,10 +541,18 @@ export function createOpenClawCodingTools(options?: {
   const profilePolicy = resolveToolProfilePolicy(profile);
   const providerProfilePolicy = resolveToolProfilePolicy(providerProfile);
 
-  const runtimeProfileAlsoAllow =
-    options?.forceMessageTool || options?.sourceReplyDeliveryMode === "message_tool_only"
+  const runtimeToolAllowlistIncludesMessage = expandToolGroups(
+    options?.runtimeToolAllowlist ?? [],
+  ).some((toolName) => {
+    const normalized = normalizeToolName(toolName);
+    return normalized === "*" || normalized === "message";
+  });
+  const runtimeProfileAlsoAllow = [
+    ...(options?.forceMessageTool || options?.sourceReplyDeliveryMode === "message_tool_only"
       ? ["message"]
-      : [];
+      : []),
+    ...(runtimeToolAllowlistIncludesMessage ? ["message"] : []),
+  ];
   const profilePolicyWithAlsoAllow = mergeAlsoAllowPolicy(profilePolicy, [
     ...(profileAlsoAllow ?? []),
     ...runtimeProfileAlsoAllow,
