@@ -55,6 +55,34 @@ describe("agent defaults schema", () => {
     expect(result.embeddedPi?.executionContract).toBe("strict-agentic");
   });
 
+  it("accepts runRetries on defaults and agent entries", () => {
+    const defaults = AgentDefaultsSchema.parse({
+      runRetries: {
+        base: 24,
+        max: 160,
+      },
+    })!;
+    const agent = AgentEntrySchema.parse({
+      id: "ops",
+      runRetries: {
+        min: 10,
+        max: 50,
+      },
+    });
+
+    expect(defaults.runRetries?.base).toBe(24);
+    expect(defaults.runRetries?.max).toBe(160);
+    expect(agent.runRetries?.min).toBe(10);
+    expect(agent.runRetries?.max).toBe(50);
+  });
+
+  it("rejects runRetries with max lower than min", () => {
+    expect(() => AgentDefaultsSchema.parse({ runRetries: { min: 100, max: 50 } })).toThrow();
+    expect(() =>
+      AgentEntrySchema.parse({ id: "ops", runRetries: { min: 100, max: 50 } }),
+    ).toThrow();
+  });
+
   it("accepts positive heartbeat timeoutSeconds on defaults and agent entries", () => {
     const defaults = AgentDefaultsSchema.parse({
       heartbeat: { timeoutSeconds: 45 },

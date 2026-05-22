@@ -86,6 +86,36 @@ describe("resolveAgentConfig", () => {
     expect(resolveAgentConfig(cfg, "main")?.verboseDefault).toBe("on");
   });
 
+  it("merges runRetries defaults with per-agent overrides", () => {
+    const cfg: OpenClawConfig = {
+      agents: {
+        defaults: {
+          runRetries: {
+            base: 24,
+            perProfile: 8,
+            min: 32,
+            max: 160,
+          },
+        },
+        list: [
+          {
+            id: "main",
+            runRetries: {
+              max: 50,
+            },
+          },
+        ],
+      },
+    };
+
+    expect(resolveAgentConfig(cfg, "main")?.runRetries).toEqual({
+      base: 24,
+      perProfile: 8,
+      min: 32,
+      max: 50,
+    });
+  });
+
   it("resolves explicit and effective model primary separately", () => {
     const cfgWithStringDefault = {
       agents: {

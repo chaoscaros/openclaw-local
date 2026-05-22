@@ -6,6 +6,7 @@ import {
   AgentSandboxSchema,
   AgentEmbeddedHarnessSchema,
   AgentModelSchema,
+  AgentRunRetriesConfigSchema,
   MemorySearchSchema,
 } from "./zod-schema.agent-runtime.js";
 import {
@@ -171,6 +172,7 @@ export const AgentDefaultsSchema = z
       })
       .strict()
       .optional(),
+    runRetries: AgentRunRetriesConfigSchema.optional(),
     embeddedPi: z
       .object({
         projectSettingsPolicy: z

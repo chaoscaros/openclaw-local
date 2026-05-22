@@ -444,6 +444,9 @@ found`, preventing topic-targeted replies from being silently delivered to
     (`always`, `near-bottom`, `off`) in desktop and mobile controls, defaulting
     to the previous near-bottom behavior while still letting manual scroll-to-bottom
     override `off`.
+  - Embedded Pi runner retry-loop bounds can now be tuned with
+    `agents.defaults.runRetries` or per-agent `runRetries`, while preserving the
+    existing default guard when no override is configured.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -471,6 +474,13 @@ found`, preventing topic-targeted replies from being silently delivered to
     `src/memory-host-sdk/host/internal.ts`,
     `src/agents/session-write-lock-error.ts`, `src/agents/session-write-lock.ts`,
     `src/agents/failover-error.ts`, `src/agents/model-fallback.ts`,
+    `src/agents/agent-scope-config.ts`,
+    `src/agents/pi-embedded-runner/run.ts`,
+    `src/agents/pi-embedded-runner/run/helpers.ts`,
+    `src/config/types.agent-defaults.ts`, `src/config/types.agents.ts`,
+    `src/config/zod-schema.agent-defaults.ts`,
+    `src/config/zod-schema.agent-runtime.ts`,
+    `src/config/schema.help.ts`, `src/config/schema.labels.ts`,
     `src/gateway/server-methods/agent.ts`, `extensions/lmstudio/src/runtime.ts`,
     `extensions/lmstudio/src/setup.ts`,
     `src/gateway/server/ws-connection/message-handler.ts`,

@@ -98,6 +98,8 @@ export type AgentConfig = {
     /** Require explicit agentId in sessions_spawn (no default same-as-caller). */
     requireAgentId?: boolean;
   };
+  /** Optional per-agent outer run loop retry iteration boundaries. */
+  runRetries?: AgentDefaultsConfig["runRetries"];
   /** Optional per-agent embedded Pi overrides. */
   embeddedPi?: {
     /** Optional per-agent execution contract override. */

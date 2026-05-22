@@ -134,6 +134,10 @@ See [Plugin hooks](/plugins/architecture#provider-runtime-hooks) for the hook AP
 
 - Auto-compaction emits `compaction` stream events and can trigger a retry.
 - On retry, in-memory buffers and tool summaries are reset to avoid duplicate output.
+- The embedded Pi runner also has an outer retry-iteration guard to prevent
+  runaway recovery loops. Tune it with `agents.defaults.runRetries` or
+  `agents.list[].runRetries` only when a custom fallback profile setup needs a
+  wider or narrower bound.
 - See [Compaction](/concepts/compaction) for the compaction pipeline.
 
 ## Event streams (today)
