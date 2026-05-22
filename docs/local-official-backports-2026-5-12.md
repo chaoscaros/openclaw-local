@@ -292,6 +292,9 @@ should be split by risk area.
     classified as local runtime coordination failures, so model fallback does
     not retry every candidate against the same locked session while still
     preserving explicit provider rate-limit metadata when present.
+  - Assistant failover decisions now ignore stale classified error text unless
+    the current turn actually observed a failover failure, avoiding unnecessary
+    profile rotation or model fallback after a normal assistant response.
   - Gateway agent sends now rotate failed sessions whose transcript file is
     missing, clearing stale failure/runtime fields while preserving reusable
     failed sessions when the transcript still exists.

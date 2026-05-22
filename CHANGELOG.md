@@ -36,6 +36,7 @@ Docs: https://docs.openclaw.ai
 - Memory/search: scan fallback vector rows in bounded batches and yield between batches so large memory indexes do not block the Node.js event loop when sqlite-vec is unavailable.
 - Memory Wiki: report vault-internal `wiki_lint` report paths as relative paths in tool output while preserving absolute paths for file callers.
 - Agents/failover: stop treating local session lock and embedded takeover coordination errors as provider/model failures, avoiding misleading fallback retries when the same session is already being written.
+- Agents/failover: ignore stale classified assistant error text unless the current turn actually has a failover failure, preventing unnecessary profile rotation or model fallback.
 - Agents: emit strict-agentic execution-contract diagnostics only when the planning-only retry path actually triggers.
 - Gateway/sessions: rotate failed agent sessions whose transcript file is missing instead of trying to resume stale session IDs with no backing transcript.
 - LM Studio: resolve `${ENV_VAR}` API-key templates through the config secret runtime and allow header-only auth to continue when a stale template is intentionally unused.

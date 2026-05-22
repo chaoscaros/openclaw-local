@@ -87,7 +87,7 @@ function shouldRotatePrompt(params: PromptDecisionParams): boolean {
 
 function shouldRotateAssistant(params: AssistantDecisionParams): boolean {
   return (
-    (!params.aborted && (params.failoverFailure || params.failoverReason !== null)) ||
+    (!params.aborted && params.failoverFailure) ||
     (params.timedOut && !params.timedOutDuringCompaction)
   );
 }
