@@ -104,6 +104,7 @@ Docs: https://docs.openclaw.ai
 - Telegram/gateway: restart hot-reloaded polling channels without marking them as manually stopped, and restart isolated ingress workers after recoverable exits.
 - Telegram: redact raw update verbose logs before writing user ids, names, message text, callbacks, links, or file identifiers.
 - Tools: keep the `message` tool available when a runtime allowlist explicitly includes it, even under restrictive tool profiles.
+- Gateway/OpenAI HTTP: forward `max_completion_tokens` and `max_tokens` from `/v1/chat/completions` into agent stream token caps.
 
 ## 2026.4.15
 

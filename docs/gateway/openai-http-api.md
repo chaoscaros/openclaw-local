@@ -96,6 +96,17 @@ Compatibility aliases still accepted:
 - `model: "openclaw:<agentId>"`
 - `model: "agent:<agentId>"`
 
+## Token caps
+
+Chat Completions requests may set `max_completion_tokens` or the legacy
+`max_tokens` field. When both are present, OpenClaw prefers
+`max_completion_tokens`.
+
+The selected value is forwarded through the agent stream-parameter channel.
+Provider transports still choose the upstream wire field they support, such as
+`max_completion_tokens` for OpenAI-family endpoints or `max_tokens` for legacy
+compatible endpoints.
+
 ## Enabling the endpoint
 
 Set `gateway.http.endpoints.chatCompletions.enabled` to `true`:
