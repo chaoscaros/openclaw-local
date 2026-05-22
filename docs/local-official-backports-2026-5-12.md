@@ -110,6 +110,11 @@ should be split by risk area.
   - Files: `extensions/telegram/src/client-fetch.ts`,
     `extensions/telegram/src/network-errors.ts`,
     `src/infra/retry-policy.ts`.
+- Telegram topic media completion handoff from `ff47c51608`
+  - Local impact: session-only generated media/video completion handoffs now
+    stringify Telegram forum topic thread ids before calling the agent gateway,
+    keeping message-tool-only delivery aligned with route metadata expectations.
+  - Files: `src/agents/subagent-announce-delivery.ts`.
 - WebChat chunk override and outbound channel registry fallback from
   `424c6d0a5f` / `b2c5ba6d4c`
   - Local impact: WebChat outbound replies now honor configured
