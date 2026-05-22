@@ -395,6 +395,58 @@ describe("handleSendChat", () => {
     expect(host.chatMessage).toBe("");
   });
 
+  it("guides into a running stored session when the active key is a request-key alias", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "chat.send") {
+        return {};
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    const host = makeHost({
+      client: { request } as unknown as ChatHost["client"],
+      sessionKey: "main",
+      settings: {
+        ...makeHost().settings,
+        sessionKey: "main",
+        lastActiveSessionKey: "main",
+      },
+      chatRunId: null,
+      chatStream: null,
+      chatMessage: "keep going",
+      sessionsResult: {
+        ts: 0,
+        path: "",
+        count: 1,
+        defaults: { modelProvider: null, model: null, contextTokens: null },
+        sessions: [
+          {
+            key: "agent:solo:main",
+            kind: "direct",
+            updatedAt: 1,
+            status: "running",
+          },
+        ],
+      },
+    });
+
+    await handleSendChat(host);
+
+    expect(request).toHaveBeenCalledWith(
+      "chat.send",
+      expect.objectContaining({
+        sessionKey: "main",
+        message: "keep going",
+        deliver: false,
+      }),
+    );
+    expect(host.chatQueue).toEqual([
+      expect.objectContaining({
+        text: "keep going",
+        pendingRunId: "agent:solo:main",
+      }),
+    ]);
+  });
+
   it("restores the draft when guiding an active run fails", async () => {
     const host = makeHost({
       client: {

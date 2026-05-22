@@ -19,6 +19,8 @@ import { icons } from "./icons.ts";
 import { iconForTab, pathForTab, titleForTab, type Tab } from "./navigation.ts";
 import {
   buildAgentMainSessionKey,
+  doSessionKeysMatch,
+  findSessionRowByKey,
   isSubagentSessionKey,
   normalizeAgentId,
   parseAgentSessionKey,
@@ -415,7 +417,7 @@ function matchTaskScore(
 
 export function renderChatTaskHeaderBar(state: AppViewState) {
   const currentSession =
-    state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey) ?? null;
+    findSessionRowByKey(state.sessionsResult?.sessions, state.sessionKey) ?? null;
   const mode = currentSession?.mode ?? "normal";
   const taskItems = state.tasksItems ?? [];
   const resolvedCurrentTask = resolveSessionTask(
@@ -1238,9 +1240,7 @@ export async function createChatSession(
 
   state.lastError = null;
   const previousSessionKey = state.sessionKey;
-  const currentSession = state.sessionsResult?.sessions.find(
-    (row) => row.key === previousSessionKey,
-  );
+  const currentSession = findSessionRowByKey(state.sessionsResult?.sessions, previousSessionKey);
   const previousAgentId = resolveAgentIdFromSessionKey(previousSessionKey);
   const requestedAgentId = normalizeOptionalString(options.agentId) ?? previousAgentId;
   const requestedLabel = normalizeOptionalString(options.label);
@@ -1477,7 +1477,7 @@ function resolveThinkingTargetModel(state: AppViewState): {
   provider: string | null;
   model: string | null;
 } {
-  const activeRow = state.sessionsResult?.sessions?.find((row) => row.key === state.sessionKey);
+  const activeRow = findSessionRowByKey(state.sessionsResult?.sessions, state.sessionKey);
   return {
     provider: activeRow?.modelProvider ?? state.sessionsResult?.defaults?.modelProvider ?? null,
     model: activeRow?.model ?? state.sessionsResult?.defaults?.model ?? null,
@@ -1528,7 +1528,7 @@ function localizeThinkingLevelLabel(value: string): string {
 }
 
 function resolveChatThinkingSelectState(state: AppViewState): ChatThinkingSelectState {
-  const activeRow = state.sessionsResult?.sessions?.find((row) => row.key === state.sessionKey);
+  const activeRow = findSessionRowByKey(state.sessionsResult?.sessions, state.sessionKey);
   const persisted = activeRow?.thinkingLevel;
   const currentOverride =
     typeof persisted === "string" && persisted.trim()
@@ -1630,7 +1630,7 @@ function patchSessionThinkingLevel(
   state.sessionsResult = {
     ...current,
     sessions: current.sessions.map((row) =>
-      row.key === sessionKey
+      doSessionKeysMatch(row.key, sessionKey)
         ? {
             ...row,
             thinkingLevel,
@@ -1645,7 +1645,7 @@ async function switchChatThinkingLevel(state: AppViewState, nextThinkingLevel: s
     return;
   }
   const targetSessionKey = state.sessionKey;
-  const activeRow = state.sessionsResult?.sessions?.find((row) => row.key === targetSessionKey);
+  const activeRow = findSessionRowByKey(state.sessionsResult?.sessions, targetSessionKey);
   const previousThinkingLevel = activeRow?.thinkingLevel;
   const normalizedNext =
     (normalizeThinkLevel(nextThinkingLevel) ?? nextThinkingLevel.trim()) || undefined;

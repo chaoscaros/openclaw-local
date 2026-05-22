@@ -16,7 +16,7 @@ import { loadModels } from "./controllers/models.ts";
 import { loadSessions, type SessionsState } from "./controllers/sessions.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import { normalizeBasePath } from "./navigation.ts";
-import { parseAgentSessionKey } from "./session-key.ts";
+import { findSessionRowByKey, parseAgentSessionKey } from "./session-key.ts";
 import { resolveSessionRunIndicatorId } from "./session-run-state.ts";
 import type { UiSettings } from "./storage.ts";
 import { normalizeLowercaseStringOrEmpty } from "./string-coerce.ts";
@@ -71,7 +71,7 @@ export const CHAT_SESSIONS_ACTIVE_MINUTES = 120;
 export const CHAT_SESSIONS_REFRESH_LIMIT = 100;
 
 function resolveCurrentChatRunIndicatorId(host: ChatHost): string | null {
-  const currentSession = host.sessionsResult?.sessions.find((row) => row.key === host.sessionKey);
+  const currentSession = findSessionRowByKey(host.sessionsResult?.sessions, host.sessionKey);
   return resolveSessionRunIndicatorId(host.chatRunId, currentSession);
 }
 
@@ -218,7 +218,7 @@ async function sendChatMessageNow(
   }
   if (ok && opts?.refreshSessions && runId) {
     host.refreshSessionsAfterChat.add(runId);
-    const currentSession = host.sessionsResult?.sessions.find((row) => row.key === host.sessionKey);
+    const currentSession = findSessionRowByKey(host.sessionsResult?.sessions, host.sessionKey);
     const currentTaskId =
       currentSession?.mode === "task" ? (currentSession.taskId?.trim() ?? "") : "";
     if (currentTaskId) {
@@ -426,7 +426,7 @@ export async function handleSendChat(
     return;
   }
 
-  const currentSession = host.sessionsResult?.sessions.find((row) => row.key === host.sessionKey);
+  const currentSession = findSessionRowByKey(host.sessionsResult?.sessions, host.sessionKey);
   if (currentSession?.mode === "task" && !currentSession.taskId) {
     host.lastError = t("taskModeUi.emptyTaskModeHint");
     return;
@@ -523,7 +523,7 @@ async function dispatchSlashCommand(
   args: string,
   sendOpts?: { previousDraft?: string; restoreDraft?: boolean },
 ) {
-  const currentSession = host.sessionsResult?.sessions.find((row) => row.key === host.sessionKey);
+  const currentSession = findSessionRowByKey(host.sessionsResult?.sessions, host.sessionKey);
   switch (name) {
     case "stop":
       await handleAbortChat(host);

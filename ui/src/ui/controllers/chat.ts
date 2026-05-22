@@ -1,8 +1,8 @@
-import { toAgentRequestSessionKey } from "../../../../src/routing/session-key.js";
 import { resetToolStream } from "../app-tool-stream.ts";
 import { extractText } from "../chat/message-extract.ts";
 import { formatConnectError } from "../connect-error.ts";
 import { GatewayRequestError, type GatewayBrowserClient } from "../gateway.ts";
+import { doSessionKeysMatch } from "../session-key.ts";
 import {
   clearSessionRunTerminalOverride,
   recordSessionRunTerminalOverride,
@@ -24,18 +24,6 @@ const STARTUP_CHAT_HISTORY_RETRY_TIMEOUT_MS = 60_000;
 const STARTUP_CHAT_HISTORY_DEFAULT_RETRY_MS = 500;
 const STARTUP_CHAT_HISTORY_MAX_RETRY_MS = 5_000;
 const chatHistoryRequestVersions = new WeakMap<object, number>();
-
-function doSessionKeysMatch(a: string | undefined | null, b: string | undefined | null): boolean {
-  const left = (a ?? "").trim();
-  const right = (b ?? "").trim();
-  if (!left || !right) {
-    return left === right;
-  }
-  if (left === right) {
-    return true;
-  }
-  return toAgentRequestSessionKey(left) === toAgentRequestSessionKey(right);
-}
 
 function beginChatHistoryRequest(state: ChatState): number {
   const key = state as object;

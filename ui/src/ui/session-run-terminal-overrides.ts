@@ -1,4 +1,4 @@
-import { toAgentRequestSessionKey } from "../../../src/routing/session-key.js";
+import { doSessionKeysMatch } from "./session-key.ts";
 import type { SessionRunStatus, SessionsListResult } from "./types.ts";
 
 type TerminalSessionRunStatus = Exclude<SessionRunStatus, "running">;
@@ -11,18 +11,6 @@ export type SessionRunTerminalOverride = {
 export type SessionRunTerminalOverrideHost = {
   sessionRunTerminalOverrides?: Record<string, SessionRunTerminalOverride>;
 };
-
-function doSessionKeysMatch(a: string | undefined | null, b: string | undefined | null): boolean {
-  const left = (a ?? "").trim();
-  const right = (b ?? "").trim();
-  if (!left || !right) {
-    return left === right;
-  }
-  if (left === right) {
-    return true;
-  }
-  return toAgentRequestSessionKey(left) === toAgentRequestSessionKey(right);
-}
 
 function findOverrideKey(
   overrides: Record<string, SessionRunTerminalOverride>,

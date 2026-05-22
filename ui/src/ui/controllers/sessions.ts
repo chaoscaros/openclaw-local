@@ -1,5 +1,6 @@
 import { toNumber } from "../format.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
+import { findSessionRowByKey } from "../session-key.ts";
 import { isSessionRunActive } from "../session-run-state.ts";
 import {
   applySessionRunTerminalOverrides,
@@ -105,7 +106,7 @@ function reconcileChatRunFromSessionsState(state: SessionsState) {
   if (!sessionKey) {
     return;
   }
-  const current = state.sessionsResult?.sessions.find((row) => row.key === sessionKey);
+  const current = findSessionRowByKey(state.sessionsResult?.sessions, sessionKey);
   if (!current || isSessionRunActive(current)) {
     return;
   }

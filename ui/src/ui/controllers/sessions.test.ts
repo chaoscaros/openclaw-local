@@ -278,6 +278,48 @@ describe("loadSessions", () => {
     expect(requestUpdate).not.toHaveBeenCalled();
   });
 
+  it("keeps a local chat run when the active session key matches through an alias", async () => {
+    const requestUpdate = vi.fn();
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.list") {
+        return {
+          ts: 2,
+          path: "(multiple)",
+          count: 1,
+          defaults: {},
+          sessions: [
+            {
+              key: "agent:solo:main",
+              kind: "direct",
+              updatedAt: 2,
+              hasActiveRun: true,
+              status: "running",
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const state = createState(request) as SessionsState & {
+      sessionKey: string;
+      chatRunId: string | null;
+      chatStream: string | null;
+      chatStreamStartedAt: number | null;
+      requestUpdate: () => void;
+    };
+    state.sessionKey = "main";
+    state.chatRunId = "run-1";
+    state.chatStream = "";
+    state.chatStreamStartedAt = 1;
+    state.requestUpdate = requestUpdate;
+
+    await loadSessions(state);
+
+    expect(state.chatRunId).toBe("run-1");
+    expect(state.chatStream).toBe("");
+    expect(requestUpdate).not.toHaveBeenCalled();
+  });
+
   it("keeps a local chat run while the send ack is still pending", async () => {
     const requestUpdate = vi.fn();
     const request = vi.fn(async (method: string) => {

@@ -2,7 +2,6 @@ import {
   GATEWAY_EVENT_UPDATE_AVAILABLE,
   type GatewayUpdateAvailableEventPayload,
 } from "../../../src/gateway/events.js";
-import { toAgentRequestSessionKey } from "../../../src/routing/session-key.js";
 import {
   CHAT_SESSIONS_ACTIVE_MINUTES,
   clearPendingQueueItemsForRun,
@@ -63,6 +62,7 @@ import {
 } from "./gateway.ts";
 import { GatewayBrowserClient } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
+import { doSessionKeysMatch, findSessionRowByKey } from "./session-key.ts";
 import {
   hasSessionRunTerminalOverride,
   recordSessionRunTerminalOverride,
@@ -164,18 +164,6 @@ function terminalChatStateToSessionStatus(
     return "killed";
   }
   return "failed";
-}
-
-function doSessionKeysMatch(a: string | undefined | null, b: string | undefined | null): boolean {
-  const left = (a ?? "").trim();
-  const right = (b ?? "").trim();
-  if (!left || !right) {
-    return left === right;
-  }
-  if (left === right) {
-    return true;
-  }
-  return toAgentRequestSessionKey(left) === toAgentRequestSessionKey(right);
 }
 
 type ConnectGatewayOptions = {
@@ -433,8 +421,7 @@ export async function continueTaskBindingAfterSessionRefresh(
     return;
   }
   const targetSession =
-    host.sessionsResult?.sessions.find((row: { key: string }) => row.key === targetSessionKey) ??
-    null;
+    findSessionRowByKey(host.sessionsResult?.sessions, targetSessionKey) ?? null;
   if (!targetSession) {
     return;
   }
@@ -596,7 +583,7 @@ function handleTerminalChatEvent(
 }
 
 function shouldRefreshTaskModeDataForActiveSession(host: GatewayHost) {
-  const currentSession = host.sessionsResult?.sessions.find((row) => row.key === host.sessionKey);
+  const currentSession = findSessionRowByKey(host.sessionsResult?.sessions, host.sessionKey);
   return currentSession?.mode === "task" && Boolean(currentSession.taskId?.trim());
 }
 

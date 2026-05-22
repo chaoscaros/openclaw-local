@@ -122,8 +122,8 @@ import {
 } from "./controllers/skills.ts";
 import { resolveSessionTask, type TaskItem } from "./controllers/tasks.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
-import "./components/dashboard-header.ts";
 import { formatRelativeTimestamp } from "./format.ts";
+import "./components/dashboard-header.ts";
 import { icons } from "./icons.ts";
 import {
   normalizeBasePath,
@@ -133,6 +133,7 @@ import {
   titleForTab,
 } from "./navigation.ts";
 import { isPluginEnabledInConfigSnapshot } from "./plugin-activation.ts";
+import { findSessionRowByKey } from "./session-key.ts";
 import { resolveSessionRunIndicatorId } from "./session-run-state.ts";
 import { agentLogoUrl } from "./views/agents-utils.ts";
 import {
@@ -533,7 +534,7 @@ export function renderApp(state: AppViewState) {
   const sessionsCount = state.sessionsResult?.count ?? null;
   const cronNext = state.cronStatus?.nextWakeAtMs ?? null;
   const currentSession =
-    state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey) ?? null;
+    findSessionRowByKey(state.sessionsResult?.sessions, state.sessionKey) ?? null;
   const visibleChatRunId = resolveSessionRunIndicatorId(state.chatRunId, currentSession);
   const currentTask = resolveSessionTask(
     state.sessionKey,

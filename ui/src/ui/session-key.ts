@@ -36,6 +36,44 @@ export function parseAgentSessionKey(
   return { agentId, rest };
 }
 
+export function toAgentRequestSessionKey(
+  sessionKey: string | undefined | null,
+): string | undefined {
+  const raw = (sessionKey ?? "").trim();
+  if (!raw) {
+    return undefined;
+  }
+  return parseAgentSessionKey(raw)?.rest ?? raw;
+}
+
+export function doSessionKeysMatch(
+  a: string | undefined | null,
+  b: string | undefined | null,
+): boolean {
+  const left = (a ?? "").trim();
+  const right = (b ?? "").trim();
+  if (!left || !right) {
+    return left === right;
+  }
+  if (left === right) {
+    return true;
+  }
+  return toAgentRequestSessionKey(left) === toAgentRequestSessionKey(right);
+}
+
+export function findSessionRowByKey<T extends { key: string }>(
+  rows: readonly T[] | undefined | null,
+  sessionKey: string | undefined | null,
+): T | undefined {
+  const key = sessionKey?.trim();
+  if (!key) {
+    return undefined;
+  }
+  return (
+    rows?.find((row) => row.key === key) ?? rows?.find((row) => doSessionKeysMatch(row.key, key))
+  );
+}
+
 export function normalizeMainKey(value: string | undefined | null): string {
   return normalizeOptionalLowercaseString(value) ?? DEFAULT_MAIN_KEY;
 }

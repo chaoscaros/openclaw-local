@@ -1,4 +1,5 @@
 import type { GatewayBrowserClient } from "../gateway.ts";
+import { findSessionRowByKey } from "../session-key.ts";
 import { loadSessions, patchSession, type SessionsState } from "./sessions.ts";
 
 export type TaskStatus = "active" | "paused" | "interrupted" | "completed" | "ended";
@@ -400,8 +401,9 @@ export async function syncTaskModeTaskProgress(
 }
 
 async function ensureCurrentSessionVisible(state: TasksState) {
-  const hasCurrentSession =
-    state.sessionsResult?.sessions.some((row) => row.key === state.sessionKey) ?? false;
+  const hasCurrentSession = Boolean(
+    findSessionRowByKey(state.sessionsResult?.sessions, state.sessionKey),
+  );
   if (hasCurrentSession) {
     return;
   }
@@ -441,8 +443,7 @@ export async function loadTaskModeData(
     const currentTaskId =
       opts?.autoSyncCurrentTask === false
         ? null
-        : (state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey)?.taskId ??
-          null);
+        : (findSessionRowByKey(state.sessionsResult?.sessions, state.sessionKey)?.taskId ?? null);
     if (currentTaskId) {
       await syncTaskModeTaskProgress(state, currentTaskId, { silent: true, reload: false });
     }
@@ -526,7 +527,7 @@ export async function setCurrentTaskForSession(state: TasksState, taskId: string
 }
 
 export async function setCurrentSessionMode(state: TasksState, mode: "normal" | "task") {
-  const currentSession = state.sessionsResult?.sessions.find((row) => row.key === state.sessionKey);
+  const currentSession = findSessionRowByKey(state.sessionsResult?.sessions, state.sessionKey);
   state.tasksBusy = true;
   try {
     await patchSession(state, state.sessionKey, {
@@ -653,9 +654,7 @@ export async function archiveTaskForSession(state: TasksState, taskId: string) {
   state.tasksBusy = true;
   try {
     await state.client.request("taskmode.archive", { id: taskId });
-    const currentSession = state.sessionsResult?.sessions.find(
-      (row) => row.key === state.sessionKey,
-    );
+    const currentSession = findSessionRowByKey(state.sessionsResult?.sessions, state.sessionKey);
     if (currentSession?.taskId === taskId) {
       await patchSession(state, state.sessionKey, { taskId: null });
     }
@@ -689,9 +688,7 @@ export async function deleteTaskForSession(state: TasksState, taskId: string) {
   state.tasksBusy = true;
   try {
     await state.client.request("taskmode.delete", { id: taskId });
-    const currentSession = state.sessionsResult?.sessions.find(
-      (row) => row.key === state.sessionKey,
-    );
+    const currentSession = findSessionRowByKey(state.sessionsResult?.sessions, state.sessionKey);
     if (currentSession?.taskId === taskId) {
       await patchSession(state, state.sessionKey, { taskId: null, mode: "normal" });
     }

@@ -41,6 +41,7 @@ import type { TaskItem } from "../controllers/tasks.ts";
 import type { EmbedSandboxMode } from "../embed-sandbox.ts";
 import { icons } from "../icons.ts";
 import { toSanitizedMarkdownHtml } from "../markdown.ts";
+import { findSessionRowByKey } from "../session-key.ts";
 import type { SidebarContent } from "../sidebar-content.ts";
 import { detectTextDirection } from "../text-direction.ts";
 import type { GatewaySessionRow, SessionsListResult } from "../types.ts";
@@ -2330,9 +2331,9 @@ function renderSlashMenu(
 
 export function renderChat(props: ChatProps) {
   const canCompose = props.connected;
-  const isBusy = props.sending || props.stream !== null;
+  const isBusy = props.sending || props.stream !== null || Boolean(props.pendingRunId);
   const canAbort = Boolean(props.canAbort && props.onAbort);
-  const activeSession = props.sessions?.sessions?.find((row) => row.key === props.sessionKey);
+  const activeSession = findSessionRowByKey(props.sessions?.sessions, props.sessionKey);
   const visiblePendingChangeReview = props.pendingRunId ? null : props.pendingChangeReview;
   const reasoningLevel = activeSession?.reasoningLevel ?? "off";
   const showReasoning = props.showThinking && reasoningLevel !== "off";
@@ -2387,7 +2388,11 @@ export function renderChat(props: ChatProps) {
     requestUpdate();
   };
   const hasVisibleConversation =
-    chatItems.length > 0 || props.stream !== null || props.sending || props.queue.length > 0;
+    chatItems.length > 0 ||
+    props.stream !== null ||
+    props.sending ||
+    Boolean(props.pendingRunId) ||
+    props.queue.length > 0;
   const showLoadingSkeleton = props.loading && !hasVisibleConversation;
   const isEmpty = chatItems.length === 0 && !showLoadingSkeleton;
 
