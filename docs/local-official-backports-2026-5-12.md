@@ -175,11 +175,15 @@ should be split by risk area.
     delayed session metadata from re-showing "任务进行中" after the reply is
     already visible. Freshly staged local runs also get a short reconcile grace
     window, so stale `sessions.list` results from task switching cannot hide the
-    running strip before the Gateway has reported the new run as active.
+    running strip before the Gateway has reported the new run as active. The
+    chat header task controls are also collapsed into a compact task context
+    popover so task switching, task details, and the task board entry remain
+    available without occupying the full toolbar width.
   - Files: `ui/src/ui/chat/grouped-render.ts`, `ui/src/ui/views/chat.ts`,
     `ui/src/ui/controllers/chat.ts`, `ui/src/ui/session-run-state.ts`,
     `ui/src/ui/session-run-terminal-overrides.ts`, `ui/src/ui/app-gateway.ts`,
-    `ui/src/ui/controllers/sessions.ts`.
+    `ui/src/ui/controllers/sessions.ts`, `ui/src/ui/app-render.helpers.ts`,
+    `ui/src/styles/layout.css`, `ui/src/styles/chat/layout.css`.
 
 ## Post-5.12 Follow-Up Alignment
 

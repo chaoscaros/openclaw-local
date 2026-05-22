@@ -312,6 +312,7 @@ function localizeTaskText(value: string | null | undefined): string {
 
 const chatTaskHeaderUi = {
   query: "",
+  menuOpen: false,
   detailOpen: false,
   switcherOpen: false,
   switchedTaskId: null as string | null,
@@ -469,6 +470,8 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
   const switcherRecentEmptyText = chatTaskHeaderUi.query
     ? "没有匹配的可切换任务。"
     : "没有可切换的任务。";
+  const taskPanelOpen =
+    chatTaskHeaderUi.menuOpen || chatTaskHeaderUi.switcherOpen || chatTaskHeaderUi.detailOpen;
   const currentTaskChipBadge = currentTask
     ? "当前会话任务"
     : unresolvedBoundTaskId
@@ -496,209 +499,293 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
     : [];
   return html`
     <div class="chat-task-context-bar" aria-label=${t("taskModeUi.banner.currentTask")}>
-      <div class="chat-task-context-bar__left">
-        <button
-          type="button"
-          class="chat-task-context-bar__mode ${mode === "task"
-            ? "chat-task-context-bar__mode--task"
-            : ""}"
-          @click=${() => state.setCurrentSessionMode(mode === "task" ? "normal" : "task")}
+      <button
+        type="button"
+        class="chat-task-context-bar__mode ${mode === "task"
+          ? "chat-task-context-bar__mode--task"
+          : ""}"
+        @click=${() => state.setCurrentSessionMode(mode === "task" ? "normal" : "task")}
+      >
+        <span class="chat-task-context-bar__mode-dot"></span>
+        <span class="chat-task-context-bar__mode-text"
+          >${mode === "task" ? t("taskModeUi.banner.task") : t("taskModeUi.banner.normal")}</span
         >
-          <span class="chat-task-context-bar__mode-dot"></span>
-          <span class="chat-task-context-bar__mode-text"
-            >${mode === "task" ? t("taskModeUi.banner.task") : t("taskModeUi.banner.normal")}</span
-          >
-        </button>
+      </button>
 
-        <button
-          type="button"
-          class="chat-task-context-bar__task-chip ${currentTask
-            ? ""
-            : "chat-task-context-bar__task-chip--empty"}"
-          aria-label=${`${t("taskModeUi.banner.currentTask")}：${quickSwitcherLabel}`}
-          @click=${() => {
-            chatTaskHeaderUi.switcherOpen = !chatTaskHeaderUi.switcherOpen;
-            if (!chatTaskHeaderUi.switcherOpen) {
-              chatTaskHeaderUi.query = "";
-            }
-            requestViewUpdate(state);
-          }}
-        >
-          <span class="chat-task-context-bar__task-chip-main">
-            <span class="chat-task-context-bar__task-chip-title-row">
-              <span class="chat-task-context-bar__task-chip-kicker"
-                >${t("taskModeUi.banner.currentTask")}</span
-              >
-              <span class="chat-task-context-bar__task-chip-title">${quickSwitcherLabel}</span>
-              <span class="chat-task-context-bar__task-chip-badge">${currentTaskChipBadge}</span>
-            </span>
+      <button
+        type="button"
+        class="chat-task-context-bar__task-chip ${currentTask
+          ? ""
+          : "chat-task-context-bar__task-chip--empty"}"
+        aria-label=${`${t("taskModeUi.banner.currentTask")}：${quickSwitcherLabel}`}
+        @click=${() => {
+          const nextOpen = !chatTaskHeaderUi.detailOpen || chatTaskHeaderUi.switcherOpen;
+          chatTaskHeaderUi.detailOpen = nextOpen;
+          chatTaskHeaderUi.switcherOpen = false;
+          chatTaskHeaderUi.menuOpen = false;
+          if (!nextOpen) {
+            chatTaskHeaderUi.query = "";
+          }
+          requestViewUpdate(state);
+        }}
+      >
+        <span class="chat-task-context-bar__task-chip-main">
+          <span class="chat-task-context-bar__task-chip-title-row">
+            <span class="chat-task-context-bar__task-chip-kicker"
+              >${t("taskModeUi.banner.currentTask")}</span
+            >
+            <span class="chat-task-context-bar__task-chip-title">${quickSwitcherLabel}</span>
+            <span class="chat-task-context-bar__task-chip-badge">${currentTaskChipBadge}</span>
           </span>
-        </button>
-      </div>
+        </span>
+      </button>
 
-      <div class="chat-task-context-bar__actions">
-        <button
-          type="button"
-          class="chat-task-context-bar__action-btn chat-task-context-bar__action-btn--ghost"
-          @click=${() => {
-            chatTaskHeaderUi.switcherOpen = !chatTaskHeaderUi.switcherOpen;
-            requestViewUpdate(state);
-          }}
-        >
-          ${chatTaskHeaderUi.switcherOpen ? "收起切换" : "切换任务"}
-        </button>
-        <button
-          type="button"
-          class="chat-task-context-bar__action-btn"
-          @click=${() => {
-            chatTaskHeaderUi.detailOpen = !chatTaskHeaderUi.detailOpen;
-            requestViewUpdate(state);
-          }}
-        >
-          ${chatTaskHeaderUi.detailOpen ? "收起详情" : "任务详情"}
-        </button>
-        <button
-          type="button"
-          class="chat-task-context-bar__action-btn chat-task-context-bar__action-btn--ghost"
-          @click=${() => state.setTab("tasks")}
-        >
-          ${t("taskModeUi.banner.openTasks")}
-        </button>
-      </div>
+      <button
+        type="button"
+        class="chat-task-context-bar__menu-btn"
+        aria-label="任务操作"
+        title="任务操作"
+        @click=${() => {
+          const nextOpen = !taskPanelOpen || !chatTaskHeaderUi.menuOpen;
+          chatTaskHeaderUi.menuOpen = nextOpen;
+          chatTaskHeaderUi.detailOpen = false;
+          chatTaskHeaderUi.switcherOpen = false;
+          if (!nextOpen) {
+            chatTaskHeaderUi.query = "";
+          }
+          requestViewUpdate(state);
+        }}
+      >
+        ${icons.moreHorizontal}
+      </button>
 
-      ${chatTaskHeaderUi.switcherOpen
+      ${taskPanelOpen
         ? html`
-            <div class="chat-task-context-bar__switcher-panel">
-              <label class="field chat-task-context-bar__search">
-                <span>查找任务</span>
-                <input
-                  .value=${chatTaskHeaderUi.query}
-                  placeholder="按任务名称或描述搜索"
-                  @input=${(event: Event) => {
-                    chatTaskHeaderUi.query = (event.target as HTMLInputElement).value;
-                    requestViewUpdate(state);
-                  }}
-                />
-              </label>
-              ${lastSwitchFeedback
-                ? html`<div class="chat-task-context-bar__suggestions-title">
-                    ${lastSwitchFeedback}
-                  </div>`
-                : nothing}
-              <div class="chat-task-context-bar__suggestions-title">当前任务</div>
-              <div class="chat-task-context-bar__suggestions">
-                ${currentTaskSection.length
-                  ? currentTaskSection.map(
-                      (task) => html`
-                        <div
-                          class="chat-task-context-bar__suggestion chat-task-context-bar__suggestion--current"
-                          aria-current="true"
-                        >
-                          <span class="chat-task-context-bar__suggestion-title"
-                            >${currentTaskDisplayTitle ?? task.title ?? "当前任务详情同步中"}</span
-                          >
-                          <span class="chat-task-context-bar__suggestion-meta">
-                            ${localizeTaskText(task.effectiveStatus ?? task.status)} · 当前会话任务
-                          </span>
-                        </div>
-                      `,
-                    )
-                  : unresolvedBoundTaskId
-                    ? html`
-                        <div
-                          class="chat-task-context-bar__suggestion chat-task-context-bar__suggestion--current"
-                          aria-current="true"
-                        >
-                          <span class="chat-task-context-bar__suggestion-title"
-                            >当前任务详情同步中</span
-                          >
-                          <span class="chat-task-context-bar__suggestion-meta"
-                            >已绑定任务 · ${unresolvedBoundTaskId} · 请稍候或刷新任务列表</span
-                          >
-                        </div>
-                      `
-                    : html`<div class="chat-task-context-bar__empty">
-                        当前会话还没有绑定任务。
-                      </div>`}
-              </div>
-              <div class="chat-task-context-bar__suggestions-title">${switcherRecentTitle}</div>
-              <div class="chat-task-context-bar__suggestions">
-                ${recentTasks.length
-                  ? recentTasks.map(
-                      (task) => html`
-                        <button
-                          type="button"
-                          class="chat-task-context-bar__suggestion"
-                          @click=${() => {
-                            chatTaskHeaderUi.switchedTaskId = task.taskId;
-                            chatTaskHeaderUi.switchedTaskTitle = task.title;
-                            void state.setCurrentTaskForSession(task.taskId);
-                            chatTaskHeaderUi.query = "";
-                            chatTaskHeaderUi.switcherOpen = false;
-                            requestViewUpdate(state);
-                          }}
-                        >
-                          <span class="chat-task-context-bar__suggestion-title">${task.title}</span>
-                          <span class="chat-task-context-bar__suggestion-meta">
-                            ${localizeTaskText(task.effectiveStatus ?? task.status)} ·
-                            ${formatRelativeTimestamp(task.updatedAt ?? task.createdAt)}
-                          </span>
-                        </button>
-                      `,
-                    )
-                  : html`<div class="chat-task-context-bar__empty">
-                      ${switcherRecentEmptyText}
-                    </div>`}
-              </div>
-            </div>
-          `
-        : nothing}
-      ${chatTaskHeaderUi.detailOpen
-        ? html`
-            <div class="chat-task-context-bar__drawer">
-              <div class="chat-task-context-bar__drawer-header">
+            <div class="chat-task-context-bar__popover" role="dialog" aria-label="任务操作">
+              <div class="chat-task-context-bar__popover-header">
                 <div>
-                  <div class="chat-task-context-bar__drawer-eyebrow">任务上下文</div>
-                  <div class="chat-task-context-bar__drawer-title">
+                  <div class="chat-task-context-bar__popover-kicker">
+                    ${mode === "task" ? t("taskModeUi.banner.task") : t("taskModeUi.banner.normal")}
+                  </div>
+                  <div class="chat-task-context-bar__popover-title">
                     ${currentTaskDisplayTitle ??
                     (currentTask ? "当前任务详情同步中" : "当前未绑定任务")}
                   </div>
                 </div>
-                ${currentTaskStatus
-                  ? html`<span class="chat-task-context-bar__drawer-status"
-                      >${currentTaskStatus}</span
-                    >`
-                  : nothing}
-              </div>
-              <div class="chat-task-context-bar__drawer-summary">
-                ${currentTaskSummary ??
-                "给当前会话绑定任务后，用户和 agent 会围绕同一份任务上下文继续协作。"}
-              </div>
-              ${renderChatTaskTodoSummary(currentTask)}
-              <div class="chat-task-context-bar__drawer-grid">
-                ${currentTaskTimeline.map(
-                  (item) => html`
-                    <article class="chat-task-context-bar__drawer-card">
-                      <div class="chat-task-context-bar__drawer-card-label">${item.label}</div>
-                      <div class="chat-task-context-bar__drawer-card-value">${item.value}</div>
-                    </article>
-                  `,
-                )}
-              </div>
-              <div class="chat-task-context-bar__drawer-footer">
-                ${currentTask && currentSession?.taskId !== currentTask.taskId
-                  ? html`<button
-                      type="button"
-                      class="btn"
-                      @click=${() => state.setCurrentTaskForSession(currentTask.taskId)}
-                    >
-                      ${t("taskModeUi.actions.setCurrent")}
-                    </button>`
-                  : nothing}
-                <button type="button" class="btn btn--ghost" @click=${() => state.setTab("tasks")}>
-                  打开任务中心
+                <button
+                  type="button"
+                  class="chat-task-context-bar__close-btn"
+                  aria-label=${t("taskModeUi.actions.close")}
+                  @click=${() => {
+                    chatTaskHeaderUi.menuOpen = false;
+                    chatTaskHeaderUi.detailOpen = false;
+                    chatTaskHeaderUi.switcherOpen = false;
+                    chatTaskHeaderUi.query = "";
+                    requestViewUpdate(state);
+                  }}
+                >
+                  ${icons.x}
                 </button>
               </div>
+
+              <div class="chat-task-context-bar__popover-actions">
+                <button
+                  type="button"
+                  class="chat-task-context-bar__action-btn ${chatTaskHeaderUi.switcherOpen
+                    ? ""
+                    : "chat-task-context-bar__action-btn--ghost"}"
+                  @click=${() => {
+                    chatTaskHeaderUi.menuOpen = false;
+                    chatTaskHeaderUi.detailOpen = false;
+                    chatTaskHeaderUi.switcherOpen = true;
+                    requestViewUpdate(state);
+                  }}
+                >
+                  切换任务
+                </button>
+                <button
+                  type="button"
+                  class="chat-task-context-bar__action-btn ${chatTaskHeaderUi.detailOpen
+                    ? ""
+                    : "chat-task-context-bar__action-btn--ghost"}"
+                  @click=${() => {
+                    chatTaskHeaderUi.menuOpen = false;
+                    chatTaskHeaderUi.switcherOpen = false;
+                    chatTaskHeaderUi.detailOpen = true;
+                    requestViewUpdate(state);
+                  }}
+                >
+                  任务详情
+                </button>
+                <button
+                  type="button"
+                  class="chat-task-context-bar__action-btn chat-task-context-bar__action-btn--ghost"
+                  @click=${() => state.setTab("tasks")}
+                >
+                  ${t("taskModeUi.banner.openTasks")}
+                </button>
+              </div>
+
+              ${chatTaskHeaderUi.switcherOpen
+                ? html`
+                    <div class="chat-task-context-bar__switcher-panel">
+                      <label class="field chat-task-context-bar__search">
+                        <span>查找任务</span>
+                        <input
+                          .value=${chatTaskHeaderUi.query}
+                          placeholder="按任务名称或描述搜索"
+                          @input=${(event: Event) => {
+                            chatTaskHeaderUi.query = (event.target as HTMLInputElement).value;
+                            requestViewUpdate(state);
+                          }}
+                        />
+                      </label>
+                      ${lastSwitchFeedback
+                        ? html`<div class="chat-task-context-bar__suggestions-title">
+                            ${lastSwitchFeedback}
+                          </div>`
+                        : nothing}
+                      <div class="chat-task-context-bar__suggestions-title">当前任务</div>
+                      <div class="chat-task-context-bar__suggestions">
+                        ${currentTaskSection.length
+                          ? currentTaskSection.map(
+                              (task) => html`
+                                <div
+                                  class="chat-task-context-bar__suggestion chat-task-context-bar__suggestion--current"
+                                  aria-current="true"
+                                >
+                                  <span class="chat-task-context-bar__suggestion-title"
+                                    >${currentTaskDisplayTitle ??
+                                    task.title ??
+                                    "当前任务详情同步中"}</span
+                                  >
+                                  <span class="chat-task-context-bar__suggestion-meta">
+                                    ${localizeTaskText(task.effectiveStatus ?? task.status)} ·
+                                    当前会话任务
+                                  </span>
+                                </div>
+                              `,
+                            )
+                          : unresolvedBoundTaskId
+                            ? html`
+                                <div
+                                  class="chat-task-context-bar__suggestion chat-task-context-bar__suggestion--current"
+                                  aria-current="true"
+                                >
+                                  <span class="chat-task-context-bar__suggestion-title"
+                                    >当前任务详情同步中</span
+                                  >
+                                  <span class="chat-task-context-bar__suggestion-meta"
+                                    >已绑定任务 · ${unresolvedBoundTaskId} ·
+                                    请稍候或刷新任务列表</span
+                                  >
+                                </div>
+                              `
+                            : html`<div class="chat-task-context-bar__empty">
+                                当前会话还没有绑定任务。
+                              </div>`}
+                      </div>
+                      <div class="chat-task-context-bar__suggestions-title">
+                        ${switcherRecentTitle}
+                      </div>
+                      <div class="chat-task-context-bar__suggestions">
+                        ${recentTasks.length
+                          ? recentTasks.map(
+                              (task) => html`
+                                <button
+                                  type="button"
+                                  class="chat-task-context-bar__suggestion"
+                                  @click=${() => {
+                                    chatTaskHeaderUi.switchedTaskId = task.taskId;
+                                    chatTaskHeaderUi.switchedTaskTitle = task.title;
+                                    void state.setCurrentTaskForSession(task.taskId);
+                                    chatTaskHeaderUi.query = "";
+                                    chatTaskHeaderUi.switcherOpen = false;
+                                    chatTaskHeaderUi.menuOpen = false;
+                                    requestViewUpdate(state);
+                                  }}
+                                >
+                                  <span class="chat-task-context-bar__suggestion-title"
+                                    >${task.title}</span
+                                  >
+                                  <span class="chat-task-context-bar__suggestion-meta">
+                                    ${localizeTaskText(task.effectiveStatus ?? task.status)} ·
+                                    ${formatRelativeTimestamp(task.updatedAt ?? task.createdAt)}
+                                  </span>
+                                </button>
+                              `,
+                            )
+                          : html`<div class="chat-task-context-bar__empty">
+                              ${switcherRecentEmptyText}
+                            </div>`}
+                      </div>
+                    </div>
+                  `
+                : nothing}
+              ${chatTaskHeaderUi.detailOpen
+                ? html`
+                    <div class="chat-task-context-bar__drawer">
+                      <div class="chat-task-context-bar__drawer-header">
+                        <div>
+                          <div class="chat-task-context-bar__drawer-eyebrow">任务上下文</div>
+                          <div class="chat-task-context-bar__drawer-title">
+                            ${currentTaskDisplayTitle ??
+                            (currentTask ? "当前任务详情同步中" : "当前未绑定任务")}
+                          </div>
+                        </div>
+                        ${currentTaskStatus
+                          ? html`<span class="chat-task-context-bar__drawer-status"
+                              >${currentTaskStatus}</span
+                            >`
+                          : nothing}
+                      </div>
+                      <div class="chat-task-context-bar__drawer-summary">
+                        ${currentTaskSummary ??
+                        "给当前会话绑定任务后，用户和 agent 会围绕同一份任务上下文继续协作。"}
+                      </div>
+                      ${renderChatTaskTodoSummary(currentTask)}
+                      <div class="chat-task-context-bar__drawer-grid">
+                        ${currentTaskTimeline.map(
+                          (item) => html`
+                            <article class="chat-task-context-bar__drawer-card">
+                              <div class="chat-task-context-bar__drawer-card-label">
+                                ${item.label}
+                              </div>
+                              <div class="chat-task-context-bar__drawer-card-value">
+                                ${item.value}
+                              </div>
+                            </article>
+                          `,
+                        )}
+                      </div>
+                      <div class="chat-task-context-bar__drawer-footer">
+                        ${currentTask && currentSession?.taskId !== currentTask.taskId
+                          ? html`<button
+                              type="button"
+                              class="btn"
+                              @click=${() => state.setCurrentTaskForSession(currentTask.taskId)}
+                            >
+                              ${t("taskModeUi.actions.setCurrent")}
+                            </button>`
+                          : nothing}
+                        <button
+                          type="button"
+                          class="btn btn--ghost"
+                          @click=${() => state.setTab("tasks")}
+                        >
+                          打开任务中心
+                        </button>
+                      </div>
+                    </div>
+                  `
+                : nothing}
+              ${chatTaskHeaderUi.menuOpen
+                ? html`
+                    <div class="chat-task-context-bar__drawer-summary">
+                      ${currentTaskSummary ?? "任务相关操作已收纳到这里，避免占用聊天头部空间。"}
+                    </div>
+                  `
+                : nothing}
             </div>
           `
         : nothing}

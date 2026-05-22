@@ -1900,7 +1900,7 @@
   display: grid;
   grid-template-columns:
     minmax(0, max-content) minmax(0, max-content) minmax(0, max-content)
-    minmax(0, max-content) minmax(260px, 1fr);
+    minmax(0, max-content) minmax(240px, 500px);
   grid-template-areas: "agent session model thinking task";
   align-items: center;
   gap: 6px;
@@ -1912,7 +1912,7 @@
 .chat-controls__session-row--single-agent {
   grid-template-columns:
     minmax(0, max-content) minmax(0, max-content) minmax(0, max-content)
-    minmax(260px, 1fr);
+    minmax(240px, 500px);
   grid-template-areas: "session model thinking task";
 }
 

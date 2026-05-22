@@ -46,7 +46,7 @@ describe("chat layout styles", () => {
     const css = readChatLayoutCss();
 
     expect(css).toContain('grid-template-areas: "agent session model thinking task";');
-    expect(css).toContain("minmax(260px, 1fr);");
+    expect(css).toContain("minmax(240px, 500px);");
     expect(css).toContain("width: fit-content;");
     expect(css).toContain("justify-self: start;");
     expect(css).toContain("field-sizing: content;");

@@ -538,14 +538,17 @@ describe("chat view", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("Task mode");
     expect(text).toContain("Current task");
-    expect(text).toContain("任务详情");
-    expect(text).toContain("Open task board");
     expect(text).toContain("Task 1");
+    expect(text).not.toContain("Open task board");
 
-    const switchBtn = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("切换任务"),
-    ) as HTMLButtonElement;
-    expect(switchBtn).toBeTruthy();
+    const menuBtn = container.querySelector<HTMLButtonElement>(".chat-task-context-bar__menu-btn");
+    expect(menuBtn).toBeTruthy();
+    menuBtn?.click();
+    await Promise.resolve();
+
+    const menuText = container.textContent ?? "";
+    expect(menuText).toContain("任务详情");
+    expect(menuText).toContain("Open task board");
   });
 
   it("renders BTW side results outside transcript history", () => {
