@@ -750,4 +750,109 @@ describe("TelegramPollingSession", () => {
       await fs.rm(spoolDir, { recursive: true, force: true });
     }
   });
+
+  it("restarts isolated ingress when the worker exits recoverably", async () => {
+    const abort = new AbortController();
+    const spoolDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-telegram-spool-"));
+    const log = vi.fn();
+    const makeIngressBot = () => ({
+      api: {
+        deleteWebhook: vi.fn(async () => true),
+        config: { use: vi.fn() },
+      },
+      init: vi.fn(async () => undefined),
+      handleUpdate: vi.fn(async () => undefined),
+      stop: vi.fn(async () => undefined),
+    });
+    const createWorker = vi
+      .fn()
+      .mockReturnValueOnce({
+        onMessage: vi.fn(() => () => undefined),
+        stop: vi.fn(async () => undefined),
+        task: vi.fn(async () => {
+          throw new Error("recoverable worker exit");
+        }),
+      })
+      .mockReturnValueOnce({
+        onMessage: vi.fn(() => () => undefined),
+        stop: vi.fn(async () => undefined),
+        task: vi.fn(async () => {
+          abort.abort();
+        }),
+      });
+    createTelegramBotMock
+      .mockReturnValueOnce(makeIngressBot())
+      .mockReturnValueOnce(makeIngressBot());
+
+    try {
+      const session = createPollingSession({
+        abortSignal: abort.signal,
+        log,
+        isolatedIngress: {
+          enabled: true,
+          spoolDir,
+          createWorker,
+          drainIntervalMs: 100,
+        },
+      });
+
+      await session.runUntilAbort();
+
+      expect(createWorker).toHaveBeenCalledTimes(2);
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining("isolated polling ingress failed: recoverable worker exit"),
+      );
+      expect(log).toHaveBeenCalledWith(
+        "Telegram isolated polling ingress failed; restarting in 0ms.",
+      );
+    } finally {
+      await fs.rm(spoolDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails isolated ingress when the worker reports a non-recoverable poll error", async () => {
+    const abort = new AbortController();
+    const spoolDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-telegram-spool-"));
+    const makeIngressBot = () => ({
+      api: {
+        deleteWebhook: vi.fn(async () => true),
+        config: { use: vi.fn() },
+      },
+      init: vi.fn(async () => undefined),
+      handleUpdate: vi.fn(async () => undefined),
+      stop: vi.fn(async () => undefined),
+    });
+    isRecoverableTelegramNetworkErrorMock.mockReturnValue(false);
+    const createWorker = vi.fn(() => ({
+      onMessage: vi.fn((listener: (message: { type: "poll-error"; message: string }) => void) => {
+        listener({ type: "poll-error", message: "401 Unauthorized" });
+        return () => undefined;
+      }),
+      stop: vi.fn(async () => undefined),
+      task: vi.fn(async () => {
+        throw new Error("worker failed");
+      }),
+    }));
+    createTelegramBotMock.mockReturnValueOnce(makeIngressBot());
+
+    try {
+      const session = createPollingSession({
+        abortSignal: abort.signal,
+        isolatedIngress: {
+          enabled: true,
+          spoolDir,
+          createWorker,
+          drainIntervalMs: 100,
+        },
+      });
+
+      await expect(session.runUntilAbort()).rejects.toThrow("401 Unauthorized");
+
+      expect(createWorker).toHaveBeenCalledTimes(1);
+      expect(sleepWithAbortMock).not.toHaveBeenCalled();
+    } finally {
+      abort.abort();
+      await fs.rm(spoolDir, { recursive: true, force: true });
+    }
+  });
 });

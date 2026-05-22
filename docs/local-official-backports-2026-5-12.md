@@ -122,6 +122,14 @@ found`, preventing topic-targeted replies from being silently delivered to
     the base chat.
   - Files: `extensions/telegram/src/send.ts`,
     `extensions/telegram/src/draft-stream.ts`.
+- Telegram hot reload polling restart recovery from `395bd578d2`
+  - Local impact: isolated polling worker exits now restart after recoverable
+    failures, stopped workers close their parent port cleanly, and Gateway
+    channel hot reload stops no longer mark channels as manually stopped.
+  - Files: `extensions/telegram/src/polling-session.ts`,
+    `extensions/telegram/src/telegram-ingress-worker.runtime.ts`,
+    `src/gateway/server-channels.ts`,
+    `src/gateway/server-reload-handlers.ts`.
 - WebChat chunk override and outbound channel registry fallback from
   `424c6d0a5f` / `b2c5ba6d4c`
   - Local impact: WebChat outbound replies now honor configured

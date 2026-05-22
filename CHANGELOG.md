@@ -100,6 +100,7 @@ Docs: https://docs.openclaw.ai
 - Channels/config: treat explicit `enabled: true` channel sections as configured while keeping `enabled: false` ignored.
 - CLI/channels: prefer running Gateway channel-account status in `openclaw channels list` text output while keeping JSON output config-only and falling back cleanly when Gateway is unavailable.
 - Telegram: fail closed when topic-thread sends return `message thread not found` instead of silently retrying at the base chat.
+- Telegram/gateway: restart hot-reloaded polling channels without marking them as manually stopped, and restart isolated ingress workers after recoverable exits.
 
 ## 2026.4.15
 

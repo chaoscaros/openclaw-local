@@ -55,8 +55,8 @@ export function createGatewayReloadHandlers(params: {
   broadcast: (event: string, payload: unknown, opts?: { dropIfSlow?: boolean }) => void;
   getState: () => GatewayHotReloadState;
   setState: (state: GatewayHotReloadState) => void;
-  startChannel: (name: ChannelKind) => Promise<void>;
-  stopChannel: (name: ChannelKind) => Promise<void>;
+  startChannel: GatewayChannelManager["startChannel"];
+  stopChannel: GatewayChannelManager["stopChannel"];
   logHooks: {
     info: (msg: string) => void;
     warn: (msg: string) => void;
@@ -126,7 +126,7 @@ export function createGatewayReloadHandlers(params: {
       } else {
         const restartChannel = async (name: ChannelKind) => {
           params.logChannels.info(`restarting ${name} channel`);
-          await params.stopChannel(name);
+          await params.stopChannel(name, undefined, { manual: false });
           await params.startChannel(name);
         };
         for (const channel of plan.restartChannels) {
@@ -255,8 +255,8 @@ export function startManagedGatewayConfigReloader(params: {
   broadcast: (event: string, payload: unknown, opts?: { dropIfSlow?: boolean }) => void;
   getState: () => GatewayHotReloadState;
   setState: (state: GatewayHotReloadState) => void;
-  startChannel: (name: ChannelKind) => Promise<void>;
-  stopChannel: (name: ChannelKind) => Promise<void>;
+  startChannel: GatewayChannelManager["startChannel"];
+  stopChannel: GatewayChannelManager["stopChannel"];
   logHooks: {
     info: (msg: string) => void;
     warn: (msg: string) => void;

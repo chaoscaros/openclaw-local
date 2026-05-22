@@ -168,11 +168,15 @@ type StartChannelOptions = {
   preserveManualStop?: boolean;
 };
 
+type StopChannelOptions = {
+  manual?: boolean;
+};
+
 export type ChannelManager = {
   getRuntimeSnapshot: () => ChannelRuntimeSnapshot;
   startChannels: () => Promise<void>;
   startChannel: (channel: ChannelId, accountId?: string) => Promise<void>;
-  stopChannel: (channel: ChannelId, accountId?: string) => Promise<void>;
+  stopChannel: (channel: ChannelId, accountId?: string, opts?: StopChannelOptions) => Promise<void>;
   markChannelLoggedOut: (channelId: ChannelId, cleared: boolean, accountId?: string) => void;
   isManuallyStopped: (channelId: ChannelId, accountId: string) => boolean;
   resetRestartAttempts: (channelId: ChannelId, accountId: string) => void;
@@ -525,7 +529,11 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
     await startChannelInternal(channelId, accountId);
   };
 
-  const stopChannel = async (channelId: ChannelId, accountId?: string) => {
+  const stopChannel = async (
+    channelId: ChannelId,
+    accountId?: string,
+    opts: StopChannelOptions = {},
+  ) => {
     const plugin = getChannelPlugin(channelId);
     const store = getStore(channelId);
     // Fast path: nothing running and no explicit plugin shutdown hook to run.
@@ -551,7 +559,9 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
         if (!abort && !task && !plugin?.gateway?.stopAccount) {
           return;
         }
-        manuallyStopped.add(restartKey(channelId, id));
+        if (opts.manual !== false) {
+          manuallyStopped.add(restartKey(channelId, id));
+        }
         abort?.abort();
         const log = channelLogs[channelId];
         if (plugin?.gateway?.stopAccount) {
