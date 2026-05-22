@@ -4,6 +4,7 @@ import {
   markdownToTelegramHtml,
   renderTelegramHtmlText,
   splitTelegramHtmlChunks,
+  telegramHtmlToPlainTextFallback,
 } from "./format.js";
 
 describe("markdownToTelegramHtml", () => {
@@ -67,6 +68,19 @@ describe("markdownToTelegramHtml", () => {
     expect(renderTelegramHtmlText('<b class="x">bad</b>', { textMode: "html" })).toBe(
       '&lt;b class="x"&gt;bad&lt;/b&gt;',
     );
+  });
+
+  it("renders readable plain-text fallback for Telegram HTML links", () => {
+    expect(
+      telegramHtmlToPlainTextFallback(
+        '<a href="https://example.com/docs">Docs &amp; API</a><br><b>Done</b>',
+      ),
+    ).toBe("Docs & API (https://example.com/docs)\nDone");
+    expect(
+      telegramHtmlToPlainTextFallback(
+        '<a href="https://example.com"><b>https://example.com</b></a>',
+      ),
+    ).toBe("https://example.com");
   });
 
   it("renders blockquotes as native Telegram blockquote tags", () => {

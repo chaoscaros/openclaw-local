@@ -256,6 +256,9 @@ should be split by risk area.
     `channels.status` account snapshots when available, including runtime-only
     account names and unavailable credential-source markers, while JSON output
     stays config-derived and offline text output falls back to local snapshots.
+  - Telegram HTML send/edit parse fallbacks now strip markup into readable
+    plain text, preserving link labels plus URLs instead of retrying raw anchor
+    tags when Telegram rejects parse mode HTML.
   - Anthropic provider normalization now preserves native image input for
     current Claude rows when stale local catalog data marks them text-only.
   - `/models openai` provider headers now prefer the effective Codex OAuth

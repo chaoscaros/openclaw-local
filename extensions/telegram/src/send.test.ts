@@ -530,6 +530,31 @@ describe("sendMessageTelegram", () => {
     }
   });
 
+  it("uses readable plain text when Telegram rejects raw html links", async () => {
+    const parseErr = new Error(
+      "400: Bad Request: can't parse entities: Can't find end of the entity starting at byte offset 9",
+    );
+    const sendMessage = vi
+      .fn()
+      .mockRejectedValueOnce(parseErr)
+      .mockResolvedValueOnce({ message_id: 42, chat: { id: "123" } });
+    const api = { sendMessage } as unknown as { sendMessage: typeof sendMessage };
+
+    await sendMessageTelegram("123", '<a href="https://example.com/docs"><b>Docs</b></a>', {
+      token: "tok",
+      api,
+      textMode: "html",
+    });
+
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
+      "123",
+      '<a href="https://example.com/docs"><b>Docs</b></a>',
+      { parse_mode: "HTML" },
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(2, "123", "Docs (https://example.com/docs)");
+  });
+
   it("fails when Telegram text send returns no message_id", async () => {
     const sendMessage = vi.fn().mockResolvedValue({
       chat: { id: "123" },
@@ -2220,6 +2245,32 @@ describe("editMessageTelegram", () => {
         expect.objectContaining({ reply_markup: testCase.secondExpectReplyMarkup }),
       );
     }
+  });
+
+  it("uses readable plain text when editMessageTelegram falls back from html links", async () => {
+    botApi.editMessageText
+      .mockRejectedValueOnce(new Error("400: Bad Request: can't parse entities"))
+      .mockResolvedValueOnce({ message_id: 1, chat: { id: "123" } });
+
+    await editMessageTelegram("123", 1, '<a href="https://example.com/docs"><b>Docs</b></a>', {
+      token: "tok",
+      cfg: {},
+      textMode: "html",
+    });
+
+    expect(botApi.editMessageText).toHaveBeenNthCalledWith(
+      1,
+      "123",
+      1,
+      '<a href="https://example.com/docs"><b>Docs</b></a>',
+      { parse_mode: "HTML" },
+    );
+    expect(botApi.editMessageText).toHaveBeenNthCalledWith(
+      2,
+      "123",
+      1,
+      "Docs (https://example.com/docs)",
+    );
   });
 
   it("treats 'message is not modified' as success", async () => {

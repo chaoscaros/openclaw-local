@@ -20,6 +20,7 @@ Docs: https://docs.openclaw.ai
 - CLI/status: render extra gateway-like service diagnostics as warning/info output instead of error output.
 - Agents/failover: classify Moonshot/Kimi exhausted-balance HTTP 429 payloads as billing instead of generic rate limits.
 - Telegram: require normal command authorization before stop-like messages cancel pending same-chat debounce buffers.
+- Telegram: render HTML parse fallbacks as readable plain text, including link labels and URLs, instead of retrying with raw anchor markup.
 - Auto-reply/WebChat: honor configured `channels.webchat.textChunkLimit` and `chunkMode` overrides when splitting outbound replies.
 - Outbound/plugins: fall back from pinned setup-only channel entries to the active runtime registry so plugin channels can still send after setup/status registry swaps.
 - Control UI/chat: render session-scoped tool events so operator pages that attach to an already running session show live tool activity instead of waiting for history reload.
