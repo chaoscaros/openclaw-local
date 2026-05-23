@@ -456,6 +456,9 @@ found`, preventing topic-targeted replies from being silently delivered to
   - Exported session HTML now flattens unsafe markdown link protocols such as
     `javascript:` and `data:` into plain text while preserving safe links,
     relative links, and in-document anchors.
+  - Streamable HTTP MCP transports now follow redirects manually and scrub
+    custom headers on cross-origin redirects, preventing MCP auth headers from
+    being forwarded to redirected origins.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -497,6 +500,8 @@ found`, preventing topic-targeted replies from being silently delivered to
     `docs/cli/gateway.md`, `docs/gateway/bonjour.md`,
     `src/auto-reply/reply/export-html/template.js`,
     `src/auto-reply/reply/export-html/template.security.test.ts`,
+    `src/agents/mcp-transport.ts`, `src/agents/mcp-transport.test.ts`,
+    `src/infra/fetch-headers.ts`,
     `src/gateway/server-methods/agent.ts`, `extensions/lmstudio/src/runtime.ts`,
     `extensions/lmstudio/src/setup.ts`,
     `src/gateway/server/ws-connection/message-handler.ts`,
