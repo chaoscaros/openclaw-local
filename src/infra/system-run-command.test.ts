@@ -71,8 +71,10 @@ describe("system run command helpers", () => {
     { argv: ["pwsh", "-Command", "Get-Date"], expected: "Get-Date" },
     { argv: ["pwsh", "-File", "script.ps1"], expected: "script.ps1" },
     { argv: ["powershell", "-f", "script.ps1"], expected: "script.ps1" },
+    { argv: ["pwsh", "-ec", "ZQBjAGgAbwA="], expected: "ZQBjAGgAbwA=" },
     { argv: ["pwsh", "-EncodedCommand", "ZQBjAGgAbwA="], expected: "ZQBjAGgAbwA=" },
     { argv: ["powershell", "-enc", "ZQBjAGgAbwA="], expected: "ZQBjAGgAbwA=" },
+    { argv: ["pwsh", "-cwa", "Write-Output", "hi"], expected: "Write-Output hi" },
     { argv: ["busybox", "sh", "-c", "echo hi"], expected: "echo hi" },
     { argv: ["toybox", "ash", "-lc", "echo hi"], expected: "echo hi" },
   ])("extractShellCommandFromArgv unwraps %j", ({ argv, expected }) => {
@@ -174,6 +176,17 @@ describe("system run command helpers", () => {
       argv: ["cmd.exe", "/d", "/s", "/c", "echo", "SAFE&&whoami"],
       rawCommand: "echo",
     });
+  });
+
+  test("validateSystemRunCommandConsistency accepts PowerShell command-with-args preview", () => {
+    const res = expectValidResult(
+      validateSystemRunCommandConsistency({
+        argv: ["pwsh", "-cwa", "Write-Output", "hi"],
+        rawCommand: "Write-Output hi",
+        allowLegacyShellText: true,
+      }),
+    );
+    expect(res.previewText).toBe("Write-Output hi");
   });
 
   test("validateSystemRunCommandConsistency rejects mismatched rawCommand vs sh wrapper argv", () => {

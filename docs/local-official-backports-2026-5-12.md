@@ -459,6 +459,9 @@ found`, preventing topic-targeted replies from being silently delivered to
   - Streamable HTTP MCP transports now follow redirects manually and scrub
     custom headers on cross-origin redirects, preventing MCP auth headers from
     being forwarded to redirected origins.
+  - Shell wrapper detection now recognizes PowerShell encoded-command aliases
+    such as `-ec`, `-en`, and slash forms while stopping before script-file
+    arguments, improving exec previews and raw-command consistency checks.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -502,6 +505,12 @@ found`, preventing topic-targeted replies from being silently delivered to
     `src/auto-reply/reply/export-html/template.security.test.ts`,
     `src/agents/mcp-transport.ts`, `src/agents/mcp-transport.test.ts`,
     `src/infra/fetch-headers.ts`,
+    `src/infra/shell-inline-command.ts`,
+    `src/infra/shell-inline-command.test.ts`,
+    `src/infra/shell-wrapper-resolution.ts`,
+    `src/infra/exec-wrapper-resolution.test.ts`,
+    `src/infra/system-run-command.ts`,
+    `src/infra/system-run-command.test.ts`,
     `src/gateway/server-methods/agent.ts`, `extensions/lmstudio/src/runtime.ts`,
     `extensions/lmstudio/src/setup.ts`,
     `src/gateway/server/ws-connection/message-handler.ts`,

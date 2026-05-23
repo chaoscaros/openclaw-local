@@ -7,8 +7,8 @@ import {
 import { normalizeExecutableToken } from "./exec-wrapper-tokens.js";
 import {
   POSIX_INLINE_COMMAND_FLAGS,
-  POWERSHELL_INLINE_COMMAND_FLAGS,
   resolveInlineCommandMatch,
+  resolvePowerShellInlineCommandMatch,
 } from "./shell-inline-command.js";
 
 const POSIX_SHELL_WRAPPER_NAMES = ["ash", "bash", "dash", "fish", "ksh", "sh", "zsh"] as const;
@@ -207,7 +207,7 @@ function extractCmdInlineCommand(argv: string[]): string | null {
 }
 
 function extractPowerShellInlineCommand(argv: string[]): string | null {
-  return extractInlineCommandByFlags(argv, POWERSHELL_INLINE_COMMAND_FLAGS);
+  return resolvePowerShellInlineCommandMatch(argv).command;
 }
 
 function extractInlineCommandByFlags(
