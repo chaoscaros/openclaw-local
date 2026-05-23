@@ -453,6 +453,9 @@ found`, preventing topic-targeted replies from being silently delivered to
   - Wide-area DNS-SD now honors the same `discovery.mdns.mode` optional hint
     policy as local mDNS, so `sshPort` and `cliPath` are only written in `full`
     mode and omitted from the default minimal beacon.
+  - Exported session HTML now flattens unsafe markdown link protocols such as
+    `javascript:` and `data:` into plain text while preserving safe links,
+    relative links, and in-document anchors.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -492,6 +495,8 @@ found`, preventing topic-targeted replies from being silently delivered to
     `src/gateway/server-discovery-runtime.ts`,
     `src/gateway/server-discovery-runtime.test.ts`,
     `docs/cli/gateway.md`, `docs/gateway/bonjour.md`,
+    `src/auto-reply/reply/export-html/template.js`,
+    `src/auto-reply/reply/export-html/template.security.test.ts`,
     `src/gateway/server-methods/agent.ts`, `extensions/lmstudio/src/runtime.ts`,
     `extensions/lmstudio/src/setup.ts`,
     `src/gateway/server/ws-connection/message-handler.ts`,
