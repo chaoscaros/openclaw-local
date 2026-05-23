@@ -78,6 +78,7 @@ Docs: https://docs.openclaw.ai
 - Control UI/chat: order timestamped live stream and tool items before newer history fallbacks so chat stays in visible time order.
 - Control UI/chat: add a browser-local auto-scroll mode selector with always, near-bottom, and off behavior while keeping near-bottom as the default.
 - Control UI: add a browser-local text size setting that scales chat text, inputs, sidebars, and tool cards.
+- Gateway/discovery: honor minimal discovery mode for wide-area DNS-SD so optional `sshPort` and `cliPath` hints are only published in full mode.
 - Control UI/chat: let terminal session run status override stale active-run flags while still recovering legacy active-run rows after refresh.
 - Control UI/logs: make the Gateway log stream height responsive to the viewport with a minimum height floor.
 - Control UI: keep shared form, config, and usage text-entry controls at 16px on touch-primary devices so iOS Safari does not auto-zoom focused fields.

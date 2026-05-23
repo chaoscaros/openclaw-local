@@ -268,15 +268,15 @@ Notes:
 
 Only gateways with Bonjour discovery enabled (default) advertise the beacon.
 
-Wide-Area discovery records include (TXT):
+Wide-Area discovery records can include these TXT hints:
 
 - `role` (gateway role hint)
 - `transport` (transport hint, e.g. `gateway`)
 - `gatewayPort` (WebSocket port, usually `18789`)
-- `sshPort` (optional; clients default SSH targets to `22` when it is absent)
+- `sshPort` (full discovery mode only; clients default SSH targets to `22` when it is absent)
 - `tailnetDns` (MagicDNS hostname, when available)
 - `gatewayTls` / `gatewayTlsSha256` (TLS enabled + cert fingerprint)
-- `cliPath` (remote-install hint written to the wide-area zone)
+- `cliPath` (full discovery mode only)
 
 ### `gateway discover`
 
@@ -301,6 +301,5 @@ Notes:
 - The CLI scans `local.` plus the configured wide-area domain when one is enabled.
 - `wsUrl` in JSON output is derived from the resolved service endpoint, not from TXT-only
   hints such as `lanHost` or `tailnetDns`.
-- On `local.` mDNS, `sshPort` and `cliPath` are only broadcast when
-  `discovery.mdns.mode` is `full`. Wide-area DNS-SD still writes `cliPath`; `sshPort`
-  stays optional there too.
+- On `local.` mDNS and wide-area DNS-SD, `sshPort` and `cliPath` are only
+  published when `discovery.mdns.mode` is `full`.

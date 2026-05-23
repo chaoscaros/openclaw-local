@@ -98,8 +98,8 @@ The Gateway advertises small non‑secret hints to make UI flows convenient:
 - `canvasPort=<port>` (only when the canvas host is enabled; currently the same as `gatewayPort`)
 - `transport=gateway`
 - `tailnetDns=<magicdns>` (optional hint when Tailnet is available)
-- `sshPort=<port>` (mDNS full mode only; wide-area DNS-SD may omit it)
-- `cliPath=<path>` (mDNS full mode only; wide-area DNS-SD still writes it as a remote-install hint)
+- `sshPort=<port>` (full mode only; omitted in minimal and off modes)
+- `cliPath=<path>` (full mode only; omitted in minimal and off modes)
 
 Security notes:
 
@@ -169,6 +169,10 @@ sequences (e.g. spaces become `\032`).
 
 - `OPENCLAW_DISABLE_BONJOUR=1` disables advertising (legacy: `OPENCLAW_DISABLE_BONJOUR`).
 - `gateway.bind` in `~/.openclaw/openclaw.json` controls the Gateway bind mode.
+- `discovery.mdns.mode` controls optional `sshPort` and `cliPath` TXT hints for both
+  local mDNS and wide-area DNS-SD. The default `minimal` mode omits them; `full`
+  publishes them; `off` suppresses LAN multicast while wide-area DNS-SD can still
+  publish a minimal Gateway beacon when `discovery.wideArea.enabled` is true.
 - `OPENCLAW_SSH_PORT` overrides the SSH port when `sshPort` is advertised (legacy: `OPENCLAW_SSH_PORT`).
 - `OPENCLAW_TAILNET_DNS` publishes a MagicDNS hint in TXT (legacy: `OPENCLAW_TAILNET_DNS`).
 - `OPENCLAW_CLI_PATH` overrides the advertised CLI path (legacy: `OPENCLAW_CLI_PATH`).

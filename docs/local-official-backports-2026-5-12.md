@@ -450,6 +450,9 @@ found`, preventing topic-targeted replies from being silently delivered to
   - OpenAI-compatible Gateway chat completions now forward
     `max_completion_tokens` / `max_tokens` into agent stream params, preserving
     client token caps for `/v1/chat/completions` callers.
+  - Wide-area DNS-SD now honors the same `discovery.mdns.mode` optional hint
+    policy as local mDNS, so `sshPort` and `cliPath` are only written in `full`
+    mode and omitted from the default minimal beacon.
   - Files: `extensions/telegram/src/bot-info.ts`,
     `extensions/telegram/src/bot-info-cache.ts`,
     `extensions/telegram/src/channel.ts`, `extensions/telegram/src/monitor.ts`,
@@ -486,6 +489,9 @@ found`, preventing topic-targeted replies from being silently delivered to
     `src/config/schema.help.ts`, `src/config/schema.labels.ts`,
     `src/gateway/openai-http.ts`, `src/gateway/openai-http.test.ts`,
     `docs/gateway/openai-http-api.md`,
+    `src/gateway/server-discovery-runtime.ts`,
+    `src/gateway/server-discovery-runtime.test.ts`,
+    `docs/cli/gateway.md`, `docs/gateway/bonjour.md`,
     `src/gateway/server-methods/agent.ts`, `extensions/lmstudio/src/runtime.ts`,
     `extensions/lmstudio/src/setup.ts`,
     `src/gateway/server/ws-connection/message-handler.ts`,
