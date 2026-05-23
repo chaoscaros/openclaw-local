@@ -109,6 +109,7 @@ Docs: https://docs.openclaw.ai
 - Telegram: redact raw update verbose logs before writing user ids, names, message text, callbacks, links, or file identifiers.
 - Tools: keep the `message` tool available when a runtime allowlist explicitly includes it, even under restrictive tool profiles.
 - Gateway/OpenAI HTTP: forward `max_completion_tokens` and `max_tokens` from `/v1/chat/completions` into agent stream token caps.
+- Matrix: stop runtime dependency auto-installs when SDK packages are missing and show the supported plugin update or doctor repair commands instead.
 
 ## 2026.4.15
 

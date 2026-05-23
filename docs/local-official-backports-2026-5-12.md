@@ -87,6 +87,14 @@ should be split by risk area.
     `src/cli/plugins-install-command.ts`,
     `src/cli/plugins-install-config.test.ts`,
     `src/cli/program/preaction.test.ts`.
+- Matrix dependency repair behavior from `760501fc38` / `0792223a87`
+  - Local impact: Matrix startup/onboarding no longer runs package manager
+    installs from plugin runtime code when required SDK packages are missing.
+    It now reports the exact missing packages and points operators to
+    `openclaw plugins update matrix` or `openclaw doctor --fix`, while keeping
+    the local native crypto runtime bootstrap path intact.
+  - Files: `extensions/matrix/src/matrix/deps.ts`,
+    `extensions/matrix/src/matrix/deps.test.ts`.
 - Telegram HTML reply preservation from `7c606f834c` / `3c3cef1785`
   - Local impact: supported Telegram HTML tags survive markdown rendering and
     chunking, unsupported tags remain escaped, and durable outbound Telegram
