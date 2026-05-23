@@ -95,6 +95,13 @@ should be split by risk area.
     the local native crypto runtime bootstrap path intact.
   - Files: `extensions/matrix/src/matrix/deps.ts`,
     `extensions/matrix/src/matrix/deps.test.ts`.
+- Feishu webhook rate-limit key normalization from `8c9dbe3e71`
+  - Local impact: webhook rate limits now group loopback address-family variants
+    into one client key using the shared request client IP resolver, preventing
+    local IPv4/IPv6 shape changes from bypassing or growing the limiter state.
+  - Files: `extensions/feishu/src/monitor-transport-runtime-api.ts`,
+    `extensions/feishu/src/monitor.transport.ts`,
+    `extensions/feishu/src/monitor.webhook-security.test.ts`.
 - Telegram HTML reply preservation from `7c606f834c` / `3c3cef1785`
   - Local impact: supported Telegram HTML tags survive markdown rendering and
     chunking, unsupported tags remain escaped, and durable outbound Telegram

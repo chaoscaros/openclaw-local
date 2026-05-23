@@ -110,6 +110,7 @@ Docs: https://docs.openclaw.ai
 - Tools: keep the `message` tool available when a runtime allowlist explicitly includes it, even under restrictive tool profiles.
 - Gateway/OpenAI HTTP: forward `max_completion_tokens` and `max_tokens` from `/v1/chat/completions` into agent stream token caps.
 - Matrix: stop runtime dependency auto-installs when SDK packages are missing and show the supported plugin update or doctor repair commands instead.
+- Feishu: normalize loopback webhook client addresses before rate limiting so IPv4, IPv4-mapped IPv6, and IPv6 loopback requests share one local key.
 
 ## 2026.4.15
 
