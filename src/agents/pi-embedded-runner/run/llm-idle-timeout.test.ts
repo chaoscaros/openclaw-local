@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../../config/config.js";
 import {
   DEFAULT_LLM_IDLE_TIMEOUT_MS,
+  DEFAULT_MEMORY_FLUSH_LLM_IDLE_TIMEOUT_MS,
+  contextEndsWithToolResult,
   resolveLlmIdleTimeoutMs,
+  streamWithDynamicIdleTimeout,
   streamWithIdleTimeout,
 } from "./llm-idle-timeout.js";
 
@@ -50,9 +53,24 @@ describe("resolveLlmIdleTimeoutMs", () => {
     expect(resolveLlmIdleTimeoutMs({ cfg })).toBe(DEFAULT_LLM_IDLE_TIMEOUT_MS);
   });
 
-  it("falls back to agents.defaults.timeoutSeconds when llm.idleTimeoutSeconds is not set", () => {
+  it("does not stretch the default idle watchdog to agents.defaults.timeoutSeconds", () => {
     const cfg = { agents: { defaults: { timeoutSeconds: 300 } } } as OpenClawConfig;
-    expect(resolveLlmIdleTimeoutMs({ cfg })).toBe(300_000);
+    expect(resolveLlmIdleTimeoutMs({ cfg })).toBe(DEFAULT_LLM_IDLE_TIMEOUT_MS);
+  });
+
+  it("keeps the default idle watchdog when timeoutSeconds is longer", () => {
+    const cfg = { agents: { defaults: { timeoutSeconds: 600 } } } as OpenClawConfig;
+    expect(resolveLlmIdleTimeoutMs({ cfg })).toBe(DEFAULT_LLM_IDLE_TIMEOUT_MS);
+  });
+
+  it("caps the default idle watchdog to a shorter agent timeout", () => {
+    const cfg = { agents: { defaults: { timeoutSeconds: 30 } } } as OpenClawConfig;
+    expect(resolveLlmIdleTimeoutMs({ cfg })).toBe(30_000);
+  });
+
+  it("uses the same capped idle timeout after tool results", () => {
+    const cfg = { agents: { defaults: { timeoutSeconds: 30 } } } as OpenClawConfig;
+    expect(resolveLlmIdleTimeoutMs({ cfg, afterToolResult: true })).toBe(30_000);
   });
 
   it("does not stretch the idle watchdog to the implicit 48h agent timeout", () => {
@@ -60,8 +78,12 @@ describe("resolveLlmIdleTimeoutMs", () => {
     expect(resolveLlmIdleTimeoutMs({ cfg })).toBe(DEFAULT_LLM_IDLE_TIMEOUT_MS);
   });
 
-  it("uses an explicit run timeout override when llm.idleTimeoutSeconds is not set", () => {
-    expect(resolveLlmIdleTimeoutMs({ runTimeoutMs: 900_000 })).toBe(900_000);
+  it("does not stretch the default idle watchdog to an explicit run timeout override", () => {
+    expect(resolveLlmIdleTimeoutMs({ runTimeoutMs: 900_000 })).toBe(DEFAULT_LLM_IDLE_TIMEOUT_MS);
+  });
+
+  it("caps the default idle watchdog to a shorter explicit run timeout override", () => {
+    expect(resolveLlmIdleTimeoutMs({ runTimeoutMs: 30_000 })).toBe(30_000);
   });
 
   it("disables the idle watchdog when an explicit run timeout disables timeouts", () => {
@@ -89,6 +111,13 @@ describe("resolveLlmIdleTimeoutMs", () => {
     expect(resolveLlmIdleTimeoutMs({ cfg })).toBe(0);
   });
 
+  it("keeps explicit idleTimeoutSeconds=0 disabled after tool results", () => {
+    const cfg = {
+      agents: { defaults: { timeoutSeconds: 600, llm: { idleTimeoutSeconds: 0 } } },
+    } as OpenClawConfig;
+    expect(resolveLlmIdleTimeoutMs({ cfg, afterToolResult: true })).toBe(0);
+  });
+
   it("disables the default idle timeout for cron when no timeout is configured", () => {
     expect(resolveLlmIdleTimeoutMs({ trigger: "cron" })).toBe(0);
 
@@ -109,6 +138,49 @@ describe("resolveLlmIdleTimeoutMs", () => {
   it("keeps an explicit cron idle timeout when configured", () => {
     const cfg = { agents: { defaults: { llm: { idleTimeoutSeconds: 45 } } } } as OpenClawConfig;
     expect(resolveLlmIdleTimeoutMs({ cfg, trigger: "cron" })).toBe(45_000);
+  });
+
+  it("uses a shorter default idle watchdog for memory flush turns", () => {
+    expect(resolveLlmIdleTimeoutMs({ trigger: "memory" })).toBe(
+      DEFAULT_MEMORY_FLUSH_LLM_IDLE_TIMEOUT_MS,
+    );
+  });
+
+  it("does not stretch memory flush idle to agents.defaults.timeoutSeconds", () => {
+    const cfg = { agents: { defaults: { timeoutSeconds: 600 } } } as OpenClawConfig;
+    expect(resolveLlmIdleTimeoutMs({ cfg, trigger: "memory" })).toBe(
+      DEFAULT_MEMORY_FLUSH_LLM_IDLE_TIMEOUT_MS,
+    );
+  });
+
+  it("still prefers explicit llm.idleTimeoutSeconds for memory flush turns", () => {
+    const cfg = { agents: { defaults: { llm: { idleTimeoutSeconds: 75 } } } } as OpenClawConfig;
+    expect(resolveLlmIdleTimeoutMs({ cfg, trigger: "memory" })).toBe(75_000);
+  });
+});
+
+describe("contextEndsWithToolResult", () => {
+  it("detects contexts whose latest message is a tool result", () => {
+    expect(
+      contextEndsWithToolResult({
+        messages: [
+          { role: "user", content: "hello" },
+          { role: "assistant", content: [{ type: "toolCall" }] },
+          { role: "toolResult", content: "done" },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("does not treat later assistant messages as post-tool-result requests", () => {
+    expect(
+      contextEndsWithToolResult({
+        messages: [
+          { role: "toolResult", content: "done" },
+          { role: "assistant", content: "next" },
+        ],
+      }),
+    ).toBe(false);
   });
 });
 
@@ -303,5 +375,34 @@ describe("streamWithIdleTimeout", () => {
     const [timeoutError] = onIdleTimeout.mock.calls[0] ?? [];
     expect(timeoutError).toBeInstanceOf(Error);
     expect((timeoutError as Error).message).toMatch(/LLM idle timeout/);
+  });
+
+  it("uses the dynamic timeout for tool-result continuation requests", async () => {
+    vi.useFakeTimers();
+    const slowStream: AsyncIterable<unknown> = {
+      [Symbol.asyncIterator]() {
+        return {
+          async next() {
+            return new Promise<IteratorResult<unknown>>(() => {});
+          },
+        };
+      },
+    };
+
+    const baseFn = vi.fn().mockReturnValue(slowStream);
+    const wrapped = streamWithDynamicIdleTimeout(baseFn, (context) =>
+      contextEndsWithToolResult(context) ? 50 : 1000,
+    );
+
+    const stream = wrapped(
+      {} as Parameters<typeof baseFn>[0],
+      { messages: [{ role: "toolResult", content: "done" }] } as Parameters<typeof baseFn>[1],
+      {} as Parameters<typeof baseFn>[2],
+    ) as AsyncIterable<unknown>;
+    const iterator = stream[Symbol.asyncIterator]();
+
+    const next = expect(iterator.next()).rejects.toThrow(/LLM idle timeout \(0s\)/);
+    await vi.advanceTimersByTimeAsync(50);
+    await next;
   });
 });

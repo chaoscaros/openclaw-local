@@ -8,6 +8,7 @@ import type { EmbeddedRunTrigger } from "./params.js";
  * Default idle timeout for LLM streaming responses in milliseconds.
  */
 export const DEFAULT_LLM_IDLE_TIMEOUT_MS = DEFAULT_LLM_IDLE_TIMEOUT_SECONDS * 1000;
+export const DEFAULT_MEMORY_FLUSH_LLM_IDLE_TIMEOUT_MS = 30_000;
 
 /**
  * Maximum safe timeout value (approximately 24.8 days).
@@ -23,8 +24,22 @@ export function resolveLlmIdleTimeoutMs(params?: {
   cfg?: OpenClawConfig;
   trigger?: EmbeddedRunTrigger;
   runTimeoutMs?: number;
+  afterToolResult?: boolean;
 }): number {
   const clampTimeoutMs = (valueMs: number) => Math.min(Math.floor(valueMs), MAX_SAFE_TIMEOUT_MS);
+  const defaultIdleTimeoutForTriggerMs =
+    params?.trigger === "memory"
+      ? DEFAULT_MEMORY_FLUSH_LLM_IDLE_TIMEOUT_MS
+      : DEFAULT_LLM_IDLE_TIMEOUT_MS;
+  const defaultIdleTimeoutForRunMs = (runTimeoutMs?: number) => {
+    if (typeof runTimeoutMs !== "number" || !Number.isFinite(runTimeoutMs) || runTimeoutMs <= 0) {
+      return defaultIdleTimeoutForTriggerMs;
+    }
+    if (runTimeoutMs >= MAX_SAFE_TIMEOUT_MS) {
+      return defaultIdleTimeoutForTriggerMs;
+    }
+    return clampTimeoutMs(Math.min(runTimeoutMs, defaultIdleTimeoutForTriggerMs));
+  };
   const raw = params?.cfg?.agents?.defaults?.llm?.idleTimeoutSeconds;
   // 0 means explicitly disabled (no timeout).
   if (raw === 0) {
@@ -37,7 +52,12 @@ export function resolveLlmIdleTimeoutMs(params?: {
   const runTimeoutMs = params?.runTimeoutMs;
   if (typeof runTimeoutMs === "number" && Number.isFinite(runTimeoutMs) && runTimeoutMs > 0) {
     if (runTimeoutMs >= MAX_SAFE_TIMEOUT_MS) {
-      return 0;
+      return params?.trigger === "memory" || params?.afterToolResult
+        ? defaultIdleTimeoutForTriggerMs
+        : 0;
+    }
+    if (params?.trigger !== "cron") {
+      return defaultIdleTimeoutForRunMs(runTimeoutMs);
     }
     return clampTimeoutMs(runTimeoutMs);
   }
@@ -48,13 +68,16 @@ export function resolveLlmIdleTimeoutMs(params?: {
   // provider request that goes silent after tool results can leave task-mode
   // runs visibly pending for nearly two days.
   if (agentTimeoutSeconds === IMPLICIT_DEFAULT_AGENT_TIMEOUT_SECONDS) {
-    return params?.trigger === "cron" ? 0 : DEFAULT_LLM_IDLE_TIMEOUT_MS;
+    return params?.trigger === "cron" ? 0 : defaultIdleTimeoutForTriggerMs;
   }
   if (
     typeof agentTimeoutSeconds === "number" &&
     Number.isFinite(agentTimeoutSeconds) &&
     agentTimeoutSeconds > 0
   ) {
+    if (params?.trigger !== "cron") {
+      return defaultIdleTimeoutForRunMs(agentTimeoutSeconds * 1000);
+    }
     return clampTimeoutMs(agentTimeoutSeconds * 1000);
   }
 
@@ -62,7 +85,24 @@ export function resolveLlmIdleTimeoutMs(params?: {
     return 0;
   }
 
-  return DEFAULT_LLM_IDLE_TIMEOUT_MS;
+  return defaultIdleTimeoutForTriggerMs;
+}
+
+export function contextEndsWithToolResult(context: unknown): boolean {
+  const messages = (context as { messages?: unknown } | null | undefined)?.messages;
+  if (!Array.isArray(messages)) {
+    return false;
+  }
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const role = (messages[index] as { role?: unknown } | null | undefined)?.role;
+    if (role === "toolResult") {
+      return true;
+    }
+    if (typeof role === "string") {
+      return false;
+    }
+  }
+  return false;
 }
 
 /**
@@ -170,5 +210,19 @@ export function streamWithIdleTimeout(
       );
     }
     return wrapStream(maybeStream);
+  };
+}
+
+export function streamWithDynamicIdleTimeout(
+  baseFn: StreamFn,
+  resolveTimeoutMs: (context: unknown) => number,
+  onIdleTimeout?: (error: Error) => void,
+): StreamFn {
+  return (model, context, options) => {
+    const timeoutMs = resolveTimeoutMs(context);
+    if (timeoutMs <= 0) {
+      return baseFn(model, context, options);
+    }
+    return streamWithIdleTimeout(baseFn, timeoutMs, onIdleTimeout)(model, context, options);
   };
 }

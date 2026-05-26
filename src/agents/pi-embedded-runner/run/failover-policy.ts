@@ -153,6 +153,12 @@ export function resolveRunFailoverDecision(params: RunFailoverDecisionParams): R
     };
   }
   const assistantShouldRotate = shouldRotateAssistant(params);
+  if (params.timedOut && !params.timedOutDuringCompaction && params.fallbackConfigured) {
+    return {
+      action: "fallback_model",
+      reason: "timeout",
+    };
+  }
   if (!params.profileRotated && assistantShouldRotate) {
     return {
       action: "rotate_profile",

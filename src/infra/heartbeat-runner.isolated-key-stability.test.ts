@@ -153,6 +153,51 @@ describe("runHeartbeatOnce – isolated session key stability (#59493)", () => {
     });
   });
 
+  it("skips when the previous isolated heartbeat run is still active", async () => {
+    await withTempHeartbeatSandbox(async ({ tmpDir, storePath }) => {
+      const cfg = makeIsolatedHeartbeatConfig(tmpDir, storePath);
+      const baseSessionKey = resolveMainSessionKey(cfg);
+      const isolatedSessionKey = `${baseSessionKey}:heartbeat`;
+      await fs.writeFile(
+        storePath,
+        JSON.stringify({
+          [baseSessionKey]: {
+            sessionId: "base-sid",
+            updatedAt: 1,
+            lastChannel: "whatsapp",
+            lastProvider: "whatsapp",
+            lastTo: "+1555",
+          },
+          [isolatedSessionKey]: {
+            sessionId: "isolated-sid",
+            updatedAt: 1,
+            startedAt: 1,
+            status: "running",
+            lastChannel: "whatsapp",
+            lastProvider: "whatsapp",
+            lastTo: "+1555",
+            heartbeatIsolatedBaseSessionKey: baseSessionKey,
+          },
+        }),
+        "utf-8",
+      );
+      const replySpy = vi.spyOn(replyModule, "getReplyFromConfig");
+      replySpy.mockResolvedValue({ text: "HEARTBEAT_OK" });
+
+      const result = await runHeartbeatOnce({
+        cfg,
+        sessionKey: baseSessionKey,
+        deps: {
+          getQueueSize: () => 0,
+          nowMs: () => 100,
+        },
+      });
+
+      expect(result).toEqual({ status: "skipped", reason: "requests-in-flight" });
+      expect(replySpy).not.toHaveBeenCalled();
+    });
+  });
+
   it("stays stable even with multiply-accumulated suffixes", async () => {
     await withTempHeartbeatSandbox(async ({ tmpDir, storePath }) => {
       const cfg = makeIsolatedHeartbeatConfig(tmpDir, storePath);

@@ -74,6 +74,7 @@ import {
 } from "../protocol/index.js";
 import { CHAT_SEND_SESSION_KEY_MAX_LENGTH } from "../protocol/schema/primitives.js";
 import { getMaxChatHistoryMessagesBytes } from "../server-constants.js";
+import { markSessionRunTerminal, type SessionRunTerminalReason } from "../session-run-terminal.js";
 import {
   capArrayByJsonBytes,
   loadSessionEntry,
@@ -114,6 +115,11 @@ type ChatAbortRequester = {
   deviceId?: string;
   isAdmin: boolean;
 };
+
+function isTimeoutError(err: unknown) {
+  const message = String(err).toLowerCase();
+  return message.includes("timed out") || message.includes("timeout");
+}
 
 /** True when a reply payload carries at least one media reference (mediaUrl or mediaUrls). */
 function isMediaBearingPayload(payload: ReplyPayload): boolean {
@@ -1823,6 +1829,11 @@ function isBtwReplyPayload(payload: ReplyPayload | undefined): payload is ReplyP
   );
 }
 
+function isAgentFailedBeforeReplyPayload(payload: ReplyPayload | undefined): boolean {
+  const text = typeof payload?.text === "string" ? payload.text.trim() : "";
+  return text.startsWith("⚠️ Agent failed before reply:");
+}
+
 function broadcastSideResult(params: {
   context: Pick<GatewayRequestContext, "broadcast" | "nodeSendToSession" | "agentRunSeq">;
   payload: SideResultPayload;
@@ -2465,6 +2476,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       });
 
       let agentRunStarted = false;
+      let chatRunTerminalReason: SessionRunTerminalReason = "done";
       void dispatchInboundMessage({
         ctx,
         cfg,
@@ -2502,7 +2514,12 @@ export const chatHandlers: GatewayRequestHandlers = {
       })
         .then(async () => {
           await rewriteUserTranscriptMedia();
-          if (!agentRunStarted) {
+          const shouldFlushBufferedFinal =
+            !agentRunStarted ||
+            deliveredReplies.some(
+              (entry) => entry.kind === "final" && isAgentFailedBeforeReplyPayload(entry.payload),
+            );
+          if (shouldFlushBufferedFinal) {
             await emitUserTranscriptUpdate();
             const btwReplies = deliveredReplies
               .map((entry) => entry.payload)
@@ -2588,6 +2605,7 @@ export const chatHandlers: GatewayRequestHandlers = {
           });
         })
         .catch((err) => {
+          chatRunTerminalReason = isTimeoutError(err) ? "timeout" : "failed";
           void rewriteUserTranscriptMedia().catch((rewriteErr) => {
             context.logGateway.warn(
               `webchat transcript media rewrite failed after error: ${formatForLog(rewriteErr)}`,
@@ -2621,7 +2639,29 @@ export const chatHandlers: GatewayRequestHandlers = {
           });
         })
         .finally(() => {
+          const active = context.chatAbortControllers.get(clientRunId);
           context.chatAbortControllers.delete(clientRunId);
+          if (!active) {
+            return;
+          }
+          const endedAt = Date.now();
+          const reason = endedAt >= active.expiresAtMs ? "timeout" : chatRunTerminalReason;
+          void markSessionRunTerminal({
+            sessionKey: active.sessionKey,
+            reason,
+            endedAt,
+            runId: clientRunId,
+            log: context.logGateway,
+          }).then((result) => {
+            if (!result.updated) {
+              return;
+            }
+            context.broadcast("sessions.changed", {
+              sessionKey: result.sessionKey ?? active.sessionKey,
+              reason: `chat-${reason}`,
+              ts: endedAt,
+            });
+          });
         });
     } catch (err) {
       const error = errorShape(ErrorCodes.UNAVAILABLE, String(err));

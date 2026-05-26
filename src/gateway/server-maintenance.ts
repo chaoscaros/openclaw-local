@@ -13,6 +13,7 @@ import {
 import type { DedupeEntry } from "./server-shared.js";
 import { formatError } from "./server-utils.js";
 import { setBroadcastHealthUpdate } from "./server/health-state.js";
+import { markSessionRunTerminal } from "./session-run-terminal.js";
 
 export function startGatewayMaintenanceTimers(params: {
   broadcast: (
@@ -109,6 +110,22 @@ export function startGatewayMaintenanceTimers(params: {
       if (now <= entry.expiresAtMs) {
         continue;
       }
+      void markSessionRunTerminal({
+        sessionKey: entry.sessionKey,
+        reason: "timeout",
+        endedAt: now,
+        runId,
+        log: { warn: params.logHealth.error },
+      }).then((result) => {
+        if (!result.updated) {
+          return;
+        }
+        params.broadcast("sessions.changed", {
+          sessionKey: result.sessionKey ?? entry.sessionKey,
+          reason: "run-timeout",
+          ts: now,
+        });
+      });
       abortChatRunById(
         {
           chatAbortControllers: params.chatAbortControllers,

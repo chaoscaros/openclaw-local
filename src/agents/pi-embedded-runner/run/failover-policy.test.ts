@@ -98,6 +98,25 @@ describe("resolveRunFailoverDecision", () => {
     });
   });
 
+  it("falls back immediately on assistant idle timeouts when a fallback model is configured", () => {
+    expect(
+      resolveRunFailoverDecision({
+        stage: "assistant",
+        aborted: false,
+        externalAbort: false,
+        fallbackConfigured: true,
+        failoverFailure: false,
+        failoverReason: null,
+        timedOut: true,
+        timedOutDuringCompaction: false,
+        profileRotated: false,
+      }),
+    ).toEqual({
+      action: "fallback_model",
+      reason: "timeout",
+    });
+  });
+
   it("does not fall back on stale classified assistant text after rotation is exhausted", () => {
     expect(
       resolveRunFailoverDecision({

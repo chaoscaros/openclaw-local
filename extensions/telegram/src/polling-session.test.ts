@@ -824,10 +824,14 @@ describe("TelegramPollingSession", () => {
     });
     isRecoverableTelegramNetworkErrorMock.mockReturnValue(false);
     const createWorker = vi.fn(() => ({
-      onMessage: vi.fn((listener: (message: { type: "poll-error"; message: string }) => void) => {
-        listener({ type: "poll-error", message: "401 Unauthorized" });
-        return () => undefined;
-      }),
+      onMessage: vi.fn(
+        (
+          listener: (message: { type: "poll-error"; message: string; finishedAt: number }) => void,
+        ) => {
+          listener({ type: "poll-error", message: "401 Unauthorized", finishedAt: Date.now() });
+          return () => undefined;
+        },
+      ),
       stop: vi.fn(async () => undefined),
       task: vi.fn(async () => {
         throw new Error("worker failed");

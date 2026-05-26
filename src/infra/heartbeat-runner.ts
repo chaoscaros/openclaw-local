@@ -405,6 +405,46 @@ function resolveStaleHeartbeatIsolatedSessionKey(params: {
   return undefined;
 }
 
+type HeartbeatSessionRunState = {
+  status?: string;
+  endedAt?: number;
+  heartbeatIsolatedBaseSessionKey?: string;
+};
+
+function isActiveSessionRun(entry: HeartbeatSessionRunState | undefined) {
+  return entry?.status === "running" && typeof entry.endedAt !== "number";
+}
+
+function hasActiveHeartbeatRun(params: {
+  store: Record<string, HeartbeatSessionRunState | undefined>;
+  sessionKey: string;
+  sessionEntry?: HeartbeatSessionRunState;
+  useIsolatedSession: boolean;
+  configuredSessionKey: string;
+}) {
+  if (isActiveSessionRun(params.store[params.sessionKey])) {
+    return true;
+  }
+  if (!params.useIsolatedSession) {
+    return false;
+  }
+
+  const { isolatedSessionKey, isolatedBaseSessionKey } = resolveIsolatedHeartbeatSessionKey({
+    sessionKey: params.sessionKey,
+    configuredSessionKey: params.configuredSessionKey,
+    sessionEntry: params.sessionEntry,
+  });
+  return Object.entries(params.store).some(([key, entry]) => {
+    if (!isActiveSessionRun(entry)) {
+      return false;
+    }
+    return (
+      key === isolatedSessionKey ||
+      entry?.heartbeatIsolatedBaseSessionKey === isolatedBaseSessionKey
+    );
+  });
+}
+
 function resolveHeartbeatReasoningPayloads(
   replyResult: ReplyPayload | ReplyPayload[] | undefined,
 ): ReplyPayload[] {
@@ -764,6 +804,27 @@ export async function runHeartbeatOnce(opts: {
     return { status: "skipped", reason: "requests-in-flight" };
   }
 
+  const useIsolatedSession = heartbeat?.isolatedSession === true;
+  const configuredHeartbeatSession = useIsolatedSession
+    ? resolveHeartbeatSession(cfg, agentId, heartbeat)
+    : undefined;
+  if (
+    hasActiveHeartbeatRun({
+      store: preflight.session.store,
+      sessionKey,
+      sessionEntry: entry,
+      useIsolatedSession,
+      configuredSessionKey: configuredHeartbeatSession?.sessionKey ?? sessionKey,
+    })
+  ) {
+    emitHeartbeatEvent({
+      status: "skipped",
+      reason: "requests-in-flight",
+      durationMs: Date.now() - startedAt,
+    });
+    return { status: "skipped", reason: "requests-in-flight" };
+  }
+
   const previousUpdatedAt = entry?.updatedAt;
 
   // When isolatedSession is enabled, create a fresh session via the same
@@ -771,7 +832,6 @@ export async function runHeartbeatOnce(opts: {
   // a new session ID (empty transcript) each run, avoiding the cost of
   // sending the full conversation history (~100K tokens) to the LLM.
   // Delivery routing still uses the main session entry (lastChannel, lastTo).
-  const useIsolatedSession = heartbeat?.isolatedSession === true;
   const delivery = resolveHeartbeatDeliveryTarget({
     cfg,
     entry,
@@ -837,7 +897,8 @@ export async function runHeartbeatOnce(opts: {
 
   let runSessionKey = sessionKey;
   if (useIsolatedSession) {
-    const configuredSession = resolveHeartbeatSession(cfg, agentId, heartbeat);
+    const configuredSession =
+      configuredHeartbeatSession ?? resolveHeartbeatSession(cfg, agentId, heartbeat);
     // Collapse only the repeated `:heartbeat` suffixes introduced by wake-triggered
     // re-entry for heartbeat-created isolated sessions. Real session keys that
     // happen to end with `:heartbeat` still get a distinct isolated sibling.

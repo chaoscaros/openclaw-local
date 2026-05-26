@@ -721,6 +721,73 @@ describe("gateway server chat", () => {
     });
   });
 
+  test("broadcasts chat final when an active agent fails before producing a reply", async () => {
+    await withMainSessionStore(async (dir) => {
+      await fs.writeFile(
+        path.join(dir, "sess-main.jsonl"),
+        `${JSON.stringify({
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "main thread context" }],
+            timestamp: Date.now(),
+          },
+        })}\n`,
+        "utf-8",
+      );
+      dispatchInboundMessageMock.mockImplementationOnce(async (...args: unknown[]) => {
+        const [params] = args as [
+          {
+            replyOptions?: {
+              onAgentRunStart?: (runId: string) => void;
+            };
+            dispatcher: {
+              sendFinalReply: (payload: { text: string }) => boolean;
+              markComplete: () => void;
+              waitForIdle: () => Promise<void>;
+            };
+          },
+        ];
+        params.replyOptions?.onAgentRunStart?.("idem-agent-fail-1");
+        params.dispatcher.sendFinalReply({
+          text: "⚠️ Agent failed before reply: All models failed (2): openai-codex/gpt-5.5: LLM request timed out (timeout) | openai-codex/gpt-5.4: LLM request timed out (timeout).\nLogs: openclaw logs --follow",
+        });
+        params.dispatcher.markComplete();
+        await params.dispatcher.waitForIdle();
+        return {
+          queuedFinal: true,
+          counts: { final: 1, block: 0, tool: 0 },
+        };
+      });
+
+      const finalPromise = onceMessage(
+        ws,
+        (o) =>
+          o.type === "event" &&
+          o.event === "chat" &&
+          o.payload?.state === "final" &&
+          o.payload?.runId === "idem-agent-fail-1",
+        8000,
+      );
+
+      const res = await rpcReq(ws, "chat.send", {
+        sessionKey: "main",
+        message: "trigger timeout",
+        idempotencyKey: "idem-agent-fail-1",
+      });
+
+      expect(res.ok).toBe(true);
+      const finalEvent = await finalPromise;
+      expect(finalEvent.payload).toMatchObject({
+        runId: "idem-agent-fail-1",
+        sessionKey: "agent:main:main",
+        state: "final",
+      });
+      expect(extractFirstTextBlock(finalEvent.payload?.message)).toContain(
+        "Agent failed before reply",
+      );
+    });
+  });
+
   test("routes block-streamed /btw replies through side-result events", async () => {
     await withMainSessionStore(async (dir) => {
       await fs.writeFile(

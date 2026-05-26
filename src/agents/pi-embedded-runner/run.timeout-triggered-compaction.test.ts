@@ -262,6 +262,99 @@ describe("timeout-triggered compaction", () => {
     expect(result.payloads?.[0]?.isError).not.toBe(true);
   });
 
+  it("retries post-tool-result idle timeouts from the persisted tool result", async () => {
+    mockedRunEmbeddedAttempt
+      .mockResolvedValueOnce(
+        makeAttemptResult({
+          timedOut: true,
+          idleTimedOut: true,
+          assistantTexts: [],
+          toolMetas: [{ toolName: "edit", meta: "changed file" }],
+          messagesSnapshot: [
+            { role: "assistant", content: [{ type: "toolCall", name: "edit" }] },
+            { role: "toolResult", content: "Successfully replaced 1 block(s)." },
+          ] as never,
+          lastAssistant: {
+            usage: { input: 20000 },
+          } as never,
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeAttemptResult({
+          timedOut: true,
+          idleTimedOut: true,
+          assistantTexts: ["Continuing after reading files."],
+          messagesSnapshot: [
+            { role: "assistant", content: [{ type: "toolCall", name: "read" }] },
+            { role: "toolResult", content: "file contents" },
+          ] as never,
+          lastAssistant: {
+            usage: { input: 20000 },
+          } as never,
+        }),
+      )
+      .mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
+
+    const result = await runEmbeddedPiAgent(overflowBaseRunParams);
+
+    expect(mockedCompactDirect).not.toHaveBeenCalled();
+    expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(3);
+    expect(result.payloads?.[0]?.isError).not.toBe(true);
+  });
+
+  it("surfaces post-tool-result idle timeout after retry cap even with prior assistant text", async () => {
+    mockedRunEmbeddedAttempt
+      .mockResolvedValueOnce(
+        makeAttemptResult({
+          timedOut: true,
+          idleTimedOut: true,
+          assistantTexts: [],
+          messagesSnapshot: [
+            { role: "assistant", content: [{ type: "toolCall", name: "exec" }] },
+            { role: "toolResult", content: "grep output" },
+          ] as never,
+          lastAssistant: {
+            usage: { input: 20000 },
+          } as never,
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeAttemptResult({
+          timedOut: true,
+          idleTimedOut: true,
+          assistantTexts: ["I found the file and will continue."],
+          messagesSnapshot: [
+            { role: "assistant", content: [{ type: "toolCall", name: "read" }] },
+            { role: "toolResult", content: "file contents" },
+          ] as never,
+          lastAssistant: {
+            usage: { input: 20000 },
+          } as never,
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeAttemptResult({
+          timedOut: true,
+          idleTimedOut: true,
+          assistantTexts: ["Still working from the previous tool result."],
+          messagesSnapshot: [
+            { role: "assistant", content: [{ type: "toolCall", name: "read" }] },
+            { role: "toolResult", content: "more file contents" },
+          ] as never,
+          lastAssistant: {
+            usage: { input: 20000 },
+          } as never,
+        }),
+      );
+
+    const result = await runEmbeddedPiAgent(overflowBaseRunParams);
+
+    expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(3);
+    expect(result.payloads?.[0]?.isError).toBe(true);
+    expect(result.payloads?.[0]?.text).toContain("LLM idle timeout");
+    expect(result.payloads?.[0]?.text).toContain("agents.defaults.llm.idleTimeoutSeconds");
+  });
+
   it("does not attempt compaction for low-context timeouts on later retries", async () => {
     mockedPickFallbackThinkingLevel.mockReturnValueOnce("low");
     mockedRunEmbeddedAttempt
@@ -577,5 +670,30 @@ describe("timeout-triggered compaction", () => {
     expect(mockedCompactDirect).not.toHaveBeenCalled();
     expect(result.payloads?.[0]?.isError).toBe(true);
     expect(result.payloads?.[0]?.text).toContain("timed out");
+  });
+
+  it("does not retry memory flush turns after a post-tool-result idle timeout", async () => {
+    mockedRunEmbeddedAttempt.mockResolvedValueOnce(
+      makeAttemptResult({
+        timedOut: true,
+        idleTimedOut: true,
+        assistantTexts: [],
+        messagesSnapshot: [
+          { role: "assistant", content: [{ type: "toolCall", name: "write" }] },
+          { role: "toolResult", content: [{ type: "text", text: "Appended content." }] },
+        ] as never,
+      }),
+    );
+
+    await expect(
+      runEmbeddedPiAgent({
+        ...overflowBaseRunParams,
+        trigger: "memory",
+        memoryFlushWritePath: "memory/2026-05-26.md",
+        silentExpected: true,
+      }),
+    ).rejects.toThrow("memory flush idle timeout");
+
+    expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(1);
   });
 });

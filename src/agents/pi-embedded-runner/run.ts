@@ -108,6 +108,7 @@ import {
   resolveReplayInvalidFlag,
   resolveRunLivenessState,
 } from "./run/incomplete-turn.js";
+import { contextEndsWithToolResult } from "./run/llm-idle-timeout.js";
 import type { RunEmbeddedPiAgentParams } from "./run/params.js";
 import { buildEmbeddedRunPayloads } from "./run/payloads.js";
 import { handleRetryLimitExhaustion } from "./run/retry-limit.js";
@@ -128,7 +129,7 @@ import { createUsageAccumulator, mergeUsageIntoAccumulator } from "./usage-accum
 
 type ApiKeyInfo = ResolvedProviderAuth;
 
-const MAX_SAME_MODEL_IDLE_TIMEOUT_RETRIES = 1;
+const MAX_SAME_MODEL_IDLE_TIMEOUT_RETRIES = 2;
 
 function buildTraceToolSummary(params: {
   toolMetas: Array<{ toolName: string; meta?: string }>;
@@ -786,6 +787,13 @@ export async function runEmbeddedPiAgent(
             lastAssistant: sessionLastAssistant,
             currentAttemptAssistant,
           } = attempt;
+          if (params.trigger === "memory" && timedOut) {
+            throw new Error(
+              idleTimedOut
+                ? "memory flush idle timeout before a response was generated"
+                : "memory flush timed out before a response was generated",
+            );
+          }
           bootstrapPromptWarningSignaturesSeen =
             attempt.bootstrapPromptWarningSignaturesSeen ??
             (attempt.bootstrapPromptWarningSignature
@@ -841,6 +849,17 @@ export async function runEmbeddedPiAgent(
             !attempt.lastToolError &&
             attempt.toolMetas.length === 0 &&
             attempt.assistantTexts.length === 0;
+          const canRetryAfterToolResultIdleTimeout =
+            timedOut &&
+            idleTimedOut &&
+            !timedOutDuringCompaction &&
+            !fallbackConfigured &&
+            !attempt.didSendViaMessagingTool &&
+            !attempt.didSendDeterministicApprovalPrompt &&
+            !attempt.lastToolError &&
+            params.trigger !== "memory" &&
+            contextEndsWithToolResult({ messages: attempt.messagesSnapshot }) &&
+            sameModelIdleTimeoutRetries < MAX_SAME_MODEL_IDLE_TIMEOUT_RETRIES;
           if (preflightRecovery?.handled) {
             log.info(
               `[context-overflow-precheck] early recovery route=${preflightRecovery.route} ` +
@@ -1503,17 +1522,20 @@ export async function runEmbeddedPiAgent(
             );
           }
 
-          const assistantFailoverDecision = resolveRunFailoverDecision({
-            stage: "assistant",
-            aborted,
-            externalAbort,
-            fallbackConfigured,
-            failoverFailure,
-            failoverReason: assistantFailoverReason,
-            timedOut,
-            timedOutDuringCompaction,
-            profileRotated: false,
-          });
+          const assistantFailoverDecision =
+            params.trigger === "memory" && timedOut
+              ? ({ action: "surface_error", reason: "timeout" } as const)
+              : resolveRunFailoverDecision({
+                  stage: "assistant",
+                  aborted,
+                  externalAbort,
+                  fallbackConfigured,
+                  failoverFailure,
+                  failoverReason: assistantFailoverReason,
+                  timedOut,
+                  timedOutDuringCompaction,
+                  profileRotated: false,
+                });
           const assistantFailoverOutcome = await handleAssistantFailover({
             initialDecision: assistantFailoverDecision,
             aborted,
@@ -1529,7 +1551,7 @@ export async function runEmbeddedPiAgent(
               idleTimedOut &&
               !timedOutDuringCompaction &&
               !fallbackConfigured &&
-              canRestartForLiveSwitch &&
+              (canRestartForLiveSwitch || canRetryAfterToolResultIdleTimeout) &&
               sameModelIdleTimeoutRetries < MAX_SAME_MODEL_IDLE_TIMEOUT_RETRIES,
             assistantProfileFailureReason,
             lastProfileId,
@@ -1636,7 +1658,7 @@ export async function runEmbeddedPiAgent(
           // Timeout aborts can leave the run without any assistant payloads.
           // Emit an explicit timeout error instead of silently completing, so
           // callers do not lose the turn as an orphaned user message.
-          if (timedOut && !timedOutDuringCompaction && !payloadsWithToolMedia?.length) {
+          if (timedOut && !timedOutDuringCompaction) {
             const timeoutText = idleTimedOut
               ? "The model did not produce a response before the LLM idle timeout. " +
                 "Please try again, or increase `agents.defaults.llm.idleTimeoutSeconds` in your config (set to 0 to disable)."

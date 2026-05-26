@@ -11,6 +11,7 @@ import {
 import { resolveBootstrapWarningSignaturesSeen } from "../../agents/bootstrap-budget.js";
 import { runCliAgent } from "../../agents/cli-runner.js";
 import { getCliSessionBinding } from "../../agents/cli-session.js";
+import { describeFailoverError } from "../../agents/failover-error.js";
 import { LiveSessionModelSwitchError } from "../../agents/live-model-switch-error.js";
 import { runWithModelFallback, isFallbackSummaryError } from "../../agents/model-fallback.js";
 import { isCliProvider } from "../../agents/model-selection.js";
@@ -84,6 +85,7 @@ const GPT_CHAT_BREVITY_ACK_MAX_CHARS = 420;
 const GPT_CHAT_BREVITY_ACK_MAX_SENTENCES = 3;
 const GPT_CHAT_BREVITY_SOFT_MAX_CHARS = 900;
 const GPT_CHAT_BREVITY_SOFT_MAX_SENTENCES = 6;
+const MODEL_TIMEOUT_RECONNECT_ATTEMPTS = 5;
 
 function shouldBridgeCliAssistantTextToReasoning(provider: string): boolean {
   return normalizeLowercaseStringOrEmpty(provider) === "claude-cli";
@@ -112,6 +114,17 @@ export type AgentRunLoopResult =
       directlySentBlockKeys?: Set<string>;
     }
   | { kind: "final"; payload: ReplyPayload };
+
+function countTimeoutOnlyModelAttempts(err: unknown): number {
+  if (isFallbackSummaryError(err)) {
+    if (err.attempts.length === 0) {
+      return 0;
+    }
+    return err.attempts.every((attempt) => attempt.reason === "timeout") ? err.attempts.length : 0;
+  }
+  const described = describeFailoverError(err);
+  return described.reason === "timeout" ? 1 : 0;
+}
 
 type FallbackSelectionState = Pick<
   SessionEntry,
@@ -631,6 +644,38 @@ export async function runAgentTurnWithFallback(params: {
   let didResetAfterCompactionFailure = false;
   let didRetryTransientHttpError = false;
   let liveModelSwitchRetries = 0;
+  const runStatusToolCallId = `${runId}:run_status`;
+  let runStatusStarted = false;
+  const emitRunStatus = (
+    phase: "start" | "update" | "result",
+    payload: Record<string, unknown>,
+  ): void => {
+    const data: Record<string, unknown> = {
+      phase,
+      toolCallId: runStatusToolCallId,
+      name: "run_status",
+      ...(phase === "start"
+        ? { args: payload }
+        : phase === "update"
+          ? { partialResult: payload }
+          : { result: payload }),
+    };
+    if (phase === "start") {
+      runStatusStarted = true;
+    }
+    emitAgentEvent({
+      runId,
+      stream: "tool",
+      data,
+    });
+  };
+  const emitRunStatusStart = (payload: Record<string, unknown>): void => {
+    if (runStatusStarted) {
+      emitRunStatus("update", payload);
+      return;
+    }
+    emitRunStatus("start", payload);
+  };
   let bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
     params.getActiveSessionEntry()?.systemPromptReport,
   );
@@ -809,10 +854,22 @@ export async function runAgentTurnWithFallback(params: {
           `runId=${runId} durationMs=${Date.now() - executionStartedAt} ` +
           `isHeartbeat=${params.isHeartbeat}`,
       );
-      const fallbackResult = await runWithModelFallback({
+      if (!params.isHeartbeat) {
+        emitRunStatusStart({
+          status: "starting",
+          provider: fallbackProvider,
+          model: fallbackModel,
+          message: "Preparing the agent run...",
+        });
+      }
+      const fallbackRunParams = {
         ...resolveModelFallbackOptions(params.followupRun.run),
         runId,
-        run: async (provider, model, runOptions) => {
+        run: async (
+          provider: string,
+          model: string,
+          runOptions?: { allowTransientCooldownProbe?: boolean },
+        ) => {
           const attemptStartedAt = Date.now();
           // Notify that model selection is complete (including after fallback).
           // This allows responsePrefix template interpolation with the actual model.
@@ -837,6 +894,14 @@ export async function runAgentTurnWithFallback(params: {
               `runId=${runId} provider=${provider} model=${model} ` +
               `durationMs=${Date.now() - attemptStartedAt} isHeartbeat=${params.isHeartbeat}`,
           );
+          if (!params.isHeartbeat) {
+            emitRunStatusStart({
+              status: "model_selected",
+              provider,
+              model,
+              message: "Model selected; preparing request...",
+            });
+          }
           if (isCliProvider(provider, runtimeConfig)) {
             const startedAt = Date.now();
             notifyAgentRunStart();
@@ -1034,10 +1099,19 @@ export async function runAgentTurnWithFallback(params: {
               `runId=${runId} durationMs=${Date.now() - embeddedBuildStartedAt} ` +
               `sinceAttemptMs=${Date.now() - attemptStartedAt} isHeartbeat=${params.isHeartbeat}`,
           );
+          if (!params.isHeartbeat) {
+            emitRunStatusStart({
+              status: "request_prepared",
+              provider,
+              model,
+              message: "Request prepared; entering the agent loop...",
+            });
+          }
           return (async () => {
             let attemptCompactionCount = 0;
             const embeddedRunStartedAt = Date.now();
             let didLogEmbeddedStart = false;
+            let runStatusTerminalEmitted = false;
             let didLogFirstAssistantMessage = false;
             const logFirstAssistantMessage = (source: string) => {
               if (didLogFirstAssistantMessage) {
@@ -1058,6 +1132,15 @@ export async function runAgentTurnWithFallback(params: {
                   `runId=${runId} sinceAttemptMs=${Date.now() - attemptStartedAt} ` +
                   `sinceExecutionMs=${Date.now() - executionStartedAt} isHeartbeat=${params.isHeartbeat}`,
               );
+              if (!params.isHeartbeat) {
+                notifyAgentRunStart();
+                emitRunStatus("update", {
+                  status: "running",
+                  provider,
+                  model,
+                  message: "Agent loop started; waiting for model or tool activity...",
+                });
+              }
               const result = await runEmbeddedPiAgent({
                 ...embeddedContext,
                 allowGatewaySubagentBinding: true,
@@ -1328,6 +1411,15 @@ export async function runAgentTurnWithFallback(params: {
               bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
                 result.meta?.systemPromptReport,
               );
+              if (!params.isHeartbeat) {
+                emitRunStatus("result", {
+                  status: "completed",
+                  provider,
+                  model,
+                  durationMs: Date.now() - embeddedRunStartedAt,
+                });
+                runStatusTerminalEmitted = true;
+              }
               const resultCompactionCount = Math.max(
                 0,
                 result.meta?.agentMeta?.compactionCount ?? 0,
@@ -1335,6 +1427,16 @@ export async function runAgentTurnWithFallback(params: {
               attemptCompactionCount = Math.max(attemptCompactionCount, resultCompactionCount);
               return result;
             } catch (err) {
+              if (!params.isHeartbeat) {
+                emitRunStatus("result", {
+                  status: "failed",
+                  provider,
+                  model,
+                  durationMs: Date.now() - embeddedRunStartedAt,
+                  error: String(err),
+                });
+                runStatusTerminalEmitted = true;
+              }
               if (rollbackFallbackCandidateSelection) {
                 try {
                   await rollbackFallbackCandidateSelection();
@@ -1353,11 +1455,51 @@ export async function runAgentTurnWithFallback(params: {
                   `embeddedStartLogged=${didLogEmbeddedStart} ` +
                   `isHeartbeat=${params.isHeartbeat}`,
               );
+              if (!params.isHeartbeat && !runStatusTerminalEmitted) {
+                emitRunStatus("result", {
+                  status: "failed",
+                  provider,
+                  model,
+                  durationMs: Date.now() - embeddedRunStartedAt,
+                  error: "Agent loop ended without a terminal status",
+                });
+              }
               autoCompactionCount += attemptCompactionCount;
             }
           })();
         },
-      });
+      };
+      let timeoutReconnectAttempts = 0;
+      const runWithTimeoutReconnect = async () => {
+        while (true) {
+          try {
+            return await runWithModelFallback(fallbackRunParams);
+          } catch (err) {
+            const timeoutAttempts = countTimeoutOnlyModelAttempts(err);
+            if (
+              timeoutAttempts === 0 ||
+              timeoutReconnectAttempts >= MODEL_TIMEOUT_RECONNECT_ATTEMPTS
+            ) {
+              throw err;
+            }
+            timeoutReconnectAttempts += 1;
+            if (!params.isHeartbeat) {
+              emitRunStatus("update", {
+                status: "model_timeout_reconnect",
+                attempt: timeoutReconnectAttempts,
+                maxAttempts: MODEL_TIMEOUT_RECONNECT_ATTEMPTS,
+                message: "Model request timed out before a reply; reconnecting...",
+              });
+            }
+            logVerbose(
+              `reply run model timeout reconnect: sessionKey=${params.sessionKey} ` +
+                `runId=${runId} reconnect=${timeoutReconnectAttempts}/${MODEL_TIMEOUT_RECONNECT_ATTEMPTS} ` +
+                `timeoutAttempts=${timeoutAttempts}`,
+            );
+          }
+        }
+      };
+      const fallbackResult = await runWithTimeoutReconnect();
       runResult = fallbackResult.result;
       fallbackProvider = fallbackResult.provider;
       fallbackModel = fallbackResult.model;

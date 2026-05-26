@@ -4,6 +4,7 @@ import path from "node:path";
 import type { Api, Model } from "@mariozechner/pi-ai";
 import type { AuthStorage, ModelRegistry } from "@mariozechner/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
+import type { OpenClawConfig } from "../../../config/config.js";
 import type { AnyAgentTool } from "../../pi-tools.types.js";
 import { buildEmbeddedAttemptToolRunContext } from "./attempt.tool-run-context.js";
 
@@ -95,6 +96,28 @@ describe("runEmbeddedAttempt memory flush tool forwarding", () => {
         `Memory flush writes are restricted to ${MEMORY_RELATIVE_PATH}; use that path only.`,
       );
       expect(fallbackWrite).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not expose read during memory flush turns", async () => {
+    const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-attempt-memory-flush-"));
+
+    try {
+      const { createOpenClawCodingTools } = await import("../../pi-tools.js");
+      const tools = createOpenClawCodingTools({
+        workspaceDir,
+        config: {} as OpenClawConfig,
+        trigger: "memory",
+        memoryFlushWritePath: MEMORY_RELATIVE_PATH,
+        modelProvider: "openai",
+        modelId: "gpt-5.4",
+      });
+      const toolNames = tools.map((tool) => tool.name);
+
+      expect(toolNames).toContain("write");
+      expect(toolNames).not.toContain("read");
     } finally {
       await fs.rm(workspaceDir, { recursive: true, force: true });
     }

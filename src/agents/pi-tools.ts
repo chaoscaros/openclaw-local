@@ -77,7 +77,7 @@ function isOpenAIProvider(provider?: string) {
   return normalized === "openai" || normalized === "openai-codex";
 }
 
-const MEMORY_FLUSH_ALLOWED_TOOL_NAMES = new Set(["read", "write"]);
+const MEMORY_FLUSH_ALLOWED_TOOL_NAMES = new Set(["write"]);
 const CHANGE_REVIEW_RESTRICTED_TOOL_NAMES = new Set(["exec", "process", "apply_patch"]);
 
 function createLazyExecTool(defaults?: ExecToolDefaults): AnyAgentTool {

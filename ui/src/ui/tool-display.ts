@@ -99,6 +99,12 @@ TOOL_MAP.model_status = {
   label: "Model request",
   detailKeys: ["model", "timeoutSeconds"],
 };
+TOOL_MAP.run_status = {
+  icon: "activity",
+  title: "Run",
+  label: "Agent run",
+  detailKeys: ["status", "provider", "model", "message"],
+};
 
 function shortenHomeInString(input: string): string {
   if (!input) {

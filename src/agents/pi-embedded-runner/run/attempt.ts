@@ -232,7 +232,11 @@ import {
 import { pruneProcessedHistoryImages } from "./history-image-prune.js";
 import { detectAndLoadPromptImages } from "./images.js";
 import { buildAttemptReplayMetadata } from "./incomplete-turn.js";
-import { resolveLlmIdleTimeoutMs, streamWithIdleTimeout } from "./llm-idle-timeout.js";
+import {
+  contextEndsWithToolResult,
+  resolveLlmIdleTimeoutMs,
+  streamWithDynamicIdleTimeout,
+} from "./llm-idle-timeout.js";
 import {
   PREEMPTIVE_OVERFLOW_ERROR_TEXT,
   shouldPreemptivelyCompactBeforePrompt,
@@ -1346,15 +1350,42 @@ export async function runEmbeddedAttempt(
       const configuredRunTimeoutMs = resolveAgentTimeoutMs({
         cfg: params.config,
       });
-      const idleTimeoutMs = resolveLlmIdleTimeoutMs({
+      const idleTimeoutParams = {
         cfg: params.config,
         trigger: params.trigger,
         runTimeoutMs: params.timeoutMs !== configuredRunTimeoutMs ? params.timeoutMs : undefined,
-      });
+      };
+      const idleTimeoutMs = resolveLlmIdleTimeoutMs(idleTimeoutParams);
+      let postToolResultModelWaitEventEmitted = false;
       if (idleTimeoutMs > 0) {
-        activeSession.agent.streamFn = streamWithIdleTimeout(
+        activeSession.agent.streamFn = streamWithDynamicIdleTimeout(
           activeSession.agent.streamFn,
-          idleTimeoutMs,
+          (context) => {
+            const afterToolResult = contextEndsWithToolResult(context);
+            const timeoutMs = afterToolResult
+              ? resolveLlmIdleTimeoutMs({ ...idleTimeoutParams, afterToolResult })
+              : idleTimeoutMs;
+            if (afterToolResult && !postToolResultModelWaitEventEmitted) {
+              postToolResultModelWaitEventEmitted = true;
+              params.onAgentEvent?.({
+                stream: "lifecycle",
+                data: {
+                  phase: "waiting_model_after_tool_result",
+                  startedAt: Date.now(),
+                  model: `${params.provider}/${params.modelId}`,
+                  api: params.model.api,
+                  timeoutMs,
+                },
+              });
+            }
+            if (afterToolResult && timeoutMs !== idleTimeoutMs && !isProbeSession) {
+              log.debug(
+                `using post-tool-result LLM idle timeout: runId=${params.runId} ` +
+                  `sessionId=${params.sessionId} timeoutMs=${timeoutMs}`,
+              );
+            }
+            return timeoutMs;
+          },
           (error) => idleTimeoutTrigger?.(error),
         );
       }
@@ -1513,6 +1544,16 @@ export async function runEmbeddedAttempt(
       };
       idleTimeoutTrigger = (error) => {
         idleTimedOut = true;
+        params.onAgentEvent?.({
+          stream: "lifecycle",
+          data: {
+            phase: "stream_idle_timeout",
+            endedAt: Date.now(),
+            model: `${params.provider}/${params.modelId}`,
+            api: params.model.api,
+            error: error.message,
+          },
+        });
         abortRun(true, error);
       };
       const abortable = <T>(promise: Promise<T>): Promise<T> => {
@@ -1708,6 +1749,7 @@ export async function runEmbeddedAttempt(
       let promptError: unknown = null;
       let preflightRecovery: EmbeddedRunAttemptResult["preflightRecovery"];
       let promptErrorSource: "prompt" | "compaction" | "precheck" | null = null;
+      let terminalLifecycleEmitted = false;
       let skipPromptSubmission = false;
       try {
         const promptStartedAt = Date.now();
@@ -2363,6 +2405,7 @@ export async function runEmbeddedAttempt(
           } catch (entryErr) {
             log.warn(`failed to persist prompt error entry: ${String(entryErr)}`);
           }
+          terminalLifecycleEmitted = true;
           params.onAgentEvent?.({
             stream: "lifecycle",
             data: {
@@ -2467,6 +2510,23 @@ export async function runEmbeddedAttempt(
             });
         }
       } finally {
+        if (!terminalLifecycleEmitted && !yieldAborted && (promptError || aborted || timedOut)) {
+          const endedAt = Date.now();
+          terminalLifecycleEmitted = true;
+          params.onAgentEvent?.({
+            stream: "lifecycle",
+            data: {
+              phase: aborted || timedOut ? "end" : "error",
+              endedAt,
+              ...(aborted || timedOut
+                ? { aborted: true, stopReason: timedOut ? "timeout" : "aborted" }
+                : {}),
+              ...(!aborted && !timedOut && promptError
+                ? { error: formatErrorMessage(promptError) }
+                : {}),
+            },
+          });
+        }
         clearTimeout(abortTimer);
         if (abortWarnTimer) {
           clearTimeout(abortWarnTimer);

@@ -252,6 +252,91 @@ describe("runAgentTurnWithFallback", () => {
     vi.clearAllMocks();
   });
 
+  it("emits an early visible run status before embedded model activity", async () => {
+    const { emitAgentEvent } = await import("../../infra/agent-events.js");
+    const emitAgentEventMock = vi.mocked(emitAgentEvent);
+    const onAgentRunStart = vi.fn();
+    let eventCountAtEmbeddedStart = 0;
+    state.runEmbeddedPiAgentMock.mockImplementationOnce(async () => {
+      eventCountAtEmbeddedStart = emitAgentEventMock.mock.calls.length;
+      return { payloads: [{ text: "final" }], meta: {} };
+    });
+
+    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
+    const result = await runAgentTurnWithFallback({
+      commandBody: "hello",
+      followupRun: createFollowupRun(),
+      sessionCtx: {
+        Provider: "web",
+        MessageSid: "msg",
+      } as unknown as TemplateContext,
+      opts: {
+        onAgentRunStart,
+        runId: "run-visible-status",
+      } satisfies GetReplyOptions,
+      typingSignals: createMockTypingSignaler(),
+      blockReplyPipeline: null,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      applyReplyToMode: (payload) => payload,
+      shouldEmitToolResult: () => true,
+      shouldEmitToolOutput: () => false,
+      pendingToolTasks: new Set<Promise<void>>(),
+      resetSessionAfterCompactionFailure: async () => false,
+      resetSessionAfterRoleOrderingConflict: async () => false,
+      isHeartbeat: false,
+      sessionKey: "main",
+      getActiveSessionEntry: () => undefined,
+      resolvedVerboseLevel: "off",
+    });
+
+    expect(result.kind).toBe("success");
+    expect(onAgentRunStart).toHaveBeenCalledWith("run-visible-status");
+    expect(eventCountAtEmbeddedStart).toBeGreaterThanOrEqual(4);
+    expect(emitAgentEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "run-visible-status",
+        stream: "tool",
+        data: expect.objectContaining({
+          phase: "start",
+          toolCallId: "run-visible-status:run_status",
+          name: "run_status",
+          args: expect.objectContaining({
+            status: "starting",
+            message: "Preparing the agent run...",
+          }),
+        }),
+      }),
+    );
+    expect(emitAgentEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "run-visible-status",
+        stream: "tool",
+        data: expect.objectContaining({
+          phase: "update",
+          toolCallId: "run-visible-status:run_status",
+          partialResult: expect.objectContaining({
+            status: "running",
+            message: "Agent loop started; waiting for model or tool activity...",
+          }),
+        }),
+      }),
+    );
+    expect(emitAgentEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "run-visible-status",
+        stream: "tool",
+        data: expect.objectContaining({
+          phase: "result",
+          toolCallId: "run-visible-status:run_status",
+          result: expect.objectContaining({
+            status: "completed",
+          }),
+        }),
+      }),
+    );
+  });
+
   it("forwards media-only tool results without typing text", async () => {
     const onToolResult = vi.fn();
     state.runEmbeddedPiAgentMock.mockImplementationOnce(async (params: EmbeddedAgentParams) => {
@@ -1496,6 +1581,132 @@ describe("runAgentTurnWithFallback", () => {
         "⚠️ Session history got out of sync. Please try again, or use /new to start a fresh session.",
       );
     }
+  });
+
+  it("reconnects timeout-only model fallback failures before surfacing an error", async () => {
+    state.runWithModelFallbackMock
+      .mockRejectedValueOnce(
+        Object.assign(new Error("All models failed (2): timed out"), {
+          name: "FallbackSummaryError",
+          attempts: [
+            {
+              provider: "openai-codex",
+              model: "gpt-5.5",
+              error: "LLM request timed out.",
+              reason: "timeout",
+            },
+            {
+              provider: "openai-codex",
+              model: "gpt-5.4",
+              error: "LLM request timed out.",
+              reason: "timeout",
+            },
+          ],
+          soonestCooldownExpiry: null,
+        }),
+      )
+      .mockResolvedValueOnce({
+        result: {
+          payloads: [{ text: "ok" }],
+          meta: {},
+        },
+        provider: "openai-codex",
+        model: "gpt-5.4",
+        attempts: [],
+      });
+
+    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
+    const result = await runAgentTurnWithFallback({
+      commandBody: "hello",
+      followupRun: createFollowupRun(),
+      sessionCtx: {
+        Provider: "chat",
+        Surface: "chat",
+        MessageSid: "msg",
+      } as unknown as TemplateContext,
+      opts: {},
+      typingSignals: createMockTypingSignaler(),
+      blockReplyPipeline: null,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      applyReplyToMode: (payload) => payload,
+      shouldEmitToolResult: () => true,
+      shouldEmitToolOutput: () => false,
+      pendingToolTasks: new Set(),
+      resetSessionAfterCompactionFailure: async () => false,
+      resetSessionAfterRoleOrderingConflict: async () => false,
+      isHeartbeat: false,
+      sessionKey: "main",
+      getActiveSessionEntry: () => undefined,
+      resolvedVerboseLevel: "off",
+    });
+
+    expect(state.runWithModelFallbackMock).toHaveBeenCalledTimes(2);
+    expect(result.kind).toBe("success");
+  });
+
+  it("counts timeout reconnects per fallback chain instead of per failed model", async () => {
+    const timeoutSummary = () =>
+      Object.assign(new Error("All models failed (2): timed out"), {
+        name: "FallbackSummaryError",
+        attempts: [
+          {
+            provider: "openai-codex",
+            model: "gpt-5.5",
+            error: "LLM request timed out.",
+            reason: "timeout",
+          },
+          {
+            provider: "openai-codex",
+            model: "gpt-5.4",
+            error: "LLM request timed out.",
+            reason: "timeout",
+          },
+        ],
+        soonestCooldownExpiry: null,
+      });
+
+    for (let i = 0; i < 5; i += 1) {
+      state.runWithModelFallbackMock.mockRejectedValueOnce(timeoutSummary());
+    }
+    state.runWithModelFallbackMock.mockResolvedValueOnce({
+      result: {
+        payloads: [{ text: "ok after reconnects" }],
+        meta: {},
+      },
+      provider: "openai-codex",
+      model: "gpt-5.4",
+      attempts: [],
+    });
+
+    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
+    const result = await runAgentTurnWithFallback({
+      commandBody: "hello",
+      followupRun: createFollowupRun(),
+      sessionCtx: {
+        Provider: "chat",
+        Surface: "chat",
+        MessageSid: "msg",
+      } as unknown as TemplateContext,
+      opts: {},
+      typingSignals: createMockTypingSignaler(),
+      blockReplyPipeline: null,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      applyReplyToMode: (payload) => payload,
+      shouldEmitToolResult: () => true,
+      shouldEmitToolOutput: () => false,
+      pendingToolTasks: new Set(),
+      resetSessionAfterCompactionFailure: async () => false,
+      resetSessionAfterRoleOrderingConflict: async () => false,
+      isHeartbeat: false,
+      sessionKey: "main",
+      getActiveSessionEntry: () => undefined,
+      resolvedVerboseLevel: "off",
+    });
+
+    expect(state.runWithModelFallbackMock).toHaveBeenCalledTimes(6);
+    expect(result.kind).toBe("success");
   });
 
   it("keeps raw generic errors on internal control surfaces", async () => {
