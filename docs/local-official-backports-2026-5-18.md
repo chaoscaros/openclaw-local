@@ -59,6 +59,41 @@ future official-tag iterations:
 When an official patch touches these areas, prefer focused hunks and adapters
 over wholesale replacement.
 
+## 2026.5.18 Closure Audit
+
+This checkpoint was re-audited against the official stable tag range
+`v2026.5.12..v2026.5.18` on the local baseline
+`cb5fd453c1397094092d8551515b7e30c1316e60`
+(`修复任务预处理阻塞状态`). The audit result is:
+
+- Fully absorbed: gateway protocol mismatch diagnostics, manual compaction
+  `session.operation` events, compaction checkpoint controls, Codex MCP
+  projection/session binding, loopback MCP approval defaults, cron source
+  delivery exact-match handling, Telegram topic/hot-reload/raw-log hardening,
+  Matrix dependency repair guidance, Feishu webhook limiter key normalization,
+  and Nextcloud Talk reaction handling all have current code and test coverage.
+- Locally equivalent: local task-mode pending/status behavior, chat header task
+  context, session picker agent filtering, auto-scroll/text-size controls,
+  archive/session naming behavior, and local Chinese Control UI navigation are
+  intentionally implemented through the local UI/task surfaces rather than by
+  wholesale replacing them with official UI structure.
+- Missing and required for this checkpoint: none found in the audited tracker
+  claims.
+- Intentionally skipped: official alpha/beta-only work and official
+  `v2026.5.19+` release-train changes remain out of scope for this checkpoint.
+- Protected from replacement: task/archive/mode UI surfaces and the
+  `cb5fd453c1397094092d8551515b7e30c1316e60` task preprocessing unblock fix.
+
+Future iterations must treat `cb5fd453c1397094092d8551515b7e30c1316e60` as a
+hard protection point. Do not regress the changes in:
+
+- `src/agents/pi-embedded-runner/run/attempt.ts`
+- `src/auto-reply/reply/agent-runner.ts`
+- `src/auto-reply/reply/followup-runner.ts`
+- `ui/src/ui/tool-display.ts`
+- `src/auto-reply/reply/agent-runner-direct-runtime-config.test.ts`
+- `src/gateway/server.sessions.gateway-server-sessions-a.test.ts`
+
 ## Deferred Beyond 5.18
 
 - Official `v2026.5.19+` release train changes are intentionally deferred.
