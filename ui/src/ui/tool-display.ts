@@ -93,6 +93,12 @@ const TOOL_MAP: Record<string, ToolDisplaySpec> = Object.fromEntries(
   ]),
 );
 TOOL_MAP.slack = SLACK_SPEC;
+TOOL_MAP.model_status = {
+  icon: "brain",
+  title: "Model",
+  label: "Model request",
+  detailKeys: ["model", "timeoutSeconds"],
+};
 
 function shortenHomeInString(input: string): string {
   if (!input) {

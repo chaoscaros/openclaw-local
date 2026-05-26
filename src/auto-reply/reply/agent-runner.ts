@@ -1108,6 +1108,16 @@ export async function runReplyAgent(params: {
           isHeartbeat,
           replyOperation,
         });
+      } catch (error) {
+        if (replyOperation.abortSignal.aborted) {
+          throw error;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        logVerbose(
+          `reply pre-run preflightCompaction skipped after error: sessionKey=${sessionKey} ` +
+            `error=${message}`,
+        );
+        return activeSessionEntry;
       } finally {
         logVerbose(
           `reply pre-run preflightCompaction: sessionKey=${sessionKey} ` +

@@ -14,7 +14,8 @@ const staleCfg = {
     },
   },
 };
-const sentinelError = new Error("stop-after-preflight");
+const preflightError = new Error("ignore-preflight");
+const sentinelError = new Error("stop-after-memory");
 
 const resolveQueuedReplyExecutionConfigMock = vi.fn();
 const resolveReplyToModeMock = vi.fn();
@@ -70,7 +71,7 @@ describe("runReplyAgent runtime config", () => {
     resolveReplyToModeMock.mockReturnValue("default");
     createReplyToModeFilterForChannelMock.mockReturnValue((payload: unknown) => payload);
     createReplyMediaPathNormalizerMock.mockReturnValue((payload: unknown) => payload);
-    runPreflightCompactionIfNeededMock.mockRejectedValue(sentinelError);
+    runPreflightCompactionIfNeededMock.mockRejectedValue(preflightError);
     runMemoryFlushIfNeededMock.mockResolvedValue(undefined);
   });
 
@@ -113,6 +114,8 @@ describe("runReplyAgent runtime config", () => {
       MessageSid: "msg-1",
     } as unknown as TemplateContext;
 
+    runMemoryFlushIfNeededMock.mockRejectedValueOnce(sentinelError);
+
     await expect(
       runReplyAgent({
         commandBody: "hello",
@@ -144,6 +147,12 @@ describe("runReplyAgent runtime config", () => {
       workspaceDir: "/tmp",
     });
     expect(runPreflightCompactionIfNeededMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cfg: freshCfg,
+        followupRun,
+      }),
+    );
+    expect(runMemoryFlushIfNeededMock).toHaveBeenCalledWith(
       expect.objectContaining({
         cfg: freshCfg,
         followupRun,

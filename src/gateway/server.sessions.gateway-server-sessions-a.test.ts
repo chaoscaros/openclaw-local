@@ -2681,7 +2681,7 @@ describe("gateway server sessions", () => {
   });
 
   test("sessions.abort clears stale persisted running sessions", async () => {
-    const { dir } = await createSessionStoreDir();
+    const { dir, storePath } = await createSessionStoreDir();
     await writeSingleLineSession(dir, "sess-abort-stale", "active");
     embeddedRunMock.activeIds.clear();
     embeddedRunMock.abortCalls.length = 0;
@@ -2712,7 +2712,7 @@ describe("gateway server sessions", () => {
     expect(embeddedRunMock.abortCalls).toEqual([]);
     expect(embeddedRunMock.waitCalls).toEqual([]);
 
-    const rawStore = JSON.parse(await fs.readFile(testState.sessionStorePath, "utf-8")) as Record<
+    const rawStore = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
       string,
       SessionEntry
     >;
@@ -2725,7 +2725,7 @@ describe("gateway server sessions", () => {
   });
 
   test("sessions.list reconciles stale running state from terminal transcripts", async () => {
-    const { dir } = await createSessionStoreDir();
+    const { dir, storePath } = await createSessionStoreDir();
     const endedAtIso = "2026-05-25T13:00:38.189Z";
     await fs.writeFile(
       path.join(dir, "sess-list-terminal.jsonl"),
@@ -2768,7 +2768,7 @@ describe("gateway server sessions", () => {
     expect(row?.endedAt).toBe(Date.parse(endedAtIso));
     expect(row?.abortedLastRun).toBe(true);
 
-    const rawStore = JSON.parse(await fs.readFile(testState.sessionStorePath, "utf-8")) as Record<
+    const rawStore = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
       string,
       SessionEntry
     >;

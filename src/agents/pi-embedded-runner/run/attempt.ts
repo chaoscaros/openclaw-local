@@ -1711,6 +1711,59 @@ export async function runEmbeddedAttempt(
       let skipPromptSubmission = false;
       try {
         const promptStartedAt = Date.now();
+        const modelStatusToolCallId = `model-status:${params.runId}`;
+        let modelStatusStarted = false;
+        const modelStatusArgs = {
+          model: `${params.provider}/${params.modelId}`,
+          api: params.model.api,
+          timeoutSeconds: Math.ceil(params.timeoutMs / 1000),
+        };
+        const emitModelStatusStart = (promptText: string) => {
+          if (modelStatusStarted) {
+            return;
+          }
+          modelStatusStarted = true;
+          params.onAgentEvent?.({
+            stream: "tool",
+            data: {
+              phase: "start",
+              toolCallId: modelStatusToolCallId,
+              name: "model_status",
+              args: {
+                ...modelStatusArgs,
+                promptChars: promptText.length,
+                historyMessages: activeSession.messages.length,
+              },
+            },
+          });
+          params.onAgentEvent?.({
+            stream: "tool",
+            data: {
+              phase: "update",
+              toolCallId: modelStatusToolCallId,
+              name: "model_status",
+              partialResult: `Waiting for ${modelStatusArgs.model} response...`,
+            },
+          });
+        };
+        const emitModelStatusResult = (result: {
+          status: "completed" | "failed" | "aborted";
+          durationMs: number;
+          error?: string;
+        }) => {
+          if (!modelStatusStarted) {
+            return;
+          }
+          params.onAgentEvent?.({
+            stream: "tool",
+            data: {
+              phase: "result",
+              toolCallId: modelStatusToolCallId,
+              name: "model_status",
+              result,
+            },
+          });
+        };
 
         // Run before_prompt_build hooks to allow plugins to inject prompt context.
         // Legacy compatibility: before_agent_start is also checked for context fields.
@@ -2071,6 +2124,7 @@ export async function runEmbeddedAttempt(
             }
 
             if (!skipPromptSubmission && promptSubmission.runtimeOnly) {
+              emitModelStatusStart(promptSubmission.prompt);
               const runtimeSystemPrompt = promptSubmission.runtimeSystemContext
                 ? composeSystemPromptWithHookContext({
                     baseSystemPrompt: systemPromptText,
@@ -2090,6 +2144,7 @@ export async function runEmbeddedAttempt(
                 }
               }
             } else if (!skipPromptSubmission) {
+              emitModelStatusStart(promptSubmission.prompt);
               const runtimeContext = promptSubmission.runtimeContext?.trim();
               const runtimeSystemPrompt = runtimeContext
                 ? composeSystemPromptWithHookContext({
@@ -2141,6 +2196,11 @@ export async function runEmbeddedAttempt(
             promptErrorSource = "prompt";
           }
         } finally {
+          emitModelStatusResult({
+            status: promptError ? "failed" : aborted ? "aborted" : "completed",
+            durationMs: Date.now() - promptStartedAt,
+            ...(promptError ? { error: formatErrorMessage(promptError) } : {}),
+          });
           log.debug(
             `embedded run prompt end: runId=${params.runId} sessionId=${params.sessionId} durationMs=${Date.now() - promptStartedAt}`,
           );
@@ -2288,19 +2348,30 @@ export async function runEmbeddedAttempt(
         });
 
         if (promptError && promptErrorSource === "prompt" && !compactionOccurredThisAttempt) {
+          const promptErrorAt = Date.now();
+          const promptErrorMessage = formatErrorMessage(promptError);
           try {
             sessionManager.appendCustomEntry("openclaw:prompt-error", {
-              timestamp: Date.now(),
+              timestamp: promptErrorAt,
               runId: params.runId,
               sessionId: params.sessionId,
               provider: params.provider,
               model: params.modelId,
               api: params.model.api,
-              error: formatErrorMessage(promptError),
+              error: promptErrorMessage,
             });
           } catch (entryErr) {
             log.warn(`failed to persist prompt error entry: ${String(entryErr)}`);
           }
+          params.onAgentEvent?.({
+            stream: "lifecycle",
+            data: {
+              phase: aborted ? "end" : "error",
+              endedAt: promptErrorAt,
+              ...(aborted ? { aborted: true, stopReason: "aborted" } : {}),
+              ...(!aborted ? { error: promptErrorMessage } : {}),
+            },
+          });
         }
 
         // Let the active context engine run its post-turn lifecycle.
