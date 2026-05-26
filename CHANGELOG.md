@@ -6,6 +6,12 @@ Docs: https://docs.openclaw.ai
 
 ### Changes
 
+### Fixes
+
+## 2026.5.18
+
+### Changes
+
 - Control UI: highlight WebChat markdown code blocks for common languages while keeping the existing copy and JSON-collapse controls.
 - Channels: add normalized channel route metadata so sessions can preserve target, account, and thread/topic delivery details alongside legacy delivery context fields.
 - Agents: allow `agents.defaults.runRetries` and per-agent `runRetries` to tune embedded Pi outer retry-loop bounds without changing the default guard.

@@ -651,10 +651,17 @@ export async function abortChatRun(state: ChatState): Promise<boolean> {
   }
   const runId = state.chatRunId;
   try {
-    await state.client.request(
-      "chat.abort",
-      runId ? { sessionKey: state.sessionKey, runId } : { sessionKey: state.sessionKey },
-    );
+    if (!runId) {
+      await state.client.request("sessions.abort", { key: state.sessionKey });
+      return true;
+    }
+    const result = await state.client.request<{ aborted?: boolean }>("chat.abort", {
+      sessionKey: state.sessionKey,
+      runId,
+    });
+    if (result?.aborted === false) {
+      await state.client.request("sessions.abort", { key: state.sessionKey, runId });
+    }
     return true;
   } catch (err) {
     state.lastError = formatConnectError(err);

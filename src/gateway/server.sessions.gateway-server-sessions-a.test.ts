@@ -5,6 +5,7 @@ import path from "node:path";
 import type { AssistantMessage, UserMessage } from "@mariozechner/pi-ai";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { WebSocket } from "ws";
+import type { SessionEntry } from "../config/sessions.js";
 import { isSessionPatchEvent, type InternalHookEvent } from "../hooks/internal-hooks.js";
 import { withEnvAsync } from "../test-utils/env.js";
 import { GATEWAY_CLIENT_IDS, GATEWAY_CLIENT_MODES } from "./protocol/client-info.js";
@@ -2639,6 +2640,142 @@ describe("gateway server sessions", () => {
       targetSessionKey: "agent:main:discord:group:dev",
       reason: "session-delete",
     });
+
+    ws.close();
+  });
+
+  test("sessions.abort stops embedded runs when no chat controller is tracked", async () => {
+    const { dir } = await createSessionStoreDir();
+    await writeSingleLineSession(dir, "sess-abort-embedded", "active");
+    embeddedRunMock.activeIds.clear();
+    embeddedRunMock.abortCalls.length = 0;
+    embeddedRunMock.waitCalls.length = 0;
+    embeddedRunMock.waitResults.clear();
+
+    await writeSessionStore({
+      entries: {
+        "agent:main:dashboard:test-abort-embedded": {
+          sessionId: "sess-abort-embedded",
+          updatedAt: Date.now(),
+          status: "running",
+        },
+      },
+    });
+    embeddedRunMock.activeIds.add("sess-abort-embedded");
+    embeddedRunMock.waitResults.set("sess-abort-embedded", true);
+
+    const { ws } = await openClient();
+    const aborted = await rpcReq<{ status?: string; abortedRunId?: string | null }>(
+      ws,
+      "sessions.abort",
+      { key: "agent:main:dashboard:test-abort-embedded" },
+    );
+
+    expect(aborted.ok).toBe(true);
+    expect(aborted.payload?.status).toBe("aborted");
+    expect(aborted.payload?.abortedRunId).toBeNull();
+    expect(embeddedRunMock.abortCalls).toEqual(["sess-abort-embedded"]);
+    expect(embeddedRunMock.waitCalls).toEqual(["sess-abort-embedded"]);
+
+    ws.close();
+  });
+
+  test("sessions.abort clears stale persisted running sessions", async () => {
+    const { dir } = await createSessionStoreDir();
+    await writeSingleLineSession(dir, "sess-abort-stale", "active");
+    embeddedRunMock.activeIds.clear();
+    embeddedRunMock.abortCalls.length = 0;
+    embeddedRunMock.waitCalls.length = 0;
+    embeddedRunMock.waitResults.clear();
+
+    await writeSessionStore({
+      entries: {
+        "agent:main:dashboard:test-abort-stale": {
+          sessionId: "sess-abort-stale",
+          updatedAt: Date.now(),
+          status: "running",
+          startedAt: Date.now() - 60_000,
+        },
+      },
+    });
+
+    const { ws } = await openClient();
+    const aborted = await rpcReq<{ status?: string; abortedRunId?: string | null }>(
+      ws,
+      "sessions.abort",
+      { key: "agent:main:dashboard:test-abort-stale" },
+    );
+
+    expect(aborted.ok).toBe(true);
+    expect(aborted.payload?.status).toBe("aborted");
+    expect(aborted.payload?.abortedRunId).toBeNull();
+    expect(embeddedRunMock.abortCalls).toEqual([]);
+    expect(embeddedRunMock.waitCalls).toEqual([]);
+
+    const rawStore = JSON.parse(await fs.readFile(testState.sessionStorePath, "utf-8")) as Record<
+      string,
+      SessionEntry
+    >;
+    const entry = rawStore["agent:main:dashboard:test-abort-stale"];
+    expect(entry?.status).toBe("killed");
+    expect(entry?.endedAt).toEqual(expect.any(Number));
+    expect(entry?.abortedLastRun).toBe(true);
+
+    ws.close();
+  });
+
+  test("sessions.list reconciles stale running state from terminal transcripts", async () => {
+    const { dir } = await createSessionStoreDir();
+    const endedAtIso = "2026-05-25T13:00:38.189Z";
+    await fs.writeFile(
+      path.join(dir, "sess-list-terminal.jsonl"),
+      [
+        JSON.stringify({ type: "session", version: 1, id: "sess-list-terminal" }),
+        JSON.stringify({
+          timestamp: endedAtIso,
+          message: {
+            role: "assistant",
+            stopReason: "aborted",
+            content: [],
+          },
+        }),
+      ].join("\n"),
+      "utf-8",
+    );
+    embeddedRunMock.activeIds.clear();
+
+    await writeSessionStore({
+      entries: {
+        "agent:main:dashboard:test-list-terminal": {
+          sessionId: "sess-list-terminal",
+          updatedAt: Date.now(),
+          status: "running",
+          startedAt: Date.now() - 60_000,
+        },
+      },
+    });
+
+    const { ws } = await openClient();
+    const listed = await rpcReq<{
+      sessions: Array<{ key: string; status?: string; endedAt?: number; abortedLastRun?: boolean }>;
+    }>(ws, "sessions.list", {});
+
+    expect(listed.ok).toBe(true);
+    const row = listed.payload?.sessions.find(
+      (session) => session.key === "agent:main:dashboard:test-list-terminal",
+    );
+    expect(row?.status).toBe("killed");
+    expect(row?.endedAt).toBe(Date.parse(endedAtIso));
+    expect(row?.abortedLastRun).toBe(true);
+
+    const rawStore = JSON.parse(await fs.readFile(testState.sessionStorePath, "utf-8")) as Record<
+      string,
+      SessionEntry
+    >;
+    const entry = rawStore["agent:main:dashboard:test-list-terminal"];
+    expect(entry?.status).toBe("killed");
+    expect(entry?.endedAt).toBe(Date.parse(endedAtIso));
+    expect(entry?.abortedLastRun).toBe(true);
 
     ws.close();
   });

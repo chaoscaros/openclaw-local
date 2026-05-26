@@ -1089,6 +1089,44 @@ describe("sendChatMessage", () => {
 });
 
 describe("abortChatRun", () => {
+  it("uses session abort when only the refreshed session row shows an active run", async () => {
+    const request = vi.fn().mockResolvedValue({ ok: true, status: "aborted" });
+    const state = createState({
+      connected: true,
+      chatRunId: null,
+      client: { request } as unknown as ChatState["client"],
+    });
+
+    const result = await abortChatRun(state);
+
+    expect(result).toBe(true);
+    expect(request).toHaveBeenCalledWith("sessions.abort", { key: "main" });
+  });
+
+  it("falls back to session abort when the local run id is already gone", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, aborted: false, runIds: [] })
+      .mockResolvedValueOnce({ ok: true, status: "aborted" });
+    const state = createState({
+      connected: true,
+      chatRunId: "run-1",
+      client: { request } as unknown as ChatState["client"],
+    });
+
+    const result = await abortChatRun(state);
+
+    expect(result).toBe(true);
+    expect(request).toHaveBeenNthCalledWith(1, "chat.abort", {
+      sessionKey: "main",
+      runId: "run-1",
+    });
+    expect(request).toHaveBeenNthCalledWith(2, "sessions.abort", {
+      key: "main",
+      runId: "run-1",
+    });
+  });
+
   it("formats structured non-auth connect failures for chat abort", async () => {
     // Abort now shares the same structured connect-error formatter as send.
     const request = vi.fn().mockRejectedValue(

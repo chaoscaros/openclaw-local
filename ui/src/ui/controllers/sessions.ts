@@ -1,6 +1,6 @@
 import { toNumber } from "../format.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
-import { findSessionRowByKey } from "../session-key.ts";
+import { doSessionKeysMatch, findSessionRowByKey } from "../session-key.ts";
 import { isSessionRunActive } from "../session-run-state.ts";
 import {
   applySessionRunTerminalOverrides,
@@ -61,6 +61,7 @@ type ChatRunReconcileState = SessionsState & {
   chatRunId?: string | null;
   chatStream?: string | null;
   chatStreamStartedAt?: number | null;
+  chatQueue?: Array<{ pendingRunId?: string }>;
   requestUpdate?: () => void;
 };
 
@@ -121,6 +122,41 @@ function reconcileChatRunFromSessionsState(state: SessionsState) {
   chatState.chatRunId = null;
   chatState.chatStream = null;
   chatState.chatStreamStartedAt = null;
+  chatState.requestUpdate?.();
+}
+
+function isPendingRunStillActive(
+  state: SessionsState,
+  pendingRunId: string,
+  chatRunId?: string | null,
+) {
+  const sessions = state.sessionsResult?.sessions ?? [];
+  if (chatRunId && pendingRunId === chatRunId) {
+    const sessionKey =
+      typeof (state as ChatRunReconcileState).sessionKey === "string"
+        ? (state as ChatRunReconcileState).sessionKey
+        : "";
+    const current = findSessionRowByKey(sessions, sessionKey);
+    return isSessionRunActive(current);
+  }
+  return sessions.some(
+    (row) => doSessionKeysMatch(row.key, pendingRunId) && isSessionRunActive(row),
+  );
+}
+
+function reconcilePendingQueueFromSessionsState(state: SessionsState) {
+  const chatState = state as ChatRunReconcileState;
+  if (!Array.isArray(chatState.chatQueue) || chatState.chatQueue.length === 0) {
+    return;
+  }
+  const nextQueue = chatState.chatQueue.filter((item) => {
+    const pendingRunId = item.pendingRunId?.trim();
+    return !pendingRunId || isPendingRunStillActive(state, pendingRunId, chatState.chatRunId);
+  });
+  if (nextQueue.length === chatState.chatQueue.length) {
+    return;
+  }
+  chatState.chatQueue = nextQueue;
   chatState.requestUpdate?.();
 }
 
@@ -230,6 +266,7 @@ export async function loadSessions(state: SessionsState, overrides?: LoadSession
     if (res) {
       state.sessionsResult = applySessionRunTerminalOverrides(state, res);
       reconcileChatRunFromSessionsState(state);
+      reconcilePendingQueueFromSessionsState(state);
       const nextKeys = new Set(state.sessionsResult.sessions.map((row) => row.key));
       for (const key of Object.keys(state.sessionsCheckpointItemsByKey)) {
         if (!nextKeys.has(key)) {

@@ -10,7 +10,7 @@ should be split by risk area.
 - `package.json` version tracks the latest official OpenClaw tag that this local
   branch has fully closed out. Partial cherry-picks from later official commits
   stay documented here and must not bump the package version by themselves.
-- Current checkpoint: `v2026.5.12`.
+- Current checkpoint: closed by `docs/local-official-backports-2026-5-18.md`.
 
 ## Already Backported
 

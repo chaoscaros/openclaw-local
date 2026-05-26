@@ -65,6 +65,7 @@ import {
   getSessionCompactionCheckpoint,
   listSessionCompactionCheckpoints,
 } from "../session-compaction-checkpoints.js";
+import { derivePersistedSessionLifecyclePatch } from "../session-lifecycle-state.js";
 import { reactivateCompletedSubagentSession } from "../session-subagent-reactivation.js";
 import {
   archiveFileOnDisk,
@@ -233,6 +234,110 @@ function emitSessionOperation(
     connIds,
     { dropIfSlow: true },
   );
+}
+
+const TERMINAL_TRANSCRIPT_STOP_REASONS = new Set([
+  "aborted",
+  "end_turn",
+  "error",
+  "max_tokens",
+  "sensitive",
+  "stop",
+]);
+
+function readTerminalAssistantLifecycleFromTranscript(params: {
+  sessionId: string;
+  storePath: string;
+  sessionFile?: string;
+}): { stopReason: string; endedAt?: number } | null {
+  const transcriptPath = resolveSessionTranscriptCandidates(
+    params.sessionId,
+    params.storePath,
+    params.sessionFile,
+  ).find((candidate) => fs.existsSync(candidate));
+  if (!transcriptPath || fs.existsSync(`${transcriptPath}.lock`)) {
+    return null;
+  }
+
+  try {
+    const lines = fs.readFileSync(transcriptPath, "utf-8").split(/\r?\n/);
+    let latestAssistant: { stopReason?: string; timestamp?: string } | null = null;
+    for (const line of lines) {
+      if (!line.trim()) {
+        continue;
+      }
+      const parsed = JSON.parse(line) as {
+        timestamp?: unknown;
+        message?: { role?: unknown; stopReason?: unknown };
+      };
+      const message = parsed.message;
+      if (!message || message.role !== "assistant") {
+        continue;
+      }
+      latestAssistant = {
+        stopReason: typeof message.stopReason === "string" ? message.stopReason : undefined,
+        timestamp: typeof parsed.timestamp === "string" ? parsed.timestamp : undefined,
+      };
+    }
+    const stopReason = latestAssistant?.stopReason;
+    if (!stopReason || !TERMINAL_TRANSCRIPT_STOP_REASONS.has(stopReason)) {
+      return null;
+    }
+    const endedAt = latestAssistant?.timestamp ? Date.parse(latestAssistant.timestamp) : NaN;
+    return {
+      stopReason,
+      endedAt: Number.isFinite(endedAt) ? endedAt : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function reconcileStaleTerminalSessionState(params: {
+  store: Record<string, SessionEntry>;
+}): Promise<boolean> {
+  let changed = false;
+  for (const [sessionKey, entry] of Object.entries(params.store)) {
+    if (entry?.status !== "running" || !entry.sessionId || isEmbeddedPiRunActive(entry.sessionId)) {
+      continue;
+    }
+    const loaded = loadSessionEntry(sessionKey);
+    if (!loaded.entry?.sessionId) {
+      continue;
+    }
+    const terminal = readTerminalAssistantLifecycleFromTranscript({
+      sessionId: loaded.entry.sessionId,
+      storePath: loaded.storePath,
+      sessionFile: loaded.entry.sessionFile,
+    });
+    if (!terminal) {
+      continue;
+    }
+    await updateSessionStore(loaded.storePath, (store) => {
+      const current = store[loaded.canonicalKey];
+      if (!current || current.status !== "running") {
+        return false;
+      }
+      store[loaded.canonicalKey] = {
+        ...current,
+        ...derivePersistedSessionLifecyclePatch({
+          entry: current,
+          event: {
+            ts: terminal.endedAt ?? Date.now(),
+            data: {
+              phase: terminal.stopReason === "error" ? "error" : "end",
+              endedAt: terminal.endedAt,
+              stopReason: terminal.stopReason,
+              aborted: terminal.stopReason === "aborted",
+            },
+          },
+        }),
+      };
+      return true;
+    });
+    changed = true;
+  }
+  return changed;
 }
 
 function rejectWebchatSessionMutation(params: {
@@ -576,13 +681,16 @@ async function handleSessionSend(params: {
   }
 }
 export const sessionsHandlers: GatewayRequestHandlers = {
-  "sessions.list": ({ params, respond }) => {
+  "sessions.list": async ({ params, respond }) => {
     if (!assertValidParams(params, validateSessionsListParams, "sessions.list", respond)) {
       return;
     }
     const p = params;
     const cfg = loadConfig();
-    const { storePath, store } = loadCombinedSessionStoreForGateway(cfg);
+    let { storePath, store } = loadCombinedSessionStoreForGateway(cfg);
+    if (await reconcileStaleTerminalSessionState({ store })) {
+      ({ storePath, store } = loadCombinedSessionStoreForGateway(cfg));
+    }
     const result = listSessionsFromStore({
       cfg,
       storePath,
@@ -1284,7 +1392,8 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     if (!key) {
       return;
     }
-    const { canonicalKey } = loadSessionEntry(key);
+    const loadedSession = loadSessionEntry(key);
+    const { canonicalKey } = loadedSession;
     const abortSessionKey = resolveAbortSessionKey({
       context,
       requestedKey: key,
@@ -1292,6 +1401,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       runId: readStringValue(p.runId),
     });
     let abortedRunId: string | null = null;
+    let abortOk = true;
+    let abortError: ReturnType<typeof errorShape> | undefined;
+    let abortMeta: Record<string, unknown> | undefined;
     await chatHandlers["chat.abort"]({
       req,
       params: {
@@ -1300,7 +1412,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       },
       respond: (ok, payload, error, meta) => {
         if (!ok) {
-          respond(ok, payload, error, meta);
+          abortOk = false;
+          abortError = error;
+          abortMeta = meta;
           return;
         }
         const runIds =
@@ -1312,27 +1426,77 @@ export const sessionsHandlers: GatewayRequestHandlers = {
               )
             : [];
         abortedRunId = runIds[0] ?? null;
-        respond(
-          true,
-          {
-            ok: true,
-            abortedRunId,
-            status: abortedRunId ? "aborted" : "no-active-run",
-          },
-          undefined,
-          meta,
-        );
+        abortMeta = meta;
       },
       context,
       client,
       isWebchatConnect,
     });
-    if (abortedRunId) {
+    if (!abortOk) {
+      respond(false, undefined, abortError, abortMeta);
+      return;
+    }
+    const sessionId =
+      typeof loadedSession.entry?.sessionId === "string" ? loadedSession.entry.sessionId : "";
+    const persistedWasRunning =
+      loadedSession.entry?.status === "running" && loadedSession.entry.endedAt == null;
+    const embeddedWasActive = sessionId ? isEmbeddedPiRunActive(sessionId) : false;
+    if (embeddedWasActive || persistedWasRunning) {
+      if (embeddedWasActive) {
+        abortEmbeddedPiRun(sessionId);
+      }
+      clearSessionQueues([key, canonicalKey, sessionId].filter(Boolean));
+      if (embeddedWasActive) {
+        await waitForEmbeddedPiRunEnd(sessionId, 15_000);
+      }
+    }
+    const aborted = abortedRunId !== null || embeddedWasActive || persistedWasRunning;
+    if (aborted) {
+      const endedAt = Date.now();
+      await updateSessionStore(loadedSession.storePath, (store) => {
+        const { primaryKey } = migrateAndPruneGatewaySessionStoreKey({
+          cfg: loadedSession.cfg,
+          key,
+          store,
+        });
+        const existingKey = [primaryKey, canonicalKey, key].find((candidate) => store[candidate]);
+        if (!existingKey) {
+          return;
+        }
+        const entry = store[existingKey];
+        if (!entry) {
+          return;
+        }
+        store[existingKey] = {
+          ...entry,
+          ...derivePersistedSessionLifecyclePatch({
+            entry,
+            event: {
+              ts: endedAt,
+              data: {
+                phase: "end",
+                endedAt,
+                stopReason: "aborted",
+              },
+            },
+          }),
+        };
+      });
       emitSessionsChanged(context, {
         sessionKey: canonicalKey,
         reason: "abort",
       });
     }
+    respond(
+      true,
+      {
+        ok: true,
+        abortedRunId,
+        status: aborted ? "aborted" : "no-active-run",
+      },
+      undefined,
+      abortMeta,
+    );
   },
   "sessions.patch": async ({ params, respond, context, client, isWebchatConnect }) => {
     if (!assertValidParams(params, validateSessionsPatchParams, "sessions.patch", respond)) {

@@ -22,6 +22,7 @@ import {
   createAgentToAgentPolicy,
   classifySessionKind,
   deriveChannel,
+  extractAssistantText,
   resolveDisplaySessionKey,
   resolveEffectiveSessionToolsVisibility,
   resolveInternalSessionKey,
@@ -39,6 +40,76 @@ const SessionsListToolSchema = Type.Object({
 });
 
 type GatewayCaller = typeof callGateway;
+
+type CompactHistoryMessage = {
+  role: string;
+  content: Array<{ type: "text"; text: string }>;
+  timestamp?: number;
+  senderLabel?: string;
+  stopReason?: string;
+  errorMessage?: string;
+};
+
+function compactTextHistoryMessage(message: unknown): CompactHistoryMessage | null {
+  if (!message || typeof message !== "object") {
+    return null;
+  }
+  const record = message as {
+    role?: unknown;
+    content?: unknown;
+    timestamp?: unknown;
+    senderLabel?: unknown;
+    stopReason?: unknown;
+    errorMessage?: unknown;
+  };
+  const role = typeof record.role === "string" ? record.role : "";
+  if (role === "assistant") {
+    const text = extractAssistantText(message);
+    if (!text) {
+      return null;
+    }
+    return {
+      role,
+      content: [{ type: "text", text }],
+      ...(typeof record.timestamp === "number" ? { timestamp: record.timestamp } : {}),
+      ...(typeof record.stopReason === "string" ? { stopReason: record.stopReason } : {}),
+      ...(typeof record.errorMessage === "string" ? { errorMessage: record.errorMessage } : {}),
+    };
+  }
+  if (role !== "user") {
+    return null;
+  }
+  const content = Array.isArray(record.content)
+    ? record.content
+        .map((block) => {
+          if (!block || typeof block !== "object") {
+            return null;
+          }
+          const typed = block as { type?: unknown; text?: unknown };
+          if (typed.type !== "text" || typeof typed.text !== "string" || !typed.text.trim()) {
+            return null;
+          }
+          return { type: "text", text: typed.text };
+        })
+        .filter((block): block is { type: "text"; text: string } => Boolean(block))
+    : [];
+  if (content.length === 0) {
+    return null;
+  }
+  return {
+    role,
+    content,
+    ...(typeof record.timestamp === "number" ? { timestamp: record.timestamp } : {}),
+    ...(typeof record.senderLabel === "string" ? { senderLabel: record.senderLabel } : {}),
+  };
+}
+
+function compactSessionListHistory(messages: unknown[], limit: number): CompactHistoryMessage[] {
+  const compacted = stripToolMessages(messages)
+    .map(compactTextHistoryMessage)
+    .filter((message): message is CompactHistoryMessage => Boolean(message));
+  return compacted.length > limit ? compacted.slice(-limit) : compacted;
+}
 
 function readSessionRunStatus(value: unknown): SessionRunStatus | undefined {
   return value === "running" ||
@@ -314,9 +385,7 @@ export function createSessionsListTool(opts?: {
               params: { sessionKey: target.resolvedKey, limit: messageLimit },
             });
             const rawMessages = Array.isArray(history?.messages) ? history.messages : [];
-            const filtered = stripToolMessages(rawMessages);
-            target.row.messages =
-              filtered.length > messageLimit ? filtered.slice(-messageLimit) : filtered;
+            target.row.messages = compactSessionListHistory(rawMessages, messageLimit);
           }
         };
         await Promise.all(Array.from({ length: maxConcurrent }, () => worker()));

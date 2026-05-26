@@ -55,6 +55,11 @@ describe("resolveLlmIdleTimeoutMs", () => {
     expect(resolveLlmIdleTimeoutMs({ cfg })).toBe(300_000);
   });
 
+  it("does not stretch the idle watchdog to the implicit 48h agent timeout", () => {
+    const cfg = { agents: { defaults: { timeoutSeconds: 48 * 60 * 60 } } } as OpenClawConfig;
+    expect(resolveLlmIdleTimeoutMs({ cfg })).toBe(DEFAULT_LLM_IDLE_TIMEOUT_MS);
+  });
+
   it("uses an explicit run timeout override when llm.idleTimeoutSeconds is not set", () => {
     expect(resolveLlmIdleTimeoutMs({ runTimeoutMs: 900_000 })).toBe(900_000);
   });
@@ -94,6 +99,11 @@ describe("resolveLlmIdleTimeoutMs", () => {
   it("uses agents.defaults.timeoutSeconds for cron before disabling the default idle timeout", () => {
     const cfg = { agents: { defaults: { timeoutSeconds: 300 } } } as OpenClawConfig;
     expect(resolveLlmIdleTimeoutMs({ cfg, trigger: "cron" })).toBe(300_000);
+  });
+
+  it("keeps cron idle disabled when only the implicit 48h agent timeout is present", () => {
+    const cfg = { agents: { defaults: { timeoutSeconds: 48 * 60 * 60 } } } as OpenClawConfig;
+    expect(resolveLlmIdleTimeoutMs({ cfg, trigger: "cron" })).toBe(0);
   });
 
   it("keeps an explicit cron idle timeout when configured", () => {
@@ -175,6 +185,23 @@ describe("streamWithIdleTimeout", () => {
     const next = expect(iterator.next()).rejects.toThrow(/LLM idle timeout/);
     await vi.advanceTimersByTimeAsync(50);
     await next;
+  });
+
+  it("throws when the provider never returns a stream", async () => {
+    vi.useFakeTimers();
+    const baseFn = vi.fn().mockReturnValue(new Promise(() => {}));
+    const onIdleTimeout = vi.fn();
+    const wrapped = streamWithIdleTimeout(baseFn, 50, onIdleTimeout);
+
+    const model = {} as Parameters<typeof baseFn>[0];
+    const context = {} as Parameters<typeof baseFn>[1];
+    const options = {} as Parameters<typeof baseFn>[2];
+
+    const stream = wrapped(model, context, options) as Promise<AsyncIterable<unknown>>;
+    const rejected = expect(stream).rejects.toThrow(/LLM idle timeout/);
+    await vi.advanceTimersByTimeAsync(50);
+    await rejected;
+    expect(onIdleTimeout).toHaveBeenCalledTimes(1);
   });
 
   it("resets timer on each chunk", async () => {

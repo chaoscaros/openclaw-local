@@ -235,6 +235,80 @@ describe("loadSessions", () => {
     expect(requestUpdate).toHaveBeenCalledTimes(1);
   });
 
+  it("clears stale pending queue markers when the refreshed session is terminal", async () => {
+    const requestUpdate = vi.fn();
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.list") {
+        return {
+          ts: 2,
+          path: "(multiple)",
+          count: 1,
+          defaults: {},
+          sessions: [
+            {
+              key: "agent:solo:main",
+              kind: "direct",
+              updatedAt: 2,
+              hasActiveRun: false,
+              status: "done",
+              endedAt: 2,
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const state = createState(request) as SessionsState & {
+      chatQueue: Array<{ id: string; pendingRunId?: string }>;
+      requestUpdate: () => void;
+    };
+    state.chatQueue = [
+      { id: "stale-pending", pendingRunId: "agent:solo:main" },
+      { id: "normal-queued" },
+    ];
+    state.requestUpdate = requestUpdate;
+
+    await loadSessions(state);
+
+    expect(state.chatQueue).toEqual([{ id: "normal-queued" }]);
+    expect(requestUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps pending queue markers while the refreshed session is still active", async () => {
+    const requestUpdate = vi.fn();
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.list") {
+        return {
+          ts: 2,
+          path: "(multiple)",
+          count: 1,
+          defaults: {},
+          sessions: [
+            {
+              key: "agent:solo:main",
+              kind: "direct",
+              updatedAt: 2,
+              hasActiveRun: true,
+              status: "running",
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const state = createState(request) as SessionsState & {
+      chatQueue: Array<{ id: string; pendingRunId?: string }>;
+      requestUpdate: () => void;
+    };
+    state.chatQueue = [{ id: "active-pending", pendingRunId: "main" }];
+    state.requestUpdate = requestUpdate;
+
+    await loadSessions(state);
+
+    expect(state.chatQueue).toEqual([{ id: "active-pending", pendingRunId: "main" }]);
+    expect(requestUpdate).not.toHaveBeenCalled();
+  });
+
   it("keeps a local chat run when the refreshed current session is still active", async () => {
     const requestUpdate = vi.fn();
     const request = vi.fn(async (method: string) => {

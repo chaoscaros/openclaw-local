@@ -13,6 +13,7 @@ export const DEFAULT_LLM_IDLE_TIMEOUT_MS = DEFAULT_LLM_IDLE_TIMEOUT_SECONDS * 10
  * Maximum safe timeout value (approximately 24.8 days).
  */
 const MAX_SAFE_TIMEOUT_MS = 2_147_000_000;
+const IMPLICIT_DEFAULT_AGENT_TIMEOUT_SECONDS = 48 * 60 * 60;
 
 /**
  * Resolves the LLM idle timeout from configuration.
@@ -42,6 +43,13 @@ export function resolveLlmIdleTimeoutMs(params?: {
   }
 
   const agentTimeoutSeconds = params?.cfg?.agents?.defaults?.timeoutSeconds;
+  // The merged runtime config may contain the agent runner's implicit 48h
+  // default. Treat that as unset for the LLM idle watchdog; otherwise a
+  // provider request that goes silent after tool results can leave task-mode
+  // runs visibly pending for nearly two days.
+  if (agentTimeoutSeconds === IMPLICIT_DEFAULT_AGENT_TIMEOUT_SECONDS) {
+    return params?.trigger === "cron" ? 0 : DEFAULT_LLM_IDLE_TIMEOUT_MS;
+  }
   if (
     typeof agentTimeoutSeconds === "number" &&
     Number.isFinite(agentTimeoutSeconds) &&
@@ -72,6 +80,8 @@ export function streamWithIdleTimeout(
   onIdleTimeout?: (error: Error) => void,
 ): StreamFn {
   return (model, context, options) => {
+    const createIdleTimeoutError = () =>
+      new Error(`LLM idle timeout (${Math.floor(timeoutMs / 1000)}s): no response from model`);
     const maybeStream = baseFn(model, context, options);
 
     const wrapStream = (stream: ReturnType<typeof streamSimple>) => {
@@ -84,9 +94,7 @@ export function streamWithIdleTimeout(
           const createTimeoutPromise = (): Promise<never> => {
             return new Promise((_, reject) => {
               idleTimer = setTimeout(() => {
-                const error = new Error(
-                  `LLM idle timeout (${Math.floor(timeoutMs / 1000)}s): no response from model`,
-                );
+                const error = createIdleTimeoutError();
                 onIdleTimeout?.(error);
                 reject(error);
               }, timeoutMs);
@@ -137,7 +145,29 @@ export function streamWithIdleTimeout(
     };
 
     if (maybeStream && typeof maybeStream === "object" && "then" in maybeStream) {
-      return Promise.resolve(maybeStream).then(wrapStream);
+      let streamStartTimer: ReturnType<typeof setTimeout> | undefined;
+      const streamStartTimeout = new Promise<never>((_, reject) => {
+        streamStartTimer = setTimeout(() => {
+          const error = createIdleTimeoutError();
+          onIdleTimeout?.(error);
+          reject(error);
+        }, timeoutMs);
+        streamStartTimer.unref?.();
+      });
+      return Promise.race([Promise.resolve(maybeStream), streamStartTimeout]).then(
+        (stream) => {
+          if (streamStartTimer) {
+            clearTimeout(streamStartTimer);
+          }
+          return wrapStream(stream);
+        },
+        (error) => {
+          if (streamStartTimer) {
+            clearTimeout(streamStartTimer);
+          }
+          throw error;
+        },
+      );
     }
     return wrapStream(maybeStream);
   };

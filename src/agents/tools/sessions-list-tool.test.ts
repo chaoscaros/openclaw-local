@@ -205,4 +205,74 @@ describe("sessions-list-tool", () => {
       responseUsage: "full",
     });
   });
+
+  it("compacts history messages without image blocks or assistant tool calls", async () => {
+    mocks.gatewayCall.mockImplementation(async (opts: unknown) => {
+      const request = opts as { method?: string; params?: { sessionKey?: string } };
+      if (request.method === "sessions.list") {
+        return {
+          path: "/tmp/sessions.json",
+          sessions: [{ key: "main", kind: "direct", sessionId: "sess-main" }],
+        };
+      }
+      if (request.method === "chat.history") {
+        return {
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "please inspect this" },
+                { type: "image", data: "base64-image-data" },
+              ],
+              timestamp: 123,
+            },
+            {
+              role: "assistant",
+              content: [{ type: "toolCall", name: "sessions_list", arguments: {} }],
+              timestamp: 124,
+            },
+            {
+              role: "toolResult",
+              content: [{ type: "text", text: "internal result" }],
+            },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "Visible answer",
+                  textSignature: JSON.stringify({
+                    v: 1,
+                    id: "msg-1",
+                    phase: "final_answer",
+                  }),
+                },
+              ],
+              timestamp: 125,
+            },
+          ],
+        };
+      }
+      return {};
+    });
+    const tool = createSessionsListTool({ config: {} as never });
+
+    const result = await tool.execute("call-history", { messageLimit: 8 });
+    const details = result.details as {
+      sessions?: Array<{ messages?: unknown[] }>;
+    };
+
+    expect(details.sessions?.[0]?.messages).toEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "please inspect this" }],
+        timestamp: 123,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "Visible answer" }],
+        timestamp: 125,
+      },
+    ]);
+  });
 });
