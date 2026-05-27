@@ -26,6 +26,7 @@ vi.mock("./server-chat.load-gateway-session-row.runtime.js", () => ({
 
 import { loadConfig } from "../config/config.js";
 import { resolveHeartbeatVisibility } from "../infra/heartbeat-visibility.js";
+import type { ChatAbortControllerEntry } from "./chat-abort.js";
 import {
   createAgentEventHandler,
   createChatRunState,
@@ -68,6 +69,7 @@ describe("agent event handler", () => {
     const chatRunState = createChatRunState();
     const toolEventRecipients = createToolEventRecipientRegistry();
     const sessionEventSubscribers = createSessionEventSubscriberRegistry();
+    const chatAbortControllers = new Map<string, ChatAbortControllerEntry>();
 
     const handler = createAgentEventHandler({
       broadcast,
@@ -79,6 +81,7 @@ describe("agent event handler", () => {
       clearAgentRunContext,
       toolEventRecipients,
       sessionEventSubscribers,
+      chatAbortControllers,
       lifecycleErrorRetryGraceMs: params?.lifecycleErrorRetryGraceMs,
       isChatSendRunActive: params?.isChatSendRunActive,
     });
@@ -91,6 +94,7 @@ describe("agent event handler", () => {
       clearAgentRunContext,
       agentRunSeq,
       chatRunState,
+      chatAbortControllers,
       toolEventRecipients,
       sessionEventSubscribers,
       handler,
@@ -118,6 +122,33 @@ describe("agent event handler", () => {
   function chatBroadcastCalls(broadcast: ReturnType<typeof vi.fn>) {
     return broadcast.mock.calls.filter(([event]) => event === "chat");
   }
+
+  it("extends active chat run expiry on agent activity", () => {
+    const now = 1_800_000_000_000;
+    const { chatAbortControllers, handler } = createHarness({ now });
+    chatAbortControllers.set("run-active", {
+      controller: new AbortController(),
+      sessionId: "session-active",
+      sessionKey: "session-active",
+      startedAtMs: now - 610_000,
+      lastActivityAtMs: now - 610_000,
+      expiresAtMs: now - 1,
+      activityTimeoutMs: 660_000,
+    });
+
+    handler({
+      runId: "run-active",
+      seq: 1,
+      stream: "tool",
+      ts: now,
+      data: { phase: "start", name: "edit", toolCallId: "tool-1" },
+    });
+
+    expect(chatAbortControllers.get("run-active")).toMatchObject({
+      lastActivityAtMs: now,
+      expiresAtMs: now + 660_000,
+    });
+  });
 
   function sessionChatCalls(nodeSendToSession: ReturnType<typeof vi.fn>) {
     return nodeSendToSession.mock.calls.filter(([, event]) => event === "chat");

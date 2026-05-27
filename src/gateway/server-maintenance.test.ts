@@ -28,6 +28,8 @@ function createActiveRun(sessionKey: string): ChatAbortControllerEntry {
     sessionKey,
     startedAtMs: now,
     expiresAtMs: now + ABORTED_RUN_TTL_MS,
+    lastActivityAtMs: now,
+    activityTimeoutMs: ABORTED_RUN_TTL_MS,
   };
 }
 

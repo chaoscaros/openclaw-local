@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { wrapEditToolWithRecovery } from "./pi-tools.host-edit.js";
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import type { SandboxFsBridge, SandboxFsStat } from "./sandbox/fs-bridge.js";
@@ -107,6 +107,49 @@ describe("edit tool recovery hardening", () => {
         undefined,
       ),
     ).rejects.toThrow(/Current file contents:\nactual current content/);
+  });
+
+  it("retries exact-match mismatch batches one edit at a time against fresh file content", async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-edit-recovery-"));
+    const filePath = path.join(tmpDir, "demo.txt");
+    await fs.writeFile(filePath, "alpha beta gamma\n", "utf-8");
+    const execute = vi.fn(async (_toolCallId: string, params: unknown) => {
+      const record = params as { edits?: Array<{ oldText: string; newText: string }> };
+      const edits = record.edits ?? [];
+      if (edits.length > 1) {
+        throw new Error(
+          "Could not find the exact text in demo.txt. The old text must match exactly including all whitespace and newlines.",
+        );
+      }
+      const [edit] = edits;
+      if (!edit) {
+        return { isError: false, content: [], details: {} };
+      }
+      const current = await fs.readFile(filePath, "utf-8");
+      await fs.writeFile(filePath, current.replace(edit.oldText, edit.newText), "utf-8");
+      return { isError: false, content: [{ type: "text" as const, text: "ok" }], details: {} };
+    });
+
+    const tool = createRecoveredEditTool({
+      root: tmpDir,
+      readFile: (absolutePath) => fs.readFile(absolutePath, "utf-8"),
+      execute,
+    });
+    const result = await tool.execute(
+      "call-1",
+      {
+        path: filePath,
+        edits: [
+          { oldText: "alpha", newText: "ALPHA" },
+          { oldText: "gamma", newText: "GAMMA" },
+        ],
+      },
+      undefined,
+    );
+
+    await expect(fs.readFile(filePath, "utf-8")).resolves.toBe("ALPHA beta GAMMA\n");
+    expect(result).toMatchObject({ isError: false });
+    expect(execute).toHaveBeenCalledTimes(3);
   });
 
   it("recovers success after a post-write throw when CRLF output contains newText and oldText is only a substring", async () => {

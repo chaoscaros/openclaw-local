@@ -22,7 +22,7 @@ vi.mock("../logging/subsystem.js", () => {
   return { createSubsystemLogger: () => makeLogger() };
 });
 
-import { sanitizeContentBlocksImages } from "./tool-images.js";
+import { resetImageResizeCacheForTest, sanitizeContentBlocksImages } from "./tool-images.js";
 
 async function createLargePng(): Promise<Buffer> {
   const width = 2001;
@@ -43,6 +43,7 @@ describe("tool-images log context", () => {
   });
 
   beforeEach(() => {
+    resetImageResizeCacheForTest();
     infoMock.mockClear();
     warnMock.mockClear();
   });
@@ -64,5 +65,25 @@ describe("tool-images log context", () => {
     await sanitizeContentBlocksImages(blocks, "read:/tmp/images/sample-diagram.png");
     const messages = infoMock.mock.calls.map((call) => String(call[0] ?? ""));
     expect(messages.some((message) => message.includes("sample-diagram.png"))).toBe(true);
+  });
+
+  it("logs one resize for duplicate image payloads in the same request", async () => {
+    const blocks = [
+      { type: "image" as const, data: png.toString("base64"), mimeType: "image/png" },
+      { type: "image" as const, data: png.toString("base64"), mimeType: "image/png" },
+    ];
+    await sanitizeContentBlocksImages(blocks, "chat:attachments");
+
+    expect(infoMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses resize cache across retry sanitization calls", async () => {
+    const blocks = [
+      { type: "image" as const, data: png.toString("base64"), mimeType: "image/png" },
+    ];
+    await sanitizeContentBlocksImages(blocks, "chat:attempt-1");
+    await sanitizeContentBlocksImages(blocks, "chat:attempt-2");
+
+    expect(infoMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -10,6 +10,7 @@ import { type AgentEventPayload, getAgentRunContext } from "../infra/agent-event
 import { detectErrorKind, type ErrorKind } from "../infra/errors.js";
 import { resolveHeartbeatVisibility } from "../infra/heartbeat-visibility.js";
 import { stripInlineDirectiveTagsForDisplay } from "../utils/directive-tags.js";
+import { touchChatAbortControllerEntry, type ChatAbortControllerEntry } from "./chat-abort.js";
 import {
   isSuppressedControlReplyLeadFragment,
   isSuppressedControlReplyText,
@@ -467,6 +468,7 @@ export type AgentEventHandlerOptions = {
   clearAgentRunContext: (runId: string) => void;
   toolEventRecipients: ToolEventRecipientRegistry;
   sessionEventSubscribers: SessionEventSubscriberRegistry;
+  chatAbortControllers?: Map<string, ChatAbortControllerEntry>;
   lifecycleErrorRetryGraceMs?: number;
   isChatSendRunActive?: (runId: string) => boolean;
 };
@@ -481,6 +483,7 @@ export function createAgentEventHandler({
   clearAgentRunContext,
   toolEventRecipients,
   sessionEventSubscribers,
+  chatAbortControllers,
   lifecycleErrorRetryGraceMs = AGENT_LIFECYCLE_ERROR_RETRY_GRACE_MS,
   isChatSendRunActive = () => false,
 }: AgentEventHandlerOptions) {
@@ -906,6 +909,13 @@ export function createAgentEventHandler({
     const last = agentRunSeq.get(evt.runId) ?? 0;
     const isToolEvent = evt.stream === "tool";
     const isItemEvent = evt.stream === "item";
+    const activeChatRun =
+      chatAbortControllers?.get(clientRunId) ??
+      chatAbortControllers?.get(eventRunId) ??
+      chatAbortControllers?.get(evt.runId);
+    if (activeChatRun) {
+      touchChatAbortControllerEntry(activeChatRun, evt.ts ?? Date.now());
+    }
     const toolVerbose = isToolEvent ? resolveToolVerboseLevel(evt.runId, sessionKey) : "off";
     // Build tool payload: strip result/partialResult unless verbose=full
     const toolPayload =

@@ -88,8 +88,9 @@ vi.mock("../session-utils.js", async () => {
 });
 
 vi.mock("../../agents/agent-scope.js", async () => {
-  const original =
-    await vi.importActual<typeof import("../../agents/agent-scope.js")>("../../agents/agent-scope.js");
+  const original = await vi.importActual<typeof import("../../agents/agent-scope.js")>(
+    "../../agents/agent-scope.js",
+  );
   return {
     ...original,
     resolveAgentWorkspaceDir: vi.fn(() => mockState.workspaceDir || os.tmpdir()),
@@ -251,10 +252,13 @@ function createDreamingWorkspaceFixture(prefix: string, payload?: Record<string,
   return workspaceDir;
 }
 
-function expectStartedAck(
-  respond: ReturnType<typeof vi.fn>,
-): { dreamingAssistApplied?: boolean; dreamingAssistReason?: string } {
-  const started = respond.mock.calls.find((call) => call[0] === true && call[1]?.status === "started");
+function expectStartedAck(respond: ReturnType<typeof vi.fn>): {
+  dreamingAssistApplied?: boolean;
+  dreamingAssistReason?: string;
+} {
+  const started = respond.mock.calls.find(
+    (call) => call[0] === true && call[1]?.status === "started",
+  );
   expect(started?.[1]).toBeDefined();
   return started?.[1] as { dreamingAssistApplied?: boolean; dreamingAssistReason?: string };
 }
@@ -572,7 +576,9 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
       dreamingAssistApplied: true,
     });
     expect(expectStartedAck(respond).dreamingAssistReason).toBeUndefined();
-    expect(mockState.lastDispatchCtx?.Body).toContain("Dreaming协助策略参考，仅作本轮回复方式约束：先拆清单再验证");
+    expect(mockState.lastDispatchCtx?.Body).toContain(
+      "Dreaming协助策略参考，仅作本轮回复方式约束：先拆清单再验证",
+    );
     expect(mockState.lastDispatchCtx?.RawBody).toBe("hello");
   });
 
@@ -588,14 +594,18 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
       sessionId: "sess-prev",
       sessionKey: "main",
       startedAtMs: Date.now(),
+      lastActivityAtMs: Date.now(),
       expiresAtMs: Date.now() + 10_000,
+      activityTimeoutMs: 10_000,
     });
     context.chatAbortControllers.set("run-other-session", {
       controller: new AbortController(),
       sessionId: "sess-other",
       sessionKey: "other",
       startedAtMs: Date.now(),
+      lastActivityAtMs: Date.now(),
       expiresAtMs: Date.now() + 10_000,
+      activityTimeoutMs: 10_000,
     });
 
     await runNonStreamingChatSend({
@@ -745,31 +755,37 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
   it("injects the latest dreaming assistance strategy into BodyForAgent without mutating the raw user message", async () => {
     createTranscriptFixture("openclaw-chat-send-dreaming-strategy-");
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-chat-send-dreaming-workspace-"));
+    const workspaceDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "openclaw-chat-send-dreaming-workspace-"),
+    );
     mockState.workspaceDir = workspaceDir;
     mockState.sessionEntry = { taskId: "task-1" };
     fs.mkdirSync(path.join(workspaceDir, "memory", ".dreams"), { recursive: true });
     fs.writeFileSync(
       path.join(workspaceDir, "memory", ".dreams", "last-run.json"),
-      `${JSON.stringify({
-        at: new Date().toISOString(),
-        workspaces: 1,
-        candidates: 1,
-        applied: 1,
-        failed: 0,
-        narrativeWritten: 0,
-        narrativeSkipped: 0,
-        learningSummary: {
-          summary: "当前聚焦：核对 Tasks 页",
-          recommendation: "下次协助时，保持中文优先。",
-          assistanceStrategy: "先给清单，再逐步验证。",
-          sessionKey: "main",
-          taskId: "task-1",
-          durableSignals: ["中文优先"],
-          temporaryFocus: ["核对 Tasks 页"],
-          sources: [{ kind: "memory", label: "2026-04-05.md", detail: "中文优先" }],
+      `${JSON.stringify(
+        {
+          at: new Date().toISOString(),
+          workspaces: 1,
+          candidates: 1,
+          applied: 1,
+          failed: 0,
+          narrativeWritten: 0,
+          narrativeSkipped: 0,
+          learningSummary: {
+            summary: "当前聚焦：核对 Tasks 页",
+            recommendation: "下次协助时，保持中文优先。",
+            assistanceStrategy: "先给清单，再逐步验证。",
+            sessionKey: "main",
+            taskId: "task-1",
+            durableSignals: ["中文优先"],
+            temporaryFocus: ["核对 Tasks 页"],
+            sources: [{ kind: "memory", label: "2026-04-05.md", detail: "中文优先" }],
+          },
         },
-      }, null, 2)}\n`,
+        null,
+        2,
+      )}\n`,
       "utf-8",
     );
     const respond = vi.fn();
@@ -795,31 +811,37 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
   it("does not inject dreaming assistance strategy when the operator disables it for the current chat", async () => {
     createTranscriptFixture("openclaw-chat-send-dreaming-strategy-disabled-");
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-chat-send-dreaming-disabled-"));
+    const workspaceDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "openclaw-chat-send-dreaming-disabled-"),
+    );
     mockState.workspaceDir = workspaceDir;
     mockState.sessionEntry = { taskId: "task-1" };
     fs.mkdirSync(path.join(workspaceDir, "memory", ".dreams"), { recursive: true });
     fs.writeFileSync(
       path.join(workspaceDir, "memory", ".dreams", "last-run.json"),
-      `${JSON.stringify({
-        at: new Date().toISOString(),
-        workspaces: 1,
-        candidates: 1,
-        applied: 1,
-        failed: 0,
-        narrativeWritten: 0,
-        narrativeSkipped: 0,
-        learningSummary: {
-          summary: "当前聚焦：核对 Tasks 页",
-          recommendation: "下次协助时，保持中文优先。",
-          assistanceStrategy: "先给清单，再逐步验证。",
-          sessionKey: "main",
-          taskId: "task-1",
-          durableSignals: ["中文优先"],
-          temporaryFocus: ["核对 Tasks 页"],
-          sources: [{ kind: "memory", label: "2026-04-05.md", detail: "中文优先" }],
+      `${JSON.stringify(
+        {
+          at: new Date().toISOString(),
+          workspaces: 1,
+          candidates: 1,
+          applied: 1,
+          failed: 0,
+          narrativeWritten: 0,
+          narrativeSkipped: 0,
+          learningSummary: {
+            summary: "当前聚焦：核对 Tasks 页",
+            recommendation: "下次协助时，保持中文优先。",
+            assistanceStrategy: "先给清单，再逐步验证。",
+            sessionKey: "main",
+            taskId: "task-1",
+            durableSignals: ["中文优先"],
+            temporaryFocus: ["核对 Tasks 页"],
+            sources: [{ kind: "memory", label: "2026-04-05.md", detail: "中文优先" }],
+          },
         },
-      }, null, 2)}\n`,
+        null,
+        2,
+      )}\n`,
       "utf-8",
     );
     const respond = vi.fn();
@@ -845,31 +867,37 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
   it("does not inject dreaming assistance strategy when the latest strategy belongs to another task or session", async () => {
     createTranscriptFixture("openclaw-chat-send-dreaming-strategy-scope-");
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-chat-send-dreaming-scope-"));
+    const workspaceDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "openclaw-chat-send-dreaming-scope-"),
+    );
     mockState.workspaceDir = workspaceDir;
     mockState.sessionEntry = { taskId: "task-local" };
     fs.mkdirSync(path.join(workspaceDir, "memory", ".dreams"), { recursive: true });
     fs.writeFileSync(
       path.join(workspaceDir, "memory", ".dreams", "last-run.json"),
-      `${JSON.stringify({
-        at: new Date().toISOString(),
-        workspaces: 1,
-        candidates: 1,
-        applied: 1,
-        failed: 0,
-        narrativeWritten: 0,
-        narrativeSkipped: 0,
-        learningSummary: {
-          summary: "当前聚焦：别的任务",
-          recommendation: "下次协助时，先做别的任务。",
-          assistanceStrategy: "别注入到当前会话。",
-          sessionKey: "other-session",
-          taskId: "task-other",
-          durableSignals: ["中文优先"],
-          temporaryFocus: ["别的任务"],
-          sources: [{ kind: "memory", label: "2026-04-05.md", detail: "中文优先" }],
+      `${JSON.stringify(
+        {
+          at: new Date().toISOString(),
+          workspaces: 1,
+          candidates: 1,
+          applied: 1,
+          failed: 0,
+          narrativeWritten: 0,
+          narrativeSkipped: 0,
+          learningSummary: {
+            summary: "当前聚焦：别的任务",
+            recommendation: "下次协助时，先做别的任务。",
+            assistanceStrategy: "别注入到当前会话。",
+            sessionKey: "other-session",
+            taskId: "task-other",
+            durableSignals: ["中文优先"],
+            temporaryFocus: ["别的任务"],
+            sources: [{ kind: "memory", label: "2026-04-05.md", detail: "中文优先" }],
+          },
         },
-      }, null, 2)}\n`,
+        null,
+        2,
+      )}\n`,
       "utf-8",
     );
     const respond = vi.fn();
@@ -894,31 +922,37 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
   it("does not inject dreaming assistance strategy when the latest strategy is too old", async () => {
     createTranscriptFixture("openclaw-chat-send-dreaming-strategy-expired-");
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-chat-send-dreaming-expired-"));
+    const workspaceDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "openclaw-chat-send-dreaming-expired-"),
+    );
     mockState.workspaceDir = workspaceDir;
     mockState.sessionEntry = { taskId: "task-1" };
     fs.mkdirSync(path.join(workspaceDir, "memory", ".dreams"), { recursive: true });
     fs.writeFileSync(
       path.join(workspaceDir, "memory", ".dreams", "last-run.json"),
-      `${JSON.stringify({
-        at: new Date(0).toISOString(),
-        workspaces: 1,
-        candidates: 1,
-        applied: 1,
-        failed: 0,
-        narrativeWritten: 0,
-        narrativeSkipped: 0,
-        learningSummary: {
-          summary: "当前聚焦：核对 Tasks 页",
-          recommendation: "下次协助时，保持中文优先。",
-          assistanceStrategy: "这条策略太旧，不应继续生效。",
-          sessionKey: "main",
-          taskId: "task-1",
-          durableSignals: ["中文优先"],
-          temporaryFocus: ["核对 Tasks 页"],
-          sources: [{ kind: "memory", label: "2026-04-05.md", detail: "中文优先" }],
+      `${JSON.stringify(
+        {
+          at: new Date(0).toISOString(),
+          workspaces: 1,
+          candidates: 1,
+          applied: 1,
+          failed: 0,
+          narrativeWritten: 0,
+          narrativeSkipped: 0,
+          learningSummary: {
+            summary: "当前聚焦：核对 Tasks 页",
+            recommendation: "下次协助时，保持中文优先。",
+            assistanceStrategy: "这条策略太旧，不应继续生效。",
+            sessionKey: "main",
+            taskId: "task-1",
+            durableSignals: ["中文优先"],
+            temporaryFocus: ["核对 Tasks 页"],
+            sources: [{ kind: "memory", label: "2026-04-05.md", detail: "中文优先" }],
+          },
         },
-      }, null, 2)}\n`,
+        null,
+        2,
+      )}\n`,
       "utf-8",
     );
     const respond = vi.fn();
@@ -974,7 +1008,9 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
     expect(mockState.lastDispatchCtx?.RawBody).toBe("你帮我改这个页面，直接开发前先整理规格");
     expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("规格优先模式已开启");
-    expect(mockState.lastDispatchCtx?.BodyForAgent).toContain("任务描述、文件路径、改动范围、禁改区域");
+    expect(mockState.lastDispatchCtx?.BodyForAgent).toContain(
+      "任务描述、文件路径、改动范围、禁改区域",
+    );
   });
 
   it("injects goal-mode guidance and keeps plan-first ordering when both modes are enabled", async () => {
@@ -2620,7 +2656,9 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
       sessionId: "sess-prev",
       sessionKey: "main",
       startedAtMs: Date.now(),
+      lastActivityAtMs: Date.now(),
       expiresAtMs: Date.now() + 10_000,
+      activityTimeoutMs: 10_000,
     });
 
     await runNonStreamingChatSend({

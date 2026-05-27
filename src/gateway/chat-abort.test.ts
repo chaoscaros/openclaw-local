@@ -13,7 +13,9 @@ function createActiveEntry(sessionKey: string): ChatAbortControllerEntry {
     sessionId: "sess-1",
     sessionKey,
     startedAtMs: now,
+    lastActivityAtMs: now,
     expiresAtMs: now + 10_000,
+    activityTimeoutMs: 10_000,
   };
 }
 

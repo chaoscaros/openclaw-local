@@ -5,7 +5,9 @@ export type ChatAbortControllerEntry = {
   sessionId: string;
   sessionKey: string;
   startedAtMs: number;
+  lastActivityAtMs: number;
   expiresAtMs: number;
+  activityTimeoutMs: number;
   ownerConnId?: string;
   ownerDeviceId?: string;
 };
@@ -27,6 +29,11 @@ export function resolveChatRunExpiresAtMs(params: {
   const min = now + minMs;
   const max = now + maxMs;
   return Math.min(max, Math.max(min, target));
+}
+
+export function touchChatAbortControllerEntry(entry: ChatAbortControllerEntry, now: number): void {
+  entry.lastActivityAtMs = Math.max(entry.lastActivityAtMs, now);
+  entry.expiresAtMs = Math.max(entry.expiresAtMs, now + entry.activityTimeoutMs);
 }
 
 export type ChatAbortOps = {

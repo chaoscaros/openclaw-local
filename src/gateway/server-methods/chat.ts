@@ -2229,12 +2229,15 @@ export const chatHandlers: GatewayRequestHandlers = {
 
     try {
       const abortController = new AbortController();
+      const expiresAtMs = resolveChatRunExpiresAtMs({ now, timeoutMs });
       context.chatAbortControllers.set(clientRunId, {
         controller: abortController,
         sessionId: entry?.sessionId ?? clientRunId,
         sessionKey: rawSessionKey,
         startedAtMs: now,
-        expiresAtMs: resolveChatRunExpiresAtMs({ now, timeoutMs }),
+        lastActivityAtMs: now,
+        expiresAtMs,
+        activityTimeoutMs: Math.max(1, expiresAtMs - now),
         ownerConnId: normalizeOptionalText(client?.connId),
         ownerDeviceId: normalizeOptionalText(client?.connect?.device?.id),
       });

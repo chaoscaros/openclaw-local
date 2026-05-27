@@ -12,6 +12,7 @@ type EditToolRecoveryOptions = {
 type EditToolParams = {
   pathParam?: string;
   edits: EditReplacement[];
+  record?: Record<string, unknown>;
 };
 
 type EditReplacement = {
@@ -65,6 +66,7 @@ function readEditToolParams(params: unknown): EditToolParams {
   return {
     pathParam: readStringParam(record, "path"),
     edits: readEditReplacements(record),
+    record,
   };
 }
 
@@ -135,6 +137,10 @@ function shouldAddMismatchHint(error: unknown) {
   return error instanceof Error && error.message.includes(EDIT_MISMATCH_MESSAGE);
 }
 
+function isExactMatchMismatch(error: unknown): error is Error {
+  return shouldAddMismatchHint(error);
+}
+
 function appendMismatchHint(error: Error, currentContent: string): Error {
   const snippet =
     currentContent.length <= EDIT_MISMATCH_HINT_LIMIT
@@ -143,6 +149,89 @@ function appendMismatchHint(error: Error, currentContent: string): Error {
   const enhanced = new Error(`${error.message}\nCurrent file contents:\n${snippet}`);
   enhanced.stack = error.stack;
   return enhanced;
+}
+
+function isEditAlreadyApplied(params: {
+  originalContent?: string;
+  currentContent: string;
+  edit: EditReplacement;
+}): boolean {
+  const normalizedCurrent = normalizeToLF(params.currentContent);
+  const normalizedOld = normalizeToLF(params.edit.oldText);
+  const normalizedNew = normalizeToLF(params.edit.newText);
+  const normalizedOriginal =
+    typeof params.originalContent === "string" ? normalizeToLF(params.originalContent) : undefined;
+
+  if (normalizedNew.length > 0) {
+    return normalizedCurrent.includes(normalizedNew) && !normalizedCurrent.includes(normalizedOld);
+  }
+
+  return (
+    normalizedOriginal !== undefined &&
+    normalizedOriginal.includes(normalizedOld) &&
+    !normalizedCurrent.includes(normalizedOld) &&
+    normalizedCurrent !== normalizedOriginal
+  );
+}
+
+function buildRetryParams(
+  record: Record<string, unknown>,
+  edit: EditReplacement,
+): Record<string, unknown> {
+  return {
+    ...record,
+    edits: [{ oldText: edit.oldText, newText: edit.newText }],
+  };
+}
+
+async function retryEditsOneByOne(params: {
+  base: AnyAgentTool;
+  toolCallId: string;
+  rawRecord: Record<string, unknown>;
+  pathParam: string;
+  absolutePath: string;
+  edits: EditReplacement[];
+  originalContent?: string;
+  readFile: (absolutePath: string) => Promise<string>;
+  signal: AbortSignal | undefined;
+  onUpdate?: AgentToolUpdateCallback<unknown>;
+}): Promise<AgentToolResult<unknown> | null> {
+  let appliedCount = 0;
+  for (let index = 0; index < params.edits.length; index += 1) {
+    const edit = params.edits[index];
+    let currentContent: string;
+    try {
+      currentContent = await params.readFile(params.absolutePath);
+    } catch {
+      return null;
+    }
+
+    if (currentContent.includes(edit.oldText)) {
+      await params.base.execute(
+        `${params.toolCallId}:retry:${index + 1}`,
+        buildRetryParams(params.rawRecord, edit),
+        params.signal,
+        params.onUpdate,
+      );
+      appliedCount += 1;
+      continue;
+    }
+
+    if (
+      isEditAlreadyApplied({
+        originalContent: params.originalContent,
+        currentContent,
+        edit,
+      })
+    ) {
+      appliedCount += 1;
+      continue;
+    }
+
+    return null;
+  }
+
+  return buildEditSuccessResult(params.pathParam, appliedCount);
 }
 
 /**
@@ -162,7 +251,7 @@ export function wrapEditToolWithRecovery(
       signal: AbortSignal | undefined,
       onUpdate?: AgentToolUpdateCallback<unknown>,
     ) => {
-      const { pathParam, edits } = readEditToolParams(params);
+      const { pathParam, edits, record } = readEditToolParams(params);
       const absolutePath =
         typeof pathParam === "string" ? resolveEditPath(options.root, pathParam) : undefined;
       let originalContent: string | undefined;
@@ -204,8 +293,25 @@ export function wrapEditToolWithRecovery(
         if (
           typeof currentContent === "string" &&
           err instanceof Error &&
-          shouldAddMismatchHint(err)
+          isExactMatchMismatch(err)
         ) {
+          if (pathParam && record && edits.length > 0) {
+            const retried = await retryEditsOneByOne({
+              base,
+              toolCallId,
+              rawRecord: record,
+              pathParam,
+              absolutePath,
+              edits,
+              originalContent,
+              readFile: options.readFile,
+              signal,
+              onUpdate,
+            });
+            if (retried) {
+              return retried;
+            }
+          }
           throw appendMismatchHint(err, currentContent);
         }
 

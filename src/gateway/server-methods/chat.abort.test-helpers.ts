@@ -15,7 +15,9 @@ export function createActiveRun(
     sessionId: params.sessionId ?? `${sessionKey}-session`,
     sessionKey,
     startedAtMs: now,
+    lastActivityAtMs: now,
     expiresAtMs: now + 30_000,
+    activityTimeoutMs: 30_000,
     ownerConnId: params.owner?.connId,
     ownerDeviceId: params.owner?.deviceId,
   };
