@@ -38,6 +38,7 @@ import { findLegacyConfigIssues } from "./legacy.js";
 import { materializeRuntimeConfig } from "./materialize.js";
 import type { OpenClawConfig, ConfigValidationIssue } from "./types.js";
 import { coerceSecretRef } from "./types.secrets.js";
+import { isBuiltInModelProviderOverlayId } from "./zod-schema.core.js";
 import { OpenClawSchema } from "./zod-schema.js";
 
 const LEGACY_REMOVED_PLUGIN_IDS = new Set(["google-antigravity-auth", "google-gemini-cli-auth"]);
@@ -58,6 +59,38 @@ const bundledChannelSchemaById = new Map<string, unknown>(
     (entry) => [entry.channelId, entry.schema] as const,
   ),
 );
+
+function materializeBundledModelProviderOverlays(config: OpenClawConfig): OpenClawConfig {
+  const providers = config.models?.providers;
+  if (!providers) {
+    return config;
+  }
+  let nextProviders: typeof providers | undefined;
+  for (const [providerId, providerConfig] of Object.entries(providers)) {
+    if (
+      !isBuiltInModelProviderOverlayId(providerId) ||
+      (providerConfig.baseUrl && Array.isArray(providerConfig.models))
+    ) {
+      continue;
+    }
+    nextProviders ??= { ...providers };
+    nextProviders[providerId] = {
+      ...providerConfig,
+      baseUrl: providerConfig.baseUrl ?? "",
+      models: providerConfig.models ?? [],
+    };
+  }
+  if (!nextProviders) {
+    return config;
+  }
+  return {
+    ...config,
+    models: {
+      ...config.models,
+      providers: nextProviders,
+    },
+  };
+}
 
 function toIssueRecord(value: unknown): UnknownIssueRecord | null {
   if (!value || typeof value !== "object") {
@@ -607,7 +640,7 @@ export function validateConfigObjectRaw(
   if (policyIssues.length > 0) {
     return { ok: false, issues: policyIssues };
   }
-  const validatedConfig = validated.data as OpenClawConfig;
+  const validatedConfig = materializeBundledModelProviderOverlays(validated.data as OpenClawConfig);
   const duplicates = findDuplicateAgentDirs(validatedConfig);
   if (duplicates.length > 0) {
     return {

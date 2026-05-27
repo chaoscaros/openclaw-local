@@ -24,6 +24,7 @@ export function resolveLlmIdleTimeoutMs(params?: {
   cfg?: OpenClawConfig;
   trigger?: EmbeddedRunTrigger;
   runTimeoutMs?: number;
+  modelRequestTimeoutMs?: number;
   afterToolResult?: boolean;
 }): number {
   const clampTimeoutMs = (valueMs: number) => Math.min(Math.floor(valueMs), MAX_SAFE_TIMEOUT_MS);
@@ -56,29 +57,55 @@ export function resolveLlmIdleTimeoutMs(params?: {
         ? defaultIdleTimeoutForTriggerMs
         : 0;
     }
+  }
+
+  const agentTimeoutSeconds = params?.cfg?.agents?.defaults?.timeoutSeconds;
+  const isImplicitAgentTimeout = agentTimeoutSeconds === IMPLICIT_DEFAULT_AGENT_TIMEOUT_SECONDS;
+  const agentTimeoutMs =
+    !isImplicitAgentTimeout &&
+    typeof agentTimeoutSeconds === "number" &&
+    Number.isFinite(agentTimeoutSeconds) &&
+    agentTimeoutSeconds > 0
+      ? agentTimeoutSeconds * 1000
+      : undefined;
+  const boundedExplicitTimeoutMs = (valueMs: number) => {
+    const bounds = [runTimeoutMs, agentTimeoutMs].filter(
+      (value): value is number =>
+        typeof value === "number" &&
+        Number.isFinite(value) &&
+        value > 0 &&
+        value < MAX_SAFE_TIMEOUT_MS,
+    );
+    return clampTimeoutMs(Math.min(valueMs, ...bounds));
+  };
+  const modelRequestTimeoutMs = params?.modelRequestTimeoutMs;
+  if (
+    typeof modelRequestTimeoutMs === "number" &&
+    Number.isFinite(modelRequestTimeoutMs) &&
+    modelRequestTimeoutMs > 0
+  ) {
+    return boundedExplicitTimeoutMs(modelRequestTimeoutMs);
+  }
+
+  if (typeof runTimeoutMs === "number" && Number.isFinite(runTimeoutMs) && runTimeoutMs > 0) {
     if (params?.trigger !== "cron") {
       return defaultIdleTimeoutForRunMs(runTimeoutMs);
     }
     return clampTimeoutMs(runTimeoutMs);
   }
 
-  const agentTimeoutSeconds = params?.cfg?.agents?.defaults?.timeoutSeconds;
   // The merged runtime config may contain the agent runner's implicit 48h
   // default. Treat that as unset for the LLM idle watchdog; otherwise a
   // provider request that goes silent after tool results can leave task-mode
   // runs visibly pending for nearly two days.
-  if (agentTimeoutSeconds === IMPLICIT_DEFAULT_AGENT_TIMEOUT_SECONDS) {
+  if (isImplicitAgentTimeout) {
     return params?.trigger === "cron" ? 0 : defaultIdleTimeoutForTriggerMs;
   }
-  if (
-    typeof agentTimeoutSeconds === "number" &&
-    Number.isFinite(agentTimeoutSeconds) &&
-    agentTimeoutSeconds > 0
-  ) {
+  if (agentTimeoutMs !== undefined) {
     if (params?.trigger !== "cron") {
-      return defaultIdleTimeoutForRunMs(agentTimeoutSeconds * 1000);
+      return defaultIdleTimeoutForRunMs(agentTimeoutMs);
     }
-    return clampTimeoutMs(agentTimeoutSeconds * 1000);
+    return clampTimeoutMs(agentTimeoutMs);
   }
 
   if (params?.trigger === "cron") {

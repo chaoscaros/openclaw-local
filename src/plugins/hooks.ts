@@ -156,6 +156,11 @@ export type HookRunnerOptions = {
 
 const DEFAULT_VOID_HOOK_TIMEOUT_MS_BY_HOOK: Partial<Record<PluginHookName, number>> = {
   agent_end: 30_000,
+  // Compaction lifecycle hooks run on serialized agent/harness notification
+  // paths. Keep them fail-open but bounded so a hung plugin cannot stall the
+  // rest of the turn forever.
+  before_compaction: 30_000,
+  after_compaction: 30_000,
 };
 const DEFAULT_MODIFYING_HOOK_TIMEOUT_MS_BY_HOOK: Partial<Record<PluginHookName, number>> = {
   // Legacy compatibility hook: fail open if a plugin hangs during startup.

@@ -57,6 +57,25 @@ describe("provider attribution", () => {
     });
   });
 
+  it("returns a documented NVIDIA attribution policy", () => {
+    expect(resolveProviderAttributionPolicy("nvidia", { OPENCLAW_VERSION: "2026.3.22" })).toEqual({
+      provider: "nvidia",
+      enabledByDefault: true,
+      verification: "vendor-documented",
+      hook: "request-headers",
+      reviewNote:
+        "NVIDIA NIM billing invoke-origin attribution header. Applied only on verified NVIDIA routes.",
+      product: "OpenClaw",
+      version: "2026.3.22",
+      headers: {
+        "X-BILLING-INVOKE-ORIGIN": "OpenClaw",
+      },
+    });
+    expect(resolveProviderAttributionHeaders("NVIDIA", { OPENCLAW_VERSION: "2026.3.22" })).toEqual({
+      "X-BILLING-INVOKE-ORIGIN": "OpenClaw",
+    });
+  });
+
   it("returns a hidden-spec OpenAI attribution policy", () => {
     expect(resolveProviderAttributionPolicy("openai", { OPENCLAW_VERSION: "2026.3.22" })).toEqual({
       provider: "openai",
@@ -110,6 +129,7 @@ describe("provider attribution", () => {
       ]),
     ).toEqual([
       ["openrouter", true, "vendor-documented", "request-headers"],
+      ["nvidia", true, "vendor-documented", "request-headers"],
       ["openai", true, "vendor-hidden-api-spec", "request-headers"],
       ["openai-codex", true, "vendor-hidden-api-spec", "request-headers"],
       ["anthropic", false, "vendor-sdk-hook-only", "default-headers"],
@@ -257,6 +277,10 @@ describe("provider attribution", () => {
       endpointClass: "cerebras-native",
       hostname: "api.cerebras.ai",
     });
+    expect(resolveProviderEndpoint("https://integrate.api.nvidia.com/v1")).toMatchObject({
+      endpointClass: "nvidia-native",
+      hostname: "integrate.api.nvidia.com",
+    });
     expect(resolveProviderEndpoint("https://opencode.ai/api")).toMatchObject({
       endpointClass: "opencode-native",
       hostname: "opencode.ai",
@@ -297,6 +321,45 @@ describe("provider attribution", () => {
     expect(
       resolveProviderRequestAttributionHeaders({
         provider: "openrouter",
+        baseUrl: "https://proxy.example.com/v1",
+        transport: "stream",
+        capability: "llm",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("gates documented NVIDIA attribution to official NIM endpoints", () => {
+    expect(
+      resolveProviderRequestPolicy({
+        provider: "nvidia",
+        api: "openai-completions",
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        transport: "stream",
+        capability: "llm",
+      }),
+    ).toMatchObject({
+      endpointClass: "nvidia-native",
+      knownProviderFamily: "nvidia",
+      attributionProvider: "nvidia",
+      allowsHiddenAttribution: false,
+    });
+
+    expect(
+      resolveProviderRequestAttributionHeaders({
+        provider: "custom-nim",
+        api: "openai-completions",
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        transport: "stream",
+        capability: "llm",
+      }),
+    ).toEqual({
+      "X-BILLING-INVOKE-ORIGIN": "OpenClaw",
+    });
+
+    expect(
+      resolveProviderRequestAttributionHeaders({
+        provider: "nvidia",
+        api: "openai-completions",
         baseUrl: "https://proxy.example.com/v1",
         transport: "stream",
         capability: "llm",
@@ -373,6 +436,18 @@ describe("provider attribution", () => {
         capability: "llm",
       }),
     ).toBe("provider=groq api=openai-completions endpoint=groq-native route=native policy=none");
+
+    expect(
+      describeProviderRequestRoutingSummary({
+        provider: "nvidia",
+        api: "openai-completions",
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        transport: "stream",
+        capability: "llm",
+      }),
+    ).toBe(
+      "provider=nvidia api=openai-completions endpoint=nvidia-native route=native policy=documented",
+    );
   });
 
   it("models other provider families without enabling hidden attribution", () => {

@@ -86,6 +86,38 @@ describe("resolveLlmIdleTimeoutMs", () => {
     expect(resolveLlmIdleTimeoutMs({ runTimeoutMs: 30_000 })).toBe(30_000);
   });
 
+  it("honors explicit models.providers.<id>.timeoutSeconds for cloud providers", () => {
+    expect(resolveLlmIdleTimeoutMs({ modelRequestTimeoutMs: 300_000 })).toBe(300_000);
+  });
+
+  it("honors short explicit provider request timeouts", () => {
+    expect(resolveLlmIdleTimeoutMs({ modelRequestTimeoutMs: 30_000 })).toBe(30_000);
+  });
+
+  it("bounds provider request timeout by agents.defaults.timeoutSeconds when shorter", () => {
+    const cfg = { agents: { defaults: { timeoutSeconds: 45 } } } as OpenClawConfig;
+    expect(resolveLlmIdleTimeoutMs({ cfg, modelRequestTimeoutMs: 300_000 })).toBe(45_000);
+  });
+
+  it("bounds provider request timeout by explicit run timeout when shorter", () => {
+    expect(resolveLlmIdleTimeoutMs({ modelRequestTimeoutMs: 300_000, runTimeoutMs: 45_000 })).toBe(
+      45_000,
+    );
+  });
+
+  it("caps provider request timeout at the max safe timeout", () => {
+    expect(resolveLlmIdleTimeoutMs({ modelRequestTimeoutMs: 10_000_000_000 })).toBe(2_147_000_000);
+  });
+
+  it("ignores invalid provider request timeout values", () => {
+    expect(resolveLlmIdleTimeoutMs({ modelRequestTimeoutMs: -1 })).toBe(
+      DEFAULT_LLM_IDLE_TIMEOUT_MS,
+    );
+    expect(resolveLlmIdleTimeoutMs({ modelRequestTimeoutMs: Infinity })).toBe(
+      DEFAULT_LLM_IDLE_TIMEOUT_MS,
+    );
+  });
+
   it("disables the idle watchdog when an explicit run timeout disables timeouts", () => {
     expect(resolveLlmIdleTimeoutMs({ runTimeoutMs: 2_147_000_000 })).toBe(0);
   });

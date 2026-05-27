@@ -70,6 +70,30 @@ function readErrorCandidate(value: unknown): string | undefined {
   return undefined;
 }
 
+function readErrorCodeCandidate(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  }
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  return readErrorCodeCandidate(record.code) ?? readErrorCodeCandidate(record.errorCode);
+}
+
+function readNodeErrorDenialCode(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const message = normalizeOptionalString((value as Record<string, unknown>).message);
+  return message?.match(/\b(SYSTEM_RUN_DENIED|INVALID_REQUEST)\b/u)?.[1];
+}
+
+function readNestedErrorCodeCandidate(value: unknown): string | undefined {
+  return value && typeof value === "object" ? readErrorCodeCandidate(value) : undefined;
+}
+
 function extractErrorField(value: unknown): string | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
@@ -87,6 +111,28 @@ function extractErrorField(value: unknown): string | undefined {
     return undefined;
   }
   return normalizeToolErrorText(status);
+}
+
+function extractDirectErrorCodeField(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const direct =
+    readErrorCodeCandidate(record.errorCode) ??
+    readErrorCodeCandidate(record.code) ??
+    readNestedErrorCodeCandidate(record.error) ??
+    readNestedErrorCodeCandidate(record.nodeError) ??
+    readNodeErrorDenialCode(record.nodeError);
+  const normalized = normalizeOptionalString(direct);
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === "SYSTEM_RUN_DENIED" || normalized === "INVALID_REQUEST") {
+    return normalized;
+  }
+  const fromWrappedMessage = normalized.match(/\b(SYSTEM_RUN_DENIED|INVALID_REQUEST)\b/u)?.[1];
+  return fromWrappedMessage;
 }
 
 export function sanitizeToolResult(result: unknown): unknown {
@@ -337,6 +383,14 @@ export function isToolResultError(result: unknown): boolean {
     return false;
   }
   return normalized === "error" || normalized === "timeout";
+}
+
+export function extractToolErrorCode(result: unknown): string | undefined {
+  if (!result || typeof result !== "object") {
+    return undefined;
+  }
+  const record = result as Record<string, unknown>;
+  return extractDirectErrorCodeField(record.details) ?? extractDirectErrorCodeField(record);
 }
 
 export function isToolResultTimedOut(result: unknown): boolean {

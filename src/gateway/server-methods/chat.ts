@@ -148,6 +148,7 @@ function buildWebchatAudioOnlyAssistantMessage(
 export const DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS = 12_000;
 const CHAT_HISTORY_MAX_SINGLE_MESSAGE_BYTES = 128 * 1024;
 const CHAT_HISTORY_OVERSIZED_PLACEHOLDER = "[chat.history omitted: message too large]";
+const CHAT_SEND_DUPLICATE_USER_ECHO_WINDOW_MS = 10 * 60 * 1000;
 let chatHistoryPlaceholderEmitCount = 0;
 const CHANNEL_AGNOSTIC_SESSION_SCOPES = new Set([
   "main",
@@ -487,12 +488,14 @@ function buildChatSendTranscriptMessage(params: {
   message: string;
   savedImages: SavedMedia[];
   timestamp: number;
+  idempotencyKey: string;
 }) {
   const mediaFields = resolveChatSendTranscriptMediaFields(params.savedImages);
   return {
     role: "user" as const,
     content: params.message,
     timestamp: params.timestamp,
+    idempotencyKey: params.idempotencyKey,
     ...mediaFields,
   };
 }
@@ -548,6 +551,7 @@ async function rewriteChatSendUserTurnMediaPaths(params: {
   sessionKey: string;
   message: string;
   savedImages: SavedMedia[];
+  idempotencyKey: string;
 }) {
   const mediaFields = resolveChatSendTranscriptMediaFields(params.savedImages);
   if (!("MediaPath" in mediaFields)) {
@@ -568,6 +572,9 @@ async function rewriteChatSendUserTurnMediaPaths(params: {
       (existingPaths && existingPaths.length > 0)
     ) {
       return false;
+    }
+    if ((entry.message as { idempotencyKey?: unknown }).idempotencyKey === params.idempotencyKey) {
+      return true;
     }
     return (
       extractTranscriptUserText((entry.message as { content?: unknown }).content) === params.message
@@ -1279,6 +1286,52 @@ function transcriptHasIdempotencyKey(transcriptPath: string, idempotencyKey: str
       if (parsed?.message?.idempotencyKey === idempotencyKey) {
         return true;
       }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function transcriptHasPendingUserEcho(params: {
+  transcriptPath: string;
+  message: string;
+  now: number;
+}): boolean {
+  try {
+    const lines = fs.readFileSync(params.transcriptPath, "utf-8").split(/\r?\n/);
+    for (let index = lines.length - 1; index >= 0; index--) {
+      const line = lines[index]?.trim();
+      if (!line) {
+        continue;
+      }
+      const parsed = JSON.parse(line) as {
+        type?: unknown;
+        message?: {
+          role?: unknown;
+          content?: unknown;
+          timestamp?: unknown;
+        };
+      };
+      if (parsed.type !== "message") {
+        continue;
+      }
+      const role = parsed.message?.role;
+      if (role === "assistant") {
+        return false;
+      }
+      if (role !== "user") {
+        continue;
+      }
+      const existingText = extractTranscriptUserText(parsed.message?.content);
+      if (existingText !== params.message) {
+        return false;
+      }
+      const timestamp = parsed.message?.timestamp;
+      if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+        return true;
+      }
+      return params.now - timestamp <= CHAT_SEND_DUPLICATE_USER_ECHO_WINDOW_MS;
     }
     return false;
   } catch {
@@ -2374,6 +2427,16 @@ export const chatHandlers: GatewayRequestHandlers = {
           if (!transcriptPath) {
             return;
           }
+          if (
+            transcriptHasIdempotencyKey(transcriptPath, clientRunId) ||
+            transcriptHasPendingUserEcho({
+              transcriptPath,
+              message: parsedMessage,
+              now,
+            })
+          ) {
+            return;
+          }
           const persistedImages = await persistedImagesPromise;
           emitSessionTranscriptUpdate({
             sessionFile: transcriptPath,
@@ -2382,6 +2445,7 @@ export const chatHandlers: GatewayRequestHandlers = {
               message: parsedMessage,
               savedImages: persistedImages,
               timestamp: now,
+              idempotencyKey: clientRunId,
             }),
           });
         })();
@@ -2412,6 +2476,7 @@ export const chatHandlers: GatewayRequestHandlers = {
           sessionKey,
           message: parsedMessage,
           savedImages: await persistedImagesPromise,
+          idempotencyKey: clientRunId,
         });
       };
       const appendWebchatAgentAudioTranscriptIfNeeded = (payload: ReplyPayload) => {

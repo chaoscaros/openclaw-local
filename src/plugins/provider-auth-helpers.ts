@@ -138,6 +138,7 @@ export function applyAuthProfileConfig(
     email?: string;
     displayName?: string;
     preferProfileFirst?: boolean;
+    forceProviderOrder?: boolean;
   },
 ): OpenClawConfig {
   const normalizedProvider = resolveProviderIdForAuth(params.provider, { config: cfg });
@@ -179,7 +180,9 @@ export function applyAuthProfileConfig(
     ({ profileId, mode }) => profileId !== params.profileId && mode !== params.mode,
   );
   const derivedProviderOrder =
-    existingProviderOrder === undefined && preferProfileFirst && hasMixedConfiguredModes
+    existingProviderOrder === undefined &&
+    preferProfileFirst &&
+    (params.forceProviderOrder || hasMixedConfiguredModes)
       ? [
           params.profileId,
           ...configuredProviderProfiles

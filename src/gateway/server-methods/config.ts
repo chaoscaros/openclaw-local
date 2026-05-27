@@ -9,6 +9,7 @@ import {
   validateConfigObjectWithPlugins,
   writeConfigFile,
 } from "../../config/config.js";
+import type { ConfigWriteOptions } from "../../config/io.js";
 import { formatConfigIssueLines } from "../../config/issue-format.js";
 import { applyMergePatch } from "../../config/merge-patch.js";
 import {
@@ -136,6 +137,16 @@ function sanitizeLookupPathForLog(path: string): string {
     return code < 0x20 || code === 0x7f ? "?" : char;
   }).join("");
   return sanitized.length > 120 ? `${sanitized.slice(0, 117)}...` : sanitized;
+}
+
+function withGatewayRuntimeRefreshOptions(writeOptions: ConfigWriteOptions): ConfigWriteOptions {
+  return {
+    ...writeOptions,
+    runtimeRefresh: {
+      ...writeOptions.runtimeRefresh,
+      includeAuthStoreRefs: false,
+    },
+  };
 }
 
 function escapePowerShellSingleQuotedString(value: string): string {
@@ -457,7 +468,7 @@ export const configHandlers: GatewayRequestHandlers = {
     if (!(await ensureResolvableSecretRefsOrRespond({ config: parsed.config, respond }))) {
       return;
     }
-    await writeConfigFile(parsed.config, writeOptions);
+    await writeConfigFile(parsed.config, withGatewayRuntimeRefreshOptions(writeOptions));
     respond(
       true,
       {
@@ -577,7 +588,7 @@ export const configHandlers: GatewayRequestHandlers = {
       snapshot.config,
       validated.config,
     );
-    await writeConfigFile(validated.config, writeOptions);
+    await writeConfigFile(validated.config, withGatewayRuntimeRefreshOptions(writeOptions));
 
     const { sessionKey, note, restartDelayMs, deliveryContext, threadId } =
       resolveConfigRestartRequest(params);
@@ -650,7 +661,7 @@ export const configHandlers: GatewayRequestHandlers = {
     // Compare before the write so we invalidate clients authenticated against the
     // previous shared secret immediately after the config update succeeds.
     const disconnectSharedAuthClients = didSharedGatewayAuthChange(snapshot.config, parsed.config);
-    await writeConfigFile(parsed.config, writeOptions);
+    await writeConfigFile(parsed.config, withGatewayRuntimeRefreshOptions(writeOptions));
 
     const { sessionKey, note, restartDelayMs, deliveryContext, threadId } =
       resolveConfigRestartRequest(params);

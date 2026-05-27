@@ -85,7 +85,11 @@ describe("config shared auth disconnects", () => {
     await configHandlers["config.set"](options);
     await flushConfigHandlerMicrotasks();
 
-    expect(writeConfigFileMock).toHaveBeenCalledWith(nextConfig, {});
+    expect(writeConfigFileMock).toHaveBeenCalledWith(nextConfig, {
+      runtimeRefresh: {
+        includeAuthStoreRefs: false,
+      },
+    });
     expect(disconnectClientsUsingSharedGatewayAuth).not.toHaveBeenCalled();
     expect(scheduleGatewaySigusr1RestartMock).not.toHaveBeenCalled();
   });

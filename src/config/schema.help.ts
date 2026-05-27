@@ -750,6 +750,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Provider API adapter selection controlling request/response compatibility handling for model calls. Use the adapter that matches your upstream provider protocol to avoid feature mismatch.",
   "models.providers.*.injectNumCtxForOpenAICompat":
     "Controls whether OpenClaw injects `options.num_ctx` for Ollama providers configured with the OpenAI-compatible adapter (`openai-completions`). Default is true. Set false only if your proxy/upstream rejects unknown `options` payload fields.",
+  "models.providers.*.timeoutSeconds":
+    "Optional per-provider model request timeout in seconds. Applies to provider HTTP fetches and raises the LLM idle/stream watchdog ceiling for this provider above the implicit default. Use this for slow local or self-hosted model servers, or for cloud providers that buffer reasoning tokens silently on the wire, instead of changing global agent timeouts.",
   "models.providers.*.headers":
     "Static HTTP headers merged into provider requests for tenant routing, proxy auth, or custom gateway requirements. Use this sparingly and keep sensitive header values in secrets.",
   "models.providers.*.authHeader":

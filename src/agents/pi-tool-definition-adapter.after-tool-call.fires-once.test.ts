@@ -86,6 +86,7 @@ async function loadFreshAfterToolCallModulesForTest() {
     emitAgentCommandOutputEvent: vi.fn(),
     emitAgentEvent: vi.fn(),
     emitAgentItemEvent: vi.fn(),
+    emitAgentPatchSummaryEvent: vi.fn(),
   }));
   vi.doMock("./pi-tools.before-tool-call.js", () => ({
     consumeAdjustedParamsForToolCall: beforeToolCallMocks.consumeAdjustedParamsForToolCall,

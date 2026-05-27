@@ -28,6 +28,8 @@ export type ReplyPayload = {
 
 export type ReplyPayloadMetadata = {
   assistantMessageIndex?: number;
+  /** Warning synthesized from an observed tool error after the run produced assistant output. */
+  nonTerminalToolErrorWarning?: boolean;
 };
 
 const replyPayloadMetadata = new WeakMap<object, ReplyPayloadMetadata>();

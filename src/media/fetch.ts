@@ -80,6 +80,18 @@ function parseContentDispositionFileName(header?: string | null): string | undef
   return undefined;
 }
 
+function basenameFromUrlPathname(pathname: string): string {
+  const base = path.basename(pathname);
+  if (!base) {
+    return "";
+  }
+  try {
+    return decodeURIComponent(base).replace(/[\\/]/g, "_");
+  } catch {
+    return base;
+  }
+}
+
 async function readErrorBodySnippet(
   res: Response,
   opts?: {
@@ -243,7 +255,7 @@ export async function fetchRemoteMedia(options: FetchMediaOptions): Promise<Fetc
     let fileNameFromUrl: string | undefined;
     try {
       const parsed = new URL(finalUrl);
-      const base = path.basename(parsed.pathname);
+      const base = basenameFromUrlPathname(parsed.pathname);
       fileNameFromUrl = base || undefined;
     } catch {
       // ignore parse errors; leave undefined

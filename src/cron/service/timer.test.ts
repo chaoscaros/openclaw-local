@@ -72,15 +72,16 @@ describe("cron service timer seam coverage", () => {
 
     await onTimer(state);
 
+    const cronRunSessionKey = `agent:main:cron:main-heartbeat-job:run:${now}`;
     expect(enqueueSystemEvent).toHaveBeenCalledWith("heartbeat seam tick", {
       agentId: undefined,
-      sessionKey: "agent:main:main",
+      sessionKey: cronRunSessionKey,
       contextKey: "cron:main-heartbeat-job",
     });
     expect(requestHeartbeatNow).toHaveBeenCalledWith({
       reason: "cron:main-heartbeat-job",
       agentId: undefined,
-      sessionKey: "agent:main:main",
+      sessionKey: cronRunSessionKey,
     });
 
     const persisted = JSON.parse(await fs.readFile(storePath, "utf8")) as {
@@ -175,9 +176,10 @@ describe("cron service timer seam coverage", () => {
       expect.objectContaining({ jobId: "main-heartbeat-job" }),
       "cron: failed to create task ledger record",
     );
+    const cronRunSessionKey = `agent:main:cron:main-heartbeat-job:run:${now}`;
     expect(enqueueSystemEvent).toHaveBeenCalledWith("heartbeat seam tick", {
       agentId: undefined,
-      sessionKey: "agent:main:main",
+      sessionKey: cronRunSessionKey,
       contextKey: "cron:main-heartbeat-job",
     });
 

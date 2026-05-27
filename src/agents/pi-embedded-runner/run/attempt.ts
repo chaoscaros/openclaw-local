@@ -67,7 +67,7 @@ import { resolveHeartbeatPromptForSystemPrompt } from "../../heartbeat-system-pr
 import { resolveImageSanitizationLimits } from "../../image-sanitization.js";
 import { buildModelAliasLines } from "../../model-alias-lines.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
-import { resolveDefaultModelForAgent } from "../../model-selection.js";
+import { findNormalizedProviderValue, resolveDefaultModelForAgent } from "../../model-selection.js";
 import { supportsModelTools } from "../../model-tool-support.js";
 import { releaseWsSession } from "../../openai-ws-stream.js";
 import { resolveOwnerDisplaySetting } from "../../owner-display.js";
@@ -1350,10 +1350,22 @@ export async function runEmbeddedAttempt(
       const configuredRunTimeoutMs = resolveAgentTimeoutMs({
         cfg: params.config,
       });
+      const providerTimeoutSeconds =
+        params.provider && params.config?.models?.providers
+          ? findNormalizedProviderValue(params.config.models.providers, params.provider)
+              ?.timeoutSeconds
+          : undefined;
+      const modelRequestTimeoutMs =
+        typeof providerTimeoutSeconds === "number" &&
+        Number.isFinite(providerTimeoutSeconds) &&
+        providerTimeoutSeconds > 0
+          ? Math.floor(providerTimeoutSeconds) * 1000
+          : undefined;
       const idleTimeoutParams = {
         cfg: params.config,
         trigger: params.trigger,
         runTimeoutMs: params.timeoutMs !== configuredRunTimeoutMs ? params.timeoutMs : undefined,
+        modelRequestTimeoutMs,
       };
       const idleTimeoutMs = resolveLlmIdleTimeoutMs(idleTimeoutParams);
       let postToolResultModelWaitEventEmitted = false;

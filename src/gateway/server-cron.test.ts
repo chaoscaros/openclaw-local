@@ -124,15 +124,18 @@ describe("buildGatewayCronService", () => {
 
       await state.cron.run(job.id, "force");
 
+      const cronRunSessionKey = expect.stringMatching(
+        new RegExp(`^agent:main:cron:${job.id}:run:\\d+$`),
+      );
       expect(enqueueSystemEventMock).toHaveBeenCalledWith(
         "hello",
         expect.objectContaining({
-          sessionKey: "agent:main:discord:channel:ops",
+          sessionKey: cronRunSessionKey,
         }),
       );
       expect(requestHeartbeatNowMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          sessionKey: "agent:main:discord:channel:ops",
+          sessionKey: cronRunSessionKey,
         }),
       );
     } finally {

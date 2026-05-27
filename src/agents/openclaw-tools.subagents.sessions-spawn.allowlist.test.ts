@@ -133,10 +133,34 @@ describe("subagent spawn allowlist + sandbox guards", () => {
     });
   });
 
-  it("allows any agent when allowlist contains *", async () => {
+  it("allows configured agents when allowlist contains *", async () => {
     setConfig({
       agents: {
-        list: [{ id: "main", subagents: { allowAgents: ["*"] } }],
+        list: [{ id: "main", subagents: { allowAgents: ["*"] } }, { id: "beta" }],
+      },
+    });
+    const result = await spawn({ agentId: "beta" });
+    expect(result).toMatchObject({ status: "accepted" });
+  });
+
+  it("rejects wildcard targets outside the configured agent registry", async () => {
+    setConfig({
+      agents: {
+        list: [{ id: "main", subagents: { allowAgents: ["*"] } }, { id: "research" }],
+      },
+    });
+    const result = await spawn({ agentId: "beta" });
+    expect(result).toMatchObject({ status: "forbidden" });
+    expect(result.error ?? "").toBe(
+      'agentId "beta" is not in the configured agent registry (allowed: main, research)',
+    );
+    expect(hoisted.callGatewayMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves explicit targets when wildcard allowlists are mixed", async () => {
+    setConfig({
+      agents: {
+        list: [{ id: "main", subagents: { allowAgents: ["*", "beta"] } }],
       },
     });
     const result = await spawn({ agentId: "beta" });

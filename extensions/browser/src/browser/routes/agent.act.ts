@@ -70,6 +70,8 @@ async function assertExistingSessionPostInteractionNavigationAllowed(params: {
   profileName: string;
   userDataDir?: string;
   targetId: string;
+  currentUrl?: string;
+  enforceCurrentUrlAllowed?: boolean;
   ssrfPolicy?: BrowserNavigationPolicyOptions["ssrfPolicy"];
   listTabs: () => Promise<Array<{ targetId: string; url: string }>>;
   initialTabTargetIds: ReadonlySet<string>;
@@ -151,10 +153,31 @@ async function assertExistingSessionPostInteractionNavigationAllowed(params: {
   throw new Error("Unable to verify stable post-interaction navigation");
 }
 
+async function assertExistingSessionCurrentUrlAllowed(params: {
+  currentUrl?: string;
+  ssrfPolicy?: BrowserNavigationPolicyOptions["ssrfPolicy"];
+}): Promise<void> {
+  const currentUrl = params.currentUrl?.trim();
+  if (!currentUrl) {
+    return;
+  }
+  const ssrfPolicyOpts = withBrowserNavigationPolicy(params.ssrfPolicy);
+  if (!ssrfPolicyOpts.ssrfPolicy) {
+    return;
+  }
+  await assertBrowserNavigationResultAllowed({
+    url: currentUrl,
+    ...ssrfPolicyOpts,
+  });
+}
+
 async function runExistingSessionActionWithNavigationGuard<T>(params: {
   execute: () => Promise<T>;
   guard?: Parameters<typeof assertExistingSessionPostInteractionNavigationAllowed>[0];
 }): Promise<T> {
+  if (params.guard?.enforceCurrentUrlAllowed) {
+    await assertExistingSessionCurrentUrlAllowed(params.guard);
+  }
   let actionError: unknown;
   let result: T | undefined;
   try {
@@ -172,6 +195,10 @@ async function runExistingSessionActionWithNavigationGuard<T>(params: {
   }
 
   return result as T;
+}
+
+function shouldEnforceCurrentUrlForAct(action: BrowserActRequest): boolean {
+  return action.kind === "evaluate";
 }
 
 function buildExistingSessionWaitPredicate(params: {
@@ -394,6 +421,8 @@ export function registerBrowserAgentActRoutes(
             profileName,
             userDataDir: profileCtx.profile.userDataDir,
             targetId: tab.targetId,
+            currentUrl: tab.url,
+            enforceCurrentUrlAllowed: shouldEnforceCurrentUrlForAct(action),
             ssrfPolicy,
             listTabs: () => profileCtx.listTabs(),
             initialTabTargetIds,
@@ -670,6 +699,10 @@ export function registerBrowserAgentActRoutes(
       targetId,
       run: async ({ profileCtx, cdpUrl, tab }) => {
         if (getBrowserProfileCapabilities(profileCtx.profile).usesChromeMcp) {
+          await assertExistingSessionCurrentUrlAllowed({
+            currentUrl: tab.url,
+            ssrfPolicy: ctx.state().resolved.ssrfPolicy,
+          });
           await evaluateChromeMcpScript({
             profileName: profileCtx.profile.name,
             userDataDir: profileCtx.profile.userDataDir,

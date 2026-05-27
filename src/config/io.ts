@@ -81,6 +81,7 @@ import {
   setRuntimeConfigSnapshot as setRuntimeConfigSnapshotState,
   getRuntimeConfigSnapshotRefreshHandler as getRuntimeConfigSnapshotRefreshHandlerState,
   setRuntimeConfigSnapshotRefreshHandler as setRuntimeConfigSnapshotRefreshHandlerState,
+  type RuntimeConfigSnapshotRefreshOptions,
   type RuntimeConfigWriteNotification,
 } from "./runtime-snapshot.js";
 import { resolveShellEnvExpectedKeys } from "./shell-env-expected-keys.js";
@@ -160,6 +161,10 @@ export type ConfigWriteOptions = {
    * the post-write runtime snapshot refresh/reload tail entirely.
    */
   skipRuntimeSnapshotRefresh?: boolean;
+  /**
+   * Optional controls for the active runtime snapshot refresh after this write.
+   */
+  runtimeRefresh?: RuntimeConfigSnapshotRefreshOptions;
 };
 
 export type ReadConfigFileSnapshotForWriteResult = {
@@ -1831,6 +1836,7 @@ export async function writeConfigFile(
   // succeeds, so concurrent readers do not observe unresolved SecretRefs mid-refresh.
   await finalizeRuntimeSnapshotWrite({
     nextSourceConfig: nextCfg,
+    refreshOptions: options.runtimeRefresh,
     hadRuntimeSnapshot,
     hadBothSnapshots,
     loadFreshConfig: () => io.loadConfig(),

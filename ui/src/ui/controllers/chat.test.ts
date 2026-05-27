@@ -94,6 +94,45 @@ describe("handleChatEvent", () => {
     expect(state.chatMessages).toHaveLength(1);
   });
 
+  it("dedupes a live optimistic user echo when the final assistant reply arrives", () => {
+    const optimisticUser = {
+      role: "user",
+      content: [{ type: "text", text: "validation ping please reply OK" }],
+      timestamp: 1_000,
+      __openclawOptimistic: true,
+      __openclawRunId: "run-1",
+    };
+    const persistedUser = {
+      role: "user",
+      content: [{ type: "text", text: "validation ping please reply OK" }],
+      timestamp: 1_100,
+    };
+    const state = createState({
+      sessionKey: "main",
+      chatRunId: "run-1",
+      chatMessages: [optimisticUser, persistedUser],
+    });
+    const payload: ChatEventPayload = {
+      runId: "run-1",
+      sessionKey: "main",
+      state: "final",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "OK" }],
+      },
+    };
+
+    expect(handleChatEvent(state, payload)).toBe("final");
+
+    expect(state.chatMessages).toEqual([
+      optimisticUser,
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "OK" }],
+      },
+    ]);
+  });
+
   it("returns null for delta from another run", () => {
     const state = createState({
       sessionKey: "main",
@@ -571,6 +610,49 @@ describe("loadChatHistory", () => {
     expect(state.chatMessages[1]).toEqual(messages[2]);
     expect(state.chatThinkingLevel).toBe("low");
     expect(state.chatLoading).toBe(false);
+  });
+
+  it("dedupes repeated user echo messages from reconnect history", async () => {
+    const messages = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "update order description" }],
+        timestamp: 1_000,
+        idempotencyKey: "run-1",
+      },
+      {
+        role: "user",
+        content: [{ type: "text", text: "update order description" }],
+        timestamp: 1_100,
+        idempotencyKey: "run-1",
+      },
+      {
+        role: "user",
+        content: [{ type: "text", text: "update order description" }],
+        timestamp: 1_200,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "done" }],
+        timestamp: 1_300,
+      },
+      {
+        role: "user",
+        content: [{ type: "text", text: "update order description" }],
+        timestamp: 1_400,
+      },
+    ];
+    const mockClient = {
+      request: vi.fn().mockResolvedValue({ messages }),
+    };
+    const state = createState({
+      client: mockClient as unknown as ChatState["client"],
+      connected: true,
+    });
+
+    await loadChatHistory(state);
+
+    expect(state.chatMessages).toEqual([messages[0], messages[3], messages[4]]);
   });
 
   it("keeps assistant message when text field has real content but content is NO_REPLY", async () => {
