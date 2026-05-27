@@ -39,6 +39,7 @@ import { isPromiseLike } from "./pi-embedded-subscribe.promise.js";
 import {
   extractToolResultMediaArtifact,
   extractMessagingToolSend,
+  extractToolErrorCode,
   extractToolErrorMessage,
   extractToolResultText,
   filterToolResultMediaUrls,
@@ -59,6 +60,7 @@ let execApprovalReplyModulePromise: Promise<ExecApprovalReplyModule> | undefined
 let hookRunnerGlobalModulePromise: Promise<HookRunnerGlobalModule> | undefined;
 let mediaParseModulePromise: Promise<MediaParseModule> | undefined;
 let beforeToolCallModulePromise: Promise<BeforeToolCallModule> | undefined;
+const pendingToolMutationCaptureStarts = new Map<string, Promise<void>>();
 
 function loadExecApprovalReply(): Promise<ExecApprovalReplyModule> {
   execApprovalReplyModulePromise ??= import("../infra/exec-approval-reply.js");
@@ -78,6 +80,49 @@ function loadMediaParse(): Promise<MediaParseModule> {
 function loadBeforeToolCall(): Promise<BeforeToolCallModule> {
   beforeToolCallModulePromise ??= import("./pi-tools.before-tool-call.js");
   return beforeToolCallModulePromise;
+}
+
+function buildPendingToolMutationCaptureKey(runId: string, toolCallId: string): string {
+  return `${runId}:${toolCallId}`;
+}
+
+function trackPendingToolMutationCaptureStart(
+  runId: string,
+  toolCallId: string,
+  startPromise: Promise<void>,
+): void {
+  const key = buildPendingToolMutationCaptureKey(runId, toolCallId);
+  pendingToolMutationCaptureStarts.set(key, startPromise);
+  void startPromise.finally(() => {
+    if (pendingToolMutationCaptureStarts.get(key) === startPromise) {
+      pendingToolMutationCaptureStarts.delete(key);
+    }
+  });
+}
+
+async function waitForPendingToolMutationCaptureStart(
+  runId: string,
+  toolCallId: string,
+): Promise<void> {
+  const pendingStart = pendingToolMutationCaptureStarts.get(
+    buildPendingToolMutationCaptureKey(runId, toolCallId),
+  );
+  if (pendingStart) {
+    await pendingStart;
+  }
+}
+
+function discardToolMutationCaptureAfterPendingStart(runId: string, toolCallId: string): void {
+  const pendingStart = pendingToolMutationCaptureStarts.get(
+    buildPendingToolMutationCaptureKey(runId, toolCallId),
+  );
+  if (!pendingStart) {
+    discardToolMutationCapture(runId, toolCallId);
+    return;
+  }
+  void pendingStart.then(() => {
+    discardToolMutationCapture(runId, toolCallId);
+  });
 }
 
 type ToolStartRecord = {
@@ -133,6 +178,19 @@ function isReviewWriteToolName(toolName: string): boolean {
     toolName === "edit" ||
     toolName === "edit_file" ||
     toolName === "file_edit"
+  );
+}
+
+function isMiddlewareToolResultError(result: unknown): boolean {
+  if (!result || typeof result !== "object") {
+    return false;
+  }
+  const details = (result as { details?: unknown }).details;
+  return Boolean(
+    details &&
+    typeof details === "object" &&
+    !Array.isArray(details) &&
+    (details as { middlewareError?: unknown }).middlewareError === true,
   );
 }
 
@@ -767,7 +825,7 @@ export function handleToolExecutionStart(
     return continueToolExecutionStart();
   };
 
-  const continueToolExecutionStart = async () => {
+  const continueToolExecutionStart = (): void | Promise<void> => {
     const rawToolName = evt.toolName;
     const toolName = normalizeToolName(rawToolName);
     const toolCallId = evt.toolCallId;
@@ -805,110 +863,119 @@ export function handleToolExecutionStart(
         : isPatchToolName(toolName)
           ? extractApplyPatchPaths(args)
           : [];
+
+    const continueAfterMutationCapture = () => {
+      ctx.log.debug(
+        `embedded run tool start: runId=${ctx.params.runId} tool=${toolName} toolCallId=${toolCallId}`,
+      );
+
+      const shouldEmitToolEvents = ctx.shouldEmitToolResult();
+      emitAgentEvent({
+        runId: ctx.params.runId,
+        stream: "tool",
+        data: {
+          phase: "start",
+          name: toolName,
+          toolCallId,
+          args: args as Record<string, unknown>,
+        },
+      });
+      const itemData: AgentItemEventData = {
+        itemId: buildToolItemId(toolCallId),
+        phase: "start",
+        kind: "tool",
+        title: buildToolItemTitle(toolName, meta),
+        status: "running",
+        name: toolName,
+        meta,
+        toolCallId,
+        startedAt,
+      };
+      emitTrackedItemEvent(ctx, itemData);
+      // Best-effort typing signal; do not block tool summaries on slow emitters.
+      void ctx.params.onAgentEvent?.({
+        stream: "tool",
+        data: { phase: "start", name: toolName, toolCallId },
+      });
+
+      if (isExecToolName(toolName)) {
+        emitTrackedItemEvent(ctx, {
+          itemId: buildCommandItemId(toolCallId),
+          phase: "start",
+          kind: "command",
+          title: buildCommandItemTitle(toolName, meta),
+          status: "running",
+          name: toolName,
+          meta,
+          toolCallId,
+          startedAt,
+        });
+      } else if (isPatchToolName(toolName)) {
+        emitTrackedItemEvent(ctx, {
+          itemId: buildPatchItemId(toolCallId),
+          phase: "start",
+          kind: "patch",
+          title: buildPatchItemTitle(meta),
+          status: "running",
+          name: toolName,
+          meta,
+          toolCallId,
+          startedAt,
+        });
+      }
+
+      if (
+        ctx.params.onToolResult &&
+        shouldEmitToolEvents &&
+        !ctx.state.toolSummaryById.has(toolCallId)
+      ) {
+        ctx.state.toolSummaryById.add(toolCallId);
+        ctx.emitToolSummary(toolName, meta);
+      }
+
+      // Track messaging tool sends (pending until confirmed in tool_execution_end).
+      if (isMessagingTool(toolName)) {
+        const argsRecord =
+          args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+        const isMessagingSend = isMessagingToolSendAction(toolName, argsRecord);
+        if (isMessagingSend) {
+          const sendTarget = extractMessagingToolSend(toolName, argsRecord);
+          if (sendTarget) {
+            ctx.state.pendingMessagingTargets.set(toolCallId, sendTarget);
+          }
+          // Field names vary by tool: Discord/Slack use "content", sessions_send uses "message"
+          const text = (argsRecord.content as string) ?? (argsRecord.message as string);
+          if (text && typeof text === "string") {
+            ctx.state.pendingMessagingTexts.set(toolCallId, text);
+            ctx.log.debug(`Tracking pending messaging text: tool=${toolName} len=${text.length}`);
+          }
+          // Track media URLs from messaging tool args (pending until tool_execution_end).
+          const mediaUrls = collectMessagingMediaUrlsFromRecord(argsRecord);
+          if (mediaUrls.length > 0) {
+            ctx.state.pendingMessagingMediaUrls.set(toolCallId, mediaUrls);
+          }
+        }
+      }
+    };
+
     if (workspaceDir && ctx.params.sessionKey && reviewCandidatePaths.length > 0) {
-      try {
-        await beginToolMutationCapture({
+      trackPendingToolMutationCaptureStart(
+        runId,
+        toolCallId,
+        beginToolMutationCapture({
           sessionKey: ctx.params.sessionKey,
           runId,
           toolCallId,
           workspaceDir,
           repoRoot: workspaceDir,
           filePaths: reviewCandidatePaths,
-        });
-      } catch (err) {
-        ctx.log.warn(`change review capture start failed: tool=${toolName} error=${String(err)}`);
-      }
-    }
-    ctx.log.debug(
-      `embedded run tool start: runId=${ctx.params.runId} tool=${toolName} toolCallId=${toolCallId}`,
-    );
-
-    const shouldEmitToolEvents = ctx.shouldEmitToolResult();
-    emitAgentEvent({
-      runId: ctx.params.runId,
-      stream: "tool",
-      data: {
-        phase: "start",
-        name: toolName,
-        toolCallId,
-        args: args as Record<string, unknown>,
-      },
-    });
-    const itemData: AgentItemEventData = {
-      itemId: buildToolItemId(toolCallId),
-      phase: "start",
-      kind: "tool",
-      title: buildToolItemTitle(toolName, meta),
-      status: "running",
-      name: toolName,
-      meta,
-      toolCallId,
-      startedAt,
-    };
-    emitTrackedItemEvent(ctx, itemData);
-    // Best-effort typing signal; do not block tool summaries on slow emitters.
-    void ctx.params.onAgentEvent?.({
-      stream: "tool",
-      data: { phase: "start", name: toolName, toolCallId },
-    });
-
-    if (isExecToolName(toolName)) {
-      emitTrackedItemEvent(ctx, {
-        itemId: buildCommandItemId(toolCallId),
-        phase: "start",
-        kind: "command",
-        title: buildCommandItemTitle(toolName, meta),
-        status: "running",
-        name: toolName,
-        meta,
-        toolCallId,
-        startedAt,
-      });
-    } else if (isPatchToolName(toolName)) {
-      emitTrackedItemEvent(ctx, {
-        itemId: buildPatchItemId(toolCallId),
-        phase: "start",
-        kind: "patch",
-        title: buildPatchItemTitle(meta),
-        status: "running",
-        name: toolName,
-        meta,
-        toolCallId,
-        startedAt,
-      });
+        }).catch((err) => {
+          ctx.log.warn(`change review capture start failed: tool=${toolName} error=${String(err)}`);
+        }),
+      );
     }
 
-    if (
-      ctx.params.onToolResult &&
-      shouldEmitToolEvents &&
-      !ctx.state.toolSummaryById.has(toolCallId)
-    ) {
-      ctx.state.toolSummaryById.add(toolCallId);
-      ctx.emitToolSummary(toolName, meta);
-    }
-
-    // Track messaging tool sends (pending until confirmed in tool_execution_end).
-    if (isMessagingTool(toolName)) {
-      const argsRecord = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
-      const isMessagingSend = isMessagingToolSendAction(toolName, argsRecord);
-      if (isMessagingSend) {
-        const sendTarget = extractMessagingToolSend(toolName, argsRecord);
-        if (sendTarget) {
-          ctx.state.pendingMessagingTargets.set(toolCallId, sendTarget);
-        }
-        // Field names vary by tool: Discord/Slack use "content", sessions_send uses "message"
-        const text = (argsRecord.content as string) ?? (argsRecord.message as string);
-        if (text && typeof text === "string") {
-          ctx.state.pendingMessagingTexts.set(toolCallId, text);
-          ctx.log.debug(`Tracking pending messaging text: tool=${toolName} len=${text.length}`);
-        }
-        // Track media URLs from messaging tool args (pending until tool_execution_end).
-        const mediaUrls = collectMessagingMediaUrlsFromRecord(argsRecord);
-        if (mediaUrls.length > 0) {
-          ctx.state.pendingMessagingMediaUrls.set(toolCallId, mediaUrls);
-        }
-      }
-    }
+    continueAfterMutationCapture();
   };
 
   // Flush pending block replies to preserve message boundaries before tool execution.
@@ -1024,11 +1091,14 @@ export async function handleToolExecutionEnd(
   ctx.state.toolSummaryById.delete(toolCallId);
   if (isToolError) {
     const errorMessage = extractToolErrorMessage(sanitizedResult);
+    const errorCode = extractToolErrorCode(sanitizedResult);
     ctx.state.lastToolError = {
       toolName,
       meta,
+      ...(errorCode ? { errorCode } : {}),
       error: errorMessage,
       timedOut: isToolResultTimedOut(sanitizedResult) || undefined,
+      middlewareError: isMiddlewareToolResultError(sanitizedResult) || undefined,
       mutatingAction: callSummary?.mutatingAction,
       actionFingerprint: callSummary?.actionFingerprint,
     };
@@ -1284,7 +1354,7 @@ export async function handleToolExecutionEnd(
     : [];
   const changeReviewPreviewFiles = !isToolError ? readChangeReviewPreview(result) : null;
   if (isToolError) {
-    discardToolMutationCapture(runId, toolCallId);
+    discardToolMutationCaptureAfterPendingStart(runId, toolCallId);
   }
   if (
     isReviewWriteToolName(toolName) &&
@@ -1301,18 +1371,20 @@ export async function handleToolExecutionEnd(
           repoRoot: workspaceDir,
           files: changeReviewPreviewFiles,
         })
-      : await finishToolMutationCapture({
-          sessionKey: ctx.params.sessionKey ?? "",
-          runId,
-          toolCallId,
-          fileStatuses: fileMutationPaths.map((filePath) => ({
-            path: filePath,
-            changeType: "modified" as const,
-          })),
-        }).catch((err) => {
-          ctx.log.warn(`change review capture end failed: tool=${toolName} error=${String(err)}`);
-          return null;
-        });
+      : await waitForPendingToolMutationCaptureStart(runId, toolCallId).then(() =>
+          finishToolMutationCapture({
+            sessionKey: ctx.params.sessionKey ?? "",
+            runId,
+            toolCallId,
+            fileStatuses: fileMutationPaths.map((filePath) => ({
+              path: filePath,
+              changeType: "modified" as const,
+            })),
+          }).catch((err) => {
+            ctx.log.warn(`change review capture end failed: tool=${toolName} error=${String(err)}`);
+            return null;
+          }),
+        );
     emitChangeReviewReadyEvent(ctx, runId, reviewBundle);
     const modifiedPaths = changeReviewPreviewFiles?.map((file) => file.path) ?? fileMutationPaths;
     const patchData: AgentPatchSummaryEventData = {
@@ -1338,15 +1410,19 @@ export async function handleToolExecutionEnd(
   }
 
   if (isExecToolName(toolName) && !isToolError && execMutationPaths.length > 0) {
-    const reviewBundle = await finishToolMutationCapture({
-      sessionKey: ctx.params.sessionKey ?? "",
-      runId,
-      toolCallId,
-      fileStatuses: execMutationPaths.map((filePath) => ({ path: filePath })),
-    }).catch((err) => {
-      ctx.log.warn(`change review exec capture end failed: tool=${toolName} error=${String(err)}`);
-      return null;
-    });
+    const reviewBundle = await waitForPendingToolMutationCaptureStart(runId, toolCallId).then(() =>
+      finishToolMutationCapture({
+        sessionKey: ctx.params.sessionKey ?? "",
+        runId,
+        toolCallId,
+        fileStatuses: execMutationPaths.map((filePath) => ({ path: filePath })),
+      }).catch((err) => {
+        ctx.log.warn(
+          `change review exec capture end failed: tool=${toolName} error=${String(err)}`,
+        );
+        return null;
+      }),
+    );
     emitChangeReviewReadyEvent(ctx, runId, reviewBundle);
   }
 
@@ -1368,17 +1444,20 @@ export async function handleToolExecutionEnd(
           changeType: "deleted" as const,
         })),
       ];
-      const reviewBundle = await finishToolMutationCapture({
-        sessionKey: ctx.params.sessionKey ?? "",
-        runId,
-        toolCallId,
-        fileStatuses,
-      }).catch((err) => {
-        ctx.log.warn(
-          `change review patch capture end failed: tool=${toolName} error=${String(err)}`,
-        );
-        return null;
-      });
+      const reviewBundle = await waitForPendingToolMutationCaptureStart(runId, toolCallId).then(
+        () =>
+          finishToolMutationCapture({
+            sessionKey: ctx.params.sessionKey ?? "",
+            runId,
+            toolCallId,
+            fileStatuses,
+          }).catch((err) => {
+            ctx.log.warn(
+              `change review patch capture end failed: tool=${toolName} error=${String(err)}`,
+            );
+            return null;
+          }),
+      );
       emitChangeReviewReadyEvent(ctx, runId, reviewBundle);
     }
     const summaryText = patchSummary ? buildPatchSummaryText(patchSummary) : undefined;

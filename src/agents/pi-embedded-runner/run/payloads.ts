@@ -1,5 +1,6 @@
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import { hasOutboundReplyContent } from "openclaw/plugin-sdk/reply-payload";
+import { setReplyPayloadMetadata } from "../../../auto-reply/reply-payload.js";
 import { parseReplyDirectives } from "../../../auto-reply/reply/reply-directives.js";
 import type { ReasoningLevel, VerboseLevel } from "../../../auto-reply/thinking.js";
 import { isSilentReplyPayloadText, SILENT_REPLY_TOKEN } from "../../../auto-reply/tokens.js";
@@ -31,6 +32,17 @@ type ToolMetaEntry = { toolName: string; meta?: string };
 type ToolErrorWarningPolicy = {
   showWarning: boolean;
   includeDetails: boolean;
+};
+type ReplyItem = {
+  text: string;
+  media?: string[];
+  isError?: boolean;
+  isReasoning?: boolean;
+  audioAsVoice?: boolean;
+  replyToId?: string;
+  replyToTag?: boolean;
+  replyToCurrent?: boolean;
+  nonTerminalToolErrorWarning?: boolean;
 };
 
 const RECOVERABLE_TOOL_ERROR_KEYWORDS = [
@@ -66,6 +78,10 @@ function shouldIncludeToolErrorDetails(params: {
     params.lastToolError.timedOut === true &&
     (params.isCronTrigger === true || isCronSessionKey(params.sessionKey))
   );
+}
+
+function shouldMarkNonTerminalToolErrorWarning(lastToolError: ToolErrorSummary): boolean {
+  return lastToolError.middlewareError === true;
 }
 
 function resolveToolErrorWarningPolicy(params: {
@@ -133,16 +149,7 @@ export function buildEmbeddedRunPayloads(params: {
   replyToTag?: boolean;
   replyToCurrent?: boolean;
 }> {
-  const replyItems: Array<{
-    text: string;
-    media?: string[];
-    isError?: boolean;
-    isReasoning?: boolean;
-    audioAsVoice?: boolean;
-    replyToId?: string;
-    replyToTag?: boolean;
-    replyToCurrent?: boolean;
-  }> = [];
+  const replyItems: ReplyItem[] = [];
 
   const useMarkdown = params.toolResultFormat === "markdown";
   const suppressAssistantArtifacts = params.didSendDeterministicApprovalPrompt === true;
@@ -341,6 +348,7 @@ export function buildEmbeddedRunPayloads(params: {
         replyItems.push({
           text: warningText,
           isError: true,
+          nonTerminalToolErrorWarning: shouldMarkNonTerminalToolErrorWarning(params.lastToolError),
         });
       }
     }
@@ -348,16 +356,21 @@ export function buildEmbeddedRunPayloads(params: {
 
   const hasAudioAsVoiceTag = replyItems.some((item) => item.audioAsVoice);
   return replyItems
-    .map((item) => ({
-      text: normalizeOptionalString(item.text),
-      mediaUrls: item.media?.length ? item.media : undefined,
-      mediaUrl: item.media?.[0],
-      isError: item.isError,
-      replyToId: item.replyToId,
-      replyToTag: item.replyToTag,
-      replyToCurrent: item.replyToCurrent,
-      audioAsVoice: item.audioAsVoice || Boolean(hasAudioAsVoiceTag && item.media?.length),
-    }))
+    .map((item) => {
+      const payload = {
+        text: normalizeOptionalString(item.text),
+        mediaUrls: item.media?.length ? item.media : undefined,
+        mediaUrl: item.media?.[0],
+        isError: item.isError,
+        replyToId: item.replyToId,
+        replyToTag: item.replyToTag,
+        replyToCurrent: item.replyToCurrent,
+        audioAsVoice: item.audioAsVoice || Boolean(hasAudioAsVoiceTag && item.media?.length),
+      };
+      return item.nonTerminalToolErrorWarning
+        ? setReplyPayloadMetadata(payload, { nonTerminalToolErrorWarning: true })
+        : payload;
+    })
     .filter((p) => {
       if (!hasOutboundReplyContent(p)) {
         return false;

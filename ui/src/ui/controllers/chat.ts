@@ -751,6 +751,7 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
         },
       ];
     }
+    state.chatMessages = dedupeRepeatedUserEchoMessages(state.chatMessages);
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
@@ -773,6 +774,7 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
         ];
       }
     }
+    state.chatMessages = dedupeRepeatedUserEchoMessages(state.chatMessages);
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;

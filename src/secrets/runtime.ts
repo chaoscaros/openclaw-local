@@ -7,6 +7,7 @@ import {
 } from "../agents/agent-scope.js";
 import {
   clearRuntimeAuthProfileStoreSnapshots,
+  getRuntimeAuthProfileStoreSnapshot,
   loadAuthProfileStoreForSecretsRuntime,
   replaceRuntimeAuthProfileStoreSnapshots,
 } from "../agents/auth-profiles.js";
@@ -40,6 +41,7 @@ export type PreparedSecretsRuntimeSnapshot = {
 type SecretsRuntimeRefreshContext = {
   env: Record<string, string | undefined>;
   explicitAgentDirs: string[] | null;
+  includeAuthStoreRefs: boolean;
   loadAuthStore: (agentDir?: string) => AuthProfileStore;
   loadablePluginOrigins: ReadonlyMap<string, PluginOrigin>;
 };
@@ -93,9 +95,20 @@ function cloneRefreshContext(context: SecretsRuntimeRefreshContext): SecretsRunt
   return {
     env: { ...context.env },
     explicitAgentDirs: context.explicitAgentDirs ? [...context.explicitAgentDirs] : null,
+    includeAuthStoreRefs: context.includeAuthStoreRefs,
     loadAuthStore: context.loadAuthStore,
     loadablePluginOrigins: new Map(context.loadablePluginOrigins),
   };
+}
+
+function getLiveSecretsRuntimeAuthStores(): PreparedSecretsRuntimeSnapshot["authStores"] {
+  if (!activeSnapshot) {
+    return [];
+  }
+  return activeSnapshot.authStores.map((entry) => ({
+    agentDir: entry.agentDir,
+    store: getRuntimeAuthProfileStoreSnapshot(entry.agentDir) ?? structuredClone(entry.store),
+  }));
 }
 
 function clearActiveSecretsRuntimeState(): void {
@@ -255,6 +268,7 @@ export async function prepareSecretsRuntimeSnapshot(params: {
   preparedSnapshotRefreshContext.set(snapshot, {
     env: runtimeEnv,
     explicitAgentDirs: params.agentDirs?.length ? [...candidateDirs] : null,
+    includeAuthStoreRefs,
     loadAuthStore,
     loadablePluginOrigins,
   });
@@ -269,6 +283,7 @@ export function activateSecretsRuntimeSnapshot(snapshot: PreparedSecretsRuntimeS
     ({
       env: { ...process.env } as Record<string, string | undefined>,
       explicitAgentDirs: null,
+      includeAuthStoreRefs: snapshot.authStores.length > 0,
       loadAuthStore: loadAuthProfileStoreForSecretsRuntime,
       loadablePluginOrigins: new Map<string, PluginOrigin>(),
     } satisfies SecretsRuntimeRefreshContext);
@@ -278,17 +293,24 @@ export function activateSecretsRuntimeSnapshot(snapshot: PreparedSecretsRuntimeS
   activeRefreshContext = cloneRefreshContext(refreshContext);
   setActiveRuntimeWebToolsMetadata(next.webTools);
   setRuntimeConfigSnapshotRefreshHandler({
-    refresh: async ({ sourceConfig }) => {
+    refresh: async ({ sourceConfig, includeAuthStoreRefs }) => {
       if (!activeSnapshot || !activeRefreshContext) {
         return false;
       }
+      const oneShotSkipAuthStoreRefs =
+        includeAuthStoreRefs === false && activeRefreshContext.includeAuthStoreRefs;
       const refreshed = await prepareSecretsRuntimeSnapshot({
         config: sourceConfig,
         env: activeRefreshContext.env,
         agentDirs: resolveRefreshAgentDirs(sourceConfig, activeRefreshContext),
+        includeAuthStoreRefs: includeAuthStoreRefs ?? activeRefreshContext.includeAuthStoreRefs,
         loadAuthStore: activeRefreshContext.loadAuthStore,
         loadablePluginOrigins: activeRefreshContext.loadablePluginOrigins,
       });
+      if (oneShotSkipAuthStoreRefs) {
+        refreshed.authStores = getLiveSecretsRuntimeAuthStores();
+        preparedSnapshotRefreshContext.set(refreshed, cloneRefreshContext(activeRefreshContext));
+      }
       activateSecretsRuntimeSnapshot(refreshed);
       return true;
     },

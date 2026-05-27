@@ -130,6 +130,7 @@ async function runValidateJsonAndGetPayload() {
 }
 
 let registerConfigCli: typeof import("./config-cli.js").registerConfigCli;
+let resolveBootstrapEnvPathOverrides: typeof import("./config-bootstrap-env.js").resolveBootstrapEnvPathOverrides;
 let sharedProgram: Command;
 
 async function runConfigCommand(args: string[]) {
@@ -139,9 +140,116 @@ async function runConfigCommand(args: string[]) {
 describe("config cli", () => {
   beforeAll(async () => {
     ({ registerConfigCli } = await import("./config-cli.js"));
+    ({ resolveBootstrapEnvPathOverrides } = await import("./config-bootstrap-env.js"));
     sharedProgram = new Command();
     sharedProgram.exitOverride();
     registerConfigCli(sharedProgram);
+  });
+
+  describe("config bootstrap-env", () => {
+    function writeTempEnv(content: string): string {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-bootstrap-env-"));
+      const file = path.join(dir, ".env");
+      fs.writeFileSync(file, content, "utf8");
+      return file;
+    }
+
+    it("writes safe env-backed gateway and channel defaults without copying secret values", async () => {
+      const envFile = writeTempEnv(
+        [
+          "OPENCLAW_GATEWAY_TOKEN=real-gateway-token",
+          "TELEGRAM_BOT_TOKEN=real-telegram-token",
+          "DISCORD_BOT_TOKEN=real-discord-token",
+          "SLACK_BOT_TOKEN=real-slack-bot-token",
+          "SLACK_APP_TOKEN=real-slack-app-token",
+          "OPENAI_API_KEY=real-openai-key",
+        ].join("\n"),
+      );
+      setSnapshot({}, {});
+
+      await runConfigCommand(["config", "bootstrap-env", "--env-file", envFile]);
+
+      expect(mockWriteConfigFile).toHaveBeenCalledTimes(1);
+      const written = mockWriteConfigFile.mock.calls[0]?.[0];
+      expect(written.gateway).toMatchObject({
+        mode: "local",
+        bind: "loopback",
+        auth: {
+          mode: "token",
+          token: {
+            source: "env",
+            provider: "default",
+            id: "OPENCLAW_GATEWAY_TOKEN",
+          },
+        },
+      });
+      expect(written.channels?.telegram?.botToken).toMatchObject({
+        source: "env",
+        id: "TELEGRAM_BOT_TOKEN",
+      });
+      expect(written.channels?.discord?.token).toMatchObject({
+        source: "env",
+        id: "DISCORD_BOT_TOKEN",
+      });
+      expect(written.channels?.slack?.botToken).toMatchObject({
+        source: "env",
+        id: "SLACK_BOT_TOKEN",
+      });
+      expect(written.channels?.slack?.appToken).toMatchObject({
+        source: "env",
+        id: "SLACK_APP_TOKEN",
+      });
+      expect(JSON.stringify(written)).not.toContain("real-");
+      expect(mockLog.mock.calls.map((call) => String(call[0])).join("\n")).toContain(
+        "Provider env keys detected",
+      );
+    });
+
+    it("preserves existing values unless force is passed", async () => {
+      const envFile = writeTempEnv("OPENCLAW_GATEWAY_TOKEN=real-gateway-token\n");
+      setSnapshot(
+        {
+          gateway: {
+            mode: "remote",
+            bind: "lan",
+            auth: { mode: "password", password: "keep-existing" },
+          },
+        },
+        {},
+      );
+
+      await runConfigCommand(["config", "bootstrap-env", "--env-file", envFile]);
+
+      const written = mockWriteConfigFile.mock.calls[0]?.[0];
+      expect(written.gateway).toMatchObject({
+        mode: "remote",
+        bind: "lan",
+        auth: { mode: "password", password: "keep-existing" },
+      });
+    });
+
+    it("does not write in dry-run mode", async () => {
+      const envFile = writeTempEnv("OPENCLAW_GATEWAY_TOKEN=real-gateway-token\n");
+      setSnapshot({}, {});
+
+      await runConfigCommand(["config", "bootstrap-env", "--env-file", envFile, "--dry-run"]);
+
+      expect(mockWriteConfigFile).not.toHaveBeenCalled();
+      expect(mockLog.mock.calls.map((call) => String(call[0])).join("\n")).toContain("Dry run");
+    });
+
+    it("ignores POSIX/macOS path overrides on Windows", () => {
+      const result = resolveBootstrapEnvPathOverrides({
+        env: {
+          OPENCLAW_STATE_DIR: "/Users/example/AI/_openclaw",
+          OPENCLAW_CONFIG_PATH: "/Users/example/AI/openclaw/config/openclaw.runtime.json5",
+        },
+        platform: "win32",
+      });
+
+      expect(result.overrides).toEqual([]);
+      expect(result.notes.join("\n")).toContain("was not applied on Windows");
+    });
   });
 
   beforeEach(() => {

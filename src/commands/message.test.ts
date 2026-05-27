@@ -309,6 +309,59 @@ describe("messageCommand", () => {
     );
   });
 
+  it("includes a stable top-level messageId in JSON output", async () => {
+    const rawConfig = createTelegramSecretRawConfig();
+    const resolvedConfig = createTelegramResolvedTokenConfig("12345:resolved-token");
+    mockResolvedCommandConfig({
+      rawConfig: rawConfig as unknown as Record<string, unknown>,
+      resolvedConfig: resolvedConfig as unknown as Record<string, unknown>,
+      diagnostics: [],
+    });
+    const sendText = vi.fn(async () => ({
+      channel: "telegram" as const,
+      messageId: "msg-json-1",
+      chatId: "123456",
+    }));
+    setActivePluginRegistry(
+      createTestRegistry([
+        {
+          pluginId: "telegram",
+          source: "test",
+          plugin: createStubPlugin({
+            id: "telegram",
+            label: "Telegram",
+            outbound: {
+              deliveryMode: "direct",
+              sendText,
+            },
+          }),
+        },
+      ]),
+    );
+
+    await messageCommand(
+      {
+        action: "send",
+        channel: "telegram",
+        target: "123456",
+        message: "hi",
+        json: true,
+      },
+      makeDeps(),
+      runtime,
+    );
+
+    const output = vi
+      .mocked(runtime.log)
+      .mock.calls.map(([message]) => String(message))
+      .find((message) => message.trim().startsWith("{"));
+    const json = JSON.parse(String(output)) as { messageId?: string; payload?: unknown };
+    expect(json.messageId).toBe("msg-json-1");
+    expect(json.payload).toMatchObject({
+      result: { channel: "telegram", messageId: "msg-json-1", chatId: "123456" },
+    });
+  });
+
   it("defaults channel when only one configured", async () => {
     process.env.TELEGRAM_BOT_TOKEN = "token-abc";
     setActivePluginRegistry(

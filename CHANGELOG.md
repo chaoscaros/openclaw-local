@@ -8,6 +8,16 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+## 2026.5.19
+
+### Fixes
+
+- Agents: preserve task-mode timeout, reconnect, tool diagnostics, and change-review behavior while absorbing the local 2026.5.19 backport fixes.
+- Control UI/chat: avoid duplicate user echoes in live and reloaded chat history after reconnect or send completion.
+- Config/providers: accept bundled provider overlays with timeout-only metadata and keep provider-owned model normalization for stale configured rows.
+- Cron: isolate main-target scheduled runs onto cron run sessions while preserving source-session delivery context.
+- CLI/media/plugins: include the local 2026.5.19 parsing, log-tail, media filename, ClawHub URL, browser, Discord, Ollama, NVIDIA, and memory-host fixes.
+
 ## 2026.5.18
 
 ### Changes

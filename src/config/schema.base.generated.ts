@@ -1405,6 +1405,14 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                   description:
                     "Controls whether OpenClaw injects `options.num_ctx` for Ollama providers configured with the OpenAI-compatible adapter (`openai-completions`). Default is true. Set false only if your proxy/upstream rejects unknown `options` payload fields.",
                 },
+                timeoutSeconds: {
+                  type: "integer",
+                  exclusiveMinimum: 0,
+                  maximum: 9007199254740991,
+                  title: "Model Provider Timeout (sec)",
+                  description:
+                    "Optional per-provider model request timeout in seconds. Applies to provider HTTP fetches and raises the LLM idle/stream watchdog ceiling for this provider above the implicit default. Use this for slow local or self-hosted model servers, or for cloud providers that buffer reasoning tokens silently on the wire, instead of changing global agent timeouts.",
+                },
                 headers: {
                   type: "object",
                   propertyNames: {
@@ -2899,7 +2907,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                     "Declared model list for a provider including identifiers, metadata, and optional compatibility/cost hints. Keep IDs exact to provider catalog values so selection and fallback resolve correctly.",
                 },
               },
-              required: ["baseUrl", "models"],
               additionalProperties: false,
             },
             title: "Model Providers",
@@ -4535,6 +4542,46 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 title: "Compaction",
                 description:
                   "Compaction tuning for when context nears token limits, including history share, reserve headroom, and pre-compaction memory flush behavior. Use this when long-running sessions need stable continuity under tight context windows.",
+              },
+              runRetries: {
+                type: "object",
+                properties: {
+                  base: {
+                    type: "integer",
+                    exclusiveMinimum: 0,
+                    maximum: 9007199254740991,
+                    title: "Run Retries Base",
+                    description:
+                      "Base number of run retry iterations for the embedded Pi runner's outer run loop (default: 24).",
+                  },
+                  perProfile: {
+                    type: "integer",
+                    minimum: 0,
+                    maximum: 9007199254740991,
+                    title: "Run Retries Per Profile",
+                    description:
+                      "Additional run retry iterations granted per fallback profile candidate (default: 8).",
+                  },
+                  min: {
+                    type: "integer",
+                    exclusiveMinimum: 0,
+                    maximum: 9007199254740991,
+                    title: "Run Retries Minimum",
+                    description: "Minimum absolute limit for run retry iterations (default: 32).",
+                  },
+                  max: {
+                    type: "integer",
+                    exclusiveMinimum: 0,
+                    maximum: 9007199254740991,
+                    title: "Run Retries Maximum",
+                    description:
+                      "Maximum absolute limit for run retry iterations to prevent runaway execution (default: 160).",
+                  },
+                },
+                additionalProperties: false,
+                title: "Run Retries",
+                description:
+                  "Outer run loop retry iteration boundaries for the embedded Pi runner to prevent infinite execution loops during failure recovery.",
               },
               embeddedPi: {
                 type: "object",
@@ -6229,6 +6276,46 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                   },
                   additionalProperties: false,
                 },
+                runRetries: {
+                  type: "object",
+                  properties: {
+                    base: {
+                      type: "integer",
+                      exclusiveMinimum: 0,
+                      maximum: 9007199254740991,
+                      title: "Agent Run Retries Base",
+                      description: "Base number of run retry iterations for this agent.",
+                    },
+                    perProfile: {
+                      type: "integer",
+                      minimum: 0,
+                      maximum: 9007199254740991,
+                      title: "Agent Run Retries Per Profile",
+                      description:
+                        "Additional run retry iterations granted per fallback profile candidate for this agent.",
+                    },
+                    min: {
+                      type: "integer",
+                      exclusiveMinimum: 0,
+                      maximum: 9007199254740991,
+                      title: "Agent Run Retries Minimum",
+                      description:
+                        "Minimum absolute limit for run retry iterations for this agent.",
+                    },
+                    max: {
+                      type: "integer",
+                      exclusiveMinimum: 0,
+                      maximum: 9007199254740991,
+                      title: "Agent Run Retries Maximum",
+                      description:
+                        "Maximum absolute limit for run retry iterations for this agent.",
+                    },
+                  },
+                  additionalProperties: false,
+                  title: "Agent Run Retries",
+                  description:
+                    "Optional per-agent override for the embedded Pi runner's outer run loop retry iteration boundaries.",
+                },
                 embeddedPi: {
                   type: "object",
                   properties: {
@@ -7472,7 +7559,7 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                     additionalProperties: false,
                   },
                 },
-                additionalProperties: false,
+                additionalProperties: {},
               },
               fetch: {
                 type: "object",
@@ -25124,6 +25211,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       help: "Controls whether OpenClaw injects `options.num_ctx` for Ollama providers configured with the OpenAI-compatible adapter (`openai-completions`). Default is true. Set false only if your proxy/upstream rejects unknown `options` payload fields.",
       tags: ["models"],
     },
+    "models.providers.*.timeoutSeconds": {
+      label: "Model Provider Timeout (sec)",
+      help: "Optional per-provider model request timeout in seconds. Applies to provider HTTP fetches and raises the LLM idle/stream watchdog ceiling for this provider above the implicit default. Use this for slow local or self-hosted model servers, or for cloud providers that buffer reasoning tokens silently on the wire, instead of changing global agent timeouts.",
+      tags: ["performance", "models"],
+    },
     "models.providers.*.headers": {
       label: "Model Provider Headers",
       help: "Static HTTP headers merged into provider requests for tenant routing, proxy auth, or custom gateway requirements. Use this sparingly and keep sensitive header values in secrets.",
@@ -25554,6 +25646,31 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       help: "System-prompt override for the pre-compaction memory flush turn to control extraction style and safety constraints. Use carefully so custom instructions do not reduce memory quality or leak sensitive context.",
       tags: ["advanced"],
     },
+    "agents.defaults.runRetries": {
+      label: "Run Retries",
+      help: "Outer run loop retry iteration boundaries for the embedded Pi runner to prevent infinite execution loops during failure recovery.",
+      tags: ["advanced"],
+    },
+    "agents.defaults.runRetries.base": {
+      label: "Run Retries Base",
+      help: "Base number of run retry iterations for the embedded Pi runner's outer run loop (default: 24).",
+      tags: ["advanced"],
+    },
+    "agents.defaults.runRetries.perProfile": {
+      label: "Run Retries Per Profile",
+      help: "Additional run retry iterations granted per fallback profile candidate (default: 8).",
+      tags: ["storage"],
+    },
+    "agents.defaults.runRetries.min": {
+      label: "Run Retries Minimum",
+      help: "Minimum absolute limit for run retry iterations (default: 32).",
+      tags: ["advanced"],
+    },
+    "agents.defaults.runRetries.max": {
+      label: "Run Retries Maximum",
+      help: "Maximum absolute limit for run retry iterations to prevent runaway execution (default: 160).",
+      tags: ["performance"],
+    },
     "agents.defaults.embeddedPi": {
       label: "Embedded Pi",
       help: "Embedded Pi runner hardening controls for how workspace-local Pi settings are trusted and applied in OpenClaw sessions.",
@@ -25583,6 +25700,31 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       label: "Agent Embedded Pi",
       help: "Optional per-agent embedded Pi overrides. Use this to opt specific agents into stricter GPT-5 execution behavior without changing the global default.",
       tags: ["advanced"],
+    },
+    "agents.list[].runRetries": {
+      label: "Agent Run Retries",
+      help: "Optional per-agent override for the embedded Pi runner's outer run loop retry iteration boundaries.",
+      tags: ["advanced"],
+    },
+    "agents.list[].runRetries.base": {
+      label: "Agent Run Retries Base",
+      help: "Base number of run retry iterations for this agent.",
+      tags: ["advanced"],
+    },
+    "agents.list[].runRetries.perProfile": {
+      label: "Agent Run Retries Per Profile",
+      help: "Additional run retry iterations granted per fallback profile candidate for this agent.",
+      tags: ["storage"],
+    },
+    "agents.list[].runRetries.min": {
+      label: "Agent Run Retries Minimum",
+      help: "Minimum absolute limit for run retry iterations for this agent.",
+      tags: ["advanced"],
+    },
+    "agents.list[].runRetries.max": {
+      label: "Agent Run Retries Maximum",
+      help: "Maximum absolute limit for run retry iterations for this agent.",
+      tags: ["performance"],
     },
     "agents.list[].embeddedPi.executionContract": {
       label: "Agent Embedded Pi Execution Contract",
@@ -26906,10 +27048,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       sensitive: true,
       tags: ["security", "storage"],
     },
-    "tools.web.search.apiKey": {
-      sensitive: true,
-      tags: ["security", "auth", "tools"],
-    },
     "tools.web.fetch.firecrawl.apiKey": {
       sensitive: true,
       tags: ["security", "auth", "tools"],
@@ -27271,6 +27409,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       tags: ["advanced", "url-secret"],
     },
   },
-  version: "2026.5.6",
+  version: "2026.5.18",
   generatedAt: "2026-03-22T21:17:33.302Z",
 };

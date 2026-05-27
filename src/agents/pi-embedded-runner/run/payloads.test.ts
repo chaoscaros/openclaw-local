@@ -1,5 +1,6 @@
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
+import { getReplyPayloadMetadata } from "../../../auto-reply/reply-payload.js";
 import {
   buildPayloads,
   expectSinglePayloadText,
@@ -106,6 +107,26 @@ describe("buildEmbeddedRunPayloads tool-error warnings", () => {
     expectSingleToolErrorPayload(payloads, {
       title: "Exec",
       detail: "Command timed out after 1800 seconds.",
+    });
+  });
+
+  it("marks middleware tool-error warnings after assistant output as non-terminal", () => {
+    const payloads = buildPayloads({
+      assistantTexts: ["Queued 3 topics."],
+      lastToolError: {
+        toolName: "write",
+        error: "Tool output unavailable due to post-processing error.",
+        middlewareError: true,
+        mutatingAction: true,
+      },
+      verboseLevel: "off",
+    });
+
+    expect(payloads).toHaveLength(2);
+    expect(payloads[0]?.text).toBe("Queued 3 topics.");
+    expect(payloads[1]).toMatchObject({ isError: true });
+    expect(getReplyPayloadMetadata(payloads[1] as object)).toMatchObject({
+      nonTerminalToolErrorWarning: true,
     });
   });
 

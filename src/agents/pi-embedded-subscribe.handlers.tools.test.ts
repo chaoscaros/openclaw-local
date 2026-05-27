@@ -455,6 +455,67 @@ describe("handleToolExecutionEnd timeout metadata", () => {
       timedOut: true,
     });
   });
+
+  it("records structured error codes for failed tool results", async () => {
+    const { ctx } = createTestContext();
+
+    await handleToolExecutionEnd(
+      ctx as never,
+      {
+        type: "tool_execution_end",
+        toolName: "exec",
+        toolCallId: "tool-exec-denied",
+        isError: true,
+        result: {
+          content: [{ type: "text", text: "SYSTEM_RUN_DENIED: approval required" }],
+          details: {
+            status: "failed",
+            error: {
+              code: "SYSTEM_RUN_DENIED",
+              message: "approval required",
+            },
+          },
+        },
+      } as never,
+    );
+
+    expect(ctx.state.lastToolError).toMatchObject({
+      toolName: "exec",
+      errorCode: "SYSTEM_RUN_DENIED",
+      error: "approval required",
+    });
+  });
+
+  it("marks middleware failures on the last tool error", async () => {
+    const { ctx } = createTestContext();
+
+    await handleToolExecutionEnd(
+      ctx as never,
+      {
+        type: "tool_execution_end",
+        toolName: "exec",
+        toolCallId: "tool-exec-middleware-error",
+        isError: false,
+        result: {
+          content: [
+            {
+              type: "text",
+              text: "Tool output unavailable due to post-processing error.",
+            },
+          ],
+          details: {
+            status: "error",
+            middlewareError: true,
+          },
+        },
+      } as never,
+    );
+
+    expect(ctx.state.lastToolError).toMatchObject({
+      toolName: "exec",
+      middlewareError: true,
+    });
+  });
 });
 
 describe("handleToolExecutionEnd exec approval prompts", () => {

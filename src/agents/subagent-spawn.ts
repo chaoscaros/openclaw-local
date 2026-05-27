@@ -3,10 +3,8 @@ import { promises as fs } from "node:fs";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { SubagentLifecycleHookRunner } from "../plugins/hooks.js";
 import { isValidAgentId, normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
-import {
-  normalizeLowercaseStringOrEmpty,
-  normalizeOptionalString,
-} from "../shared/string-coerce.js";
+import { normalizeOptionalString } from "../shared/string-coerce.js";
+import { listAgentIds } from "./agent-scope-config.js";
 import type { BootstrapContextMode } from "./bootstrap-files.js";
 import {
   mapToolContextToSpawnedRunMetadata,
@@ -290,6 +288,33 @@ function summarizeError(err: unknown): string {
   return "error";
 }
 
+function resolveAllowedSubagentTargetIds(params: {
+  cfg: OpenClawConfig;
+  requesterAgentId: string;
+  allowAgents: readonly string[];
+}): { allowAny: boolean; allowedIds: string[] } {
+  const requesterAgentId = normalizeAgentId(params.requesterAgentId);
+  const explicitIds = params.allowAgents
+    .map((value) => value.trim())
+    .filter((value) => value && value !== "*")
+    .map((value) => normalizeAgentId(value))
+    .filter(Boolean);
+  const allowAny = params.allowAgents.some((value) => value.trim() === "*");
+  if (allowAny) {
+    const ids = [...listAgentIds(params.cfg), requesterAgentId, ...explicitIds];
+    return {
+      allowAny: true,
+      allowedIds: Array.from(new Set(ids))
+        .filter(Boolean)
+        .toSorted((a, b) => a.localeCompare(b)),
+    };
+  }
+  return {
+    allowAny: false,
+    allowedIds: Array.from(new Set(explicitIds)).toSorted((a, b) => a.localeCompare(b)),
+  };
+}
+
 async function ensureThreadBindingForSubagentSpawn(params: {
   hookRunner: SubagentLifecycleHookRunner | null;
   childSessionKey: string;
@@ -462,15 +487,19 @@ export async function spawnSubagentDirect(
       resolveAgentConfig(cfg, requesterAgentId)?.subagents?.allowAgents ??
       cfg?.agents?.defaults?.subagents?.allowAgents ??
       [];
-    const allowAny = allowAgents.some((value) => value.trim() === "*");
-    const normalizedTargetId = normalizeLowercaseStringOrEmpty(targetAgentId);
-    const allowSet = new Set(
-      allowAgents
-        .filter((value) => value.trim() && value.trim() !== "*")
-        .map((value) => normalizeLowercaseStringOrEmpty(normalizeAgentId(value))),
-    );
-    if (!allowAny && !allowSet.has(normalizedTargetId)) {
-      const allowedText = allowSet.size > 0 ? Array.from(allowSet).join(", ") : "none";
+    const allowed = resolveAllowedSubagentTargetIds({
+      cfg,
+      requesterAgentId,
+      allowAgents,
+    });
+    if (!allowed.allowedIds.includes(targetAgentId)) {
+      const allowedText = allowed.allowedIds.length > 0 ? allowed.allowedIds.join(", ") : "none";
+      if (allowed.allowAny) {
+        return {
+          status: "forbidden",
+          error: `agentId "${targetAgentId}" is not in the configured agent registry (allowed: ${allowedText})`,
+        };
+      }
       return {
         status: "forbidden",
         error: `agentId is not allowed for sessions_spawn (allowed: ${allowedText})`,

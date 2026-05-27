@@ -64,6 +64,9 @@ const mocks = vi.hoisted(() => {
     printModelTable: vi.fn(),
     listProfilesForProvider: vi.fn(),
     resolveModelWithRegistry: vi.fn(),
+    normalizeProviderResolvedModelWithPlugin: vi.fn<
+      (_params: { context: { model: Record<string, unknown> } }) => unknown
+    >(() => undefined),
   };
 });
 
@@ -96,6 +99,7 @@ function resetMocks() {
   mocks.printModelTable.mockReset();
   mocks.listProfilesForProvider.mockReturnValue([]);
   mocks.resolveModelWithRegistry.mockReturnValue({ ...OPENAI_CODEX_MODEL });
+  mocks.normalizeProviderResolvedModelWithPlugin.mockReturnValue(undefined);
 }
 
 function createRuntime() {
@@ -146,6 +150,10 @@ function installModelsListCommandForwardCompatMocks() {
     resolveEnvApiKey: vi.fn().mockReturnValue(undefined),
     resolveAwsSdkEnvVarName: vi.fn().mockReturnValue(undefined),
     hasUsableCustomProviderApiKey: vi.fn().mockReturnValue(false),
+  }));
+
+  vi.doMock("../../plugins/provider-runtime.js", () => ({
+    normalizeProviderResolvedModelWithPlugin: mocks.normalizeProviderResolvedModelWithPlugin,
   }));
 }
 
@@ -313,6 +321,46 @@ describe("modelsListCommand forward-compat", () => {
           key: "openai/gpt-5.4",
         }),
       ]);
+    });
+
+    it("applies provider-owned normalization to configured list rows", async () => {
+      const runtime = createRuntime();
+      mocks.resolveConfiguredEntries.mockReturnValueOnce({
+        entries: [
+          {
+            key: "anthropic/claude-sonnet-4-5",
+            ref: { provider: "anthropic", model: "claude-sonnet-4-5" },
+            tags: new Set(["configured"]),
+            aliases: [],
+          },
+        ],
+      });
+      mocks.resolveModelWithRegistry.mockReturnValueOnce({
+        provider: "anthropic",
+        id: "claude-sonnet-4-5",
+        name: "Claude Sonnet 4.5",
+        api: "anthropic-messages",
+        baseUrl: "https://api.anthropic.com",
+        input: ["text"],
+        contextWindow: 200000,
+        maxTokens: 64000,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      });
+      mocks.normalizeProviderResolvedModelWithPlugin.mockImplementationOnce(
+        ({ context }: { context: { model: Record<string, unknown> } }) => ({
+          ...context.model,
+          input: ["text", "image"],
+        }),
+      );
+
+      await modelsListCommand({ json: true }, runtime as never);
+
+      expect(lastPrintedRows<{ key: string; input: string }>()).toContainEqual(
+        expect.objectContaining({
+          key: "anthropic/claude-sonnet-4-5",
+          input: "text+image",
+        }),
+      );
     });
   });
 

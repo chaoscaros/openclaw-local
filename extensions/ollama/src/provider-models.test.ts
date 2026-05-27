@@ -40,6 +40,13 @@ describe("ollama provider models", () => {
       { name: "llama3:8b", contextWindow: 65536, capabilities: undefined },
       { name: "deepseek-r1:14b", contextWindow: undefined, capabilities: undefined },
     ]);
+    expect(
+      buildOllamaModelDefinition(
+        enriched[1].name,
+        enriched[1].contextWindow,
+        enriched[1].capabilities,
+      ).compat?.supportsTools,
+    ).toBe(true);
   });
 
   it("sets models with vision capability from /api/show capabilities", async () => {
@@ -208,8 +215,11 @@ describe("ollama provider models", () => {
 
     const textModel = buildOllamaModelDefinition("glm-5.1:cloud", 202752, ["completion", "tools"]);
     expect(textModel.input).toEqual(["text"]);
+    expect(textModel.compat?.supportsTools).toBe(true);
 
     const noCapabilities = buildOllamaModelDefinition("unknown-model", 65536);
     expect(noCapabilities.input).toEqual(["text"]);
+    expect(noCapabilities.compat?.supportsTools).toBe(true);
+    expect(noCapabilities.compat?.supportsUsageInStreaming).toBe(true);
   });
 });

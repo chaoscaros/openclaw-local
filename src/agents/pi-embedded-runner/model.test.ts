@@ -41,6 +41,7 @@ vi.mock("./openrouter-model-capabilities.js", () => ({
 }));
 
 import type { OpenClawConfig } from "../../config/config.js";
+import { COPILOT_INTEGRATION_ID, buildCopilotIdeHeaders } from "../copilot-dynamic-headers.js";
 import { buildForwardCompatTemplate } from "./model.forward-compat.test-support.js";
 import { buildInlineProviderModels, resolveModel, resolveModelAsync } from "./model.js";
 import {
@@ -1301,9 +1302,23 @@ describe("resolveModel", () => {
     });
     expect((result.model as unknown as { headers?: Record<string, string> }).headers).toMatchObject(
       {
+        ...buildCopilotIdeHeaders(),
+        "Copilot-Integration-Id": COPILOT_INTEGRATION_ID,
+        "Openai-Organization": "github-copilot",
         "X-Proxy-Auth": "token-123",
       },
     );
+  });
+
+  it("adds GitHub Copilot IDE headers to default dynamic resolved models", () => {
+    const result = resolveModelForTest("github-copilot", "gpt-5.4-mini", "/tmp/agent");
+
+    expect(result.error).toBeUndefined();
+    expect((result.model as unknown as { headers?: Record<string, string> }).headers).toEqual({
+      ...buildCopilotIdeHeaders(),
+      "Copilot-Integration-Id": COPILOT_INTEGRATION_ID,
+      "Openai-Organization": "github-copilot",
+    });
   });
 
   it("resolves github-copilot Claude dynamic models to anthropic-messages by default", () => {

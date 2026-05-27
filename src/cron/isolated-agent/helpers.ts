@@ -1,6 +1,6 @@
 import { hasOutboundReplyContent } from "openclaw/plugin-sdk/reply-payload";
 import { DEFAULT_HEARTBEAT_ACK_MAX_CHARS } from "../../auto-reply/heartbeat.js";
-import type { ReplyPayload } from "../../auto-reply/reply-payload.js";
+import { getReplyPayloadMetadata, type ReplyPayload } from "../../auto-reply/reply-payload.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
 import { truncateUtf16Safe } from "../../utils.js";
 import { shouldSkipHeartbeatOnlyDelivery } from "../heartbeat-policy.js";
@@ -93,6 +93,16 @@ function payloadHasStructuredDeliveryContent(payload: DeliveryPayload | null | u
   );
 }
 
+function isNonTerminalToolErrorWarningPayload(
+  payload: DeliveryPayload | null | undefined,
+): boolean {
+  return Boolean(
+    payload &&
+    typeof payload === "object" &&
+    getReplyPayloadMetadata(payload)?.nonTerminalToolErrorWarning === true,
+  );
+}
+
 export function pickLastDeliverablePayload(payloads: DeliveryPayload[]) {
   for (let i = payloads.length - 1; i >= 0; i--) {
     if (payloads[i]?.isError) {
@@ -147,9 +157,11 @@ export function resolveCronPayloadOutcome(params: {
   const deliveryPayload = pickLastDeliverablePayload(params.payloads);
   const selectedDeliveryPayloads = pickDeliverablePayloads(params.payloads);
   const deliveryPayloadHasStructuredContent = payloadHasStructuredDeliveryContent(deliveryPayload);
-  const hasErrorPayload = params.payloads.some((payload) => payload?.isError === true);
+  const hasErrorPayload = params.payloads.some(
+    (payload) => payload?.isError === true && !isNonTerminalToolErrorWarningPayload(payload),
+  );
   const lastErrorPayloadIndex = params.payloads.findLastIndex(
-    (payload) => payload?.isError === true,
+    (payload) => payload?.isError === true && !isNonTerminalToolErrorWarningPayload(payload),
   );
   const hasSuccessfulPayloadAfterLastError =
     !params.runLevelError &&

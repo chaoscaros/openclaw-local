@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { StreamFn } from "@mariozechner/pi-agent-core";
 import {
   calculateCost,
@@ -19,6 +19,7 @@ import type {
   ResponseInput,
   ResponseInputMessageContentList,
 } from "openai/resources/responses/responses.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { ProviderRuntimeModel } from "../plugins/provider-runtime-model.types.js";
 import { resolveProviderTransportTurnStateWithPlugin } from "../plugins/provider-runtime.js";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./copilot-dynamic-headers.js";
@@ -34,6 +35,7 @@ import {
   resolveOpenAIResponsesPayloadPolicy,
 } from "./openai-responses-payload-policy.js";
 import {
+  findOpenAIStrictToolSchemaDiagnostics,
   normalizeOpenAIStrictToolParameters,
   resolveOpenAIStrictToolFlagForInventory,
   resolveOpenAIStrictToolSetting,
@@ -44,6 +46,9 @@ import { transformTransportMessages } from "./transport-message-transform.js";
 import { mergeTransportMetadata, sanitizeTransportPayloadText } from "./transport-stream-shared.js";
 
 const DEFAULT_AZURE_OPENAI_API_VERSION = "2024-12-01-preview";
+const MAX_OPENAI_STRICT_TOOL_DOWNGRADE_DIAGNOSTIC_KEYS = 256;
+const log = createSubsystemLogger("openai-transport");
+const loggedOpenAIStrictToolDowngradeDiagnosticKeys = new Set<string>();
 
 type BaseStreamOptions = {
   temperature?: number;
@@ -345,9 +350,13 @@ function convertResponsesMessages(
 
 function convertResponsesTools(
   tools: NonNullable<Context["tools"]>,
+  model: OpenAIModeModel,
   options?: { strict?: boolean | null },
 ): FunctionTool[] {
-  const strict = resolveOpenAIStrictToolFlagForInventory(tools, options?.strict);
+  const strict = resolveOpenAIStrictToolFlagWithDiagnostics(tools, options?.strict, {
+    transport: "responses",
+    model,
+  });
   if (strict === undefined) {
     return tools.map((tool) => ({
       type: "function",
@@ -363,6 +372,75 @@ function convertResponsesTools(
     parameters: normalizeOpenAIStrictToolParameters(tool.parameters, strict),
     strict,
   }));
+}
+
+function resolveOpenAIStrictToolFlagWithDiagnostics(
+  tools: NonNullable<Context["tools"]>,
+  strictSetting: boolean | null | undefined,
+  context: { transport: "responses" | "completions"; model: OpenAIModeModel },
+): boolean | undefined {
+  const strict = resolveOpenAIStrictToolFlagForInventory(tools, strictSetting);
+  if (strictSetting === true && strict === false && log.isEnabled("debug", "any")) {
+    const diagnostics = findOpenAIStrictToolSchemaDiagnostics(tools);
+    if (!shouldLogOpenAIStrictToolDowngradeDiagnostic(diagnostics, context)) {
+      return strict;
+    }
+    const sample = diagnostics.slice(0, 5).map((entry) => ({
+      tool: entry.toolName ?? `tool[${entry.toolIndex}]`,
+      violations: entry.violations.slice(0, 8),
+    }));
+    log.debug(
+      `OpenAI ${context.transport} tool schema strict mode downgraded to strict=false for ` +
+        `${context.model.provider ?? "unknown"}/${context.model.id ?? "unknown"} ` +
+        `because ${diagnostics.length} tool schema(s) are not strict-compatible`,
+      {
+        transport: context.transport,
+        provider: context.model.provider,
+        model: context.model.id,
+        incompatibleToolCount: diagnostics.length,
+        sample,
+      },
+    );
+  }
+  return strict;
+}
+
+function buildOpenAIStrictToolDowngradeDiagnosticKey(
+  diagnostics: ReturnType<typeof findOpenAIStrictToolSchemaDiagnostics>,
+  context: { transport: "responses" | "completions"; model: OpenAIModeModel },
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        transport: context.transport,
+        provider: context.model.provider ?? null,
+        model: context.model.id ?? null,
+        diagnostics: diagnostics.map((entry) => ({
+          toolIndex: entry.toolIndex,
+          toolName: entry.toolName ?? null,
+          violations: entry.violations,
+        })),
+      }),
+    )
+    .digest("hex");
+}
+
+function shouldLogOpenAIStrictToolDowngradeDiagnostic(
+  diagnostics: ReturnType<typeof findOpenAIStrictToolSchemaDiagnostics>,
+  context: { transport: "responses" | "completions"; model: OpenAIModeModel },
+): boolean {
+  const key = buildOpenAIStrictToolDowngradeDiagnosticKey(diagnostics, context);
+  if (loggedOpenAIStrictToolDowngradeDiagnosticKeys.has(key)) {
+    return false;
+  }
+  if (
+    loggedOpenAIStrictToolDowngradeDiagnosticKeys.size >=
+    MAX_OPENAI_STRICT_TOOL_DOWNGRADE_DIAGNOSTIC_KEYS
+  ) {
+    loggedOpenAIStrictToolDowngradeDiagnosticKeys.clear();
+  }
+  loggedOpenAIStrictToolDowngradeDiagnosticKeys.add(key);
+  return true;
 }
 
 async function processResponsesStream(
@@ -787,7 +865,7 @@ export function buildOpenAIResponsesParams(
     params.service_tier = options.serviceTier;
   }
   if (context.tools) {
-    params.tools = convertResponsesTools(context.tools, {
+    params.tools = convertResponsesTools(context.tools, model as OpenAIModeModel, {
       strict: resolveOpenAIStrictToolSetting(model as OpenAIModeModel, {
         transport: "stream",
       }),
@@ -1274,12 +1352,13 @@ function convertTools(
   compat: ReturnType<typeof getCompat>,
   model: OpenAIModeModel,
 ) {
-  const strict = resolveOpenAIStrictToolFlagForInventory(
+  const strict = resolveOpenAIStrictToolFlagWithDiagnostics(
     tools,
     resolveOpenAIStrictToolSetting(model, {
       transport: "stream",
       supportsStrictMode: compat?.supportsStrictMode,
     }),
+    { transport: "completions", model },
   );
   return tools.map((tool) => ({
     type: "function",

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { setReplyPayloadMetadata } from "../auto-reply/reply-payload.js";
 import { resolveCronPayloadOutcome } from "./isolated-agent/helpers.js";
 
 describe("resolveCronPayloadOutcome", () => {
@@ -37,6 +38,23 @@ describe("resolveCronPayloadOutcome", () => {
 
     expect(result.hasFatalErrorPayload).toBe(false);
     expect(result.summary).toBe("Write completed successfully.");
+  });
+
+  it("treats marked recovered tool warning payloads as non-fatal", () => {
+    const warning = setReplyPayloadMetadata(
+      {
+        text: "⚠️ ✍️ Write failed",
+        isError: true,
+      },
+      { nonTerminalToolErrorWarning: true },
+    );
+    const result = resolveCronPayloadOutcome({
+      payloads: [{ text: "Queued 3 topics." }, warning],
+    });
+
+    expect(result.hasFatalErrorPayload).toBe(false);
+    expect(result.embeddedRunError).toBeUndefined();
+    expect(result.summary).toBe("Queued 3 topics.");
   });
 
   it("keeps error payloads fatal when the run also reported a run-level error", () => {

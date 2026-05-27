@@ -4,6 +4,8 @@ import type { AuthProfileStore } from "../../agents/auth-profiles/types.js";
 import { shouldSuppressBuiltInModel } from "../../agents/model-suppression.js";
 import { normalizeProviderId } from "../../agents/provider-id.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { ProviderRuntimeModel } from "../../plugins/provider-runtime-model.types.js";
+import { normalizeProviderResolvedModelWithPlugin } from "../../plugins/provider-runtime.js";
 import { loadModelRegistry, toModelRow } from "./list.registry.js";
 import { loadModelCatalog, resolveModelWithRegistry } from "./list.runtime.js";
 import type { ConfiguredEntry, ModelRow } from "./list.types.js";
@@ -54,6 +56,23 @@ function buildRow(params: {
   });
 }
 
+function normalizeListModelWithProviderPlugin(params: {
+  model: Model<Api>;
+  context: RowBuilderContext;
+}): Model<Api> {
+  const normalized = normalizeProviderResolvedModelWithPlugin({
+    provider: params.model.provider,
+    config: params.context.cfg,
+    context: {
+      config: params.context.cfg,
+      provider: params.model.provider,
+      modelId: params.model.id,
+      model: params.model as ProviderRuntimeModel,
+    },
+  });
+  return (normalized as Model<Api> | undefined) ?? params.model;
+}
+
 export async function loadListModelRegistry(
   cfg: OpenClawConfig,
   opts?: { sourceConfig?: OpenClawConfig },
@@ -80,23 +99,27 @@ export function appendDiscoveredRows(params: {
   });
 
   for (const model of sorted) {
+    const normalizedModel = normalizeListModelWithProviderPlugin({
+      model,
+      context: params.context,
+    });
     if (
       shouldSuppressBuiltInModel({
-        provider: model.provider,
-        id: model.id,
-        baseUrl: model.baseUrl,
+        provider: normalizedModel.provider,
+        id: normalizedModel.id,
+        baseUrl: normalizedModel.baseUrl,
         config: params.context.cfg,
       })
     ) {
       continue;
     }
-    if (!matchesRowFilter(params.context.filter, model)) {
+    if (!matchesRowFilter(params.context.filter, normalizedModel)) {
       continue;
     }
-    const key = modelKey(model.provider, model.id);
+    const key = modelKey(normalizedModel.provider, normalizedModel.id);
     params.rows.push(
       buildRow({
-        model,
+        model: normalizedModel,
         key,
         context: params.context,
       }),
@@ -134,11 +157,18 @@ export async function appendCatalogSupplementRows(params: {
     if (!model || !matchesRowFilter(params.context.filter, model)) {
       continue;
     }
+    const normalizedModel = normalizeListModelWithProviderPlugin({
+      model,
+      context: params.context,
+    });
+    if (!matchesRowFilter(params.context.filter, normalizedModel)) {
+      continue;
+    }
     if (
       shouldSuppressBuiltInModel({
-        provider: model.provider,
-        id: model.id,
-        baseUrl: model.baseUrl,
+        provider: normalizedModel.provider,
+        id: normalizedModel.id,
+        baseUrl: normalizedModel.baseUrl,
         config: params.context.cfg,
       })
     ) {
@@ -146,7 +176,7 @@ export async function appendCatalogSupplementRows(params: {
     }
     params.rows.push(
       buildRow({
-        model,
+        model: normalizedModel,
         key,
         context: params.context,
         allowProviderAvailabilityFallback: !params.context.discoveredKeys.has(key),
@@ -181,12 +211,15 @@ export function appendConfiguredRows(params: {
     if (params.context.filter.local && !model) {
       continue;
     }
+    const normalizedModel = model
+      ? normalizeListModelWithProviderPlugin({ model, context: params.context })
+      : undefined;
     if (
-      model &&
+      normalizedModel &&
       shouldSuppressBuiltInModel({
-        provider: model.provider,
-        id: model.id,
-        baseUrl: model.baseUrl,
+        provider: normalizedModel.provider,
+        id: normalizedModel.id,
+        baseUrl: normalizedModel.baseUrl,
         config: params.context.cfg,
       })
     ) {
@@ -194,15 +227,17 @@ export function appendConfiguredRows(params: {
     }
     params.rows.push(
       toModelRow({
-        model,
+        model: normalizedModel,
         key: entry.key,
         tags: Array.from(entry.tags),
         aliases: entry.aliases,
         availableKeys: params.context.availableKeys,
         cfg: params.context.cfg,
         authStore: params.context.authStore,
-        allowProviderAvailabilityFallback: model
-          ? !params.context.discoveredKeys.has(modelKey(model.provider, model.id))
+        allowProviderAvailabilityFallback: normalizedModel
+          ? !params.context.discoveredKeys.has(
+              modelKey(normalizedModel.provider, normalizedModel.id),
+            )
           : false,
       }),
     );

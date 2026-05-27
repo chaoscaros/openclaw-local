@@ -94,6 +94,45 @@ describe("handleChatEvent", () => {
     expect(state.chatMessages).toHaveLength(1);
   });
 
+  it("dedupes a live optimistic user echo when the final assistant reply arrives", () => {
+    const optimisticUser = {
+      role: "user",
+      content: [{ type: "text", text: "validation ping please reply OK" }],
+      timestamp: 1_000,
+      __openclawOptimistic: true,
+      __openclawRunId: "run-1",
+    };
+    const persistedUser = {
+      role: "user",
+      content: [{ type: "text", text: "validation ping please reply OK" }],
+      timestamp: 1_100,
+    };
+    const state = createState({
+      sessionKey: "main",
+      chatRunId: "run-1",
+      chatMessages: [optimisticUser, persistedUser],
+    });
+    const payload: ChatEventPayload = {
+      runId: "run-1",
+      sessionKey: "main",
+      state: "final",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "OK" }],
+      },
+    };
+
+    expect(handleChatEvent(state, payload)).toBe("final");
+
+    expect(state.chatMessages).toEqual([
+      optimisticUser,
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "OK" }],
+      },
+    ]);
+  });
+
   it("returns null for delta from another run", () => {
     const state = createState({
       sessionKey: "main",

@@ -212,12 +212,20 @@ export function buildOllamaModelDefinition(
   capabilities?: string[],
 ): ModelDefinitionConfig {
   const hasVision = capabilities?.includes("vision") ?? false;
+  const compat =
+    capabilities === undefined
+      ? { supportsTools: true, supportsUsageInStreaming: true }
+      : {
+          supportsTools: capabilities.includes("tools"),
+          supportsUsageInStreaming: true,
+        };
   const input: ("text" | "image")[] = hasVision ? ["text", "image"] : ["text"];
   return {
     id: modelId,
     name: modelId,
     reasoning: isReasoningModelHeuristic(modelId),
     input,
+    compat,
     cost: OLLAMA_DEFAULT_COST,
     contextWindow: contextWindow ?? OLLAMA_DEFAULT_CONTEXT_WINDOW,
     maxTokens: OLLAMA_DEFAULT_MAX_TOKENS,

@@ -79,6 +79,28 @@ describe("buildBootstrapContextFiles", () => {
     expect(warnings[0]).toContain("TOOLS.md");
     expect(warnings[0]).toContain("limit 200");
   });
+
+  it("keeps policy digest lines from oversized AGENTS.md middle content", () => {
+    const requiredScopedInstruction =
+      "- Required scoped instruction: read scoped AGENTS.md before editing subtree work.";
+    const content = [
+      "# Root policy",
+      "A".repeat(900),
+      "## Scoped policy",
+      requiredScopedInstruction,
+      "B".repeat(700),
+      "tail marker",
+    ].join("\n");
+    const [result] = buildBootstrapContextFiles([makeFile({ content })], {
+      maxChars: 600,
+    });
+
+    expect(result?.content.length).toBeLessThanOrEqual(600);
+    expect(result?.content).toContain("[Policy digest from AGENTS.md]");
+    expect(result?.content).toContain(requiredScopedInstruction);
+    expect(result?.content).toContain("[...truncated, read AGENTS.md for full content...]");
+  });
+
   it("keeps content under the default limit", () => {
     const long = "a".repeat(DEFAULT_BOOTSTRAP_MAX_CHARS - 10);
     const files = [makeFile({ content: long })];

@@ -38,15 +38,18 @@ export type MessageCliJsonEnvelope = {
   channel: ChannelId;
   dryRun: boolean;
   handledBy: "plugin" | "core" | "dry-run";
+  messageId?: string;
   payload: unknown;
 };
 
 export function buildMessageCliJson(result: MessageActionRunResult): MessageCliJsonEnvelope {
+  const messageId = extractMessageId(result.payload);
   return {
     action: result.action,
     channel: result.channel,
     dryRun: result.dryRun,
     handledBy: result.handledBy,
+    ...(messageId ? { messageId } : {}),
     payload: result.payload,
   };
 }

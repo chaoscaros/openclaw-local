@@ -285,10 +285,21 @@ function applyConfiguredProviderOverrides(params: {
 }): ProviderRuntimeModel {
   const { discoveredModel, providerConfig, modelId } = params;
   if (!providerConfig) {
+    const discoveredHeaders = sanitizeModelHeaders(discoveredModel.headers, {
+      stripSecretRefMarkers: true,
+    });
+    const requestConfig = resolveProviderRequestConfig({
+      provider: params.provider,
+      api: discoveredModel.api,
+      baseUrl: discoveredModel.baseUrl,
+      discoveredHeaders,
+      capability: "llm",
+      transport: "stream",
+    });
     return {
       ...discoveredModel,
       // Discovered models originate from models.json and may contain persistence markers.
-      headers: sanitizeModelHeaders(discoveredModel.headers, { stripSecretRefMarkers: true }),
+      headers: requestConfig.headers,
     };
   }
   const configuredModel =

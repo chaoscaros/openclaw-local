@@ -164,6 +164,7 @@ export async function runProviderPluginAuthMethod(params: {
       profileId: profile.profileId,
       provider: profile.credential.provider,
       mode: profile.credential.type === "token" ? "token" : profile.credential.type,
+      forceProviderOrder: profile.credential.type === "oauth",
       ...("email" in profile.credential && profile.credential.email
         ? { email: profile.credential.email }
         : {}),

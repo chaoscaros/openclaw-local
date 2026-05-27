@@ -34,6 +34,7 @@ export {
   loadAuthProfileStore,
   saveAuthProfileStore,
 } from "./auth-profiles/store.js";
+export { getRuntimeAuthProfileStoreSnapshot } from "./auth-profiles/runtime-snapshots.js";
 export type {
   ApiKeyCredential,
   AuthProfileCredential,

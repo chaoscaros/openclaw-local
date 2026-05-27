@@ -859,6 +859,7 @@ describe("applyAuthChoice", () => {
       provider: "openai-codex",
       mode: "oauth",
     });
+    expect(result.config.auth?.order?.["openai-codex"]).toEqual(["openai-codex:user@example.com"]);
     expect(result.config.auth?.profiles?.["openai-codex:default"]).toBeUndefined();
     expect(await readAuthProfile("openai-codex:user@example.com")).toMatchObject({
       type: "oauth",
@@ -866,6 +867,68 @@ describe("applyAuthChoice", () => {
       refresh: "refresh-token",
       access: "access-token",
       email: "user@example.com",
+    });
+  });
+
+  it("puts the latest openai-codex OAuth account first when switching accounts", async () => {
+    await setupTempState();
+
+    resolvePluginProviders.mockReturnValue([
+      {
+        id: "openai-codex",
+        label: "OpenAI Codex",
+        auth: [
+          {
+            id: "oauth",
+            label: "ChatGPT OAuth",
+            kind: "oauth",
+            run: vi.fn(async () => ({
+              profiles: [
+                {
+                  profileId: "openai-codex:new@example.com",
+                  credential: {
+                    type: "oauth",
+                    provider: "openai-codex",
+                    refresh: "new-refresh-token",
+                    access: "new-access-token",
+                    expires: Date.now() + 60_000,
+                    email: "new@example.com",
+                  },
+                },
+              ],
+              defaultModel: "openai-codex/gpt-5.4",
+            })),
+          },
+        ],
+      },
+    ] as never);
+
+    const result = await applyAuthChoice({
+      authChoice: "openai-codex",
+      config: {
+        auth: {
+          profiles: {
+            "openai-codex:old@example.com": {
+              provider: "openai-codex",
+              mode: "oauth",
+              email: "old@example.com",
+            },
+          },
+        },
+      },
+      prompter: createPrompter({}),
+      runtime: createExitThrowingRuntime(),
+      setDefaultModel: false,
+    });
+
+    expect(result.config.auth?.order?.["openai-codex"]).toEqual([
+      "openai-codex:new@example.com",
+      "openai-codex:old@example.com",
+    ]);
+    expect(await readAuthProfile("openai-codex:new@example.com")).toMatchObject({
+      type: "oauth",
+      provider: "openai-codex",
+      email: "new@example.com",
     });
   });
 
