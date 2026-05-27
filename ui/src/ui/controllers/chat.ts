@@ -23,6 +23,7 @@ const SYNTHETIC_TRANSCRIPT_REPAIR_RESULT =
 const STARTUP_CHAT_HISTORY_RETRY_TIMEOUT_MS = 60_000;
 const STARTUP_CHAT_HISTORY_DEFAULT_RETRY_MS = 500;
 const STARTUP_CHAT_HISTORY_MAX_RETRY_MS = 5_000;
+const DUPLICATE_USER_ECHO_WINDOW_MS = 10 * 60 * 1000;
 const chatHistoryRequestVersions = new WeakMap<object, number>();
 
 function beginChatHistoryRequest(state: ChatState): number {
@@ -236,6 +237,48 @@ function mergeOptimisticMessages(
   return merged;
 }
 
+function getMessageIdempotencyKey(message: unknown): string | null {
+  if (!message || typeof message !== "object") {
+    return null;
+  }
+  const key = (message as Record<string, unknown>).idempotencyKey;
+  return typeof key === "string" && key.trim() ? key : null;
+}
+
+function areDuplicateUserEchoMessages(previous: unknown, next: unknown): boolean {
+  if (!isRoleMessage(previous, "user") || !isRoleMessage(next, "user")) {
+    return false;
+  }
+  const previousKey = getMessageIdempotencyKey(previous);
+  const nextKey = getMessageIdempotencyKey(next);
+  if (previousKey && nextKey) {
+    return previousKey === nextKey;
+  }
+  const previousText = extractComparableMessageText(previous);
+  const nextText = extractComparableMessageText(next);
+  if (!previousText || previousText !== nextText) {
+    return false;
+  }
+  const previousTimestamp = getMessageTimestamp(previous);
+  const nextTimestamp = getMessageTimestamp(next);
+  if (previousTimestamp == null || nextTimestamp == null) {
+    return true;
+  }
+  return Math.abs(nextTimestamp - previousTimestamp) <= DUPLICATE_USER_ECHO_WINDOW_MS;
+}
+
+function dedupeRepeatedUserEchoMessages(messages: unknown[]): unknown[] {
+  const deduped: unknown[] = [];
+  for (const message of messages) {
+    const previous = deduped.at(-1);
+    if (previous && areDuplicateUserEchoMessages(previous, message)) {
+      continue;
+    }
+    deduped.push(message);
+  }
+  return deduped;
+}
+
 function isRetryableStartupUnavailable(err: unknown, method: string): err is GatewayRequestError {
   if (!(err instanceof GatewayRequestError)) {
     return false;
@@ -362,14 +405,12 @@ export async function loadChatHistory(state: ChatState) {
     }
     const messages = Array.isArray(res.messages) ? res.messages : [];
     const filteredMessages = messages.filter((message) => !shouldHideHistoryMessage(message));
-    const completedFromHistory = historyContainsAssistantReplyForPendingRun(
-      state,
-      filteredMessages,
-    );
+    const visibleMessages = dedupeRepeatedUserEchoMessages(filteredMessages);
+    const completedFromHistory = historyContainsAssistantReplyForPendingRun(state, visibleMessages);
     state.chatMessages =
       state.chatRunId && !completedFromHistory
-        ? mergeOptimisticMessages(filteredMessages, state.chatMessages)
-        : filteredMessages;
+        ? mergeOptimisticMessages(visibleMessages, state.chatMessages)
+        : visibleMessages;
     state.chatThinkingLevel = res.thinkingLevel ?? null;
     // During a just-submitted run, history can still be stale for a short
     // window before lifecycle/chat events arrive. Keep the pending stream so

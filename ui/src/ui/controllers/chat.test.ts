@@ -573,6 +573,49 @@ describe("loadChatHistory", () => {
     expect(state.chatLoading).toBe(false);
   });
 
+  it("dedupes repeated user echo messages from reconnect history", async () => {
+    const messages = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "update order description" }],
+        timestamp: 1_000,
+        idempotencyKey: "run-1",
+      },
+      {
+        role: "user",
+        content: [{ type: "text", text: "update order description" }],
+        timestamp: 1_100,
+        idempotencyKey: "run-1",
+      },
+      {
+        role: "user",
+        content: [{ type: "text", text: "update order description" }],
+        timestamp: 1_200,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "done" }],
+        timestamp: 1_300,
+      },
+      {
+        role: "user",
+        content: [{ type: "text", text: "update order description" }],
+        timestamp: 1_400,
+      },
+    ];
+    const mockClient = {
+      request: vi.fn().mockResolvedValue({ messages }),
+    };
+    const state = createState({
+      client: mockClient as unknown as ChatState["client"],
+      connected: true,
+    });
+
+    await loadChatHistory(state);
+
+    expect(state.chatMessages).toEqual([messages[0], messages[3], messages[4]]);
+  });
+
   it("keeps assistant message when text field has real content but content is NO_REPLY", async () => {
     const messages = [{ role: "assistant", text: "real reply", content: "NO_REPLY" }];
     const mockClient = {

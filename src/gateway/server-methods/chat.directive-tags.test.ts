@@ -2073,8 +2073,86 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
         role: "user",
         content: "hello from dashboard",
         timestamp: expect.any(Number),
+        idempotencyKey: "idem-user-transcript-agent-run",
       },
     });
+  });
+
+  it("does not emit a duplicate user transcript update for an existing chat.send idempotency key", async () => {
+    createTranscriptFixture("openclaw-chat-send-user-transcript-dedupe-");
+    fs.appendFileSync(
+      mockState.transcriptPath,
+      `${JSON.stringify({
+        type: "message",
+        id: "existing-user-message",
+        message: {
+          role: "user",
+          content: "already visible",
+          idempotencyKey: "idem-user-transcript-dedupe",
+        },
+      })}\n`,
+      "utf-8",
+    );
+    mockState.finalText = "ok";
+    mockState.triggerAgentRunStart = true;
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-user-transcript-dedupe",
+      message: "already visible",
+      expectBroadcast: false,
+    });
+
+    expect(
+      mockState.emittedTranscriptUpdates.some(
+        (update) =>
+          typeof update.message === "object" &&
+          update.message !== null &&
+          (update.message as { role?: unknown }).role === "user",
+      ),
+    ).toBe(false);
+  });
+
+  it("does not emit a duplicate user transcript update for a repeated pending user turn", async () => {
+    createTranscriptFixture("openclaw-chat-send-user-transcript-pending-echo-");
+    fs.appendFileSync(
+      mockState.transcriptPath,
+      `${JSON.stringify({
+        type: "message",
+        id: "existing-user-message",
+        message: {
+          role: "user",
+          content: "same retry text",
+          timestamp: Date.now(),
+          idempotencyKey: "older-run-id",
+        },
+      })}\n`,
+      "utf-8",
+    );
+    mockState.finalText = "ok";
+    mockState.triggerAgentRunStart = true;
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "new-run-id-after-reconnect",
+      message: "same retry text",
+      expectBroadcast: false,
+    });
+
+    expect(
+      mockState.emittedTranscriptUpdates.some(
+        (update) =>
+          typeof update.message === "object" &&
+          update.message !== null &&
+          (update.message as { role?: unknown }).role === "user",
+      ),
+    ).toBe(false);
   });
 
   it("adds persisted media paths to the user transcript update", async () => {
