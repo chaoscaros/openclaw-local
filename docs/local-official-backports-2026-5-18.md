@@ -94,6 +94,38 @@ hard protection point. Do not regress the changes in:
 - `src/auto-reply/reply/agent-runner-direct-runtime-config.test.ts`
 - `src/gateway/server.sessions.gateway-server-sessions-a.test.ts`
 
+## Post-Audit Local Protection Points
+
+The local branch has two additional task-mode stability commits after the
+5.18 closure audit. Future official-tag iterations must preserve these
+behaviors before evaluating any upstream replacement:
+
+- `3e708ae143509235740a987e0c78c58380ca7a9e`
+  (`修复任务模式超时重连`)
+  - Preserves task-mode recovery when an agent run times out or reconnects.
+  - Keeps timeout-triggered compaction, LLM idle timeout handling, memory-flush
+    forwarding, failover policy, and terminal run reconciliation aligned.
+  - Protects isolated heartbeat session-key stability and task-mode terminal
+    display behavior.
+  - Guarded files include `src/agents/pi-embedded-runner/run.ts`,
+    `src/agents/pi-embedded-runner/run/attempt.ts`,
+    `src/agents/pi-embedded-runner/run/llm-idle-timeout.ts`,
+    `src/agents/pi-embedded-runner/run/failover-policy.ts`,
+    `src/auto-reply/reply/agent-runner-execution.ts`,
+    `src/gateway/server-methods/chat.ts`,
+    `src/gateway/session-run-terminal.ts`,
+    `src/infra/heartbeat-runner.ts`, and `ui/src/ui/tool-display.ts`.
+- `dc35617aa90a5d95125a0fd81d92195b13b2ba76`
+  (`增强任务模式稳定性`)
+  - Preserves chat abort controller activity extension so long-running
+    task-mode work is not expired while still active.
+  - Keeps runtime subscription activity, server chat agent-event propagation,
+    host-edit recovery, tool-image logging, and directive-tag handling stable.
+  - Guarded files include `src/gateway/chat-abort.ts`,
+    `src/gateway/server-chat.ts`, `src/gateway/server-runtime-subscriptions.ts`,
+    `src/gateway/server-methods/chat.ts`, `src/agents/pi-tools.host-edit.ts`,
+    `src/agents/tool-images.ts`, and the matching tests.
+
 ## Deferred Beyond 5.18
 
 - Official `v2026.5.19+` release train changes are intentionally deferred.
