@@ -25,10 +25,20 @@ function createTempHome() {
   return { root, home, stateDir };
 }
 
-function writeEnv(home: string, stateDir: string): void {
+function writeEnv(home: string, stateDir: string, configPath?: string): void {
   const envPath = path.join(home, ".openclaw", ".env");
   fs.mkdirSync(path.dirname(envPath), { recursive: true });
-  fs.writeFileSync(envPath, `OPENCLAW_STATE_DIR=${stateDir}\n`, "utf8");
+  fs.writeFileSync(
+    envPath,
+    [
+      `OPENCLAW_STATE_DIR=${stateDir}`,
+      configPath ? `OPENCLAW_CONFIG_PATH=${configPath}` : undefined,
+    ]
+      .filter(Boolean)
+      .join("\n")
+      .concat("\n"),
+    "utf8",
+  );
 }
 
 function writeJsonFile(pathname: string, value: unknown): void {
@@ -102,6 +112,69 @@ describe("codex clean", () => {
       },
       usageStats: {
         "openai:default": { errorCount: 1 },
+      },
+    });
+  });
+
+  it("cleans auth profiles from agentDir entries in the configured config file", async () => {
+    const configPath = path.join(temp.root, "config", "openclaw.runtime.json5");
+    const agentDir = path.join(temp.root, "crews", "solo", "agent");
+    writeEnv(temp.home, temp.stateDir, configPath);
+    writeJsonFile(configPath, {
+      agents: {
+        list: [{ id: "solo", agentDir }],
+      },
+    });
+    const authPath = path.join(agentDir, "auth-profiles.json");
+    writeJsonFile(authPath, {
+      version: 1,
+      profiles: {
+        "openai-codex:old@example.com": { type: "oauth", provider: "openai-codex" },
+        "anthropic:manual": { type: "api_key", provider: "anthropic" },
+      },
+    });
+
+    await __testing.codexCleanCommand({ force: true }, createRuntime(), deps());
+
+    expect(readJsonFile(authPath)).toMatchObject({
+      profiles: {
+        "anthropic:manual": { type: "api_key", provider: "anthropic" },
+      },
+    });
+  });
+
+  it("clears Codex auth profile overrides from configured session metadata", async () => {
+    const configPath = path.join(temp.root, "config", "openclaw.runtime.json5");
+    const agentDir = path.join(temp.root, "crews", "solo", "agent");
+    writeEnv(temp.home, temp.stateDir, configPath);
+    writeJsonFile(configPath, {
+      agents: {
+        list: [{ id: "solo", agentDir }],
+      },
+    });
+    const sessionPath = path.join(temp.root, "crews", "solo", "sessions", "sessions.json");
+    writeJsonFile(sessionPath, {
+      chat: {
+        authProfileOverride: "openai-codex:old@example.com",
+        authProfileOverrideSource: "user",
+        authProfileOverrideCompactionCount: 3,
+        providerOverride: "openai-codex",
+      },
+      other: {
+        authProfileOverride: "anthropic:manual",
+        authProfileOverrideSource: "user",
+      },
+    });
+
+    await __testing.codexCleanCommand({ force: true }, createRuntime(), deps());
+
+    expect(readJsonFile(sessionPath)).toEqual({
+      chat: {
+        providerOverride: "openai-codex",
+      },
+      other: {
+        authProfileOverride: "anthropic:manual",
+        authProfileOverrideSource: "user",
       },
     });
   });

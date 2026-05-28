@@ -2,9 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import dotenv from "dotenv";
-import { resolveNewStateDir, resolveStateDir } from "../config/paths.js";
+import JSON5 from "json5";
+import { listAgentIds, resolveAgentDir } from "../agents/agent-scope-config.js";
+import { resolveConfigPath, resolveNewStateDir, resolveStateDir } from "../config/paths.js";
+import type { OpenClawConfig } from "../config/types.js";
 import { success } from "../globals.js";
-import { resolveHomeRelativePath } from "../infra/home-dir.js";
 import { type RuntimeEnv, defaultRuntime, writeRuntimeJson } from "../runtime.js";
 import { shortenHomePath } from "../utils.js";
 import { createClackPrompter } from "../wizard/clack-prompter.js";
@@ -26,6 +28,7 @@ type JsonRecord = Record<string, unknown>;
 
 type CleanTarget = {
   path: string;
+  kind: "auth" | "session";
   removedProfiles: string[];
   removedProviderState: string[];
   next: unknown;
@@ -33,6 +36,7 @@ type CleanTarget = {
 
 const CODEX_PROVIDER_ID = "openai-codex";
 const AUTH_FILENAMES = ["auth-profiles.json", "auth-state.json", "auth.json"] as const;
+const SESSION_STORE_FILENAME = "sessions.json";
 
 const defaultCodexCleanDeps: CodexCleanDeps = {
   confirm: async (message) => {
@@ -55,22 +59,31 @@ function resolveDefaultEnvPath(deps: Pick<CodexCleanDeps, "homedir">): string {
   );
 }
 
-async function resolveConfiguredStateDir(deps: CodexCleanDeps): Promise<string> {
+async function readConfiguredEnv(deps: CodexCleanDeps): Promise<NodeJS.ProcessEnv> {
+  const configured: NodeJS.ProcessEnv = { ...deps.env };
   const envPath = resolveDefaultEnvPath(deps);
   try {
     const parsed = dotenv.parse(await deps.fsModule.promises.readFile(envPath, "utf8"));
-    const configured = parsed.OPENCLAW_STATE_DIR?.trim();
-    if (configured) {
-      return resolveHomeRelativePath(configured, { env: deps.env, homedir: deps.homedir });
-    }
+    return { ...parsed, ...configured };
   } catch {
-    // Fall back to normal state-dir resolution for older installs without the new .env flow.
+    return configured;
   }
-  return resolveStateDir(deps.env, deps.homedir);
+}
+
+async function resolveConfiguredStateDir(deps: CodexCleanDeps): Promise<string> {
+  const env = await readConfiguredEnv(deps);
+  return resolveStateDir(env, deps.homedir);
+}
+
+function isCodexProfileId(profileId: string): boolean {
+  if (profileId === CODEX_PROVIDER_ID || profileId.startsWith(`${CODEX_PROVIDER_ID}:`)) {
+    return true;
+  }
+  return false;
 }
 
 function isCodexProfile(profileId: string, value: unknown): boolean {
-  if (profileId === CODEX_PROVIDER_ID || profileId.startsWith(`${CODEX_PROVIDER_ID}:`)) {
+  if (isCodexProfileId(profileId)) {
     return true;
   }
   if (!isRecord(value)) {
@@ -136,21 +149,87 @@ function cleanAuthStore(raw: unknown): {
   };
 }
 
-async function listCodexCleanTargets(
-  stateDir: string,
-  deps: Pick<CodexCleanDeps, "fsModule">,
-): Promise<CleanTarget[]> {
-  const agentsDir = path.join(stateDir, "agents");
-  let agentNames: string[];
-  try {
-    agentNames = await deps.fsModule.promises.readdir(agentsDir);
-  } catch {
-    return [];
+function cleanSessionStore(raw: unknown): {
+  changed: boolean;
+  next: unknown;
+  removedProfiles: string[];
+  removedProviderState: string[];
+} {
+  if (!isRecord(raw)) {
+    return { changed: false, next: raw, removedProfiles: [], removedProviderState: [] };
   }
 
+  const next = structuredClone(raw);
+  const removedProfiles: string[] = [];
+
+  function visit(value: unknown): void {
+    if (!isRecord(value)) {
+      return;
+    }
+    const profile = value.authProfileOverride;
+    if (typeof profile === "string" && isCodexProfileId(profile)) {
+      delete value.authProfileOverride;
+      delete value.authProfileOverrideSource;
+      delete value.authProfileOverrideCompactionCount;
+      removedProfiles.push(profile);
+    }
+    for (const child of Object.values(value)) {
+      if (isRecord(child) || Array.isArray(child)) {
+        visit(child);
+      }
+    }
+  }
+
+  visit(next);
+  return {
+    changed: removedProfiles.length > 0,
+    next,
+    removedProfiles: [...new Set(removedProfiles)],
+    removedProviderState: ["session.authProfileOverride"],
+  };
+}
+
+async function readConfiguredAgentDirs(params: {
+  stateDir: string;
+  configPath: string;
+  deps: Pick<CodexCleanDeps, "env" | "fsModule">;
+}): Promise<string[]> {
+  let cfg: OpenClawConfig | undefined;
+  try {
+    const raw = await params.deps.fsModule.promises.readFile(params.configPath, "utf8");
+    cfg = JSON5.parse(raw) as OpenClawConfig;
+  } catch {
+    cfg = undefined;
+  }
+
+  const dirs = new Set<string>();
+  if (cfg) {
+    for (const agentId of listAgentIds(cfg)) {
+      dirs.add(resolveAgentDir(cfg, agentId, params.deps.env));
+    }
+  }
+
+  try {
+    const agentsDir = path.join(params.stateDir, "agents");
+    const agentNames = await params.deps.fsModule.promises.readdir(agentsDir);
+    for (const agentName of agentNames) {
+      dirs.add(path.join(agentsDir, agentName, "agent"));
+    }
+  } catch {
+    // Older installs may not have a state-dir agents folder.
+  }
+
+  return [...dirs].toSorted();
+}
+
+async function listCodexCleanTargets(
+  stateDir: string,
+  configPath: string,
+  deps: Pick<CodexCleanDeps, "env" | "fsModule">,
+): Promise<CleanTarget[]> {
   const targets: CleanTarget[] = [];
-  for (const agentName of agentNames.toSorted()) {
-    const agentAuthDir = path.join(agentsDir, agentName, "agent");
+  const agentAuthDirs = await readConfiguredAgentDirs({ stateDir, configPath, deps });
+  for (const agentAuthDir of agentAuthDirs) {
     for (const filename of AUTH_FILENAMES) {
       const targetPath = path.join(agentAuthDir, filename);
       let parsed: unknown;
@@ -163,11 +242,36 @@ async function listCodexCleanTargets(
       if (result.changed) {
         targets.push({
           path: targetPath,
+          kind: "auth",
           removedProfiles: result.removedProfiles,
           removedProviderState: result.removedProviderState,
           next: result.next,
         });
       }
+    }
+
+    const sessionStorePath = path.join(
+      path.dirname(agentAuthDir),
+      "sessions",
+      SESSION_STORE_FILENAME,
+    );
+    let parsedSessionStore: unknown;
+    try {
+      parsedSessionStore = JSON.parse(
+        await deps.fsModule.promises.readFile(sessionStorePath, "utf8"),
+      );
+    } catch {
+      continue;
+    }
+    const result = cleanSessionStore(parsedSessionStore);
+    if (result.changed) {
+      targets.push({
+        path: sessionStorePath,
+        kind: "session",
+        removedProfiles: result.removedProfiles,
+        removedProviderState: result.removedProviderState,
+        next: result.next,
+      });
     }
   }
   return targets;
@@ -188,8 +292,13 @@ export async function codexCleanCommand(
   runtime: RuntimeEnv = defaultRuntime,
   deps: CodexCleanDeps = defaultCodexCleanDeps,
 ): Promise<void> {
-  const stateDir = await resolveConfiguredStateDir(deps);
-  const targets = await listCodexCleanTargets(stateDir, deps);
+  const configuredEnv = await readConfiguredEnv(deps);
+  const stateDir = resolveStateDir(configuredEnv, deps.homedir);
+  const configPath = resolveConfigPath(configuredEnv, stateDir, deps.homedir);
+  const targets = await listCodexCleanTargets(stateDir, configPath, {
+    ...deps,
+    env: configuredEnv,
+  });
   const removedProfileCount = targets.reduce(
     (sum, target) => sum + target.removedProfiles.length,
     0,
@@ -197,9 +306,11 @@ export async function codexCleanCommand(
   const payload = {
     provider: CODEX_PROVIDER_ID,
     stateDir,
+    configPath,
     dryRun: Boolean(options.dryRun),
     changedFiles: targets.map((target) => ({
       path: target.path,
+      kind: target.kind,
       removedProfiles: target.removedProfiles,
       removedProviderState: target.removedProviderState,
     })),
@@ -242,6 +353,7 @@ export async function codexCleanCommand(
 
 export const __testing = {
   cleanAuthStore,
+  cleanSessionStore,
   codexCleanCommand,
   listCodexCleanTargets,
   resolveConfiguredStateDir,
