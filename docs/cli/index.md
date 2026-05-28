@@ -16,6 +16,7 @@ This page describes the current CLI behavior. If commands change, update this do
 - [`onboard`](/cli/onboard)
 - [`configure`](/cli/configure)
 - [`config`](/cli/config)
+- [`env`](/cli/env)
 - [`completion`](/cli/completion)
 - [`doctor`](/cli/doctor)
 - [`dashboard`](/cli/dashboard)
@@ -56,6 +57,7 @@ This page describes the current CLI behavior. If commands change, update this do
 - [`pairing`](/cli/pairing)
 - [`qr`](/cli/qr)
 - [`plugins`](/cli/plugins) (plugin commands)
+- [`codex`](/cli/codex)
 - [`channels`](/cli/channels)
 - [`security`](/cli/security)
 - [`secrets`](/cli/secrets)
@@ -104,12 +106,16 @@ openclaw [--dev] [--profile <name>] <command>
   onboard
   configure
   config
+    init
     get
     set
     unset
     file
     schema
     validate
+  env
+    init
+    token
   completion
   doctor
   dashboard
@@ -203,6 +209,7 @@ openclaw [--dev] [--profile <name>] <command>
     ban
   agent
   agents
+    init
     list
     add
     delete
@@ -370,6 +377,8 @@ openclaw [--dev] [--profile <name>] <command>
   clawbot
     qr
   docs
+  codex
+    clean
   dns
     setup
   tui

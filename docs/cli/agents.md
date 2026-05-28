@@ -1,5 +1,5 @@
 ---
-summary: "CLI reference for `openclaw agents` (list/add/delete/bindings/bind/unbind/set identity)"
+summary: "CLI reference for `openclaw agents` (init/list/add/delete/bindings/bind/unbind/set identity)"
 read_when:
   - You want multiple isolated agents (workspaces + routing + auth)
 title: "agents"
@@ -19,6 +19,7 @@ Related:
 
 ```bash
 openclaw agents list
+openclaw agents init
 openclaw agents list --bindings
 openclaw agents add work --workspace ~/.openclaw/workspace-work
 openclaw agents add ops --workspace ~/.openclaw/workspace-ops --bind telegram:ops --non-interactive
@@ -89,6 +90,28 @@ openclaw agents unbind --agent work --all
 ### `agents`
 
 Running `openclaw agents` with no subcommand is equivalent to `openclaw agents list`.
+
+### `agents init`
+
+Create or update the local default `solo` agent from the `.env` and config file
+created by `openclaw env init` and `openclaw config init`.
+
+Behavior:
+
+- Reads `~/.openclaw/.env`
+- Requires `OPENCLAW_STATE_DIR` and `OPENCLAW_CONFIG_PATH`
+- Reads the config file pointed at by `OPENCLAW_CONFIG_PATH`
+- Creates the agent state directory and session directory recursively
+- Sets `solo` as the default agent
+- Uses the current working directory as the `solo` workspace
+- Preserves an existing `solo` agent unless `--force` is passed
+
+Examples:
+
+```bash
+openclaw agents init
+openclaw agents init --force
+```
 
 ### `agents list`
 

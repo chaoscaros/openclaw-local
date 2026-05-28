@@ -1,5 +1,5 @@
 ---
-summary: "CLI reference for `openclaw config` (get/set/unset/file/schema/validate)"
+summary: "CLI reference for `openclaw config` (init/get/set/unset/file/schema/validate)"
 read_when:
   - You want to read or edit config non-interactively
 title: "config"
@@ -7,7 +7,7 @@ title: "config"
 
 # `openclaw config`
 
-Config helpers for non-interactive edits in `openclaw.json`: get/set/unset/file/schema/validate
+Config helpers for non-interactive edits in `openclaw.json`: init/get/set/unset/file/schema/validate
 values by path and print the active config file. Run without a subcommand to
 open the configure wizard (same as `openclaw configure`).
 
@@ -33,6 +33,7 @@ Supported guided sections:
 openclaw config file
 openclaw config --section model
 openclaw config --section gateway --section daemon
+openclaw config init
 openclaw config schema
 openclaw config get browser.executablePath
 openclaw config set browser.executablePath "/usr/bin/google-chrome"
@@ -44,6 +45,35 @@ openclaw config unset plugins.entries.brave.config.webSearch.apiKey
 openclaw config set channels.discord.token --ref-provider default --ref-source env --ref-id DISCORD_BOT_TOKEN --dry-run
 openclaw config validate
 openclaw config validate --json
+```
+
+### `config init`
+
+Create the config file pointed at by `OPENCLAW_CONFIG_PATH` in
+`~/.openclaw/.env`.
+
+Use it after `openclaw env init` and after editing `.env`:
+
+```bash
+openclaw env init
+# edit ~/.openclaw/.env and set OPENCLAW_STATE_DIR plus OPENCLAW_CONFIG_PATH
+openclaw config init
+```
+
+Behavior:
+
+- Reads `~/.openclaw/.env`
+- Requires `OPENCLAW_STATE_DIR` and `OPENCLAW_CONFIG_PATH`
+- Creates the state directory and the config parent directory recursively
+- Writes Gateway auth with an env SecretRef to `OPENCLAW_GATEWAY_TOKEN`
+- Refuses to overwrite an existing config unless `--force` is passed
+- Rejects copied macOS/Linux home paths such as `/Users/...` on Windows
+
+Examples:
+
+```bash
+openclaw config init
+openclaw config init --force
 ```
 
 ### `config schema`
