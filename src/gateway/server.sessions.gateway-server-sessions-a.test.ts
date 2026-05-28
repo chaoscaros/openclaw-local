@@ -1750,6 +1750,54 @@ describe("gateway server sessions", () => {
     ws.close();
   });
 
+  test("sessions.reset starts normal sessions on a fresh transcript path", async () => {
+    const { dir } = await createSessionStoreDir();
+    const oldSessionFile = path.join(dir, "main-old-transcript.jsonl");
+    await fs.writeFile(
+      oldSessionFile,
+      [
+        JSON.stringify({ type: "session", version: 1, id: "sess-old" }),
+        JSON.stringify({
+          message: {
+            role: "assistant",
+            content: "old context",
+            usage: { input: 96_000, cacheRead: 672_200, output: 4_500 },
+          },
+        }),
+      ].join("\n"),
+      "utf-8",
+    );
+    await writeSessionStore({
+      entries: {
+        "agent:main:main": {
+          sessionId: "sess-old",
+          sessionFile: oldSessionFile,
+          updatedAt: Date.now(),
+          totalTokens: 772_700,
+          totalTokensFresh: true,
+        },
+      },
+    });
+
+    const { ws } = await openClient();
+    const reset = await rpcReq<{
+      ok: true;
+      key: string;
+      entry: { sessionId: string; sessionFile?: string; totalTokens?: number };
+    }>(ws, "sessions.reset", { key: "main" });
+
+    expect(reset.ok).toBe(true);
+    expect(reset.payload?.entry.sessionId).not.toBe("sess-old");
+    expect(reset.payload?.entry.sessionFile).toBeTruthy();
+    expect(reset.payload?.entry.sessionFile).not.toBe(oldSessionFile);
+    expect(reset.payload?.entry.totalTokens).toBe(0);
+    const newTranscript = await fs.readFile(reset.payload?.entry.sessionFile as string, "utf-8");
+    expect(newTranscript).toContain(reset.payload?.entry.sessionId as string);
+    expect(newTranscript).not.toContain("old context");
+
+    ws.close();
+  });
+
   test("sessions.reset drops cached skills snapshot so /new rebuilds visible skills", async () => {
     const { storePath } = await createSessionStoreDir();
     testState.agentConfig = {

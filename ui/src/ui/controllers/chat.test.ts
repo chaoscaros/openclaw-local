@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { extractText } from "../chat/message-extract.ts";
 import { GatewayRequestError } from "../gateway.ts";
 import {
   abortChatRun,
@@ -653,6 +654,35 @@ describe("loadChatHistory", () => {
     await loadChatHistory(state);
 
     expect(state.chatMessages).toEqual([messages[0], messages[3], messages[4]]);
+  });
+
+  it("strips and dedupes repeated task binding prompt prefixes from retry history", async () => {
+    const repeatedTaskBindingText = `[Current task binding for this turn]
+Task id: task-1
+Task title: supply_vue项目
+Task summary: /path/to/project
+Use the task binding above as the task the user is continuing right now.
+If earlier conversation history mentions different tasks, treat those as stale unless the user explicitly switches again.
+
+[Wed 2026-05-27 17:19 GMT+8] 配送金额 和 退货金额 是表格里已有的字段`;
+    const messages = Array.from({ length: 9 }, (_, index) => ({
+      role: "user",
+      content: [{ type: "text", text: repeatedTaskBindingText }],
+      timestamp: 1_000 + index,
+    }));
+    const mockClient = {
+      request: vi.fn().mockResolvedValue({ messages }),
+    };
+    const state = createState({
+      client: mockClient as unknown as ChatState["client"],
+      connected: true,
+    });
+
+    await loadChatHistory(state);
+
+    expect(state.chatMessages).toHaveLength(1);
+    expect(state.chatMessages[0]).toEqual(messages[0]);
+    expect(extractText(state.chatMessages[0])).toBe("配送金额 和 退货金额 是表格里已有的字段");
   });
 
   it("keeps assistant message when text field has real content but content is NO_REPLY", async () => {

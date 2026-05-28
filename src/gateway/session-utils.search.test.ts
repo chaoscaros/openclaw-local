@@ -434,6 +434,41 @@ describe("listSessionsFromStore search", () => {
     });
   });
 
+  test("keeps fresh zero totalTokens after reset instead of falling back to old transcript usage", () => {
+    withTranscriptStoreFixture({
+      prefix: "openclaw-session-utils-reset-zero-",
+      transcriptId: "sess-main",
+      provider: "openai",
+      model: "gpt-5.4",
+      input: 96_000,
+      output: 4_500,
+      cacheRead: 672_200,
+      costTotal: 0,
+      run: ({ storePath, now }) => {
+        const result = listSingleSession({
+          cfg: baseCfg,
+          storePath,
+          key: "agent:main:main",
+          entry: {
+            sessionId: "sess-main",
+            updatedAt: now,
+            modelProvider: "openai",
+            model: "gpt-5.4",
+            totalTokens: 0,
+            totalTokensFresh: true,
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+          } as SessionEntry,
+        });
+
+        expect(result.sessions[0]?.totalTokens).toBe(0);
+        expect(result.sessions[0]?.totalTokensFresh).toBe(true);
+      },
+    });
+  });
+
   test("falls back to transcript usage for totalTokens and estimatedCostUsd, and derives contextTokens from the resolved model", () => {
     withTranscriptStoreFixture({
       prefix: "openclaw-session-utils-",

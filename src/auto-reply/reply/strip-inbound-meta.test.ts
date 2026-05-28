@@ -121,7 +121,58 @@ This is plain user text`;
 
   it("strips an active-memory prompt prefix block even when earlier text precedes it", () => {
     const input = `Queued earlier user turn\n\n${ACTIVE_MEMORY_PREFIX_BLOCK}\n\nWhat should I grab on the way?`;
-    expect(stripInboundMetadata(input)).toBe("Queued earlier user turn\n\nWhat should I grab on the way?");
+    expect(stripInboundMetadata(input)).toBe(
+      "Queued earlier user turn\n\nWhat should I grab on the way?",
+    );
+  });
+
+  it("strips a leading current task binding block from visible user text", () => {
+    const input = `[Current task binding for this turn]
+Task id: task-1
+Task title: supply_vue项目
+Task summary: /path/to/project
+Use the task binding above as the task the user is continuing right now.
+If earlier conversation history mentions different tasks, treat those as stale unless the user explicitly switches again.
+
+[Wed 2026-05-27 17:19 GMT+8] 配送金额 和 退货金额 是表格里已有的字段`;
+
+    expect(stripInboundMetadata(input)).toBe("配送金额 和 退货金额 是表格里已有的字段");
+  });
+
+  it("strips a normal-mode current task binding block", () => {
+    const input = `[Current task binding for this turn]
+Task mode is currently off for this session.
+There is no active task binding for this turn.
+Ignore any task-binding blocks from earlier turns unless the user explicitly switches back to task mode or names a task again.
+继续`;
+
+    expect(stripInboundMetadata(input)).toBe("继续");
+  });
+
+  it("strips media metadata before a current task binding block", () => {
+    const input = `[media attached: /Users/example/.openclaw/media/inbound/image.png (image/png)]
+To send an image back, prefer the message tool (media/path/filePath). If you must inline, use MEDIA:https://example.com/image.jpg
+(spaces ok, quote if needed) or a safe relative path like MEDIA:./image.jpg. Avoid absolute paths (MEDIA:/...) and ~ paths - they are blocked for security. Keep caption in the text body.
+[Current task binding for this turn]
+Task id: task-1
+Task title: supply_vue项目
+Task summary: /path/to/project
+Use the task binding above as the task the user is continuing right now.
+If earlier conversation history mentions different tasks, treat those as stale unless the user explicitly switches again.
+
+[Thu 2026-05-28 08:41 GMT+8] 规格描述：要在商品名称下方`;
+
+    expect(stripInboundMetadata(input)).toBe("规格描述：要在商品名称下方");
+  });
+
+  it("strips media metadata before plain visible text", () => {
+    const input = `[media attached: /Users/example/.openclaw/media/inbound/image.png (image/png)]
+To send an image back, prefer the message tool (media/path/filePath). If you must inline, use MEDIA:https://example.com/image.jpg
+(spaces ok, quote if needed) or a safe relative path like MEDIA:./image.jpg. Avoid absolute paths (MEDIA:/...) and ~ paths - they are blocked for security. Keep caption in the text body.
+
+请看这张图`;
+
+    expect(stripInboundMetadata(input)).toBe("请看这张图");
   });
 
   it("does not strip active-memory lookalike user text without exact tag lines", () => {

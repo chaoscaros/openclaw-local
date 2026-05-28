@@ -1,3 +1,4 @@
+import { stripEnvelopeFromMessages } from "./chat-sanitize.js";
 import {
   DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS,
   sanitizeChatHistoryMessages,
@@ -102,7 +103,7 @@ export function buildSessionHistorySnapshot(params: {
   const history = paginateSessionMessages(
     toSessionHistoryMessages(
       sanitizeChatHistoryMessages(
-        params.rawMessages,
+        stripEnvelopeFromMessages(params.rawMessages),
         params.maxChars ?? DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS,
       ),
     ),
@@ -179,10 +180,11 @@ export class SessionHistorySseState {
       seq: this.rawTranscriptSeq,
     });
     const sanitized = sanitizeChatHistoryMessages([nextMessage], this.maxChars);
-    if (sanitized.length === 0) {
+    const stripped = stripEnvelopeFromMessages(sanitized);
+    if (stripped.length === 0) {
       return null;
     }
-    const [sanitizedMessage] = toSessionHistoryMessages(sanitized);
+    const [sanitizedMessage] = toSessionHistoryMessages(stripped);
     if (!sanitizedMessage) {
       return null;
     }

@@ -104,6 +104,43 @@ describe("SessionHistorySseState", () => {
     expect(snapshot.rawTranscriptSeq).toBe(2);
   });
 
+  test("strips task binding metadata from projected user history", () => {
+    const snapshot = buildSessionHistorySnapshot({
+      rawMessages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `[Current task binding for this turn]
+Task id: task-1
+Task title: supply_vue项目
+Task summary: /path/to/project
+Use the task binding above as the task the user is continuing right now.
+If earlier conversation history mentions different tasks, treat those as stale unless the user explicitly switches again.
+
+[Wed 2026-05-27 17:19 GMT+8] 配送金额 和 退货金额 是表格里已有的字段`,
+            },
+          ],
+          __openclaw: { seq: 1 },
+        },
+      ],
+    });
+
+    expect(snapshot.history.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "配送金额 和 退货金额 是表格里已有的字段",
+          },
+        ],
+        __openclaw: { seq: 1 },
+      },
+    ]);
+  });
+
   test("drops hidden inline messages while preserving raw sequence", () => {
     const state = SessionHistorySseState.fromRawSnapshot({
       target: { sessionId: "sess-main" },

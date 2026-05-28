@@ -577,6 +577,30 @@ describe("connectGateway", () => {
     expect(host.lastError).toBe("disconnected (1006): no reason");
   });
 
+  it("preserves active chat pending state on successful hello after reconnect", () => {
+    const host = createHost();
+
+    connectGateway(host);
+    const firstClient = gatewayClientInstances[0];
+    expect(firstClient).toBeDefined();
+    firstClient.emitHello();
+    host.chatRunId = "run-reconnect";
+    host.agentLifecycleChatRunId = "run-reconnect";
+    host.chatStream = "";
+    host.chatStreamStartedAt = 123;
+
+    firstClient.emitClose({ code: 1006 });
+    connectGateway(host);
+    const reconnectClient = gatewayClientInstances[1];
+    expect(reconnectClient).toBeDefined();
+    reconnectClient.emitHello();
+
+    expect(host.chatRunId).toBe("run-reconnect");
+    expect(host.agentLifecycleChatRunId).toBe("run-reconnect");
+    expect(host.chatStream).toBe("");
+    expect(host.chatStreamStartedAt).toBe(123);
+  });
+
   it("keeps shutdown restart reasons on service restart closes", () => {
     const host = createHost();
 

@@ -625,6 +625,41 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     expect(register).not.toHaveBeenCalledWith("run-other-session", "conn-1");
   });
 
+  it("registers late tool-event recipients against the canonical session key", async () => {
+    createTranscriptFixture("openclaw-chat-send-tool-events-canonical-");
+    mockState.sessionEntry = { canonicalKey: "agent:main:canon" };
+    mockState.finalText = "ok";
+    mockState.triggerAgentRunStart = true;
+    mockState.agentRunId = "run-current";
+    const respond = vi.fn();
+    const context = createChatContext();
+    context.chatAbortControllers.set("run-same-session", {
+      controller: new AbortController(),
+      sessionId: "sess-prev",
+      sessionKey: "agent:main:canon",
+      startedAtMs: Date.now(),
+      lastActivityAtMs: Date.now(),
+      expiresAtMs: Date.now() + 10_000,
+      activityTimeoutMs: 10_000,
+    });
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-tool-events-canonical",
+      sessionKey: "legacy-key",
+      client: {
+        connId: "conn-canon",
+        connect: { caps: [GATEWAY_CLIENT_CAPS.TOOL_EVENTS] },
+      },
+      expectBroadcast: false,
+    });
+
+    const register = context.registerToolEventRecipient as unknown as ReturnType<typeof vi.fn>;
+    expect(register).toHaveBeenCalledWith("run-current", "conn-canon");
+    expect(register).toHaveBeenCalledWith("run-same-session", "conn-canon");
+  });
+
   it("does not register tool-event recipients without tool-events capability", async () => {
     createTranscriptFixture("openclaw-chat-send-tool-events-off-");
     mockState.finalText = "ok";
@@ -2076,6 +2111,39 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
         idempotencyKey: "idem-user-transcript-agent-run",
       },
     });
+  });
+
+  it("broadcasts chat final when an agent run completes through the transcript path", async () => {
+    createTranscriptFixture("openclaw-chat-send-agent-run-final-");
+    mockState.finalText = "ok";
+    mockState.triggerAgentRunStart = true;
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    const payload = await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-agent-run-final",
+      sessionKey: "main",
+    });
+
+    expect(payload).toEqual(
+      expect.objectContaining({
+        runId: "idem-agent-run-final",
+        sessionKey: "main",
+        state: "final",
+      }),
+    );
+    expect((payload as { message?: unknown }).message).toBeUndefined();
+    expect(context.nodeSendToSession).toHaveBeenCalledWith(
+      "main",
+      "chat",
+      expect.objectContaining({
+        runId: "idem-agent-run-final",
+        sessionKey: "main",
+        state: "final",
+      }),
+    );
   });
 
   it("does not emit a duplicate user transcript update for an existing chat.send idempotency key", async () => {

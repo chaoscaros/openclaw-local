@@ -574,9 +574,10 @@ export async function performGatewaySessionReset(params: {
     oldSessionFile = currentEntry?.sessionFile;
     const now = Date.now();
     const nextSessionId = randomUUID();
+    const preserveSessionFile = isSubagentSessionKey(primaryKey) && currentEntry?.sessionFile;
     const sessionFile = resolveSessionFilePath(
       nextSessionId,
-      currentEntry?.sessionFile ? { sessionFile: currentEntry.sessionFile } : undefined,
+      preserveSessionFile ? { sessionFile: currentEntry.sessionFile } : undefined,
       resolveSessionFilePathOptions({
         storePath,
         agentId: sessionAgentId,
