@@ -99,6 +99,25 @@ export function expandHomePrefix(
   return input.replace(/^~(?=$|[\\/])/, home);
 }
 
+export function expandPathEnvironmentVariables(
+  input: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return input
+    .replace(/%([A-Za-z_][A-Za-z0-9_]*)%/g, (match, key: string) => {
+      const value = normalize(env[key]);
+      return value ?? match;
+    })
+    .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => {
+      const value = normalize(env[key]);
+      return value ?? match;
+    })
+    .replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (match, key: string) => {
+      const value = normalize(env[key]);
+      return value ?? match;
+    });
+}
+
 export function resolveHomeRelativePath(
   input: string,
   opts?: {
@@ -110,15 +129,16 @@ export function resolveHomeRelativePath(
   if (!trimmed) {
     return trimmed;
   }
-  if (trimmed.startsWith("~")) {
-    const expanded = expandHomePrefix(trimmed, {
+  const envExpanded = expandPathEnvironmentVariables(trimmed, opts?.env ?? process.env);
+  if (envExpanded.startsWith("~")) {
+    const expanded = expandHomePrefix(envExpanded, {
       home: resolveRequiredHomeDir(opts?.env ?? process.env, opts?.homedir ?? os.homedir),
       env: opts?.env,
       homedir: opts?.homedir,
     });
     return path.resolve(expanded);
   }
-  return path.resolve(trimmed);
+  return path.resolve(envExpanded);
 }
 
 export function resolveOsHomeRelativePath(
@@ -132,13 +152,14 @@ export function resolveOsHomeRelativePath(
   if (!trimmed) {
     return trimmed;
   }
-  if (trimmed.startsWith("~")) {
-    const expanded = expandHomePrefix(trimmed, {
+  const envExpanded = expandPathEnvironmentVariables(trimmed, opts?.env ?? process.env);
+  if (envExpanded.startsWith("~")) {
+    const expanded = expandHomePrefix(envExpanded, {
       home: resolveRequiredOsHomeDir(opts?.env ?? process.env, opts?.homedir ?? os.homedir),
       env: opts?.env,
       homedir: opts?.homedir,
     });
     return path.resolve(expanded);
   }
-  return path.resolve(trimmed);
+  return path.resolve(envExpanded);
 }

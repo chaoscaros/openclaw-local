@@ -1,6 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  expandPathEnvironmentVariables,
   expandHomePrefix,
   resolveEffectiveHomeDir,
   resolveHomeRelativePath,
@@ -159,6 +160,37 @@ describe("expandHomePrefix", () => {
   });
 });
 
+describe("expandPathEnvironmentVariables", () => {
+  it.each([
+    {
+      name: "expands Windows percent variables",
+      input: "%USERPROFILE%\\openclaw-state",
+      env: { USERPROFILE: "C:\\Users\\alice" } as NodeJS.ProcessEnv,
+      expected: "C:\\Users\\alice\\openclaw-state",
+    },
+    {
+      name: "expands braced POSIX variables",
+      input: "${OPENCLAW_ROOT}/config/openclaw.json",
+      env: { OPENCLAW_ROOT: "/srv/openclaw" } as NodeJS.ProcessEnv,
+      expected: "/srv/openclaw/config/openclaw.json",
+    },
+    {
+      name: "expands plain POSIX variables",
+      input: "$OPENCLAW_ROOT/state",
+      env: { OPENCLAW_ROOT: "/srv/openclaw" } as NodeJS.ProcessEnv,
+      expected: "/srv/openclaw/state",
+    },
+    {
+      name: "keeps unknown variables unchanged",
+      input: "%UNKNOWN%/$UNKNOWN/${UNKNOWN}",
+      env: {} as NodeJS.ProcessEnv,
+      expected: "%UNKNOWN%/$UNKNOWN/${UNKNOWN}",
+    },
+  ])("$name", ({ input, env, expected }) => {
+    expect(expandPathEnvironmentVariables(input, env)).toBe(expected);
+  });
+});
+
 describe("resolveHomeRelativePath", () => {
   it.each([
     {
@@ -183,6 +215,14 @@ describe("resolveHomeRelativePath", () => {
         env: { OPENCLAW_HOME: "/srv/openclaw-home" } as NodeJS.ProcessEnv,
       },
       expected: path.resolve("/srv/openclaw-home/docs"),
+    },
+    {
+      name: "expands environment variables before resolving",
+      input: "%OPENCLAW_ROOT%/config/openclaw.json",
+      opts: {
+        env: { OPENCLAW_ROOT: "/srv/openclaw" } as NodeJS.ProcessEnv,
+      },
+      expected: path.resolve("/srv/openclaw/config/openclaw.json"),
     },
     {
       name: "falls back to cwd when tilde paths have no home source",
