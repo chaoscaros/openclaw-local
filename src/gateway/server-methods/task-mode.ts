@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { errorShape, ErrorCodes } from "../protocol/index.js";
-import type { GatewayRequestHandlers } from "./types.js";
 import {
   archiveTaskModeTask,
   createTaskModeTask,
@@ -18,6 +17,7 @@ import {
   type TaskModeTodoPriority,
   type TaskModeTodoStatus,
 } from "../task-mode-store.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -34,7 +34,10 @@ function readOptionalStatus(value: unknown): TaskModeStatus | null {
 }
 
 function readOptionalTodoStatus(value: unknown): TaskModeTodoStatus | null {
-  return value === "pending" || value === "in_progress" || value === "completed" || value === "cancelled"
+  return value === "pending" ||
+    value === "in_progress" ||
+    value === "completed" ||
+    value === "cancelled"
     ? value
     : null;
 }
@@ -67,6 +70,7 @@ export const taskModeHandlers: GatewayRequestHandlers = {
       id: randomUUID(),
       title,
       description: readString(params.description) || undefined,
+      workspaceDir: readString(params.workspaceDir) || undefined,
       sessionKey: readString(params.sessionKey) || undefined,
     });
     respond(true, { ok: true, task });
@@ -87,6 +91,9 @@ export const taskModeHandlers: GatewayRequestHandlers = {
       ...(params.title !== undefined ? { title: readString(params.title) } : {}),
       ...(params.description !== undefined
         ? { description: typeof params.description === "string" ? params.description : null }
+        : {}),
+      ...(params.workspaceDir !== undefined
+        ? { workspaceDir: typeof params.workspaceDir === "string" ? params.workspaceDir : null }
         : {}),
       ...(status ? { status } : {}),
       ...(typeof params.archived === "boolean" ? { archived: params.archived } : {}),
@@ -157,10 +164,15 @@ export const taskModeHandlers: GatewayRequestHandlers = {
     const taskId = readString(params.taskId);
     const content = readString(params.content);
     if (!taskId || !content) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "taskId and content required"));
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "taskId and content required"),
+      );
       return;
     }
-    const priority = params.priority === undefined ? undefined : readOptionalTodoPriority(params.priority);
+    const priority =
+      params.priority === undefined ? undefined : readOptionalTodoPriority(params.priority);
     if (params.priority !== undefined && !priority) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "invalid priority"));
       return;
@@ -184,10 +196,15 @@ export const taskModeHandlers: GatewayRequestHandlers = {
     const taskId = readString(params.taskId);
     const todoId = readString(params.todoId);
     if (!taskId || !todoId) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "taskId and todoId required"));
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "taskId and todoId required"),
+      );
       return;
     }
-    const priority = params.priority === undefined ? undefined : readOptionalTodoPriority(params.priority);
+    const priority =
+      params.priority === undefined ? undefined : readOptionalTodoPriority(params.priority);
     if (params.priority !== undefined && !priority) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "invalid priority"));
       return;
@@ -197,7 +214,9 @@ export const taskModeHandlers: GatewayRequestHandlers = {
       todoId,
       ...(params.content !== undefined ? { content: readString(params.content) } : {}),
       ...(priority ? { priority } : {}),
-      ...(params.note !== undefined ? { note: typeof params.note === "string" ? params.note : null } : {}),
+      ...(params.note !== undefined
+        ? { note: typeof params.note === "string" ? params.note : null }
+        : {}),
       ...(params.verification !== undefined
         ? { verification: typeof params.verification === "string" ? params.verification : null }
         : {}),
@@ -213,7 +232,11 @@ export const taskModeHandlers: GatewayRequestHandlers = {
     const todoId = readString(params.todoId);
     const status = readOptionalTodoStatus(params.status);
     if (!taskId || !todoId || !status) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "taskId, todoId, and valid status required"));
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "taskId, todoId, and valid status required"),
+      );
       return;
     }
     const task = await setTaskModeTodoStatus({ taskId, todoId, status });
@@ -227,7 +250,11 @@ export const taskModeHandlers: GatewayRequestHandlers = {
     const taskId = readString(params.taskId);
     const todoId = readString(params.todoId);
     if (!taskId || !todoId) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "taskId and todoId required"));
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "taskId and todoId required"),
+      );
       return;
     }
     const task = await deleteTaskModeTodo({ taskId, todoId });

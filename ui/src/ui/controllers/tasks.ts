@@ -38,6 +38,7 @@ export type TaskItem = {
   taskId: string;
   title: string;
   description?: string;
+  workspaceDir?: string;
   progressSummary?: string;
   completedSummary?: string;
   nextStep?: string;
@@ -191,6 +192,9 @@ function mapTask(raw: Record<string, unknown>): TaskItem {
     title: typeof raw.title === "string" ? raw.title.trim() : "",
     ...(typeof raw.description === "string" && raw.description.trim()
       ? { description: raw.description.trim() }
+      : {}),
+    ...(typeof raw.workspaceDir === "string" && raw.workspaceDir.trim()
+      ? { workspaceDir: raw.workspaceDir.trim() }
       : {}),
     status: (raw.status as TaskStatus) ?? "active",
     ...(typeof raw.progressSummary === "string" && raw.progressSummary.trim()
@@ -456,7 +460,7 @@ export async function loadTaskModeData(
 
 export async function createTaskForCurrentSession(
   state: TasksState,
-  input: { title: string; description?: string },
+  input: { title: string; description?: string; workspaceDir?: string },
 ) {
   if (!state.client || !state.connected) {
     return null;
@@ -468,6 +472,7 @@ export async function createTaskForCurrentSession(
       {
         title: input.title,
         description: input.description,
+        workspaceDir: input.workspaceDir,
         sessionKey: state.sessionKey,
       },
     );
@@ -545,7 +550,12 @@ export async function setCurrentSessionMode(state: TasksState, mode: "normal" | 
 export async function updateTaskModeTask(
   state: TasksState,
   taskId: string,
-  patch: { title?: string; description?: string | null; status?: TaskStatus },
+  patch: {
+    title?: string;
+    description?: string | null;
+    workspaceDir?: string | null;
+    status?: TaskStatus;
+  },
 ) {
   if (!state.client || !state.connected) {
     return null;

@@ -450,9 +450,11 @@ export class OpenClawApp extends LitElement {
   @state() taskCreateOpen = false;
   @state() taskCreateTitle = "";
   @state() taskCreateDescription = "";
+  @state() taskCreateWorkspaceDir = "";
   @state() taskEditId: string | null = null;
   @state() taskEditTitle = "";
   @state() taskEditDescription = "";
+  @state() taskEditWorkspaceDir = "";
   @state() sessionsFilterActive = "";
   @state() sessionsFilterLimit = "120";
   @state() sessionsIncludeGlobal = true;
@@ -1124,15 +1126,16 @@ export class OpenClawApp extends LitElement {
     await loadTaskModeData(this as unknown as Parameters<typeof loadTaskModeData>[0]);
   }
 
-  async createTaskForCurrentSession(title: string, description?: string) {
+  async createTaskForCurrentSession(title: string, description?: string, workspaceDir?: string) {
     const result = await createTaskForCurrentSession(
       this as unknown as Parameters<typeof createTaskForCurrentSession>[0],
-      { title, description },
+      { title, description, workspaceDir },
     );
     if (result) {
       this.taskCreateOpen = false;
       this.taskCreateTitle = "";
       this.taskCreateDescription = "";
+      this.taskCreateWorkspaceDir = "";
     }
     return result;
   }
@@ -1156,6 +1159,7 @@ export class OpenClawApp extends LitElement {
     patch: {
       title?: string;
       description?: string | null;
+      workspaceDir?: string | null;
       status?: import("./controllers/tasks.ts").TaskStatus;
     },
   ) {

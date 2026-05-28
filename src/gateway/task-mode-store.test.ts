@@ -53,6 +53,42 @@ describe("task-mode-store", () => {
     expect(listed.archivedTasks).toEqual([]);
   });
 
+  it("persists an explicit task workspace directory", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const workspaceDir = path.join(process.env.OPENCLAW_STATE_DIR, "projects", "demo");
+    const created = await createTaskModeTask({
+      id: "task-workspace",
+      title: "Workspace task",
+      workspaceDir,
+    });
+    expect(created.workspaceDir).toBe(path.normalize(workspaceDir));
+
+    const updated = await updateTaskModeTask({
+      id: "task-workspace",
+      workspaceDir: path.join(process.env.OPENCLAW_STATE_DIR, "projects", "next"),
+    });
+    expect(updated?.workspaceDir).toBe(
+      path.normalize(path.join(process.env.OPENCLAW_STATE_DIR, "projects", "next")),
+    );
+
+    const listed = await listTaskModeTasks();
+    expect(listed.tasks[0]?.workspaceDir).toBe(updated?.workspaceDir);
+  });
+
+  it("infers a task workspace directory from an absolute directory description", async () => {
+    process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
+    const workspaceDir = path.join(process.env.OPENCLAW_STATE_DIR, "projects", "from-description");
+    fs.mkdirSync(workspaceDir, { recursive: true });
+
+    const created = await createTaskModeTask({
+      id: "task-description-workspace",
+      title: "Description workspace task",
+      description: workspaceDir,
+    });
+
+    expect(created.workspaceDir).toBe(path.normalize(workspaceDir));
+  });
+
   it("keeps managed flow linkage after updates", async () => {
     process.env.OPENCLAW_STATE_DIR = makeTempStateDir();
     const created = await createTaskModeTask({ id: "task-bridge", title: "Bridge task" });

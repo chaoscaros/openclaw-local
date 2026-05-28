@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
@@ -60,6 +61,7 @@ export type TaskModeRecord = {
   id: string;
   title: string;
   description?: string;
+  workspaceDir?: string;
   progressSummary?: string;
   completedSummary?: string;
   nextStep?: string;
@@ -444,18 +446,37 @@ function ensureBootstrapTodoItems(task: TaskModeRecord): {
   return ensureBootstrapTodoItemsFromSources(task);
 }
 
+function inferWorkspaceDirFromTaskDescription(description: string | undefined): string | undefined {
+  const candidate = typeof description === "string" ? description.trim() : "";
+  if (!candidate || candidate.includes("\0") || !path.isAbsolute(candidate)) {
+    return undefined;
+  }
+  try {
+    return fs.statSync(candidate).isDirectory() ? path.normalize(candidate) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function normalizeTaskRecord(raw: TaskModeRecord): TaskModeRecord {
   const normalizedTaskId = typeof raw.id === "string" ? raw.id.trim() : "";
   const flowId =
     typeof raw.flowId === "string" && raw.flowId.trim() ? raw.flowId.trim() : undefined;
   const flow = flowId ? getTaskFlowById(flowId) : undefined;
   const normalizedTitle = typeof raw.title === "string" ? raw.title.trim() : "";
+  const description =
+    typeof raw.description === "string" && raw.description.trim()
+      ? raw.description.trim()
+      : undefined;
+  const workspaceDir =
+    typeof raw.workspaceDir === "string" && raw.workspaceDir.trim()
+      ? path.normalize(raw.workspaceDir.trim())
+      : inferWorkspaceDirFromTaskDescription(description);
   return {
     id: normalizedTaskId,
     title: normalizedTitle,
-    ...(typeof raw.description === "string" && raw.description.trim()
-      ? { description: raw.description.trim() }
-      : {}),
+    ...(description ? { description } : {}),
+    ...(workspaceDir ? { workspaceDir } : {}),
     ...(typeof raw.progressSummary === "string" && raw.progressSummary.trim()
       ? { progressSummary: raw.progressSummary.trim() }
       : {}),
@@ -660,6 +681,9 @@ function compactTaskModeRecordForPersistence(
   }
   if (task.description) {
     base.description = task.description;
+  }
+  if (task.workspaceDir) {
+    base.workspaceDir = task.workspaceDir;
   }
   if (task.lastSessionKey) {
     base.lastSessionKey = task.lastSessionKey;
@@ -1303,6 +1327,7 @@ export async function createTaskModeTask(input: {
   id: string;
   title: string;
   description?: string;
+  workspaceDir?: string;
   sessionKey?: string;
 }): Promise<TaskModeRecord> {
   return withTaskModeStoreLock(async () => {
@@ -1312,6 +1337,7 @@ export async function createTaskModeTask(input: {
       id: input.id,
       title: input.title,
       description: input.description,
+      workspaceDir: input.workspaceDir,
       status: "active",
       archived: false,
       createdAt: now,
@@ -1441,6 +1467,7 @@ export async function updateTaskModeTask(params: {
   id: string;
   title?: string;
   description?: string | null;
+  workspaceDir?: string | null;
   status?: TaskModeStatus;
   archived?: boolean;
   sessionKey?: string;
@@ -1463,6 +1490,11 @@ export async function updateTaskModeTask(params: {
         ? params.description && params.description.trim()
           ? { description: params.description.trim() }
           : { description: undefined }
+        : {}),
+      ...(params.workspaceDir !== undefined
+        ? params.workspaceDir && params.workspaceDir.trim()
+          ? { workspaceDir: params.workspaceDir.trim() }
+          : { workspaceDir: undefined }
         : {}),
       ...(params.sessionKey ? { lastSessionKey: params.sessionKey } : {}),
     };

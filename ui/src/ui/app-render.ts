@@ -2146,9 +2146,11 @@ export function renderApp(state: AppViewState) {
               createOpen: state.taskCreateOpen,
               createTitle: state.taskCreateTitle,
               createDescription: state.taskCreateDescription,
+              createWorkspaceDir: state.taskCreateWorkspaceDir,
               editId: state.taskEditId,
               editTitle: state.taskEditTitle,
               editDescription: state.taskEditDescription,
+              editWorkspaceDir: state.taskEditWorkspaceDir,
               onRefresh: () => state.loadTaskModeData(),
               onRequestUpdate: requestHostUpdate,
               onToggleCreate: () => {
@@ -2156,10 +2158,12 @@ export function renderApp(state: AppViewState) {
                 if (!state.taskCreateOpen) {
                   state.taskCreateTitle = "";
                   state.taskCreateDescription = "";
+                  state.taskCreateWorkspaceDir = "";
                 }
               },
               onCreateTitleChange: (value) => (state.taskCreateTitle = value),
               onCreateDescriptionChange: (value) => (state.taskCreateDescription = value),
+              onCreateWorkspaceDirChange: (value) => (state.taskCreateWorkspaceDir = value),
               onCreateTask: async () => {
                 if (!state.taskCreateTitle.trim()) {
                   return;
@@ -2167,15 +2171,18 @@ export function renderApp(state: AppViewState) {
                 await state.createTaskForCurrentSession(
                   state.taskCreateTitle.trim(),
                   state.taskCreateDescription.trim() || undefined,
+                  state.taskCreateWorkspaceDir.trim() || undefined,
                 );
               },
               onToggleEdit: (task) => {
                 state.taskEditId = task?.taskId ?? null;
                 state.taskEditTitle = task?.title ?? "";
                 state.taskEditDescription = task?.description ?? "";
+                state.taskEditWorkspaceDir = task?.workspaceDir ?? "";
               },
               onEditTitleChange: (value) => (state.taskEditTitle = value),
               onEditDescriptionChange: (value) => (state.taskEditDescription = value),
+              onEditWorkspaceDirChange: (value) => (state.taskEditWorkspaceDir = value),
               onSaveEdit: async () => {
                 if (!state.taskEditId || !state.taskEditTitle.trim()) {
                   return;
@@ -2183,10 +2190,12 @@ export function renderApp(state: AppViewState) {
                 await state.updateTaskModeTask(state.taskEditId, {
                   title: state.taskEditTitle.trim(),
                   description: state.taskEditDescription.trim() || null,
+                  workspaceDir: state.taskEditWorkspaceDir.trim() || null,
                 });
                 state.taskEditId = null;
                 state.taskEditTitle = "";
                 state.taskEditDescription = "";
+                state.taskEditWorkspaceDir = "";
               },
               onSelectCurrent: (taskId) => state.setCurrentTaskForSession(taskId),
               onChangeStatus: (taskId, status) => state.updateTaskModeTask(taskId, { status }),
@@ -2231,14 +2240,17 @@ export function renderApp(state: AppViewState) {
               editId: state.taskEditId,
               editTitle: state.taskEditTitle,
               editDescription: state.taskEditDescription,
+              editWorkspaceDir: state.taskEditWorkspaceDir,
               onCreateTask: () => undefined,
               onToggleEdit: (task) => {
                 state.taskEditId = task?.taskId ?? null;
                 state.taskEditTitle = task?.title ?? "";
                 state.taskEditDescription = task?.description ?? "";
+                state.taskEditWorkspaceDir = task?.workspaceDir ?? "";
               },
               onEditTitleChange: (value) => (state.taskEditTitle = value),
               onEditDescriptionChange: (value) => (state.taskEditDescription = value),
+              onEditWorkspaceDirChange: (value) => (state.taskEditWorkspaceDir = value),
               onSaveEdit: async () => {
                 if (!state.taskEditId || !state.taskEditTitle.trim()) {
                   return;
@@ -2246,10 +2258,12 @@ export function renderApp(state: AppViewState) {
                 await state.updateTaskModeTask(state.taskEditId, {
                   title: state.taskEditTitle.trim(),
                   description: state.taskEditDescription.trim() || null,
+                  workspaceDir: state.taskEditWorkspaceDir.trim() || null,
                 });
                 state.taskEditId = null;
                 state.taskEditTitle = "";
                 state.taskEditDescription = "";
+                state.taskEditWorkspaceDir = "";
               },
               onSelectCurrent: () => undefined,
               onChangeStatus: () => undefined,

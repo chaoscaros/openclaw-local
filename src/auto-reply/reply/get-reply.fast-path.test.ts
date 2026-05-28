@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   ensureAgentWorkspace: vi.fn(),
   initSessionState: vi.fn(),
   resolveReplyDirectives: vi.fn(),
+  getTaskModeTask: vi.fn(),
 }));
 
 vi.mock("../../agents/workspace.js", () => ({
@@ -38,15 +39,26 @@ vi.mock("./get-reply-inline-actions.js", () => ({
 vi.mock("./session.js", () => ({
   initSessionState: (...args: unknown[]) => mocks.initSessionState(...args),
 }));
+vi.mock("../../gateway/task-mode-store.js", async () => {
+  const actual = await vi.importActual<typeof import("../../gateway/task-mode-store.js")>(
+    "../../gateway/task-mode-store.js",
+  );
+  return {
+    ...actual,
+    getTaskModeTask: (...args: unknown[]) => mocks.getTaskModeTask(...args),
+  };
+});
 
 let getReplyFromConfig: typeof import("./get-reply.js").getReplyFromConfig;
 let loadConfigMock: typeof import("../../config/config.js").loadConfig;
 let runPreparedReplyMock: typeof import("./get-reply-run.js").runPreparedReply;
+let ensureAgentWorkspaceMock: typeof import("../../agents/workspace.js").ensureAgentWorkspace;
 
 async function loadGetReplyRuntimeForTest() {
   ({ getReplyFromConfig } = await loadGetReplyModuleForTest({ cacheKey: import.meta.url }));
   ({ loadConfig: loadConfigMock } = await import("../../config/config.js"));
   ({ runPreparedReply: runPreparedReplyMock } = await import("./get-reply-run.js"));
+  ({ ensureAgentWorkspace: ensureAgentWorkspaceMock } = await import("../../agents/workspace.js"));
 }
 
 function buildCtx(overrides: Partial<MsgContext> = {}): MsgContext {
@@ -76,11 +88,17 @@ describe("getReplyFromConfig fast test bootstrap", () => {
     mocks.ensureAgentWorkspace.mockReset();
     mocks.initSessionState.mockReset();
     mocks.resolveReplyDirectives.mockReset();
+    mocks.getTaskModeTask.mockReset();
     vi.mocked(loadConfigMock).mockReset();
     vi.mocked(runPreparedReplyMock).mockReset();
+    vi.mocked(ensureAgentWorkspaceMock).mockReset();
     vi.mocked(loadConfigMock).mockReturnValue({});
     mocks.resolveReplyDirectives.mockResolvedValue({ kind: "reply", reply: { text: "ok" } });
     vi.mocked(runPreparedReplyMock).mockResolvedValue({ text: "ok" });
+    vi.mocked(ensureAgentWorkspaceMock).mockImplementation(async (params) => ({
+      dir: params?.dir ?? "/tmp/workspace",
+    }));
+    mocks.getTaskModeTask.mockResolvedValue(null);
     mocks.initSessionState.mockResolvedValue({
       sessionCtx: {},
       sessionEntry: {},
@@ -182,6 +200,54 @@ describe("getReplyFromConfig fast test bootstrap", () => {
     expect(vi.mocked(loadConfigMock)).not.toHaveBeenCalled();
     expect(mocks.resolveReplyDirectives).not.toHaveBeenCalled();
     expect(vi.mocked(runPreparedReplyMock)).toHaveBeenCalledOnce();
+  });
+
+  it("uses a task workspace directory for task-mode replies", async () => {
+    vi.stubEnv("OPENCLAW_ALLOW_SLOW_REPLY_TESTS", "1");
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-task-workspace-"));
+    const agentWorkspace = path.join(home, "agent-workspace");
+    const taskWorkspace = path.join(home, "project-workspace");
+    await fs.mkdir(taskWorkspace, { recursive: true });
+    vi.mocked(loadConfigMock).mockReturnValue({
+      agents: {
+        defaults: {
+          workspace: agentWorkspace,
+        },
+      },
+      session: { store: path.join(home, "sessions.json") },
+    } satisfies OpenClawConfig);
+    mocks.initSessionState.mockResolvedValueOnce({
+      sessionCtx: {},
+      sessionEntry: { mode: "task", taskId: "task-workspace" },
+      previousSessionEntry: {},
+      sessionStore: {},
+      sessionKey: "agent:main:main",
+      sessionId: "session-task",
+      isNewSession: false,
+      resetTriggered: false,
+      systemSent: false,
+      abortedLastRun: false,
+      storePath: path.join(home, "sessions.json"),
+      sessionScope: "per-chat",
+      groupResolution: undefined,
+      isGroup: false,
+      triggerBodyNormalized: "",
+      bodyStripped: "",
+    });
+    mocks.getTaskModeTask.mockResolvedValueOnce({
+      id: "task-workspace",
+      title: "Task workspace",
+      workspaceDir: taskWorkspace,
+    });
+
+    await getReplyFromConfig(buildCtx());
+
+    expect(vi.mocked(ensureAgentWorkspaceMock)).toHaveBeenCalledWith(
+      expect.objectContaining({ dir: taskWorkspace, ensureBootstrapFiles: false }),
+    );
+    expect(mocks.resolveReplyDirectives).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceDir: taskWorkspace }),
+    );
   });
 
   it("uses native command target session keys during fast bootstrap", () => {

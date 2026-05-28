@@ -21,18 +21,22 @@ export type TasksViewProps = {
   createOpen?: boolean;
   createTitle?: string;
   createDescription?: string;
+  createWorkspaceDir?: string;
   editId?: string | null;
   editTitle?: string;
   editDescription?: string;
+  editWorkspaceDir?: string;
   onRefresh: () => void;
   onRequestUpdate?: () => void;
   onToggleCreate?: () => void;
   onCreateTitleChange?: (value: string) => void;
   onCreateDescriptionChange?: (value: string) => void;
+  onCreateWorkspaceDirChange?: (value: string) => void;
   onCreateTask: () => void;
   onToggleEdit?: (task: TaskItem | null) => void;
   onEditTitleChange?: (value: string) => void;
   onEditDescriptionChange?: (value: string) => void;
+  onEditWorkspaceDirChange?: (value: string) => void;
   onSaveEdit?: () => void;
   onSelectCurrent: (taskId: string) => void;
   onChangeStatus: (taskId: string, status: TaskStatus) => void;
@@ -1697,6 +1701,11 @@ function renderTaskPreview(task: TaskItem | null, props: TasksViewProps, archive
             : nothing}
         </div>
         <p class="task-preview-pane__summary">${highlights.fullDescription}</p>
+        ${task.workspaceDir
+          ? html`<div class="task-preview-pane__detail-list">
+              <strong>工作目录：</strong>${task.workspaceDir}
+            </div>`
+          : nothing}
         ${renderTechnicalDetails(task, props)}
       </div>
 
@@ -1918,6 +1927,18 @@ function renderCreateDrawer(props: TasksViewProps) {
               }}
             ></textarea>
           </label>
+          <label class="field">
+            <span>工作目录</span>
+            <input
+              type="text"
+              placeholder="/Users/name/project 或 C:\\Users\\name\\project"
+              .value=${props.createWorkspaceDir ?? ""}
+              @input=${(event: Event) => {
+                props.onCreateWorkspaceDirChange?.((event.target as HTMLInputElement).value);
+                requestTaskViewUpdate(props);
+              }}
+            />
+          </label>
         </div>
         <div class="task-side-sheet__footer">
           <button
@@ -1971,6 +1992,16 @@ function renderEditDrawer(props: TasksViewProps) {
               @input=${(event: Event) =>
                 props.onEditDescriptionChange?.((event.target as HTMLTextAreaElement).value)}
             ></textarea>
+          </label>
+          <label class="field">
+            <span>工作目录</span>
+            <input
+              type="text"
+              placeholder="/Users/name/project 或 C:\\Users\\name\\project"
+              .value=${props.editWorkspaceDir ?? ""}
+              @input=${(event: Event) =>
+                props.onEditWorkspaceDirChange?.((event.target as HTMLInputElement).value)}
+            />
           </label>
         </div>
         <div class="task-side-sheet__footer">

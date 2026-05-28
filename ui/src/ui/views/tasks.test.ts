@@ -12,6 +12,7 @@ function buildProps(overrides: Partial<TasksViewProps> = {}): TasksViewProps {
       {
         taskId: "task-1",
         title: "Task 1",
+        workspaceDir: "/tmp/openclaw-task-project",
         description:
           "Ship the refreshed task center and improve task lookup. /Admin/inventory/storehouse-areas /Admin/inventory/storehouse-detail /Admin/inventory/storehouse-bind 传参 storehouse_id goods_spu_id area_id page per_page",
         progressSummary:
@@ -122,15 +123,18 @@ function buildProps(overrides: Partial<TasksViewProps> = {}): TasksViewProps {
     createOpen: false,
     createTitle: "",
     createDescription: "",
+    createWorkspaceDir: "",
     onRefresh: () => undefined,
     onRequestUpdate: () => undefined,
     onToggleCreate: () => undefined,
     onCreateTitleChange: () => undefined,
     onCreateDescriptionChange: () => undefined,
+    onCreateWorkspaceDirChange: () => undefined,
     onCreateTask: () => undefined,
     onToggleEdit: () => undefined,
     onEditTitleChange: () => undefined,
     onEditDescriptionChange: () => undefined,
+    onEditWorkspaceDirChange: () => undefined,
     onSaveEdit: () => undefined,
     onSelectCurrent: () => undefined,
     onChangeStatus: () => undefined,
@@ -651,15 +655,41 @@ describe("renderTasks", () => {
     expect(text).toContain("新增任务");
     expect(text).toContain("Create");
     expect(container.querySelector("textarea")).toBeTruthy();
+    expect(text).toContain("工作目录");
   });
 
   it("shows edit drawer when a task is being edited", async () => {
     const container = document.createElement("div");
-    render(renderTasks(buildProps({ editId: "task-1", editTitle: "Edited task" })), container);
+    render(
+      renderTasks(
+        buildProps({
+          editId: "task-1",
+          editTitle: "Edited task",
+          editWorkspaceDir: "/tmp/openclaw-task-project",
+        }),
+      ),
+      container,
+    );
     await Promise.resolve();
     const text = container.textContent ?? "";
     expect(text).toContain("更新任务信息");
+    expect(text).toContain("工作目录");
+    expect(
+      Array.from(container.querySelectorAll<HTMLInputElement>("input")).some(
+        (input) => input.value === "/tmp/openclaw-task-project",
+      ),
+    ).toBe(true);
     expect(text).toContain("Save");
+  });
+
+  it("shows the selected task workspace directory in the preview pane", async () => {
+    const container = document.createElement("div");
+    render(renderTasks(buildProps()), container);
+    await Promise.resolve();
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("工作目录");
+    expect(text).toContain("/tmp/openclaw-task-project");
   });
 
   it("routes actions including delete", async () => {

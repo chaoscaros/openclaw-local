@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 import {
   resolveAgentDir,
   resolveAgentWorkspaceDir,
@@ -10,6 +11,8 @@ import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import { DEFAULT_AGENT_WORKSPACE_DIR, ensureAgentWorkspace } from "../../agents/workspace.js";
 import { resolveChannelModelOverride } from "../../channels/model-overrides.js";
 import { type OpenClawConfig, loadConfig } from "../../config/config.js";
+import type { SessionEntry } from "../../config/sessions.js";
+import { getTaskModeTask } from "../../gateway/task-mode-store.js";
 import { defaultRuntime } from "../../runtime.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
 import { normalizeStringEntries } from "../../shared/string-normalization.js";
@@ -117,6 +120,49 @@ function hasLinkCandidate(ctx: MsgContext): boolean {
   return /\bhttps?:\/\/\S+/i.test(message);
 }
 
+function normalizeAbsoluteWorkspaceDir(value: string | null | undefined): string | undefined {
+  const trimmed = normalizeOptionalString(value);
+  if (!trimmed || trimmed.includes("\0") || !path.isAbsolute(trimmed)) {
+    return undefined;
+  }
+  return path.normalize(trimmed);
+}
+
+async function resolveExistingDirectoryWorkspaceDir(
+  value: string | null | undefined,
+): Promise<string | undefined> {
+  const workspaceDir = normalizeAbsoluteWorkspaceDir(value);
+  if (!workspaceDir) {
+    return undefined;
+  }
+  try {
+    const stat = await fs.stat(workspaceDir);
+    return stat.isDirectory() ? workspaceDir : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function resolveTaskModeWorkspaceDir(
+  sessionEntry: Pick<SessionEntry, "mode" | "taskId"> | undefined,
+): Promise<string | undefined> {
+  if (sessionEntry?.mode !== "task") {
+    return undefined;
+  }
+  const taskId = normalizeOptionalString(sessionEntry.taskId);
+  if (!taskId) {
+    return undefined;
+  }
+  const task = await getTaskModeTask(taskId);
+  if (!task) {
+    return undefined;
+  }
+  return (
+    normalizeAbsoluteWorkspaceDir(task.workspaceDir) ??
+    (await resolveExistingDirectoryWorkspaceDir(task.description))
+  );
+}
+
 async function applyMediaUnderstandingIfNeeded(params: {
   ctx: MsgContext;
   cfg: OpenClawConfig;
@@ -207,14 +253,8 @@ export async function getReplyFromConfig(
     }
   }
 
-  const workspaceDirRaw = resolveAgentWorkspaceDir(cfg, agentId) ?? DEFAULT_AGENT_WORKSPACE_DIR;
-  const workspace = useFastTestBootstrap
-    ? (await fs.mkdir(workspaceDirRaw, { recursive: true }), { dir: workspaceDirRaw })
-    : await ensureAgentWorkspace({
-        dir: workspaceDirRaw,
-        ensureBootstrapFiles: !agentCfg?.skipBootstrap && !isFastTestEnv,
-      });
-  const workspaceDir = workspace.dir;
+  const defaultWorkspaceDirRaw =
+    resolveAgentWorkspaceDir(cfg, agentId) ?? DEFAULT_AGENT_WORKSPACE_DIR;
   const agentDir = resolveAgentDir(cfg, agentId);
   const timeoutMs = resolveAgentTimeoutMs({ cfg, overrideSeconds: opts?.timeoutOverrideSeconds });
   const configuredTypingSeconds =
@@ -257,7 +297,7 @@ export async function getReplyFromConfig(
         cfg,
         agentId,
         commandAuthorized,
-        workspaceDir,
+        workspaceDir: defaultWorkspaceDirRaw,
       })
     : await initSessionState({
         ctx: finalized,
@@ -282,6 +322,15 @@ export async function getReplyFromConfig(
     triggerBodyNormalized,
     bodyStripped,
   } = sessionState;
+  const taskWorkspaceDirRaw = await resolveTaskModeWorkspaceDir(sessionEntry);
+  const workspaceDirRaw = taskWorkspaceDirRaw ?? defaultWorkspaceDirRaw;
+  const workspace = useFastTestBootstrap
+    ? (await fs.mkdir(workspaceDirRaw, { recursive: true }), { dir: workspaceDirRaw })
+    : await ensureAgentWorkspace({
+        dir: workspaceDirRaw,
+        ensureBootstrapFiles: !taskWorkspaceDirRaw && !agentCfg?.skipBootstrap && !isFastTestEnv,
+      });
+  const workspaceDir = workspace.dir;
   if (resetTriggered && normalizeOptionalString(bodyStripped)) {
     const { applyResetModelOverride } = await loadSessionResetModelRuntime();
     await applyResetModelOverride({

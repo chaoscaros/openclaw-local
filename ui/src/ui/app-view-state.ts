@@ -261,11 +261,17 @@ export type AppViewState = {
   taskCreateOpen: boolean;
   taskCreateTitle: string;
   taskCreateDescription: string;
+  taskCreateWorkspaceDir: string;
   taskEditId: string | null;
   taskEditTitle: string;
   taskEditDescription: string;
+  taskEditWorkspaceDir: string;
   loadTaskModeData: () => Promise<void>;
-  createTaskForCurrentSession: (title: string, description?: string) => Promise<unknown>;
+  createTaskForCurrentSession: (
+    title: string,
+    description?: string,
+    workspaceDir?: string,
+  ) => Promise<unknown>;
   setCurrentTaskForSession: (taskId: string) => Promise<void>;
   setCurrentSessionMode: (mode: "normal" | "task") => Promise<void>;
   updateTaskModeTask: (
@@ -273,6 +279,7 @@ export type AppViewState = {
     patch: {
       title?: string;
       description?: string | null;
+      workspaceDir?: string | null;
       status?: import("./controllers/tasks.ts").TaskStatus;
     },
   ) => Promise<unknown>;

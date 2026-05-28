@@ -106,6 +106,7 @@ export function buildTaskModeUserPromptPrefix(params: {
   sessionEntry?: Pick<SessionEntry, "mode" | "taskId">;
   taskTitle?: string | null;
   taskDescription?: string | null;
+  taskWorkspaceDir?: string | null;
 }): string | undefined {
   const mode = params.sessionEntry?.mode;
   if (mode === "normal") {
@@ -122,11 +123,13 @@ export function buildTaskModeUserPromptPrefix(params: {
   const taskId = normalizeOptionalString(params.sessionEntry?.taskId);
   const taskTitle = normalizeOptionalString(params.taskTitle);
   const taskDescription = normalizeOptionalString(params.taskDescription);
+  const taskWorkspaceDir = normalizeOptionalString(params.taskWorkspaceDir);
   return [
     "[Current task binding for this turn]",
     taskId ? `Task id: ${taskId}` : undefined,
     taskTitle ? `Task title: ${taskTitle}` : undefined,
     taskDescription ? `Task summary: ${taskDescription}` : undefined,
+    taskWorkspaceDir ? `Task workspace: ${taskWorkspaceDir}` : undefined,
     "Use the task binding above as the task the user is continuing right now.",
     "If earlier conversation history mentions different tasks, treat those as stale unless the user explicitly switches again.",
   ]
@@ -501,6 +504,7 @@ export async function runPreparedReply(
     sessionEntry,
     taskTitle: currentTask?.title,
     taskDescription: currentTask?.description,
+    taskWorkspaceDir: currentTask?.workspaceDir,
   });
   prefixedBodyBase = [taskModeUserPromptPrefix, prefixedBodyBase].filter(Boolean).join("\n\n");
   const isGroupSession = sessionEntry?.chatType === "group" || sessionEntry?.chatType === "channel";
