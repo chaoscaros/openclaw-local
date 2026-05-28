@@ -26,6 +26,16 @@ const coreCliCommandCatalog = defineCommandDescriptorCatalog([
     hasSubcommands: true,
   },
   {
+    name: "env",
+    description: "Manage the default OpenClaw .env file",
+    hasSubcommands: true,
+  },
+  {
+    name: "codex",
+    description: "Clean OpenClaw Codex account bindings",
+    hasSubcommands: true,
+  },
+  {
     name: "backup",
     description: "Create and verify local backup archives for OpenClaw state",
     hasSubcommands: true,

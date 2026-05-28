@@ -4,6 +4,7 @@ import { registerAgentCommands } from "./register.agent.js";
 
 const mocks = vi.hoisted(() => ({
   agentCliCommandMock: vi.fn(),
+  agentsInitCommandMock: vi.fn(),
   agentsAddCommandMock: vi.fn(),
   agentsBindingsCommandMock: vi.fn(),
   agentsBindCommandMock: vi.fn(),
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 const agentCliCommandMock = mocks.agentCliCommandMock;
+const agentsInitCommandMock = mocks.agentsInitCommandMock;
 const agentsAddCommandMock = mocks.agentsAddCommandMock;
 const agentsBindingsCommandMock = mocks.agentsBindingsCommandMock;
 const agentsBindCommandMock = mocks.agentsBindCommandMock;
@@ -34,6 +36,10 @@ const runtime = mocks.runtime;
 
 vi.mock("../../commands/agent-via-gateway.js", () => ({
   agentCliCommand: mocks.agentCliCommandMock,
+}));
+
+vi.mock("../agent-init.js", () => ({
+  agentsInitCommand: mocks.agentsInitCommandMock,
 }));
 
 vi.mock("../../commands/agents.js", () => ({
@@ -69,6 +75,7 @@ describe("registerAgentCommands", () => {
     vi.clearAllMocks();
     runtime.exit.mockImplementation(() => {});
     agentCliCommandMock.mockResolvedValue(undefined);
+    agentsInitCommandMock.mockResolvedValue(undefined);
     agentsAddCommandMock.mockResolvedValue(undefined);
     agentsBindingsCommandMock.mockResolvedValue(undefined);
     agentsBindCommandMock.mockResolvedValue(undefined);
@@ -147,6 +154,12 @@ describe("registerAgentCommands", () => {
       runtime,
       { hasFlags: true },
     );
+  });
+
+  it("forwards agents init options", async () => {
+    await runCli(["agents", "init", "--force"]);
+
+    expect(agentsInitCommandMock).toHaveBeenCalledWith({ force: true }, runtime);
   });
 
   it("runs agents list when root agents command is invoked", async () => {

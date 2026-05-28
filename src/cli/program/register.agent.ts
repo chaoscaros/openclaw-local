@@ -14,6 +14,7 @@ import { defaultRuntime } from "../../runtime.js";
 import { normalizeLowercaseStringOrEmpty } from "../../shared/string-coerce.js";
 import { formatDocsLink } from "../../terminal/links.js";
 import { theme } from "../../terminal/theme.js";
+import { agentsInitCommand } from "../agent-init.js";
 import { runCommandWithRuntime } from "../cli-utils.js";
 import { hasExplicitOptions } from "../command-options.js";
 import { createDefaultDeps } from "../deps.js";
@@ -92,6 +93,16 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
       () =>
         `\n${theme.muted("Docs:")} ${formatDocsLink("/cli/agents", "docs.openclaw.ai/cli/agents")}\n`,
     );
+
+  agents
+    .command("init")
+    .description("Create the default solo agent from the configured .env paths")
+    .option("--force", "Replace the existing solo agent config", false)
+    .action(async (opts) => {
+      await runCommandWithRuntime(defaultRuntime, async () => {
+        await agentsInitCommand({ force: Boolean(opts.force) }, defaultRuntime);
+      });
+    });
 
   agents
     .command("list")

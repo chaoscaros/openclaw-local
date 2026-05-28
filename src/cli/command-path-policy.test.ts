@@ -29,8 +29,32 @@ describe("command-path-policy", () => {
     });
   });
 
+  it("keeps agents init on the lightweight config initialization path", () => {
+    expect(resolveCliCommandPathPolicy(["agents", "list"])).toEqual({
+      bypassConfigGuard: false,
+      routeConfigGuard: "never",
+      loadPlugins: "always",
+      hideBanner: false,
+      ensureCliPath: true,
+    });
+    expect(resolveCliCommandPathPolicy(["agents", "init"])).toEqual({
+      bypassConfigGuard: true,
+      routeConfigGuard: "never",
+      loadPlugins: "never",
+      hideBanner: false,
+      ensureCliPath: true,
+    });
+  });
+
   it("resolves mixed startup-only rules", () => {
     expect(resolveCliCommandPathPolicy(["config", "validate"])).toEqual({
+      bypassConfigGuard: true,
+      routeConfigGuard: "never",
+      loadPlugins: "never",
+      hideBanner: false,
+      ensureCliPath: true,
+    });
+    expect(resolveCliCommandPathPolicy(["codex", "clean"])).toEqual({
       bypassConfigGuard: true,
       routeConfigGuard: "never",
       loadPlugins: "never",

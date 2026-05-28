@@ -72,6 +72,16 @@ const coreEntrySpecs: readonly CommandGroupDescriptorSpec<
         exportName: "registerConfigCli",
       },
       {
+        commandNames: ["env"],
+        loadModule: () => import("../env-cli.js"),
+        exportName: "registerEnvCli",
+      },
+      {
+        commandNames: ["codex"],
+        loadModule: () => import("../codex-cli.js"),
+        exportName: "registerCodexCli",
+      },
+      {
         commandNames: ["backup"],
         loadModule: () => import("./register.backup.js"),
         exportName: "registerBackupCommand",

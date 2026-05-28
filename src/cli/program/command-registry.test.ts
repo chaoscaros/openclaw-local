@@ -18,6 +18,21 @@ vi.mock("./register.backup.js", () => ({
   },
 }));
 
+vi.mock("../env-cli.js", () => ({
+  registerEnvCli: (program: Command) => {
+    const env = program.command("env");
+    env.command("init");
+    env.command("token");
+  },
+}));
+
+vi.mock("../codex-cli.js", () => ({
+  registerCodexCli: (program: Command) => {
+    const codex = program.command("codex");
+    codex.command("clean");
+  },
+}));
+
 vi.mock("./register.maintenance.js", () => ({
   registerMaintenanceCommands: (program: Command) => {
     program.command("doctor");
@@ -68,6 +83,8 @@ describe("command-registry", () => {
   it("includes both agent and agents in core CLI command names", () => {
     const names = getCoreCliCommandNames();
     expect(names).toContain("mcp");
+    expect(names).toContain("env");
+    expect(names).toContain("codex");
     expect(names).toContain("agent");
     expect(names).toContain("agents");
   });
@@ -77,6 +94,8 @@ describe("command-registry", () => {
     expect(names).toContain("config");
     expect(names).toContain("agents");
     expect(names).toContain("backup");
+    expect(names).toContain("codex");
+    expect(names).toContain("env");
     expect(names).toContain("mcp");
     expect(names).toContain("sessions");
     expect(names).toContain("tasks");

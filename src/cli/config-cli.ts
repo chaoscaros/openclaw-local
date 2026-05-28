@@ -1327,7 +1327,7 @@ export function registerConfigCli(program: Command) {
   const cmd = program
     .command("config")
     .description(
-      "Non-interactive config helpers (get/set/unset/file/schema/validate/bootstrap-env). Run without subcommand for guided setup.",
+      "Non-interactive config helpers (get/set/unset/file/schema/validate). Run without subcommand for guided setup.",
     )
     .addHelpText(
       "after",
@@ -1343,6 +1343,15 @@ export function registerConfigCli(program: Command) {
     .action(async (opts) => {
       const { configureCommandFromSectionsArg } = await import("../commands/configure.js");
       await configureCommandFromSectionsArg(opts.section, defaultRuntime);
+    });
+
+  cmd
+    .command("init")
+    .description("Create the config file declared by ~/.openclaw/.env")
+    .option("--force", "Replace an existing config file", false)
+    .action(async (opts: { force?: boolean }) => {
+      const { configInitCommand } = await import("./config-init.js");
+      await configInitCommand(defaultRuntime, { force: Boolean(opts.force) });
     });
 
   cmd
@@ -1460,20 +1469,5 @@ export function registerConfigCli(program: Command) {
     .option("--json", "Output validation result as JSON", false)
     .action(async (opts) => {
       await runConfigValidate({ json: Boolean(opts.json) });
-    });
-
-  cmd
-    .command("bootstrap-env")
-    .description("Generate safe config defaults from ~/.openclaw/.env or a specified .env file")
-    .option("--env-file <path>", "Path to the .env file (default: ~/.openclaw/.env)")
-    .option("--force", "Overwrite existing config values managed by this command", false)
-    .option("--dry-run", "Show planned changes without writing openclaw.json", false)
-    .action(async (opts: { envFile?: string; force?: boolean; dryRun?: boolean }) => {
-      const { runConfigBootstrapEnv } = await import("./config-bootstrap-env.js");
-      await runConfigBootstrapEnv({
-        envFile: opts.envFile,
-        force: Boolean(opts.force),
-        dryRun: Boolean(opts.dryRun),
-      });
     });
 }

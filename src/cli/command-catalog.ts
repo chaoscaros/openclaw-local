@@ -91,6 +91,8 @@ export const cliCommandCatalog: readonly CliCommandCatalogEntry[] = [
     route: { id: "models-status" },
   },
   { commandPath: ["backup"], policy: { bypassConfigGuard: true } },
+  { commandPath: ["env"], policy: { bypassConfigGuard: true } },
+  { commandPath: ["codex"], policy: { bypassConfigGuard: true } },
   { commandPath: ["doctor"], policy: { bypassConfigGuard: true } },
   {
     commandPath: ["completion"],
@@ -110,6 +112,16 @@ export const cliCommandCatalog: readonly CliCommandCatalogEntry[] = [
     commandPath: ["config", "schema"],
     exact: true,
     policy: { bypassConfigGuard: true },
+  },
+  {
+    commandPath: ["config", "init"],
+    exact: true,
+    policy: { bypassConfigGuard: true },
+  },
+  {
+    commandPath: ["agents", "init"],
+    exact: true,
+    policy: { bypassConfigGuard: true, loadPlugins: "never" },
   },
   {
     commandPath: ["plugins", "update"],
