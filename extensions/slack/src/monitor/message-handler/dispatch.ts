@@ -310,10 +310,14 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     agentId: route.agentId,
     channel: "slack",
     accountId: route.accountId,
-    transformReplyPayload: (payload) =>
-      isSlackInteractiveRepliesEnabled({ cfg, accountId: route.accountId })
+    transformReplyPayload: (payload) => {
+      if (payload.isReasoning === true) {
+        return null;
+      }
+      return isSlackInteractiveRepliesEnabled({ cfg, accountId: route.accountId })
         ? compileSlackInteractiveReplies(payload)
-        : payload,
+        : payload;
+    },
     typing: {
       start: async () => {
         didSetStatus = true;
@@ -543,6 +547,9 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     ...replyPipeline,
     humanDelay: resolveHumanDelayConfig(cfg, route.agentId),
     deliver: async (payload, info) => {
+      if (payload.isReasoning === true) {
+        return;
+      }
       if (useStreaming) {
         await deliverWithStreaming({ payload, kind: info.kind });
         return;

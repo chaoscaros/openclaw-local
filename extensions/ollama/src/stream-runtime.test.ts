@@ -68,7 +68,7 @@ describe("convertToOllamaMessages", () => {
     expect(result[0].role).toBe("assistant");
     expect(result[0].content).toBe("Let me check.");
     expect(result[0].tool_calls).toEqual([
-      { function: { name: "bash", arguments: { command: "ls" } } },
+      { id: "call_1", function: { name: "bash", arguments: { command: "ls" } } },
     ]);
   });
 
@@ -90,7 +90,7 @@ describe("convertToOllamaMessages", () => {
     ];
     const result = convertToOllamaMessages(messages);
     expect(result[0].tool_calls).toEqual([
-      { function: { name: "Read", arguments: { file_path: "/tmp/test.txt" } } },
+      { id: "call_2", function: { name: "Read", arguments: { file_path: "/tmp/test.txt" } } },
     ]);
   });
 
@@ -105,7 +105,7 @@ describe("convertToOllamaMessages", () => {
     ];
     const result = convertToOllamaMessages(messages);
     expect(result[0].tool_calls).toEqual([
-      { function: { name: "exec", arguments: { command: "echo hello" } } },
+      { id: "toolu_1", function: { name: "exec", arguments: { command: "echo hello" } } },
     ]);
   });
 
@@ -126,6 +126,7 @@ describe("convertToOllamaMessages", () => {
     const result = convertToOllamaMessages(messages);
     expect(result[0].tool_calls).toEqual([
       {
+        id: "call_3",
         function: {
           name: "read",
           arguments: {
@@ -227,7 +228,12 @@ describe("buildAssistantMessage", () => {
       message: {
         role: "assistant" as const,
         content: "",
-        tool_calls: [{ function: { name: "bash", arguments: { command: "ls -la" } } }],
+        tool_calls: [
+          {
+            id: "native-call-1",
+            function: { name: "bash", arguments: { command: "ls -la" } },
+          },
+        ],
       },
       done: true,
       prompt_eval_count: 20,
@@ -245,6 +251,24 @@ describe("buildAssistantMessage", () => {
     };
     expect(toolCall.name).toBe("bash");
     expect(toolCall.arguments).toEqual({ command: "ls -la" });
+    expect(toolCall.id).toBe("native-call-1");
+  });
+
+  it("generates a fallback id when native Ollama omits tool call ids", () => {
+    const response = {
+      model: "qwen3:32b",
+      created_at: "2026-01-01T00:00:00Z",
+      message: {
+        role: "assistant" as const,
+        content: "",
+        tool_calls: [{ function: { name: "bash", arguments: { command: "ls -la" } } }],
+      },
+      done: true,
+      prompt_eval_count: 20,
+      eval_count: 10,
+    };
+    const result = buildAssistantMessage(response, modelInfo);
+    const toolCall = result.content[0] as { type: "toolCall"; id: string };
     expect(toolCall.id).toMatch(/^ollama_call_[0-9a-f-]{36}$/);
   });
 

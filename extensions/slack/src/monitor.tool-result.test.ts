@@ -192,10 +192,11 @@ describe("monitorSlackProvider tool results", () => {
       messages: params?.includeAckReactionConfig
         ? {
             responsePrefix: "PFX",
+            groupChat: { visibleReplies: "automatic" },
             ackReaction: "👀",
             ackReactionScope: "group-mentions",
           }
-        : { responsePrefix: "PFX" },
+        : { responsePrefix: "PFX", groupChat: { visibleReplies: "automatic" } },
       channels: { slack: slackChannelConfig },
       ...(params?.bindings ? { bindings: params.bindings } : {}),
     };
@@ -495,6 +496,9 @@ describe("monitorSlackProvider tool results", () => {
 
   it("accepts channel messages without mention when channels.slack.requireMention is false", async () => {
     slackTestState.config = {
+      messages: {
+        groupChat: { visibleReplies: "automatic" },
+      },
       channels: {
         slack: {
           dm: { enabled: true, policy: "open", allowFrom: ["*"] },

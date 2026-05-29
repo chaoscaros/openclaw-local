@@ -660,7 +660,7 @@ export function describeOpenAIProviderRuntimeContract() {
         id: "gpt-5.4-mini",
         provider: "openai-codex",
         api: "openai-codex-responses",
-        contextWindow: 272_000,
+        contextWindow: 400_000,
         maxTokens: 128_000,
       });
     });

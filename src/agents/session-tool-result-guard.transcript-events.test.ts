@@ -49,4 +49,26 @@ describe("guardSessionManager transcript updates", () => {
       },
     });
   });
+
+  it("reports every persisted message through the persistence callback", () => {
+    const persisted: AgentMessage[] = [];
+    const sm = SessionManager.inMemory();
+    const guarded = guardSessionManager(sm, {
+      onMessagePersisted: (message) => {
+        persisted.push(message);
+      },
+    });
+    const appendMessage = guarded.appendMessage.bind(guarded) as unknown as (
+      message: AgentMessage,
+    ) => void;
+
+    appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "hello" }],
+      timestamp: Date.now(),
+    } as AgentMessage);
+
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]?.role).toBe("assistant");
+  });
 });

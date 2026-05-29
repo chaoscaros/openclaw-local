@@ -38,6 +38,12 @@ export async function handleCodexAppServerApprovalRequest(params: {
   if (!matchesCurrentTurn(requestParams, params.threadId, params.turnId)) {
     return undefined;
   }
+  if (
+    params.method === "mcpServer/elicitation/request" &&
+    !isBridgeableMcpElicitation(requestParams)
+  ) {
+    return undefined;
+  }
 
   const context = buildApprovalContext({
     method: params.method,
@@ -71,7 +77,7 @@ export async function handleCodexAppServerApprovalRequest(params: {
         title: context.title,
         description: context.description,
         severity: context.severity,
-        toolName: context.kind === "exec" ? "codex_command_approval" : "codex_file_approval",
+        toolName: context.toolName,
         toolCallId: context.itemId,
         agentId: params.paramsForRun.agentId,
         sessionKey: params.paramsForRun.sessionKey,
@@ -162,6 +168,16 @@ export function buildApprovalResponse(
   requestParams: JsonObject | undefined,
   outcome: AppServerApprovalOutcome,
 ): JsonValue {
+  if (method === "mcpServer/elicitation/request") {
+    if (outcome === "approved-once" || outcome === "approved-session") {
+      return {
+        action: "accept",
+        content: null,
+        _meta: outcome === "approved-session" ? { persist: "always" } : null,
+      };
+    }
+    return { action: "decline", content: null, _meta: null };
+  }
   if (method === "item/commandExecution/requestApproval") {
     return { decision: commandApprovalDecision(requestParams, outcome) };
   }
@@ -213,20 +229,27 @@ function buildApprovalContext(params: {
     readString(params.requestParams, "approvalId");
   const command = readCommand(params.requestParams);
   const reason = readString(params.requestParams, "reason");
+  const message = readString(params.requestParams, "message");
+  const serverName = readString(params.requestParams, "serverName");
   const kind = approvalKindForMethod(params.method);
   const title =
     kind === "exec"
       ? "Codex app-server command approval"
       : kind === "plugin"
         ? "Codex app-server file approval"
-        : "Codex app-server approval";
+        : params.method === "mcpServer/elicitation/request"
+          ? "Codex app-server MCP approval"
+          : "Codex app-server approval";
   const subject = command
     ? `Command: ${truncate(command, 180)}`
-    : reason
-      ? `Reason: ${truncate(reason, 180)}`
-      : `Request method: ${params.method}`;
+    : message
+      ? `Request: ${truncate(message, 180)}`
+      : reason
+        ? `Reason: ${truncate(reason, 180)}`
+        : `Request method: ${params.method}`;
   const description = [
     subject,
+    serverName && `MCP server: ${truncate(serverName, 120)}`,
     params.paramsForRun.sessionKey && `Session: ${params.paramsForRun.sessionKey}`,
   ]
     .filter(Boolean)
@@ -236,6 +259,12 @@ function buildApprovalContext(params: {
     title,
     description,
     severity: kind === "exec" ? ("warning" as const) : ("info" as const),
+    toolName:
+      kind === "exec"
+        ? "codex_command_approval"
+        : params.method === "mcpServer/elicitation/request"
+          ? "codex_mcp_elicitation_approval"
+          : "codex_file_approval",
     itemId,
     requestParams: params.requestParams,
     eventDetails: {
@@ -244,6 +273,22 @@ function buildApprovalContext(params: {
       ...(reason ? { reason } : {}),
     },
   };
+}
+
+function isBridgeableMcpElicitation(requestParams: JsonObject | undefined): boolean {
+  if (!requestParams || requestParams.mode !== "form") {
+    return false;
+  }
+  const schema = requestParams.requestedSchema;
+  if (!isJsonObject(schema)) {
+    return false;
+  }
+  const properties = isJsonObject(schema.properties) ? schema.properties : {};
+  const propertyNames = Object.keys(properties);
+  if (propertyNames.length === 0) {
+    return true;
+  }
+  return propertyNames.every((name) => name === "approve" || name === "persist");
 }
 
 async function waitForApprovalDecision(params: {

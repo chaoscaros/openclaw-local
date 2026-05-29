@@ -197,8 +197,23 @@ describe("memory tools", () => {
         },
       ]);
 
-      const tool = createMemorySearchToolOrThrow();
-      await tool.execute("call_recall_persist", { query: "glacier backup" });
+      const toolWithDreaming = createMemorySearchToolOrThrow({
+        config: asOpenClawConfig({
+          agents: { list: [{ id: "main", default: true }] },
+          plugins: {
+            entries: {
+              "memory-core": {
+                config: {
+                  dreaming: {
+                    enabled: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+      });
+      await toolWithDreaming.execute("call_recall_persist", { query: "glacier backup" });
 
       const storePath = path.join(workspaceDir, "memory", ".dreams", "short-term-recall.json");
       const storeRaw = await waitFor(async () => await fs.readFile(storePath, "utf-8"));

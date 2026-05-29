@@ -24,6 +24,17 @@ const browserToolActionDeps = {
   loadConfig,
 };
 
+function resolveRuntimeImageSanitization(): { maxDimensionPx: number } | undefined {
+  const cfg = browserToolActionDeps.loadConfig() as {
+    agents?: { defaults?: { imageMaxDimensionPx?: unknown } };
+  };
+  const configured = cfg.agents?.defaults?.imageMaxDimensionPx;
+  if (typeof configured !== "number" || !Number.isFinite(configured)) {
+    return undefined;
+  }
+  return { maxDimensionPx: Math.max(1, Math.floor(configured)) };
+}
+
 export const __testing = {
   setDepsForTest(
     overrides: Partial<{
@@ -276,6 +287,7 @@ export async function executeSnapshotAction(params: {
         path: snapshot.imagePath,
         extraText: wrappedSnapshot,
         details: safeDetails,
+        imageSanitization: resolveRuntimeImageSanitization(),
       });
     }
     return {

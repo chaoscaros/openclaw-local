@@ -28,6 +28,7 @@ import {
 import {
   getInspectableTaskAuditSummary,
   getInspectableTaskRegistrySummary,
+  getTaskRegistryMaintenanceDiagnostics,
   previewTaskRegistryMaintenance,
   runTaskRegistryMaintenance,
 } from "../tasks/task-registry.maintenance.js";
@@ -494,6 +495,7 @@ export async function tasksMaintenanceCommand(
   const taskMaintenance = opts.apply
     ? await runTaskRegistryMaintenance()
     : previewTaskRegistryMaintenance();
+  const diagnostics = opts.json ? getTaskRegistryMaintenanceDiagnostics() : undefined;
   const flowMaintenance = opts.apply
     ? await runTaskFlowRegistryMaintenance()
     : previewTaskFlowRegistryMaintenance();
@@ -511,6 +513,7 @@ export async function tasksMaintenanceCommand(
             taskFlows: flowMaintenance,
           },
           tasks: summary,
+          diagnostics,
           auditBefore: {
             ...auditBefore,
             taskFlows: flowAuditBefore,

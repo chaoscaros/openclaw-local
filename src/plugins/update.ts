@@ -14,6 +14,7 @@ import {
 } from "./install.js";
 import { buildNpmResolutionInstallFields, recordPluginInstall } from "./installs.js";
 import { installPluginFromMarketplace } from "./marketplace.js";
+import { listStaleLocalBundledPluginInstallRecords } from "./stale-local-bundled-plugin-install-records.js";
 
 export type PluginUpdateLogger = {
   info?: (message: string) => void;
@@ -626,9 +627,42 @@ export async function syncPluginsForUpdateChannel(params: {
   const loadHelpers = buildLoadPathHelpers(next.plugins?.load?.paths ?? [], env);
   const installs = next.plugins?.installs ?? {};
   let changed = false;
+  const staleLocalBundledRecords = listStaleLocalBundledPluginInstallRecords({
+    installRecords: installs,
+    bundled,
+    env,
+  });
+  const repairedStaleLocalBundledIds = new Set(
+    staleLocalBundledRecords.map((record) => record.pluginId),
+  );
+
+  for (const staleRecord of staleLocalBundledRecords) {
+    const bundledInfo = bundled.get(staleRecord.pluginId);
+    if (!bundledInfo) {
+      continue;
+    }
+    const staleLoadPath = staleRecord.record.sourcePath ?? staleRecord.record.installPath;
+    if (staleLoadPath) {
+      loadHelpers.removePath(staleLoadPath);
+    }
+    loadHelpers.addPath(bundledInfo.localPath);
+    next = recordPluginInstall(next, {
+      pluginId: staleRecord.pluginId,
+      source: "path",
+      sourcePath: bundledInfo.localPath,
+      installPath: bundledInfo.localPath,
+      spec: staleRecord.record.spec ?? bundledInfo.npmSpec,
+      version: bundledInfo.version ?? staleRecord.record.version,
+    });
+    summary.switchedToBundled.push(staleRecord.pluginId);
+    changed = true;
+  }
 
   if (params.channel === "dev") {
     for (const [pluginId, record] of Object.entries(installs)) {
+      if (repairedStaleLocalBundledIds.has(pluginId)) {
+        continue;
+      }
       const bundledInfo = bundled.get(pluginId);
       if (!bundledInfo) {
         continue;
@@ -655,6 +689,9 @@ export async function syncPluginsForUpdateChannel(params: {
     }
   } else {
     for (const [pluginId, record] of Object.entries(installs)) {
+      if (repairedStaleLocalBundledIds.has(pluginId)) {
+        continue;
+      }
       const bundledInfo = bundled.get(pluginId);
       if (!bundledInfo) {
         continue;

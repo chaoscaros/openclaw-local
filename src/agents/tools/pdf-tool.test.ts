@@ -215,6 +215,28 @@ describe("createPdfTool", () => {
     });
   });
 
+  it("passes the shared remote read idle timeout when loading remote PDFs", async () => {
+    await withTempPdfAgentDir(async (agentDir) => {
+      const { loadSpy } = await stubPdfToolInfra(agentDir, {
+        provider: "anthropic",
+        input: ["text", "document"],
+      });
+      vi.spyOn(pdfNativeProviders, "anthropicAnalyzePdf").mockResolvedValue("native summary");
+      const cfg = withPdfModel(ANTHROPIC_PDF_MODEL);
+      const tool = requirePdfTool((await loadCreatePdfTool())({ config: cfg, agentDir }));
+
+      await tool.execute("t1", {
+        prompt: "summarize",
+        pdf: "https://example.com/stalled.pdf",
+      });
+
+      expect(loadSpy).toHaveBeenCalledWith(
+        "https://example.com/stalled.pdf",
+        expect.objectContaining({ readIdleTimeoutMs: 120_000 }),
+      );
+    });
+  });
+
   it("rejects pages parameter for native PDF providers", async () => {
     await withTempPdfAgentDir(async (agentDir) => {
       await stubPdfToolInfra(agentDir, { provider: "anthropic", input: ["text", "document"] });

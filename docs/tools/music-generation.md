@@ -79,11 +79,11 @@ Example:
 
 ## Shared bundled provider support
 
-| Provider | Default model          | Reference inputs | Supported controls                                        | API key                                |
-| -------- | ---------------------- | ---------------- | --------------------------------------------------------- | -------------------------------------- |
-| ComfyUI  | `workflow`             | Up to 1 image    | Workflow-defined music or audio                           | `COMFY_API_KEY`, `COMFY_CLOUD_API_KEY` |
-| Google   | `lyria-3-clip-preview` | Up to 10 images  | `lyrics`, `instrumental`, `format`                        | `GEMINI_API_KEY`, `GOOGLE_API_KEY`     |
-| MiniMax  | `music-2.5+`           | None             | `lyrics`, `instrumental`, `durationSeconds`, `format=mp3` | `MINIMAX_API_KEY`                      |
+| Provider | Default model          | Reference inputs | Supported controls                     | API key                                |
+| -------- | ---------------------- | ---------------- | -------------------------------------- | -------------------------------------- |
+| ComfyUI  | `workflow`             | Up to 1 image    | Workflow-defined music or audio        | `COMFY_API_KEY`, `COMFY_CLOUD_API_KEY` |
+| Google   | `lyria-3-clip-preview` | Up to 10 images  | `lyrics`, `instrumental`, `format`     | `GEMINI_API_KEY`, `GOOGLE_API_KEY`     |
+| MiniMax  | `music-2.5+`           | None             | `lyrics`, `instrumental`, `format=mp3` | `MINIMAX_API_KEY`                      |
 
 ### Declared capability matrix
 
@@ -207,8 +207,7 @@ entries.
 - Google uses Lyria 3 batch generation. The current bundled flow supports
   prompt, optional lyrics text, and optional reference images.
 - MiniMax uses the batch `music_generation` endpoint. The current bundled flow
-  supports prompt, optional lyrics, instrumental mode, duration steering, and
-  mp3 output.
+  supports prompt, optional lyrics, instrumental mode, and mp3 output.
 - ComfyUI support is workflow-driven and depends on the configured graph plus
   node mapping for prompt/output fields.
 

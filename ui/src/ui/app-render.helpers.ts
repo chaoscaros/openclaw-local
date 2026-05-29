@@ -321,6 +321,15 @@ const chatTaskHeaderUi = {
   switchedTaskTitle: "",
 };
 
+export function resetChatTaskHeaderUiForTest() {
+  chatTaskHeaderUi.query = "";
+  chatTaskHeaderUi.menuOpen = false;
+  chatTaskHeaderUi.detailOpen = false;
+  chatTaskHeaderUi.switcherOpen = false;
+  chatTaskHeaderUi.switchedTaskId = null;
+  chatTaskHeaderUi.switchedTaskTitle = "";
+}
+
 function requestViewUpdate(state: AppViewState) {
   (state as AppViewState & { requestUpdate?: () => void }).requestUpdate?.();
 }
@@ -538,6 +547,11 @@ export function renderChatTaskHeaderBar(state: AppViewState) {
             >
             <span class="chat-task-context-bar__task-chip-title">${quickSwitcherLabel}</span>
             <span class="chat-task-context-bar__task-chip-badge">${currentTaskChipBadge}</span>
+            ${unresolvedBoundTaskId
+              ? html`<span class="chat-task-context-bar__task-chip-badge"
+                  >已绑定任务 · ${unresolvedBoundTaskId}</span
+                >`
+              : nothing}
           </span>
         </span>
       </button>

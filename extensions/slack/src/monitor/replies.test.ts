@@ -60,6 +60,29 @@ describe("deliverReplies identity passthrough", () => {
     expect(sendMock.mock.calls[0][2]).not.toHaveProperty("identity");
   });
 
+  it("skips reasoning payloads during reply delivery", async () => {
+    sendMock.mockResolvedValue(undefined);
+    await deliverReplies(
+      baseParams({
+        replies: [{ text: "thinking...", isReasoning: true }, { text: "visible answer" }],
+      }),
+    );
+
+    expect(sendMock).toHaveBeenCalledOnce();
+    expect(sendMock.mock.calls[0][1]).toBe("visible answer");
+  });
+
+  it("does not send when every reply payload is reasoning", async () => {
+    sendMock.mockResolvedValue(undefined);
+    await deliverReplies(
+      baseParams({
+        replies: [{ text: "thinking...", isReasoning: true }],
+      }),
+    );
+
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
   it("delivers block-only replies through to sendMessageSlack", async () => {
     sendMock.mockResolvedValue(undefined);
     const blocks = [
@@ -226,6 +249,23 @@ describe("deliverSlackSlashReplies chunking", () => {
     expect(respond).toHaveBeenCalledTimes(1);
     expect(respond).toHaveBeenCalledWith({
       text,
+      response_type: "ephemeral",
+    });
+  });
+
+  it("skips reasoning payloads for slash command replies", async () => {
+    const respond = vi.fn(async () => undefined);
+
+    await deliverSlackSlashReplies({
+      replies: [{ text: "thinking...", isReasoning: true }, { text: "visible answer" }],
+      respond,
+      ephemeral: true,
+      textLimit: 8000,
+    });
+
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(respond).toHaveBeenCalledWith({
+      text: "visible answer",
       response_type: "ephemeral",
     });
   });

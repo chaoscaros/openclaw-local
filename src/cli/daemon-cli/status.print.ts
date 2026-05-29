@@ -163,6 +163,12 @@ export function printDaemonStatus(status: DaemonStatus, opts: { json: boolean })
     spacer();
   }
 
+  const gatewayVersion = status.gateway?.version?.trim();
+  if (gatewayVersion) {
+    defaultRuntime.log(`${label("Gateway version:")} ${infoText(gatewayVersion)}`);
+    spacer();
+  }
+
   const runtimeLine = formatRuntimeStatus(service.runtime);
   if (runtimeLine) {
     const runtimeColor = resolveRuntimeStatusColor(service.runtime?.status);

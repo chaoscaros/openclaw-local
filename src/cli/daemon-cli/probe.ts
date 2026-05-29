@@ -14,6 +14,16 @@ function resolveProbeFailureMessage(result: {
   return result.error ?? closeHint ?? "gateway probe failed";
 }
 
+function readRuntimeVersionFromStatusPayload(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const runtimeVersion = (payload as { runtimeVersion?: unknown }).runtimeVersion;
+  return typeof runtimeVersion === "string" && runtimeVersion.trim()
+    ? runtimeVersion.trim()
+    : undefined;
+}
+
 export async function probeGatewayStatus(opts: {
   url: string;
   token?: string;
@@ -25,6 +35,7 @@ export async function probeGatewayStatus(opts: {
   configPath?: string;
 }) {
   try {
+    let runtimeVersion: string | undefined;
     const result = await withProgress(
       {
         label: "Checking gateway status...",
@@ -34,7 +45,7 @@ export async function probeGatewayStatus(opts: {
       async () => {
         if (opts.requireRpc) {
           const { callGateway } = await import("../../gateway/call.js");
-          await callGateway({
+          const statusPayload = await callGateway({
             url: opts.url,
             token: opts.token,
             password: opts.password,
@@ -43,6 +54,7 @@ export async function probeGatewayStatus(opts: {
             timeoutMs: opts.timeoutMs,
             ...(opts.configPath ? { configPath: opts.configPath } : {}),
           });
+          runtimeVersion = readRuntimeVersionFromStatusPayload(statusPayload);
           return { ok: true } as const;
         }
         const { probeGateway } = await import("../../gateway/probe.js");
@@ -59,7 +71,10 @@ export async function probeGatewayStatus(opts: {
       },
     );
     if (result.ok) {
-      return { ok: true } as const;
+      return {
+        ok: true,
+        ...(runtimeVersion ? { version: runtimeVersion } : {}),
+      } as const;
     }
     return {
       ok: false,

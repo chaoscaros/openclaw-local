@@ -1062,8 +1062,8 @@ export async function rpcReq<T extends Record<string, unknown>>(
   );
 }
 
-export async function waitForSystemEvent(timeoutMs = 2000) {
-  const sessionKeys = resolveGatewayTestMainSessionKeys();
+export async function waitForSystemEvent(timeoutMs = 2000, extraSessionKeys: string[] = []) {
+  const sessionKeys = [...new Set([...resolveGatewayTestMainSessionKeys(), ...extraSessionKeys])];
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const sessionKey of sessionKeys) {

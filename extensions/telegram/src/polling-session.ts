@@ -502,27 +502,58 @@ export class TelegramPollingSession {
       network: ingress.network,
       proxy: ingress.proxy,
     });
+    let stopWorkerPromise: Promise<void> | undefined;
+    const stopWorker = () => {
+      stopWorkerPromise ??= Promise.resolve(worker.stop())
+        .then(() => undefined)
+        .catch(() => {
+          // Worker may already be stopped by restart/abort paths.
+        });
+      return stopWorkerPromise;
+    };
     this.opts.log(`[telegram][diag] isolated polling ingress started spool=${spoolDir}`);
     const pollState: {
       startedAt: number | null;
+      finishedAt: number | null;
+      durationMs: number | null;
       offset: number | null;
       outcome: string;
       error?: string;
     } = {
       startedAt: null,
+      finishedAt: null,
+      durationMs: null,
       offset: null,
       outcome: "not-started",
     };
+    let lastWorkerActivityAt = Date.now();
+    let inFlightPoll = 0;
     const stalledBacklogKeys = new Set<string>();
+    let restartRequested = false;
+    let stalledRestart = false;
+    let forceCycleTimer: ReturnType<typeof setTimeout> | undefined;
+    let forceCycleResolve: (() => void) | undefined;
+    const forceCyclePromise = new Promise<void>((resolve) => {
+      forceCycleResolve = resolve;
+    });
     const unsubscribe = worker.onMessage((message) => {
       if (message.type === "poll-start") {
+        lastWorkerActivityAt = message.startedAt;
+        inFlightPoll += 1;
         pollState.startedAt = message.startedAt;
+        pollState.finishedAt = null;
+        pollState.durationMs = null;
         pollState.offset = message.offset;
         pollState.outcome = "started";
         delete pollState.error;
         return;
       }
       if (message.type === "poll-success") {
+        lastWorkerActivityAt = message.finishedAt;
+        pollState.finishedAt = message.finishedAt;
+        pollState.durationMs =
+          pollState.startedAt == null ? null : message.finishedAt - pollState.startedAt;
+        inFlightPoll = Math.max(0, inFlightPoll - 1);
         if (stalledBacklogKeys.size === 0) {
           this.#status.notePollSuccess(message.finishedAt);
         }
@@ -531,12 +562,21 @@ export class TelegramPollingSession {
         return;
       }
       if (message.type === "poll-error") {
+        lastWorkerActivityAt = message.finishedAt;
+        pollState.finishedAt = message.finishedAt;
+        pollState.durationMs =
+          pollState.startedAt == null ? null : message.finishedAt - pollState.startedAt;
+        inFlightPoll = Math.max(0, inFlightPoll - 1);
         pollState.outcome = "error";
         pollState.error = message.message;
+        return;
+      }
+      if (message.type === "spooled") {
+        lastWorkerActivityAt = Date.now();
       }
     });
     const stopOnAbort = () => {
-      void worker.stop();
+      void stopWorker();
     };
     this.opts.abortSignal?.addEventListener("abort", stopOnAbort, { once: true });
     const drainIntervalMs = Math.max(100, Math.floor(ingress.drainIntervalMs ?? 500));
@@ -583,9 +623,44 @@ export class TelegramPollingSession {
       void drainOnce();
     }, drainIntervalMs);
     drainTimer.unref?.();
+    const watchdog = setInterval(() => {
+      if (this.opts.abortSignal?.aborted || restartRequested) {
+        return;
+      }
+      const now = Date.now();
+      const elapsed = now - lastWorkerActivityAt;
+      if (elapsed <= POLL_STALL_THRESHOLD_MS) {
+        return;
+      }
+      this.#transportState.markDirty();
+      stalledRestart = true;
+      restartRequested = true;
+      const elapsedLabel =
+        inFlightPoll > 0
+          ? `active worker getUpdates stuck for ${formatDurationPrecise(elapsed)}`
+          : `no worker activity for ${formatDurationPrecise(elapsed)}`;
+      const message = `Polling stall detected (${elapsedLabel}); forcing restart.`;
+      this.opts.log(
+        `[telegram] ${message} [diag inFlight=${inFlightPoll} outcome=${pollState.outcome} startedAt=${pollState.startedAt ?? "n/a"} finishedAt=${pollState.finishedAt ?? "n/a"} durationMs=${pollState.durationMs ?? "n/a"} offset=${pollState.offset ?? "n/a"}${pollState.error ? ` error=${pollState.error}` : ""}]`,
+      );
+      this.#status.notePollingError(message);
+      void stopWorker();
+      if (!forceCycleTimer) {
+        forceCycleTimer = setTimeout(() => {
+          if (this.opts.abortSignal?.aborted) {
+            return;
+          }
+          this.opts.log(
+            `[telegram] Isolated polling ingress stop timed out after ${formatDurationPrecise(POLL_STOP_GRACE_MS)}; forcing restart cycle.`,
+          );
+          forceCycleResolve?.();
+        }, POLL_STOP_GRACE_MS);
+      }
+    }, POLL_WATCHDOG_INTERVAL_MS);
+    watchdog.unref?.();
     try {
       try {
-        await worker.task();
+        await Promise.race([worker.task(), forceCyclePromise]);
       } catch (err) {
         if (this.opts.abortSignal?.aborted) {
           return "exit";
@@ -608,6 +683,14 @@ export class TelegramPollingSession {
       if (this.opts.abortSignal?.aborted) {
         return "exit";
       }
+      if (restartRequested) {
+        if (stalledRestart) {
+          this.opts.log(
+            `[telegram][diag] isolated polling ingress finished reason=polling stall detected inFlight=${inFlightPoll} outcome=${pollState.outcome} startedAt=${pollState.startedAt ?? "n/a"} finishedAt=${pollState.finishedAt ?? "n/a"} durationMs=${pollState.durationMs ?? "n/a"} offset=${pollState.offset ?? "n/a"}${pollState.error ? ` error=${pollState.error}` : ""}`,
+          );
+        }
+        return "continue";
+      }
       const errorText = pollState.error ? ` error=${pollState.error}` : "";
       this.opts.log(
         `[telegram][diag] isolated polling ingress stopped outcome=${pollState.outcome} startedAt=${pollState.startedAt ?? "n/a"} offset=${pollState.offset ?? "n/a"}${errorText}`,
@@ -617,12 +700,18 @@ export class TelegramPollingSession {
       );
       return shouldRestart ? "continue" : "exit";
     } finally {
+      clearInterval(watchdog);
       clearInterval(drainTimer);
+      if (forceCycleTimer) {
+        clearTimeout(forceCycleTimer);
+      }
       unsubscribe();
       this.opts.abortSignal?.removeEventListener("abort", stopOnAbort);
-      await worker.stop();
-      await drainOnce();
-      await waitForGracefulStop(() => this.#waitForSpooledUpdateHandlers());
+      await stopWorker();
+      if (!restartRequested) {
+        await drainOnce();
+        await waitForGracefulStop(() => this.#waitForSpooledUpdateHandlers());
+      }
       await waitForGracefulStop(stopBot);
     }
   }

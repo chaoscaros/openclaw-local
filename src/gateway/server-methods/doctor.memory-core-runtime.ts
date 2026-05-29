@@ -10,4 +10,4 @@ export {
 export {
   resolveShortTermPromotionDreamingConfig,
   runShortTermDreamingPromotionNow,
-} from "../../../extensions/memory-core/src/dreaming.js";
+} from "../../plugin-sdk/memory-core-bundled-runtime.js";

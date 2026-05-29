@@ -284,15 +284,12 @@ function resetRunConfigMocks(): void {
   resolveAgentConfigMock.mockReturnValue(undefined);
   resolveEffectiveModelFallbacksMock.mockReset();
   resolveEffectiveModelFallbacksMock.mockImplementation(
-    ({ cfg, agentId, hasSessionModelOverride, modelOverrideSource }) => {
+    ({ cfg, agentId, hasSessionModelOverride }) => {
       const agentFallbacksOverride = resolveAgentModelFallbacksOverrideMock(cfg, agentId) as
         | string[]
         | undefined;
       if (!hasSessionModelOverride) {
         return agentFallbacksOverride;
-      }
-      if (modelOverrideSource !== "auto") {
-        return [];
       }
       const defaultFallbacks = resolveAgentModelFallbackValues(cfg?.agents?.defaults?.model);
       return agentFallbacksOverride ?? defaultFallbacks;

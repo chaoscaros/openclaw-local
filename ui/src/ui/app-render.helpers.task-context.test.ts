@@ -1,12 +1,16 @@
 /* @vitest-environment jsdom */
 
 import { render } from "lit";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { i18n } from "../i18n/index.ts";
-import { renderChatTaskHeaderBar } from "./app-render.helpers.ts";
+import { renderChatTaskHeaderBar, resetChatTaskHeaderUiForTest } from "./app-render.helpers.ts";
 
 beforeAll(async () => {
   await i18n.setLocale("en");
+});
+
+afterEach(() => {
+  resetChatTaskHeaderUiForTest();
 });
 
 function buildState(overrides: Record<string, unknown> = {}) {
@@ -105,6 +109,15 @@ function buildState(overrides: Record<string, unknown> = {}) {
   return state;
 }
 
+async function clickTaskMenuAction(container: HTMLElement, label: string): Promise<void> {
+  container.querySelector<HTMLButtonElement>('button[aria-label="任务操作"]')?.click();
+  await Promise.resolve();
+  Array.from(container.querySelectorAll("button"))
+    .find((button) => button.textContent?.includes(label))
+    ?.click();
+  await Promise.resolve();
+}
+
 describe("renderChatTaskHeaderBar", () => {
   it("shows the bound current task clearly in the chat header", async () => {
     const container = document.createElement("div");
@@ -166,9 +179,7 @@ describe("renderChatTaskHeaderBar", () => {
     render(renderChatTaskHeaderBar(state as never), container);
     await Promise.resolve();
 
-    const buttons = Array.from(container.querySelectorAll("button"));
-    buttons.find((button) => button.textContent?.includes("切换任务"))?.click();
-    await Promise.resolve();
+    await clickTaskMenuAction(container, "切换任务");
 
     const openedText = container.textContent ?? "";
     expect(openedText).toContain("当前任务");
@@ -189,10 +200,7 @@ describe("renderChatTaskHeaderBar", () => {
     render(renderChatTaskHeaderBar(state as never), container);
     await Promise.resolve();
 
-    Array.from(container.querySelectorAll("button"))
-      .find((button) => button.textContent?.includes("切换任务"))
-      ?.click();
-    await Promise.resolve();
+    await clickTaskMenuAction(container, "切换任务");
 
     const search = container.querySelector<HTMLInputElement>(
       'input[placeholder="按任务名称或描述搜索"]',
@@ -215,10 +223,7 @@ describe("renderChatTaskHeaderBar", () => {
     render(renderChatTaskHeaderBar(state as never), container);
     await Promise.resolve();
 
-    Array.from(container.querySelectorAll("button"))
-      .find((button) => button.textContent?.includes("任务详情"))
-      ?.click();
-    await Promise.resolve();
+    await clickTaskMenuAction(container, "任务详情");
 
     const text = container.textContent ?? "";
     expect(text).toContain("当前进行中");
@@ -331,14 +336,12 @@ describe("renderChatTaskHeaderBar", () => {
     expect(headerText).toContain("已绑定任务 · task-missing");
     expect(headerText).not.toContain("当前会话还没有绑定任务");
 
-    Array.from(container.querySelectorAll("button"))
-      .find((button) => button.textContent?.includes("切换任务"))
-      ?.click();
-    await Promise.resolve();
+    await clickTaskMenuAction(container, "切换任务");
 
     const openedText = container.textContent ?? "";
     expect(openedText).toContain("当前任务详情同步中");
-    expect(openedText).toContain("已绑定任务 · task-missing · 请稍候或刷新任务列表");
+    expect(openedText).toContain("已绑定任务 · task-missing");
+    expect(openedText).toContain("请稍候或刷新任务列表");
     expect(openedText).toContain("可切换任务");
   });
 });

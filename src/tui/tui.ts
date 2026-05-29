@@ -205,7 +205,7 @@ export function resolveCtrlCAction(params: {
 }
 
 export async function runTui(opts: TuiOptions) {
-  const config = loadConfig();
+  const config = loadConfig({ skipPluginValidation: true });
   const initialSessionInput = (opts.session ?? "").trim();
   let sessionScope: SessionScope = (config.session?.scope ?? "per-sender") as SessionScope;
   let sessionMainKey = normalizeMainKey(config.session?.mainKey);

@@ -189,9 +189,18 @@ export function createPreparedEmbeddedPiSettingsManager(params: {
   cfg?: OpenClawConfig;
 }): SettingsManager {
   const settingsManager = createEmbeddedPiSettingsManager(params);
+  const preparedSettings = applyMergePatch(
+    settingsManager.getGlobalSettings(),
+    settingsManager.getProjectSettings(),
+  ) as PiSettingsSnapshot;
+  const preparedSettingsManager = SettingsManager.inMemory(preparedSettings);
   applyPiCompactionSettingsFromConfig({
-    settingsManager,
+    settingsManager: preparedSettingsManager,
     cfg: params.cfg,
   });
-  return settingsManager;
+  // Disable the pi-coding-agent auto-retry. OpenClaw has its own retry layer
+  // around failover, auth rotation, empty errors, and thinking fallback; running
+  // both layers can replay failed tool calls in a loop.
+  preparedSettingsManager.setRetryEnabled(false);
+  return preparedSettingsManager;
 }

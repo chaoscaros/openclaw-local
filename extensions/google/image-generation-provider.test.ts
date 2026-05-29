@@ -1,6 +1,7 @@
 import * as providerAuthRuntime from "openclaw/plugin-sdk/provider-auth-runtime";
 import * as providerHttp from "openclaw/plugin-sdk/provider-http";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mockPinnedHostnameResolution } from "../../src/test-helpers/ssrf.js";
 import { buildGoogleImageGenerationProvider } from "./image-generation-provider.js";
 import { __testing as geminiWebSearchTesting } from "./src/gemini-web-search-provider.js";
 
@@ -44,6 +45,10 @@ function installGoogleFetchMock(params?: {
 }
 
 describe("Google image-generation provider", () => {
+  beforeEach(() => {
+    mockPinnedHostnameResolution();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });

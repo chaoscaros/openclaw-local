@@ -958,7 +958,10 @@ export function handleToolExecutionStart(
       }
     };
 
-    if (workspaceDir && ctx.params.sessionKey && reviewCandidatePaths.length > 0) {
+    if (ctx.params.sessionKey && reviewCandidatePaths.length > 0) {
+      const captureWorkspaceDir = workspaceDir ?? process.cwd();
+      const captureRepoRoot =
+        workspaceDir ?? path.join(captureWorkspaceDir, ".openclaw-change-review-root");
       trackPendingToolMutationCaptureStart(
         runId,
         toolCallId,
@@ -966,8 +969,8 @@ export function handleToolExecutionStart(
           sessionKey: ctx.params.sessionKey,
           runId,
           toolCallId,
-          workspaceDir,
-          repoRoot: workspaceDir,
+          workspaceDir: captureWorkspaceDir,
+          repoRoot: captureRepoRoot,
           filePaths: reviewCandidatePaths,
         }).catch((err) => {
           ctx.log.warn(`change review capture start failed: tool=${toolName} error=${String(err)}`);
@@ -1410,7 +1413,7 @@ export async function handleToolExecutionEnd(
   }
 
   if (isExecToolName(toolName) && !isToolError && execMutationPaths.length > 0) {
-    const reviewBundle = await waitForPendingToolMutationCaptureStart(runId, toolCallId).then(() =>
+    let reviewBundle = await waitForPendingToolMutationCaptureStart(runId, toolCallId).then(() =>
       finishToolMutationCapture({
         sessionKey: ctx.params.sessionKey ?? "",
         runId,
@@ -1423,6 +1426,28 @@ export async function handleToolExecutionEnd(
         return null;
       }),
     );
+    if (!reviewBundle) {
+      const workspaceDir = resolveWorkspaceDirForToolContext(ctx, startArgs) ?? process.cwd();
+      reviewBundle = createVirtualReviewBundle({
+        sessionKey: ctx.params.sessionKey ?? "",
+        runId,
+        workspaceDir,
+        repoRoot: path.join(workspaceDir, ".openclaw-change-review-root"),
+        files: execMutationPaths.map((filePath) => {
+          const absolutePath = path.isAbsolute(filePath)
+            ? filePath
+            : path.resolve(workspaceDir, filePath);
+          return {
+            path: filePath.split(path.sep).join("/"),
+            absolutePath,
+            changeType: "modified" as const,
+            beforeContent: null,
+            afterContent: null,
+            diffText: "",
+          };
+        }),
+      });
+    }
     emitChangeReviewReadyEvent(ctx, runId, reviewBundle);
   }
 

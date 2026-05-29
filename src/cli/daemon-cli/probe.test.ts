@@ -71,6 +71,21 @@ describe("probeGatewayStatus", () => {
     });
   });
 
+  it("preserves runtimeVersion from the status RPC", async () => {
+    callGatewayMock.mockReset();
+    probeGatewayMock.mockReset();
+    callGatewayMock.mockResolvedValueOnce({ status: "ok", runtimeVersion: "2026.5.20" });
+
+    const result = await probeGatewayStatus({
+      url: "ws://127.0.0.1:19191",
+      token: "temp-token",
+      timeoutMs: 5_000,
+      requireRpc: true,
+    });
+
+    expect(result).toEqual({ ok: true, version: "2026.5.20" });
+  });
+
   it("surfaces probe close details when the handshake fails", async () => {
     callGatewayMock.mockReset();
     probeGatewayMock.mockReset();

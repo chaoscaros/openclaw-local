@@ -16,6 +16,18 @@ import { enforceSourceManagedProviderSecrets } from "./models-config.providers.s
 
 type ModelsConfig = NonNullable<OpenClawConfig["models"]>;
 
+function cloneProviderConfigForPolicy(provider: ProviderConfig): ProviderConfig {
+  return {
+    ...provider,
+    headers: provider.headers ? { ...provider.headers } : provider.headers,
+    models: provider.models?.map((model) => ({ ...model })),
+  };
+}
+
+function providerConfigDataChanged(left: ProviderConfig, right: ProviderConfig): boolean {
+  return JSON.stringify(left) !== JSON.stringify(right);
+}
+
 export function normalizeProviders(params: {
   providers: ModelsConfig["providers"];
   agentDir: string;
@@ -113,11 +125,12 @@ export function normalizeProviders(params: {
       normalizedProvider = providerWithApiKey;
     }
 
+    const providerForPolicy = cloneProviderConfigForPolicy(normalizedProvider);
     const providerSpecificNormalized = normalizeProviderSpecificConfig(
       normalizedKey,
-      normalizedProvider,
+      providerForPolicy,
     );
-    if (providerSpecificNormalized !== normalizedProvider) {
+    if (providerConfigDataChanged(providerSpecificNormalized, normalizedProvider)) {
       mutated = true;
       normalizedProvider = providerSpecificNormalized;
     }

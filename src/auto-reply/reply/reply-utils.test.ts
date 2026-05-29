@@ -268,6 +268,17 @@ describe("normalizeReplyPayload", () => {
     );
     expect(result!.interactive).toBeUndefined();
   });
+
+  it("suppresses payloads when a channel transform returns null", () => {
+    const result = normalizeReplyPayload(
+      { text: "internal reasoning", isReasoning: true },
+      {
+        transformReplyPayload: () => null,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
 });
 
 describe("typing controller", () => {

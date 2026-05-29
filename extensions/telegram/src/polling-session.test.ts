@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TelegramIngressWorkerMessage } from "./telegram-ingress-worker.js";
 
 const runMock = vi.hoisted(() => vi.fn());
 const createTelegramBotMock = vi.hoisted(() => vi.fn());
@@ -53,6 +54,7 @@ type TelegramApiMiddleware = (
   method: string,
   payload: unknown,
 ) => Promise<unknown>;
+type WorkerMessageListener = (message: TelegramIngressWorkerMessage) => void;
 type AsyncVoidFn = () => Promise<void>;
 
 function makeBot() {
@@ -94,6 +96,7 @@ function installPollingStallWatchdogHarness(
           break;
         }
         await Promise.resolve();
+        await new Promise<void>((resolve) => setImmediate(resolve));
       }
       expect(watchdog).toBeTypeOf("function");
       return watchdog;
@@ -806,6 +809,145 @@ describe("TelegramPollingSession", () => {
         "Telegram isolated polling ingress failed; restarting in 0ms.",
       );
     } finally {
+      await fs.rm(spoolDir, { recursive: true, force: true });
+    }
+  });
+
+  it("restarts isolated ingress when worker liveness stalls", async () => {
+    const abort = new AbortController();
+    const spoolDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-telegram-spool-"));
+    const log = vi.fn();
+    const makeIngressBot = () => ({
+      api: {
+        deleteWebhook: vi.fn(async () => true),
+        config: { use: vi.fn() },
+      },
+      init: vi.fn(async () => undefined),
+      handleUpdate: vi.fn(async () => undefined),
+      stop: vi.fn(async () => undefined),
+    });
+    let firstWorkerDone: (() => void) | undefined;
+    const firstWorkerTask = new Promise<void>((resolve) => {
+      firstWorkerDone = resolve;
+    });
+    const firstWorkerStop = vi.fn(async () => {
+      firstWorkerDone?.();
+    });
+    let workerCycle = 0;
+    const createWorker = vi.fn(() => {
+      workerCycle += 1;
+      if (workerCycle === 1) {
+        return {
+          onMessage: vi.fn(() => () => undefined),
+          stop: firstWorkerStop,
+          task: vi.fn(async () => {
+            await firstWorkerTask;
+          }),
+        };
+      }
+      return {
+        onMessage: vi.fn(() => () => undefined),
+        stop: vi.fn(async () => undefined),
+        task: vi.fn(async () => {
+          abort.abort();
+        }),
+      };
+    });
+    createTelegramBotMock
+      .mockReturnValueOnce(makeIngressBot())
+      .mockReturnValueOnce(makeIngressBot());
+    const watchdogHarness = installPollingStallWatchdogHarness([0]);
+
+    try {
+      const session = createPollingSession({
+        abortSignal: abort.signal,
+        log,
+        isolatedIngress: {
+          enabled: true,
+          spoolDir,
+          createWorker,
+          drainIntervalMs: 100,
+        },
+      });
+      const runPromise = session.runUntilAbort();
+      const watchdog = await watchdogHarness.waitForWatchdog();
+      watchdog?.();
+
+      await vi.waitFor(() => expect(firstWorkerStop).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(createWorker).toHaveBeenCalledTimes(2));
+      await runPromise;
+
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("Polling stall detected"));
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining("isolated polling ingress finished reason=polling stall detected"),
+      );
+    } finally {
+      watchdogHarness.restore();
+      abort.abort();
+      await fs.rm(spoolDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps isolated ingress alive when spooled messages show worker activity", async () => {
+    const abort = new AbortController();
+    const spoolDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-telegram-spool-"));
+    const log = vi.fn();
+    const makeIngressBot = () => ({
+      api: {
+        deleteWebhook: vi.fn(async () => true),
+        config: { use: vi.fn() },
+      },
+      init: vi.fn(async () => undefined),
+      handleUpdate: vi.fn(async () => undefined),
+      stop: vi.fn(async () => undefined),
+    });
+    let onMessage: WorkerMessageListener | undefined;
+    let stopWorker: (() => void) | undefined;
+    const workerDone = new Promise<void>((resolve) => {
+      stopWorker = resolve;
+    });
+    const workerStop = vi.fn(async () => {
+      stopWorker?.();
+    });
+    const createWorker = vi.fn(() => ({
+      onMessage: vi.fn((handler: WorkerMessageListener) => {
+        onMessage = handler;
+        return () => undefined;
+      }),
+      stop: workerStop,
+      task: vi.fn(async () => {
+        await workerDone;
+      }),
+    }));
+    createTelegramBotMock.mockReturnValueOnce(makeIngressBot());
+    const watchdogHarness = installPollingStallWatchdogHarness([0]);
+
+    try {
+      const session = createPollingSession({
+        abortSignal: abort.signal,
+        log,
+        isolatedIngress: {
+          enabled: true,
+          spoolDir,
+          createWorker,
+          drainIntervalMs: 100,
+        },
+      });
+      const runPromise = session.runUntilAbort();
+      const watchdog = await watchdogHarness.waitForWatchdog();
+      onMessage?.({ type: "poll-start", offset: null, startedAt: 0 });
+      onMessage?.({ type: "spooled", updateId: 42, queued: 1 });
+      watchdog?.();
+
+      expect(workerStop).not.toHaveBeenCalled();
+      expect(log).not.toHaveBeenCalledWith(expect.stringContaining("Polling stall detected"));
+
+      abort.abort();
+      stopWorker?.();
+      await runPromise;
+    } finally {
+      watchdogHarness.restore();
+      abort.abort();
       await fs.rm(spoolDir, { recursive: true, force: true });
     }
   });

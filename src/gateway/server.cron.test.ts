@@ -306,7 +306,14 @@ describe("gateway server cron", () => {
       const runRes = await rpcReq(ws, "cron.run", { id: routeJobId, mode: "force" }, 20_000);
       expect(runRes.ok).toBe(true);
       expect(runRes.payload).toEqual({ ok: true, enqueued: true, runId: expect.any(String) });
-      const events = await waitForSystemEvent();
+      const finishedRouteRun = await waitForCronEvent(
+        ws,
+        (payload) => payload?.jobId === routeJobId && payload?.action === "finished",
+      );
+      const routeRunSessionKey =
+        typeof finishedRouteRun?.sessionKey === "string" ? finishedRouteRun.sessionKey : "";
+      expect(routeRunSessionKey.length > 0).toBe(true);
+      const events = await waitForSystemEvent(2_000, [routeRunSessionKey]);
       expect(events.some((event) => event.includes("cron route check"))).toBe(true);
 
       const wrappedAtMs = Date.now() + 1000;

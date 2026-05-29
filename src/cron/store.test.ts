@@ -89,6 +89,19 @@ describe("cron store", () => {
     });
   });
 
+  it("preserves legacy top-level array stores", async () => {
+    const store = await makeStorePath();
+    const first = makeStore("legacy-1", true).jobs[0];
+    const second = makeStore("legacy-2", false).jobs[0];
+    await fs.mkdir(path.dirname(store.storePath), { recursive: true });
+    await fs.writeFile(store.storePath, JSON.stringify([first, second], null, 2), "utf-8");
+
+    const loaded = await loadCronStore(store.storePath);
+
+    expect(loaded.version).toBe(1);
+    expect(loaded.jobs.map((job) => job.id)).toEqual(["legacy-1", "legacy-2"]);
+  });
+
   it("does not create a backup file when saving unchanged content", async () => {
     const store = await makeStorePath();
     const payload = makeStore("job-1", true);

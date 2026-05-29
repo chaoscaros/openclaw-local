@@ -8,6 +8,10 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { filterHeartbeatPairs } from "../../../auto-reply/heartbeat-filter.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
+import {
+  bindOwnedSessionTranscriptWrites,
+  withOwnedSessionTranscriptWrites,
+} from "../../../config/sessions/transcript-write-context.js";
 import { formatErrorMessage } from "../../../infra/errors.js";
 import { resolveHeartbeatSummaryForAgent } from "../../../infra/heartbeat-summary.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
@@ -218,6 +222,7 @@ import {
   wrapStreamFnRepairMalformedToolCallArguments,
 } from "./attempt.tool-call-argument-repair.js";
 import {
+  shouldApplyReplayToolCallIdSanitizer,
   wrapStreamFnSanitizeMalformedToolCalls,
   wrapStreamFnTrimToolCallNames,
 } from "./attempt.tool-call-normalization.js";
@@ -239,6 +244,7 @@ import {
 } from "./llm-idle-timeout.js";
 import {
   PREEMPTIVE_OVERFLOW_ERROR_TEXT,
+  formatPrePromptPrecheckLog,
   shouldPreemptivelyCompactBeforePrompt,
 } from "./preemptive-compaction.js";
 import {
@@ -449,6 +455,11 @@ export async function runEmbeddedAttempt(
         }),
       }),
     });
+    const ownedTranscriptWriteContext = {
+      sessionFile: params.sessionFile,
+      sessionKey: params.sessionKey,
+      withSessionWriteLock: async <T>(operation: () => Promise<T> | T) => await operation(),
+    };
 
     const sessionLabel = params.sessionKey ?? params.sessionId;
     const contextInjectionMode = resolveContextInjectionMode(params.config);
@@ -1233,13 +1244,14 @@ export async function runEmbeddedAttempt(
         params.model.api === "azure-openai-responses" ||
         params.model.api === "openai-codex-responses";
 
-      if (
-        transcriptPolicy.sanitizeToolCallIds &&
-        transcriptPolicy.toolCallIdMode &&
-        !isOpenAIResponsesApi
-      ) {
+      const replayToolCallIdSanitizerDecision = {
+        sanitizeToolCallIds: transcriptPolicy.sanitizeToolCallIds,
+        toolCallIdMode: transcriptPolicy.toolCallIdMode,
+        isOpenAIResponsesApi,
+      };
+      if (shouldApplyReplayToolCallIdSanitizer(replayToolCallIdSanitizerDecision)) {
         const inner = activeSession.agent.streamFn;
-        const mode = transcriptPolicy.toolCallIdMode;
+        const mode = replayToolCallIdSanitizerDecision.toolCallIdMode;
         activeSession.agent.streamFn = (model, context, options) => {
           const ctx = context as unknown as { messages?: unknown };
           const messages = ctx?.messages;
@@ -1592,6 +1604,20 @@ export async function runEmbeddedAttempt(
         });
       };
 
+      const promptActiveSession = (
+        prompt: string,
+        options?: Parameters<typeof activeSession.prompt>[1],
+      ): Promise<void> =>
+        withOwnedSessionTranscriptWrites(ownedTranscriptWriteContext, async () =>
+          abortable(activeSession.prompt(prompt, options)),
+        );
+      const onBlockReply = params.onBlockReply
+        ? bindOwnedSessionTranscriptWrites(ownedTranscriptWriteContext, params.onBlockReply)
+        : undefined;
+      const onBlockReplyFlush = params.onBlockReplyFlush
+        ? bindOwnedSessionTranscriptWrites(ownedTranscriptWriteContext, params.onBlockReplyFlush)
+        : undefined;
+
       const subscription = subscribeEmbeddedPiSession(
         buildEmbeddedSubscriptionParams({
           session: activeSession,
@@ -1606,8 +1632,8 @@ export async function runEmbeddedAttempt(
           onToolResult: params.onToolResult,
           onReasoningStream: params.onReasoningStream,
           onReasoningEnd: params.onReasoningEnd,
-          onBlockReply: params.onBlockReply,
-          onBlockReplyFlush: params.onBlockReplyFlush,
+          onBlockReply,
+          onBlockReplyFlush,
           blockReplyBreak: params.blockReplyBreak,
           blockReplyChunking: params.blockReplyChunking,
           onPartialReply: params.onPartialReply,
@@ -2085,6 +2111,19 @@ export async function runEmbeddedAttempt(
                   contextTokenBudget,
                   reserveTokens,
                 });
+          log.debug(
+            formatPrePromptPrecheckLog({
+              result: preemptiveCompaction,
+              provider: params.provider,
+              modelId: params.modelId,
+              messageCount: activeSession.messages.length,
+              contextTokenBudget,
+              reserveTokens,
+              ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+              ...(params.sessionId ? { sessionId: params.sessionId } : {}),
+              ...(params.sessionFile ? { sessionFile: params.sessionFile } : {}),
+            }),
+          );
           if (preemptiveCompaction.route === "truncate_tool_results_only") {
             const truncationResult = truncateOversizedToolResultsInSessionManager({
               sessionManager,
@@ -2191,7 +2230,7 @@ export async function runEmbeddedAttempt(
                 applySystemPromptOverrideToSession(activeSession, runtimeSystemPrompt);
               }
               try {
-                await abortable(activeSession.prompt(promptSubmission.prompt));
+                await promptActiveSession(promptSubmission.prompt);
               } finally {
                 if (runtimeSystemPrompt) {
                   applySystemPromptOverrideToSession(activeSession, systemPromptText);
@@ -2215,11 +2254,11 @@ export async function runEmbeddedAttempt(
                   runtimeContext,
                 });
                 if (imageResult.images.length > 0) {
-                  await abortable(
-                    activeSession.prompt(promptSubmission.prompt, { images: imageResult.images }),
-                  );
+                  await promptActiveSession(promptSubmission.prompt, {
+                    images: imageResult.images,
+                  });
                 } else {
-                  await abortable(activeSession.prompt(promptSubmission.prompt));
+                  await promptActiveSession(promptSubmission.prompt);
                 }
               } finally {
                 if (runtimeSystemPrompt) {
@@ -2276,8 +2315,8 @@ export async function runEmbeddedAttempt(
           // user receives the assistant response immediately.  Without this,
           // coalesced/buffered blocks stay in the pipeline until compaction
           // finishes — which can take minutes on large contexts (#35074).
-          if (params.onBlockReplyFlush) {
-            await params.onBlockReplyFlush();
+          if (onBlockReplyFlush) {
+            await onBlockReplyFlush();
           }
 
           // Skip compaction wait when yield aborted the run — the signal is

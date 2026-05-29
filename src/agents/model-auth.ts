@@ -152,7 +152,10 @@ function isLocalBaseUrl(baseUrl: string): boolean {
       host === "0.0.0.0" ||
       host === "[::1]" ||
       host === "[::ffff:7f00:1]" ||
-      host === "[::ffff:127.0.0.1]"
+      host === "[::ffff:127.0.0.1]" ||
+      host === "docker.orb.internal" ||
+      host === "host.docker.internal" ||
+      host === "host.orb.internal"
     );
   } catch {
     return false;

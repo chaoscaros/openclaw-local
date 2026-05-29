@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { logRejectedLargePayload } from "../logging/diagnostic-payload.js";
+import { MAX_BUFFERED_BYTES } from "./server-constants.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
 
 export type NodeSession = {
@@ -193,6 +195,9 @@ export class NodeRegistry {
   }
 
   private sendEventInternal(node: NodeSession, event: string, payload: unknown): boolean {
+    if (this.rejectSlowNodeSocket(node)) {
+      return false;
+    }
     try {
       node.client.socket.send(
         JSON.stringify({
@@ -209,5 +214,23 @@ export class NodeRegistry {
 
   private sendEventToSession(node: NodeSession, event: string, payload: unknown): boolean {
     return this.sendEventInternal(node, event, payload);
+  }
+
+  private rejectSlowNodeSocket(node: NodeSession): boolean {
+    if (!(node.client.socket.bufferedAmount > MAX_BUFFERED_BYTES)) {
+      return false;
+    }
+    logRejectedLargePayload({
+      surface: "gateway.ws.outbound_buffer",
+      bytes: node.client.socket.bufferedAmount,
+      limitBytes: MAX_BUFFERED_BYTES,
+      reason: "ws_send_buffer_close",
+    });
+    try {
+      node.client.socket.close(1008, "slow consumer");
+    } catch {
+      // Best effort; the send path still rejects the event.
+    }
+    return true;
   }
 }

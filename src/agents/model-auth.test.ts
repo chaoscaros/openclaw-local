@@ -617,6 +617,14 @@ describe("resolveApiKeyForProvider – synthetic local auth for custom providers
     expect(auth.apiKey).toBe(CUSTOM_LOCAL_AUTH_MARKER);
   });
 
+  it.each(["docker.orb.internal", "host.docker.internal", "host.orb.internal"])(
+    "synthesizes local auth for host-backed alias %s",
+    async (hostname) => {
+      const auth = await resolveCustomProviderAuth("my-host-backed", `http://${hostname}:11434/v1`);
+      expect(auth.apiKey).toBe(CUSTOM_LOCAL_AUTH_MARKER);
+    },
+  );
+
   it("does not synthesize auth for remote custom providers without apiKey", async () => {
     await expect(
       resolveApiKeyForProvider({

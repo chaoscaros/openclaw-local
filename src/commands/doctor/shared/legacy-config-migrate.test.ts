@@ -177,6 +177,41 @@ describe("legacy migrate sandbox scope aliases", () => {
   });
 });
 
+describe("legacy migrate model thinking formats", () => {
+  it("removes invalid model compat thinking formats", () => {
+    const res = migrateLegacyConfigForTest({
+      models: {
+        providers: {
+          local: {
+            models: [
+              {
+                id: "bad",
+                compat: {
+                  thinkingFormat: "legacy-template",
+                  supportsTools: true,
+                },
+              },
+              {
+                id: "good",
+                compat: {
+                  thinkingFormat: "qwen",
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(res.changes).toContain(
+      'Removed models.providers.local.models.0.compat.thinkingFormat (unrecognized value "legacy-template"; runtime default applies).',
+    );
+    const models = res.config?.models?.providers?.local?.models;
+    expect(models?.[0]?.compat).toEqual({ supportsTools: true });
+    expect(models?.[1]?.compat?.thinkingFormat).toBe("qwen");
+  });
+});
+
 describe("legacy migrate channel streaming aliases", () => {
   it("migrates Telegram and Slack preview-channel legacy streaming fields without rewriting Discord", () => {
     const res = migrateLegacyConfigForTest({

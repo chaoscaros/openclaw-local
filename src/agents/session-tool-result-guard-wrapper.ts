@@ -26,6 +26,7 @@ export function guardSessionManager(
     inputProvenance?: InputProvenance;
     allowSyntheticToolResults?: boolean;
     allowedToolNames?: Iterable<string>;
+    onMessagePersisted?: (message: AgentMessage) => void | Promise<void>;
   },
 ): GuardedSessionManager {
   if (typeof (sessionManager as GuardedSessionManager).flushPendingToolResults === "function") {
@@ -73,6 +74,7 @@ export function guardSessionManager(
     allowSyntheticToolResults: opts?.allowSyntheticToolResults,
     allowedToolNames: opts?.allowedToolNames,
     beforeMessageWriteHook: beforeMessageWrite,
+    onMessagePersisted: opts?.onMessagePersisted,
   });
   (sessionManager as GuardedSessionManager).flushPendingToolResults = guard.flushPendingToolResults;
   (sessionManager as GuardedSessionManager).clearPendingToolResults = guard.clearPendingToolResults;

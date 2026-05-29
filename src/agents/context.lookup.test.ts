@@ -195,43 +195,6 @@ describe("lookupContextTokens", () => {
     expect(secondLoadConfigMock).not.toHaveBeenCalled();
   });
 
-  it("only warms eagerly for real openclaw startup commands that need model metadata", async () => {
-    const argvSnapshot = process.argv;
-    try {
-      for (const scenario of [
-        {
-          argv: ["node", "openclaw", "chat"],
-          expectedCalls: 1,
-        },
-        {
-          argv: ["node", "openclaw", "--profile", "--", "config", "validate"],
-          expectedCalls: 0,
-        },
-        {
-          argv: ["node", "openclaw", "logs", "--limit", "5"],
-          expectedCalls: 0,
-        },
-        {
-          argv: ["node", "openclaw", "status", "--json"],
-          expectedCalls: 0,
-        },
-        {
-          argv: ["node", "scripts/test-built-plugin-singleton.mjs"],
-          expectedCalls: 0,
-        },
-      ]) {
-        const loadConfigMock = vi.fn(() => ({ models: {} }));
-        const { ensureOpenClawModelsJson } = mockContextModuleDeps(loadConfigMock);
-        process.argv = scenario.argv;
-        await importFreshContextModule();
-        expect(loadConfigMock).toHaveBeenCalledTimes(scenario.expectedCalls);
-        expect(ensureOpenClawModelsJson).toHaveBeenCalledTimes(scenario.expectedCalls);
-      }
-    } finally {
-      process.argv = argvSnapshot;
-    }
-  });
-
   it("retries config loading after backoff when an initial load fails", async () => {
     vi.useFakeTimers();
     const loadConfigMock = vi

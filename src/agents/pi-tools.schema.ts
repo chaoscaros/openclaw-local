@@ -128,14 +128,280 @@ function isTrulyEmptySchema(schemaRecord: Record<string, unknown>): boolean {
   return Object.keys(schemaRecord).length === 0;
 }
 
+function isSchemaRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function decodeJsonPointerSegment(segment: string): string {
+  return segment.replace(/~1/gu, "/").replace(/~0/gu, "~");
+}
+
+function resolveJsonPointerPath(value: unknown, segments: string[]): unknown {
+  let current = value;
+  for (const rawSegment of segments) {
+    if (!rawSegment) {
+      continue;
+    }
+    if (!current || typeof current !== "object") {
+      return undefined;
+    }
+    const segment = decodeJsonPointerSegment(rawSegment);
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
+}
+
+const SCHEMA_MAP_KEYS = new Set([
+  "$defs",
+  "definitions",
+  "dependentSchemas",
+  "patternProperties",
+  "properties",
+]);
+
+const SCHEMA_OBJECT_KEYS = new Set([
+  "additionalProperties",
+  "contains",
+  "else",
+  "if",
+  "items",
+  "not",
+  "propertyNames",
+  "then",
+]);
+
+const SCHEMA_ARRAY_KEYS = new Set(["allOf", "anyOf", "items", "oneOf", "prefixItems"]);
+
+const SCHEMA_LITERAL_KEYS = new Set(["const", "default", "enum", "examples"]);
+
+function resolveLocalJsonPointer(rootDocument: unknown, ref: string): unknown {
+  if (!ref.startsWith("#/")) {
+    return undefined;
+  }
+  return resolveJsonPointerPath(rootDocument, ref.slice(2).split("/"));
+}
+
+function inlineLocalToolSchemaRefsWithRoot(
+  schema: unknown,
+  rootDocument: unknown,
+  refStack: Set<string> | undefined,
+  state: { unresolvedLocalRefs: boolean },
+): unknown {
+  if (!schema || typeof schema !== "object") {
+    return schema;
+  }
+  if (Array.isArray(schema)) {
+    return schema.map((entry) =>
+      inlineLocalToolSchemaRefsWithRoot(entry, rootDocument, refStack, state),
+    );
+  }
+
+  const obj = schema as Record<string, unknown>;
+  const refValue = typeof obj.$ref === "string" ? obj.$ref : undefined;
+  if (refValue) {
+    if (refStack?.has(refValue)) {
+      return {};
+    }
+    const resolved = resolveLocalJsonPointer(rootDocument, refValue);
+    if (resolved === undefined) {
+      if (refValue.startsWith("#/")) {
+        state.unresolvedLocalRefs = true;
+      }
+      return obj;
+    }
+    const nextRefStack = refStack ? new Set(refStack) : new Set<string>();
+    nextRefStack.add(refValue);
+    const inlined = inlineLocalToolSchemaRefsWithRoot(resolved, rootDocument, nextRefStack, state);
+    if (!isSchemaRecord(inlined)) {
+      return inlined;
+    }
+    const result: Record<string, unknown> = { ...inlined };
+    for (const key of ["title", "description", "default", "examples"]) {
+      if (key in obj) {
+        result[key] = obj[key];
+      }
+    }
+    if (obj.nullable === true) {
+      result.nullable = true;
+    }
+    return result;
+  }
+
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (key === "$defs" || key === "definitions" || key === "components") {
+      continue;
+    }
+    if (SCHEMA_LITERAL_KEYS.has(key)) {
+      result[key] = value;
+      continue;
+    }
+    if (SCHEMA_MAP_KEYS.has(key) && isSchemaRecord(value)) {
+      result[key] = Object.fromEntries(
+        Object.entries(value).map(([entryKey, entryValue]) => [
+          entryKey,
+          inlineLocalToolSchemaRefsWithRoot(entryValue, rootDocument, refStack, state),
+        ]),
+      );
+      continue;
+    }
+    if (SCHEMA_OBJECT_KEYS.has(key) && isSchemaRecord(value)) {
+      result[key] = inlineLocalToolSchemaRefsWithRoot(value, rootDocument, refStack, state);
+      continue;
+    }
+    if (SCHEMA_ARRAY_KEYS.has(key) && Array.isArray(value)) {
+      result[key] = value.map((entry) =>
+        inlineLocalToolSchemaRefsWithRoot(entry, rootDocument, refStack, state),
+      );
+      continue;
+    }
+    result[key] = value;
+  }
+  if (state.unresolvedLocalRefs) {
+    for (const key of ["$defs", "definitions", "components"]) {
+      if (key in obj) {
+        result[key] = obj[key];
+      }
+    }
+  }
+  return result;
+}
+
+function inlineLocalToolSchemaRefs(schema: unknown): unknown {
+  if (!isSchemaRecord(schema)) {
+    return schema;
+  }
+  return inlineLocalToolSchemaRefsWithRoot(schema, schema, undefined, {
+    unresolvedLocalRefs: false,
+  });
+}
+
+const OPENAPI_SCHEMA_ANNOTATION_KEYS = new Set([
+  "discriminator",
+  "externalDocs",
+  "readOnly",
+  "writeOnly",
+  "xml",
+  "example",
+]);
+
+function appendNullSchemaType(type: unknown): unknown {
+  if (type === "null") {
+    return type;
+  }
+  if (typeof type === "string") {
+    return [type, "null"];
+  }
+  if (Array.isArray(type)) {
+    return type.includes("null") ? type : [...type, "null"];
+  }
+  return type;
+}
+
+function isNullSchemaLike(schema: unknown): boolean {
+  if (!isSchemaRecord(schema)) {
+    return false;
+  }
+  if (schema.type === "null") {
+    return true;
+  }
+  if (Array.isArray(schema.type) && schema.type.includes("null")) {
+    return true;
+  }
+  if ("const" in schema && schema.const === null) {
+    return true;
+  }
+  return Array.isArray(schema.enum) && schema.enum.includes(null);
+}
+
+function hasOpenApiComposition(schema: Record<string, unknown>): boolean {
+  return ["allOf", "anyOf", "oneOf"].some((key) => Array.isArray(schema[key]));
+}
+
+function schemaCompositionAlreadyAllowsNull(schema: Record<string, unknown>): boolean {
+  return (
+    (Array.isArray(schema.anyOf) && schema.anyOf.some(isNullSchemaLike)) ||
+    (Array.isArray(schema.oneOf) && schema.oneOf.some(isNullSchemaLike))
+  );
+}
+
+function wrapNullableComposedSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  if (schemaCompositionAlreadyAllowsNull(schema)) {
+    return schema;
+  }
+  return {
+    anyOf: [schema, { type: "null" }],
+  };
+}
+
+function normalizeOpenApiSchemaKeywords(schema: unknown): unknown {
+  if (Array.isArray(schema)) {
+    return schema.map(normalizeOpenApiSchemaKeywords);
+  }
+  if (!isSchemaRecord(schema)) {
+    return schema;
+  }
+
+  const nullable = schema.nullable === true;
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === "nullable" || OPENAPI_SCHEMA_ANNOTATION_KEYS.has(key)) {
+      continue;
+    }
+    if (SCHEMA_LITERAL_KEYS.has(key)) {
+      normalized[key] = value;
+      continue;
+    }
+    if (SCHEMA_MAP_KEYS.has(key) && isSchemaRecord(value)) {
+      normalized[key] = Object.fromEntries(
+        Object.entries(value).map(([entryKey, entryValue]) => [
+          entryKey,
+          normalizeOpenApiSchemaKeywords(entryValue),
+        ]),
+      );
+      continue;
+    }
+    if (key === "components") {
+      normalized[key] = value;
+      continue;
+    }
+    if (SCHEMA_OBJECT_KEYS.has(key) && isSchemaRecord(value)) {
+      normalized[key] = normalizeOpenApiSchemaKeywords(value);
+      continue;
+    }
+    if (SCHEMA_ARRAY_KEYS.has(key) && Array.isArray(value)) {
+      normalized[key] = value.map(normalizeOpenApiSchemaKeywords);
+      continue;
+    }
+    normalized[key] = value;
+  }
+
+  if (nullable) {
+    if (hasOpenApiComposition(normalized)) {
+      return wrapNullableComposedSchema(normalized);
+    }
+    if ("type" in normalized) {
+      normalized.type = appendNullSchemaType(normalized.type);
+    }
+    if (Array.isArray(normalized.enum) && !normalized.enum.includes(null)) {
+      normalized.enum = [...normalized.enum, null];
+    }
+  }
+
+  return nullable ? normalized : normalized;
+}
+
 export function normalizeToolParameterSchema(
   schema: unknown,
   options?: { modelProvider?: string; modelId?: string; modelCompat?: ModelCompatConfig },
 ): unknown {
+  const normalizedSchema = normalizeOpenApiSchemaKeywords(inlineLocalToolSchemaRefs(schema));
   const schemaRecord =
-    schema && typeof schema === "object" ? (schema as Record<string, unknown>) : undefined;
+    normalizedSchema && typeof normalizedSchema === "object"
+      ? (normalizedSchema as Record<string, unknown>)
+      : undefined;
   if (!schemaRecord) {
-    return schema;
+    return normalizedSchema;
   }
 
   // Provider quirks:
@@ -185,9 +451,9 @@ export function normalizeToolParameterSchema(
     if (conditionalKey === "allOf") {
       // Top-level `allOf` is not safely flattenable with the same heuristics we
       // use for unions. Keep it explicit rather than silently rewriting it.
-      return schema;
+      return applyProviderCleaning(normalizedSchema);
     }
-    return schema;
+    return applyProviderCleaning(normalizedSchema);
   }
   const variants = schemaRecord[flattenableVariantKey] as unknown[];
   const mergedProperties: Record<string, unknown> = {};

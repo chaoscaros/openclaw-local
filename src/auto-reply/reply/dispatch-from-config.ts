@@ -1,4 +1,7 @@
-import { hasOutboundReplyContent } from "openclaw/plugin-sdk/reply-payload";
+import {
+  hasOutboundReplyContent,
+  resolveSendableOutboundReplyParts,
+} from "openclaw/plugin-sdk/reply-payload";
 import { isParentOwnedBackgroundAcpSession } from "../../acp/session-interaction-mode.js";
 import { resolveAgentConfig, resolveSessionAgentId } from "../../agents/agent-scope.js";
 import {
@@ -210,20 +213,24 @@ const createShouldEmitVerboseProgress = (params: {
   storePath?: string;
   fallbackLevel: string;
 }) => {
-  return () => {
+  const resolveLevel = () => {
     if (params.sessionKey && params.storePath) {
       try {
         const store = loadSessionStore(params.storePath);
         const entry = resolveSessionStoreEntry({ store, sessionKey: params.sessionKey }).existing;
         const currentLevel = normalizeVerboseLevel(entry?.verboseLevel ?? "");
         if (currentLevel) {
-          return currentLevel !== "off";
+          return currentLevel;
         }
       } catch {
         // Ignore transient store read failures and fall back to the current dispatch snapshot.
       }
     }
-    return params.fallbackLevel !== "off";
+    return normalizeVerboseLevel(params.fallbackLevel) ?? "off";
+  };
+  return {
+    shouldEmit: () => resolveLevel() !== "off",
+    shouldEmitFull: () => resolveLevel() === "full",
   };
 };
 export type {
@@ -303,7 +310,7 @@ export async function dispatchReplyFromConfig(
 
   const sessionAgentId = resolveSessionAgentId({ sessionKey: acpDispatchSessionKey, config: cfg });
   const sessionAgentCfg = resolveAgentConfig(cfg, sessionAgentId);
-  const shouldEmitVerboseProgress = createShouldEmitVerboseProgress({
+  const verboseProgress = createShouldEmitVerboseProgress({
     sessionKey: acpDispatchSessionKey,
     storePath: sessionStoreEntry.storePath,
     fallbackLevel:
@@ -314,6 +321,8 @@ export async function dispatchReplyFromConfig(
           "",
       ) ?? "off",
   });
+  const shouldEmitVerboseProgress = verboseProgress.shouldEmit;
+  const shouldEmitFullVerboseProgress = verboseProgress.shouldEmitFull;
   // Restore route thread context only from the active turn or the thread-scoped session key.
   // Do not read thread ids from the normalised session store here: `origin.threadId` can be
   // folded back into lastThreadId/deliveryContext during store normalisation and resurrect a
@@ -681,11 +690,43 @@ export async function dispatchReplyFromConfig(
 
     const shouldSendToolSummaries = ctx.ChatType !== "group" || ctx.IsForum === true;
     const shouldSendToolStartStatuses = ctx.ChatType !== "group" || ctx.IsForum === true;
+    let finalReplyDeliveryStarted = false;
+    const hasExecApprovalPayload = (payload: ReplyPayload): boolean => {
+      const execApproval =
+        payload.channelData &&
+        typeof payload.channelData === "object" &&
+        !Array.isArray(payload.channelData)
+          ? payload.channelData.execApproval
+          : undefined;
+      return Boolean(
+        execApproval && typeof execApproval === "object" && !Array.isArray(execApproval),
+      );
+    };
+    const shouldSuppressLateTextOnlyToolProgress = (payload: ReplyPayload): boolean => {
+      if (!finalReplyDeliveryStarted) {
+        return false;
+      }
+      const reply = resolveSendableOutboundReplyParts(payload);
+      return !reply.hasMedia && !hasExecApprovalPayload(payload);
+    };
+    const shouldSuppressMessageToolOnlyTextErrorProgress = (payload: ReplyPayload): boolean => {
+      if (
+        sourceReplyDeliveryMode !== "message_tool_only" ||
+        shouldEmitFullVerboseProgress() ||
+        payload.isError !== true
+      ) {
+        return false;
+      }
+      const reply = resolveSendableOutboundReplyParts(payload);
+      return !reply.hasMedia && !hasExecApprovalPayload(payload);
+    };
     const sendFinalPayload = async (
       payload: ReplyPayload,
     ): Promise<{ queuedFinal: boolean; routedFinalCount: number }> => {
-      if (hasOutboundReplyContent(payload, { trimText: true })) {
+      const hasVisibleFinalContent = hasOutboundReplyContent(payload, { trimText: true });
+      if (hasVisibleFinalContent) {
         markInboundDedupeReplayUnsafe();
+        finalReplyDeliveryStarted = true;
       }
       const ttsPayload = await maybeApplyTtsToReplyPayload({
         payload,
@@ -939,11 +980,15 @@ export async function dispatchReplyFromConfig(
 
     const replyResolver =
       params.replyResolver ?? (await loadGetReplyFromConfigRuntime()).getReplyFromConfig;
+    const suppressToolErrorWarnings =
+      params.replyOptions?.suppressToolErrorWarnings ??
+      (shouldEmitVerboseProgress() && !shouldEmitFullVerboseProgress() ? true : undefined);
     const replyResult = await replyResolver(
       ctx,
       {
         ...params.replyOptions,
         sourceReplyDeliveryMode,
+        suppressToolErrorWarnings,
         typingPolicy: typing.typingPolicy,
         suppressTyping: typing.suppressTyping,
         onToolResult: (payload: ReplyPayload) => {
@@ -962,6 +1007,12 @@ export async function dispatchReplyFromConfig(
             });
             const deliveryPayload = resolveToolDeliveryPayload(ttsPayload);
             if (!deliveryPayload) {
+              return;
+            }
+            if (shouldSuppressLateTextOnlyToolProgress(deliveryPayload)) {
+              return;
+            }
+            if (shouldSuppressMessageToolOnlyTextErrorProgress(deliveryPayload)) {
               return;
             }
             if (shouldRouteToOriginating) {

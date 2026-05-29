@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as transcriptEvents from "../../sessions/transcript-events.js";
 import { resolveSessionTranscriptPathInDir } from "./paths.js";
 import { useTempSessionsFixture } from "./test-helpers.js";
+import { withOwnedSessionTranscriptWrites } from "./transcript-write-context.js";
 import {
   appendAssistantMessageToSessionTranscript,
   appendExactAssistantMessageToSessionTranscript,
@@ -91,6 +92,32 @@ describe("appendAssistantMessageToSessionTranscript", () => {
       }),
     );
     emitSpy.mockRestore();
+  });
+
+  it("runs matching delivery mirror appends through the active transcript write context", async () => {
+    writeTranscriptStore();
+    const sessionFile = resolveSessionTranscriptPathInDir(sessionId, fixture.sessionsDir());
+    const events: string[] = [];
+
+    const result = await withOwnedSessionTranscriptWrites(
+      {
+        sessionFile,
+        sessionKey,
+        withSessionWriteLock: async (run) => {
+          events.push("lock");
+          return await run();
+        },
+      },
+      async () =>
+        await appendAssistantMessageToSessionTranscript({
+          sessionKey,
+          text: "Hello under lock",
+          storePath: fixture.storePath(),
+        }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(events).toEqual(["lock"]);
   });
 
   it("does not append a duplicate delivery mirror for the same idempotency key", async () => {

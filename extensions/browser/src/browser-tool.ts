@@ -64,6 +64,17 @@ const browserToolDeps = {
   untrackSessionBrowserTab,
 };
 
+function resolveRuntimeImageSanitization(): { maxDimensionPx: number } | undefined {
+  const cfg = browserToolDeps.loadConfig() as {
+    agents?: { defaults?: { imageMaxDimensionPx?: unknown } };
+  };
+  const configured = cfg.agents?.defaults?.imageMaxDimensionPx;
+  if (typeof configured !== "number" || !Number.isFinite(configured)) {
+    return undefined;
+  }
+  return { maxDimensionPx: Math.max(1, Math.floor(configured)) };
+}
+
 export const __testing = {
   setDepsForTest(
     overrides: Partial<{
@@ -615,6 +626,7 @@ export function createBrowserTool(opts?: {
             label: "browser:screenshot",
             path: result.path,
             details: result,
+            imageSanitization: resolveRuntimeImageSanitization(),
           });
         }
         case "navigate": {

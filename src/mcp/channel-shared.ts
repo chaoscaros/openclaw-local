@@ -156,7 +156,10 @@ export function resolveConversationChannel(row: SessionRow): string | undefined 
 
 export function toConversation(row: SessionRow): ConversationDescriptor | null {
   const channel = resolveConversationChannel(row);
-  const to = toText(row.deliveryContext?.to) ?? toText(row.lastTo);
+  const to =
+    toText(row.deliveryContext?.to) ??
+    toText(row.lastTo) ??
+    (channel === "webchat" ? row.key : undefined);
   if (!channel || !to) {
     return null;
   }

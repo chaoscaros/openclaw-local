@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/config.js";
+import { mockPinnedHostnameResolution } from "../../test-helpers/ssrf.js";
 import { withFetchPreconnect } from "../../test-utils/fetch-mock.js";
 import { createWebFetchTool } from "./web-tools.js";
 
@@ -15,6 +16,7 @@ describe("web_fetch provider fallback normalization", () => {
   const priorFetch = global.fetch;
 
   beforeEach(() => {
+    mockPinnedHostnameResolution();
     resolveWebFetchDefinitionMock.mockReset();
   });
 

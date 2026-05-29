@@ -5,10 +5,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { createSandboxTestContext } from "../../../src/agents/sandbox/test-fixtures.js";
 import type { OpenShellSandboxBackend } from "./backend.js";
 import {
+  applyGatewayEndpointToSshConfig,
   buildExecRemoteCommand,
   buildOpenShellBaseArgv,
   resolveOpenShellCommand,
-  setBundledOpenShellCommandResolverForTest,
   shellEscape,
 } from "./cli.js";
 import { resolveOpenShellPluginConfig } from "./config.js";
@@ -20,10 +20,6 @@ const cliMocks = vi.hoisted(() => ({
 let createOpenShellSandboxBackendManager: typeof import("./backend.js").createOpenShellSandboxBackendManager;
 
 describe("openshell cli helpers", () => {
-  afterEach(() => {
-    setBundledOpenShellCommandResolverForTest();
-  });
-
   it("builds base argv with gateway overrides", () => {
     const config = resolveOpenShellPluginConfig({
       command: "/usr/local/bin/openshell",
@@ -39,18 +35,17 @@ describe("openshell cli helpers", () => {
     ]);
   });
 
-  it("prefers the bundled openshell command when available", () => {
-    setBundledOpenShellCommandResolverForTest(() => "/tmp/node_modules/.bin/openshell");
+  it("uses the configured NVIDIA OpenShell CLI command directly", () => {
     const config = resolveOpenShellPluginConfig(undefined);
 
-    expect(resolveOpenShellCommand("openshell")).toBe("/tmp/node_modules/.bin/openshell");
-    expect(buildOpenShellBaseArgv(config)).toEqual(["/tmp/node_modules/.bin/openshell"]);
+    expect(resolveOpenShellCommand("openshell")).toBe("openshell");
+    expect(buildOpenShellBaseArgv(config)).toEqual(["openshell"]);
   });
 
-  it("falls back to the PATH command when no bundled openshell is present", () => {
-    setBundledOpenShellCommandResolverForTest(() => null);
-
-    expect(resolveOpenShellCommand("openshell")).toBe("openshell");
+  it("preserves an explicit NVIDIA OpenShell CLI path", () => {
+    expect(resolveOpenShellCommand("/opt/openshell/bin/openshell")).toBe(
+      "/opt/openshell/bin/openshell",
+    );
   });
 
   it("shell escapes single quotes", () => {
@@ -68,6 +63,33 @@ describe("openshell cli helpers", () => {
     expect(command).toContain(`'env'`);
     expect(command).toContain(`'TOKEN=abc 123'`);
     expect(command).toContain(`'cd '"'"'/sandbox/project'"'"' && pwd && printenv TOKEN'`);
+  });
+
+  it("adds direct gateway endpoints to ssh-proxy configs", () => {
+    const configText = [
+      "Host openshell-test",
+      "  HostName example",
+      "  ProxyCommand openshell gateway ssh-proxy --gateway lab %h %p",
+    ].join("\n");
+
+    expect(
+      applyGatewayEndpointToSshConfig({
+        configText,
+        gatewayEndpoint: "https://lab.example",
+      }),
+    ).toContain("--server 'https://lab.example'");
+  });
+
+  it("leaves ssh configs unchanged when the proxy already has a server", () => {
+    const configText =
+      "ProxyCommand openshell gateway ssh-proxy --server https://lab.example %h %p";
+
+    expect(
+      applyGatewayEndpointToSshConfig({
+        configText,
+        gatewayEndpoint: "https://other.example",
+      }),
+    ).toBe(configText);
   });
 });
 

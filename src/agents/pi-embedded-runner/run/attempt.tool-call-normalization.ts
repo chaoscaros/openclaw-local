@@ -6,7 +6,7 @@ import {
   isRedactedSessionsSpawnAttachment,
   sanitizeToolUseResultPairing,
 } from "../../session-transcript-repair.js";
-import { extractToolCallsFromAssistant } from "../../tool-call-id.js";
+import { extractToolCallsFromAssistant, type ToolCallIdMode } from "../../tool-call-id.js";
 import { normalizeToolName } from "../../tool-policy.js";
 import { shouldAllowProviderOwnedThinkingReplay } from "../../transcript-policy.js";
 import type { TranscriptPolicy } from "../../transcript-policy.js";
@@ -866,6 +866,20 @@ export function wrapStreamFnTrimToolCallNames(
       state: unknownToolGuardState,
     });
   };
+}
+
+type ReplayToolCallIdSanitizerDecision = {
+  sanitizeToolCallIds: boolean;
+  toolCallIdMode?: ToolCallIdMode;
+  isOpenAIResponsesApi: boolean;
+};
+
+export function shouldApplyReplayToolCallIdSanitizer(
+  params: ReplayToolCallIdSanitizerDecision,
+): params is ReplayToolCallIdSanitizerDecision & { toolCallIdMode: ToolCallIdMode } {
+  return (
+    params.sanitizeToolCallIds && Boolean(params.toolCallIdMode) && !params.isOpenAIResponsesApi
+  );
 }
 
 export function wrapStreamFnSanitizeMalformedToolCalls(

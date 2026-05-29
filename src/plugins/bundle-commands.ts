@@ -15,6 +15,7 @@ import {
 } from "./bundle-manifest.js";
 import { normalizePluginsConfig, resolveEffectivePluginActivationState } from "./config-state.js";
 import { loadPluginManifestRegistry } from "./manifest-registry.js";
+import type { PluginManifestRegistry } from "./manifest-registry.js";
 
 export type ClaudeBundleCommandSpec = {
   pluginId: string;
@@ -168,10 +169,17 @@ function loadBundleCommandsFromRoot(params: {
 export function loadEnabledClaudeBundleCommands(params: {
   workspaceDir: string;
   cfg?: OpenClawConfig;
+  env?: NodeJS.ProcessEnv;
+  deps?: {
+    loadPluginManifestRegistry?: typeof loadPluginManifestRegistry;
+  };
 }): ClaudeBundleCommandSpec[] {
-  const registry = loadPluginManifestRegistry({
+  const loadRegistry = params.deps?.loadPluginManifestRegistry ?? loadPluginManifestRegistry;
+  const registry: PluginManifestRegistry = loadRegistry({
     workspaceDir: params.workspaceDir,
     config: params.cfg,
+    cache: false,
+    env: params.env,
   });
   const normalizedPlugins = normalizePluginsConfig(params.cfg?.plugins);
   const commands: ClaudeBundleCommandSpec[] = [];

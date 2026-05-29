@@ -43,13 +43,20 @@ function normalizeAgentWaitResult(
   status: AgentWaitResult["status"],
   wait?: RawAgentWaitResponse,
 ): AgentWaitResult {
-  return {
-    status,
-    error: typeof wait?.error === "string" ? wait.error : undefined,
-    startedAt: typeof wait?.startedAt === "number" ? wait.startedAt : undefined,
-    endedAt: typeof wait?.endedAt === "number" ? wait.endedAt : undefined,
-    yielded: wait?.yielded === true,
-  };
+  const result: AgentWaitResult = { status };
+  if (typeof wait?.error === "string") {
+    result.error = wait.error;
+  }
+  if (typeof wait?.startedAt === "number") {
+    result.startedAt = wait.startedAt;
+  }
+  if (typeof wait?.endedAt === "number") {
+    result.endedAt = wait.endedAt;
+  }
+  if (typeof wait?.yielded === "boolean") {
+    result.yielded = wait.yielded;
+  }
+  return result;
 }
 
 export function isRecoverableAgentWaitError(error: string | undefined): boolean {

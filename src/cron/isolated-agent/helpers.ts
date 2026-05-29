@@ -103,6 +103,10 @@ function isNonTerminalToolErrorWarningPayload(
   );
 }
 
+function isCronToolWarning(text: string | undefined): boolean {
+  return normalizeOptionalString(text)?.startsWith("⚠️ 🛠️ ") === true;
+}
+
 export function pickLastDeliverablePayload(payloads: DeliveryPayload[]) {
   for (let i = payloads.length - 1; i >= 0; i--) {
     if (payloads[i]?.isError) {
@@ -157,6 +161,7 @@ export function resolveCronPayloadOutcome(params: {
   const deliveryPayload = pickLastDeliverablePayload(params.payloads);
   const selectedDeliveryPayloads = pickDeliverablePayloads(params.payloads);
   const deliveryPayloadHasStructuredContent = payloadHasStructuredDeliveryContent(deliveryPayload);
+  const errorPayloads = params.payloads.filter((payload) => payload?.isError === true);
   const hasErrorPayload = params.payloads.some(
     (payload) => payload?.isError === true && !isNonTerminalToolErrorWarningPayload(payload),
   );
@@ -169,13 +174,21 @@ export function resolveCronPayloadOutcome(params: {
     params.payloads
       .slice(lastErrorPayloadIndex + 1)
       .some((payload) => payload?.isError !== true && Boolean(payload?.text?.trim()));
-  const hasFatalErrorPayload = hasErrorPayload && !hasSuccessfulPayloadAfterLastError;
   const normalizedFinalAssistantVisibleText = normalizeOptionalString(
     params.finalAssistantVisibleText,
   );
   const hasStructuredDeliveryPayloads = selectedDeliveryPayloads.some((payload) =>
     payloadHasStructuredDeliveryContent(payload),
   );
+  const hasRecoveredToolWarning =
+    !params.runLevelError &&
+    params.preferFinalAssistantVisibleText === true &&
+    normalizedFinalAssistantVisibleText !== undefined &&
+    !hasStructuredDeliveryPayloads &&
+    errorPayloads.length > 0 &&
+    errorPayloads.every((payload) => isCronToolWarning(payload?.text));
+  const hasFatalErrorPayload =
+    hasErrorPayload && !hasSuccessfulPayloadAfterLastError && !hasRecoveredToolWarning;
   // Keep structured/media announce payloads intact. Only collapse purely textual
   // cron announce output to the final assistant-visible answer.
   const shouldUseFinalAssistantVisibleText =

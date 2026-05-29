@@ -4,9 +4,11 @@ import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { CANVAS_HOST_PATH } from "../canvas-host/a2ui.js";
 import { resolveStateDir } from "../config/paths.js";
+import type { LookupFn } from "../infra/net/ssrf.js";
 import { resolvePreferredOpenClawTmpDir } from "../infra/tmp-openclaw-dir.js";
 
 let loadWebMedia: typeof import("./web-media.js").loadWebMedia;
+let loadWebMediaRaw: typeof import("./web-media.js").loadWebMediaRaw;
 
 const TINY_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/woAAn8B9FD5fHAAAAAASUVORK5CYII=";
@@ -18,8 +20,12 @@ let canvasPngFile = "";
 let workspaceDir = "";
 let workspacePngFile = "";
 
+function makeLookupFn(): LookupFn {
+  return vi.fn(async () => ({ address: "93.184.216.34", family: 4 })) as unknown as LookupFn;
+}
+
 beforeAll(async () => {
-  ({ loadWebMedia } = await import("./web-media.js"));
+  ({ loadWebMedia, loadWebMediaRaw } = await import("./web-media.js"));
   fixtureRoot = await fs.mkdtemp(path.join(resolvePreferredOpenClawTmpDir(), "web-media-core-"));
   tinyPngFile = path.join(fixtureRoot, "tiny.png");
   await fs.writeFile(tinyPngFile, Buffer.from(TINY_PNG_BASE64, "base64"));
@@ -53,6 +59,23 @@ afterAll(async () => {
 });
 
 describe("loadWebMedia", () => {
+  function makeStallingFetch(firstChunk: Uint8Array) {
+    return vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(firstChunk);
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/pdf" },
+          },
+        ),
+    );
+  }
+
   function createLocalWebMediaOptions() {
     return {
       maxBytes: 1024 * 1024,
@@ -143,6 +166,57 @@ describe("loadWebMedia", () => {
     );
     expect(result.kind).toBe("image");
     expect(result.buffer.length).toBeGreaterThan(0);
+  });
+
+  it("applies a remote read idle timeout for raw web media loads", async () => {
+    vi.useFakeTimers();
+    try {
+      const readIdleTimeoutMs = 20;
+      const fetchImpl = makeStallingFetch(new Uint8Array([0x25, 0x50, 0x44, 0x46]));
+      const outcome = loadWebMediaRaw("https://example.test/stalled.pdf", {
+        maxBytes: 1024 * 1024,
+        fetchImpl,
+        lookupFn: makeLookupFn(),
+        readIdleTimeoutMs,
+        ssrfPolicy: { allowedHostnames: ["example.test"] },
+      }).then(
+        () => ({ status: "resolved" as const }),
+        (error: unknown) => ({ status: "rejected" as const, error }),
+      );
+
+      await vi.advanceTimersByTimeAsync(readIdleTimeoutMs + 5);
+
+      await expect(outcome).resolves.toMatchObject({ status: "rejected" });
+      const result = await outcome;
+      expect(result.status).toBe("rejected");
+      if (result.status === "rejected") {
+        expect(String(result.error)).toMatch(/stalled|no data received/i);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("loads remote raw web media when the response read stays active", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(Buffer.from("%PDF-1.4\n%%EOF"), {
+          status: 200,
+          headers: { "content-type": "application/pdf" },
+        }),
+    );
+
+    const result = await loadWebMediaRaw("https://example.test/ok.pdf", {
+      maxBytes: 1024 * 1024,
+      fetchImpl,
+      lookupFn: makeLookupFn(),
+      readIdleTimeoutMs: 20,
+      ssrfPolicy: { allowedHostnames: ["example.test"] },
+    });
+
+    expect(result.kind).toBe("document");
+    expect(result.contentType).toBe("application/pdf");
+    expect(result.buffer.toString()).toContain("%PDF-1.4");
   });
 
   it("resolves relative local media paths against the provided workspace directory", async () => {

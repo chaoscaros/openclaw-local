@@ -6,7 +6,7 @@ import {
   expectAugmentedCodexCatalog,
   expectCodexBuiltInSuppression,
   expectCodexMissingAuthHint,
-  expectedAugmentedOpenaiCodexCatalogEntries,
+  expectedRuntimeAugmentedOpenaiCodexCatalogEntries,
 } from "./provider-runtime.test-support.js";
 import type {
   AnyAgentTool,
@@ -1203,7 +1203,10 @@ describe("provider-runtime", () => {
 
     expectCodexMissingAuthHint(buildProviderMissingAuthMessageWithPlugin);
     expectCodexBuiltInSuppression(resolveProviderBuiltInModelSuppression);
-    await expectAugmentedCodexCatalog(augmentModelCatalogWithProviderPlugins);
+    await expectAugmentedCodexCatalog(
+      augmentModelCatalogWithProviderPlugins,
+      expectedRuntimeAugmentedOpenaiCodexCatalogEntries,
+    );
 
     expectCalledOnce(
       buildReplayPolicy,
@@ -1350,7 +1353,7 @@ describe("provider-runtime", () => {
           ],
         },
       }),
-    ).resolves.toEqual(expectedAugmentedOpenaiCodexCatalogEntries);
+    ).resolves.toEqual(expectedRuntimeAugmentedOpenaiCodexCatalogEntries);
 
     expect(resolvePluginProvidersMock).toHaveBeenCalledWith(
       expect.objectContaining({

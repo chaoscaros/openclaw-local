@@ -552,7 +552,7 @@ describe("CronService", () => {
     expect(requestHeartbeatNow).toHaveBeenCalledWith(
       expect.objectContaining({
         reason: `cron:${job.id}`,
-        sessionKey,
+        sessionKey: expect.stringMatching(new RegExp(`^agent:main:cron:${job.id}:run:\\d+$`)),
       }),
     );
     expect(job.state.lastStatus).toBe("ok");

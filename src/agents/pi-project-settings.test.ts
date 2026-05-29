@@ -1,6 +1,10 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildEmbeddedPiSettingsSnapshot,
+  createPreparedEmbeddedPiSettingsManager,
   DEFAULT_EMBEDDED_PI_PROJECT_SETTINGS_POLICY,
   resolveEmbeddedPiProjectSettingsPolicy,
 } from "./pi-project-settings.js";
@@ -25,6 +29,50 @@ describe("resolveEmbeddedPiProjectSettingsPolicy", () => {
         agents: { defaults: { embeddedPi: { projectSettingsPolicy: "ignore" } } },
       }),
     ).toBe("ignore");
+  });
+});
+
+describe("createPreparedEmbeddedPiSettingsManager", () => {
+  it("disables pi-coding-agent retry without persisting the runtime override", async () => {
+    const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-pi-settings-"));
+    try {
+      const cwd = path.join(baseDir, "workspace");
+      const agentDir = path.join(baseDir, "agent");
+      const projectSettingsDir = path.join(cwd, ".pi");
+      const agentSettingsPath = path.join(agentDir, "settings.json");
+      await fs.mkdir(projectSettingsDir, { recursive: true });
+      await fs.mkdir(agentDir, { recursive: true });
+      await fs.writeFile(
+        agentSettingsPath,
+        JSON.stringify({ retry: { enabled: true } }, null, 2),
+        "utf8",
+      );
+      await fs.writeFile(
+        path.join(projectSettingsDir, "settings.json"),
+        JSON.stringify({ shellCommandPrefix: "echo trusted &&" }, null, 2),
+        "utf8",
+      );
+
+      const settingsManager = createPreparedEmbeddedPiSettingsManager({
+        cwd,
+        agentDir,
+        cfg: {
+          agents: { defaults: { embeddedPi: { projectSettingsPolicy: "trusted" } } },
+        },
+      });
+
+      expect(settingsManager.getShellCommandPrefix()).toBe("echo trusted &&");
+      expect(settingsManager.getRetryEnabled()).toBe(false);
+
+      await settingsManager.flush();
+
+      const diskSettings = JSON.parse(await fs.readFile(agentSettingsPath, "utf8")) as {
+        retry?: { enabled?: boolean };
+      };
+      expect(diskSettings.retry?.enabled).toBe(true);
+    } finally {
+      await fs.rm(baseDir, { recursive: true, force: true });
+    }
   });
 });
 

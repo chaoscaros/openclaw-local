@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { resolveAuthProfileOrder } from "./order.js";
 import { markAuthProfileGood } from "./profiles.js";
 import { saveAuthProfileStore } from "./store.js";
@@ -19,16 +19,13 @@ const loadPluginManifestRegistry = vi.hoisted(() =>
   })),
 );
 
-vi.mock("../../plugins/manifest-registry.js", () => ({
+const providerAuthAliasDeps = {
   loadPluginManifestRegistry,
-}));
+};
 
 describe("resolveAuthProfileOrder", () => {
-  beforeEach(() => {
-    loadPluginManifestRegistry.mockClear();
-  });
-
   it("accepts aliased provider credentials from manifest metadata", () => {
+    loadPluginManifestRegistry.mockClear();
     const store: AuthProfileStore = {
       version: 1,
       profiles: {
@@ -41,6 +38,7 @@ describe("resolveAuthProfileOrder", () => {
     };
 
     const order = resolveAuthProfileOrder({
+      providerAuthAliasDeps,
       store,
       provider: "fixture-provider-plan",
     });
@@ -49,6 +47,7 @@ describe("resolveAuthProfileOrder", () => {
   });
 
   it("marks aliased provider profiles good under the canonical auth provider", async () => {
+    loadPluginManifestRegistry.mockClear();
     const agentDir = await mkdtemp(path.join(os.tmpdir(), "openclaw-auth-profile-alias-"));
     try {
       const store: AuthProfileStore = {
@@ -64,6 +63,7 @@ describe("resolveAuthProfileOrder", () => {
       saveAuthProfileStore(store, agentDir);
 
       await markAuthProfileGood({
+        providerAuthAliasDeps,
         store,
         provider: "fixture-provider-plan",
         profileId: "fixture-provider:default",

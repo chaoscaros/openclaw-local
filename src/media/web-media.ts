@@ -3,7 +3,7 @@ import { resolveCanvasHttpPathToLocalPath } from "../gateway/canvas-documents.js
 import { logVerbose, shouldLogVerbose } from "../globals.js";
 import { SafeOpenError, readLocalFileSafely } from "../infra/fs-safe.js";
 import { assertNoWindowsNetworkPath, safeFileURLToPath } from "../infra/local-file-access.js";
-import type { SsrFPolicy } from "../infra/net/ssrf.js";
+import type { LookupFn, SsrFPolicy } from "../infra/net/ssrf.js";
 import { resolveUserPath } from "../utils.js";
 import { maxBytesForKind, type MediaKind } from "./constants.js";
 import { fetchRemoteMedia } from "./fetch.js";
@@ -41,6 +41,10 @@ type WebMediaOptions = {
   maxBytes?: number;
   optimizeImages?: boolean;
   ssrfPolicy?: SsrFPolicy;
+  fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  requestInit?: RequestInit;
+  lookupFn?: LookupFn;
+  readIdleTimeoutMs?: number;
   workspaceDir?: string;
   /** Allowed root directories for local path reads. "any" is deprecated; prefer sandboxValidated + readFile. */
   localRoots?: readonly string[] | "any";
@@ -224,6 +228,10 @@ async function loadWebMediaInternal(
     maxBytes,
     optimizeImages = true,
     ssrfPolicy,
+    fetchImpl,
+    requestInit,
+    lookupFn,
+    readIdleTimeoutMs,
     workspaceDir,
     localRoots,
     sandboxValidated = false,
@@ -320,7 +328,15 @@ async function loadWebMediaInternal(
         : optimizeImages
           ? Math.max(maxBytes, defaultFetchCap)
           : maxBytes;
-    const fetched = await fetchRemoteMedia({ url: mediaUrl, maxBytes: fetchCap, ssrfPolicy });
+    const fetched = await fetchRemoteMedia({
+      url: mediaUrl,
+      maxBytes: fetchCap,
+      fetchImpl,
+      requestInit,
+      lookupFn,
+      readIdleTimeoutMs,
+      ssrfPolicy,
+    });
     const { buffer, contentType, fileName } = fetched;
     const kind = kindFromMime(contentType);
     return await clampAndFinalize({ buffer, contentType, kind, fileName });

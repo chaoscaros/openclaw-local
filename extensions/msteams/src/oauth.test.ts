@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mockPinnedHostnameResolution } from "../../../src/test-helpers/ssrf.js";
 import {
   generatePkce,
   generateOAuthState,
@@ -135,13 +136,16 @@ describe("parseCallbackInput", () => {
 
 describe("exchangeMSTeamsCodeForTokens", () => {
   let fetchSpy: ReturnType<typeof vi.fn>;
+  let ssrfMock: ReturnType<typeof mockPinnedHostnameResolution>;
 
   beforeEach(() => {
+    ssrfMock = mockPinnedHostnameResolution();
     fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
   });
 
   afterEach(() => {
+    ssrfMock.mockRestore();
     vi.unstubAllGlobals();
   });
 
@@ -207,13 +211,16 @@ describe("exchangeMSTeamsCodeForTokens", () => {
 
 describe("refreshMSTeamsDelegatedTokens", () => {
   let fetchSpy: ReturnType<typeof vi.fn>;
+  let ssrfMock: ReturnType<typeof mockPinnedHostnameResolution>;
 
   beforeEach(() => {
+    ssrfMock = mockPinnedHostnameResolution();
     fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
   });
 
   afterEach(() => {
+    ssrfMock.mockRestore();
     vi.unstubAllGlobals();
   });
 

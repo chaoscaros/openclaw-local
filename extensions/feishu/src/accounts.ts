@@ -22,10 +22,8 @@ const { listAccountIds: listFeishuAccountIds, resolveDefaultAccountId } = create
   {
     allowUnlistedDefaultAccount: true,
     hasImplicitDefaultAccount: (cfg) =>
-      Boolean(
-        cfg.channels?.feishu?.appId?.trim() &&
-        hasConfiguredAccountValue(cfg.channels.feishu.appSecret),
-      ),
+      hasConfiguredAccountValue(cfg.channels?.feishu?.appId) &&
+      hasConfiguredAccountValue(cfg.channels?.feishu?.appSecret),
   },
 );
 

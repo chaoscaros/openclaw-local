@@ -61,3 +61,15 @@ export const removeBackfillDiaryEntries: ApiFacadeModule["removeBackfillDiaryEnt
   loadApiFacadeModule().removeBackfillDiaryEntries(
     ...args,
   )) as ApiFacadeModule["removeBackfillDiaryEntries"];
+
+export const resolveShortTermPromotionDreamingConfig: RuntimeFacadeModule["resolveShortTermPromotionDreamingConfig"] =
+  ((...args) =>
+    loadRuntimeFacadeModule().resolveShortTermPromotionDreamingConfig(
+      ...args,
+    )) as RuntimeFacadeModule["resolveShortTermPromotionDreamingConfig"];
+
+export const runShortTermDreamingPromotionNow: RuntimeFacadeModule["runShortTermDreamingPromotionNow"] =
+  ((...args) =>
+    loadRuntimeFacadeModule().runShortTermDreamingPromotionNow(
+      ...args,
+    )) as RuntimeFacadeModule["runShortTermDreamingPromotionNow"];

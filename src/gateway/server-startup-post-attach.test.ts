@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => {
   const startPluginServices = vi.fn(async () => null);
@@ -138,15 +138,21 @@ vi.mock("./server-tailscale.js", () => ({
   startGatewayTailscaleExposure: hoisted.startGatewayTailscaleExposure,
 }));
 
-const { startGatewayPostAttachRuntime, startGatewaySidecars } = await import("./server-startup-post-attach.js");
+const { startGatewayPostAttachRuntime, startGatewaySidecars } =
+  await import("./server-startup-post-attach.js");
 const { STARTUP_UNAVAILABLE_GATEWAY_METHODS } =
   await import("./server-startup-unavailable-methods.js");
+
+const originalSkipChannelsEnv = process.env.OPENCLAW_SKIP_CHANNELS;
+const originalSkipProvidersEnv = process.env.OPENCLAW_SKIP_PROVIDERS;
 
 type PostAttachParams = Parameters<typeof startGatewayPostAttachRuntime>[0];
 type PostAttachRuntimeDeps = NonNullable<Parameters<typeof startGatewayPostAttachRuntime>[1]>;
 
 describe("startGatewayPostAttachRuntime", () => {
   beforeEach(() => {
+    delete process.env.OPENCLAW_SKIP_CHANNELS;
+    delete process.env.OPENCLAW_SKIP_PROVIDERS;
     hoisted.startPluginServices.mockClear();
     hoisted.startGmailWatcherWithLogs.mockClear();
     hoisted.loadInternalHooks.mockClear();
@@ -170,6 +176,19 @@ describe("startGatewayPostAttachRuntime", () => {
     hoisted.selectAgentHarness.mockReturnValue({ id: "pi" });
     hoisted.ensureOpenClawModelsJson.mockReset();
     hoisted.ensureOpenClawModelsJson.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    if (originalSkipChannelsEnv === undefined) {
+      delete process.env.OPENCLAW_SKIP_CHANNELS;
+    } else {
+      process.env.OPENCLAW_SKIP_CHANNELS = originalSkipChannelsEnv;
+    }
+    if (originalSkipProvidersEnv === undefined) {
+      delete process.env.OPENCLAW_SKIP_PROVIDERS;
+    } else {
+      process.env.OPENCLAW_SKIP_PROVIDERS = originalSkipProvidersEnv;
+    }
   });
 
   it("re-enables startup-gated methods after post-attach sidecars start", async () => {

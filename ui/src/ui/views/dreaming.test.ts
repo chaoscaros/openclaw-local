@@ -10,6 +10,10 @@ import {
   type DreamingProps,
 } from "./dreaming.ts";
 
+function collapseText(value: string | null | undefined): string {
+  return (value ?? "").replace(/\s+/g, " ").trim();
+}
+
 function buildProps(overrides?: Partial<DreamingProps>): DreamingProps {
   return {
     active: true,
@@ -278,14 +282,16 @@ describe("dreaming view", () => {
     expect(onRunNow).toHaveBeenCalledOnce();
     expect(container.textContent).toContain("上次运行：");
     expect(container.textContent).toContain("已提升 2 条");
-    expect(container.textContent).toContain("候选 4 条 · 日记 1 条 · 工作区 1 个");
+    expect(collapseText(container.textContent)).toContain("候选 4 条 · 日记 1 条 · 工作区 1 个");
     expect(container.textContent).toContain("失败 0 个 · 跳过叙事 0 次");
     expect(container.textContent).toContain("说明：手动运行只会做后台整理，不会创建可见会话。");
   });
 
   it("renders and toggles the dreaming assistance switch", () => {
     const onToggleDreamingAssist = vi.fn();
-    const container = renderInto(buildProps({ onToggleDreamingAssist, dreamingAssistEnabled: true }));
+    const container = renderInto(
+      buildProps({ onToggleDreamingAssist, dreamingAssistEnabled: true }),
+    );
     const button = Array.from(container.querySelectorAll("button")).find((node) =>
       node.textContent?.includes("协助策略：开启"),
     );
@@ -305,7 +311,8 @@ describe("dreaming view", () => {
           failed: 0,
           narrativeWritten: 0,
           narrativeSkipped: 1,
-          zeroAppliedReason: "发现了候选记忆，但都没达到 promotion 阈值；由于证据偏弱，这次 diary narrative 也被跳过。",
+          zeroAppliedReason:
+            "发现了候选记忆，但都没达到 promotion 阈值；由于证据偏弱，这次 diary narrative 也被跳过。",
         },
       }),
     );
@@ -327,13 +334,18 @@ describe("dreaming view", () => {
           learningSummary: {
             summary: "当前聚焦：核对 Tasks 页 · 持续保留：用户偏好中文优先 · 主要来源：Recent chat",
             recommendation: "下次协助时，保持“用户偏好中文优先”，同时优先推进“核对 Tasks 页”。",
-            assistanceStrategy: "先按“核对 Tasks 页”拆成清单执行，过程中持续遵守“用户偏好中文优先”。",
+            assistanceStrategy:
+              "先按“核对 Tasks 页”拆成清单执行，过程中持续遵守“用户偏好中文优先”。",
             durableSignals: ["用户偏好中文优先"],
             temporaryFocus: ["核对 Tasks 页", "验证自动生成 todo"],
             sources: [
               { kind: "task", label: "当前任务", detail: "当前任务 · next: 核对 Tasks 页" },
               { kind: "chat", label: "Recent chat", detail: "user: 先核对 Tasks 页" },
-              { kind: "memory", label: "2026-04-05.md", detail: "Always use Happy Together calendar" },
+              {
+                kind: "memory",
+                label: "2026-04-05.md",
+                detail: "Always use Happy Together calendar",
+              },
             ],
           },
         },
@@ -505,9 +517,9 @@ describe("dreaming view", () => {
       "Travel system",
     );
     expect(container.querySelector(".dreams-diary__insight-card")?.textContent).toContain("结论");
-    expect(container.querySelector(".dreams-diary__explainer")?.textContent).toContain(
-      "记忆 Wiki 汇总面",
-    );
+    expect(
+      collapseText(container.querySelector(".dreams-diary__explainer")?.textContent),
+    ).toContain("记忆 Wiki 汇总面");
     setDreamDiarySubTab("dreams");
     setDreamSubTab("scene");
   });
@@ -679,11 +691,7 @@ describe("dreaming view", () => {
     const sectionTitles = [...container.querySelectorAll(".dreams-advanced__section-title")].map(
       (node) => node.textContent?.trim(),
     );
-    expect(sectionTitles).toEqual([
-      "来自每日日志",
-      "等待提升",
-      "最近提升",
-    ]);
+    expect(sectionTitles).toEqual(["来自每日日志", "等待提升", "最近提升"]);
     expect(container.querySelector(".dreams-advanced__summary")?.textContent).toContain(
       "1 来自每日日志",
     );

@@ -87,6 +87,8 @@ import {
 import { resolveShellEnvExpectedKeys } from "./shell-env-expected-keys.js";
 import type { OpenClawConfig, ConfigFileSnapshot, LegacyConfigIssue } from "./types.js";
 import {
+  validateConfigObject,
+  validateConfigObjectRaw,
   validateConfigObjectRawWithPlugins,
   validateConfigObjectWithPlugins,
 } from "./validation.js";
@@ -841,6 +843,7 @@ export type ConfigIoDeps = {
   homedir?: () => string;
   configPath?: string;
   logger?: Pick<typeof console, "error" | "warn">;
+  pluginValidation?: "validate" | "skip";
 };
 
 function warnOnConfigMiskeys(raw: unknown, logger: Pick<typeof console, "warn">): void {
@@ -898,7 +901,30 @@ function normalizeDeps(overrides: ConfigIoDeps = {}): Required<ConfigIoDeps> {
       overrides.homedir ?? (() => resolveRequiredHomeDir(overrides.env ?? process.env, os.homedir)),
     configPath: overrides.configPath ?? "",
     logger: overrides.logger ?? console,
+    pluginValidation: overrides.pluginValidation ?? "validate",
   };
+}
+
+function validateConfigForDeps(
+  raw: unknown,
+  deps: Required<ConfigIoDeps>,
+): ReturnType<typeof validateConfigObjectWithPlugins> {
+  if (deps.pluginValidation === "skip") {
+    const validated = validateConfigObject(raw);
+    return validated.ok ? { ...validated, warnings: [] } : { ...validated, warnings: [] };
+  }
+  return validateConfigObjectWithPlugins(raw, { env: deps.env });
+}
+
+function validateRawConfigForDeps(
+  raw: unknown,
+  deps: Required<ConfigIoDeps>,
+): ReturnType<typeof validateConfigObjectRawWithPlugins> {
+  if (deps.pluginValidation === "skip") {
+    const validated = validateConfigObjectRaw(raw);
+    return validated.ok ? { ...validated, warnings: [] } : { ...validated, warnings: [] };
+  }
+  return validateConfigObjectRawWithPlugins(raw, { env: deps.env });
 }
 
 function maybeLoadDotEnvForConfig(env: NodeJS.ProcessEnv): void {
@@ -1153,7 +1179,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
       if (preValidationDuplicates.length > 0) {
         throw new DuplicateAgentDirError(preValidationDuplicates);
       }
-      const validated = validateConfigObjectWithPlugins(effectiveConfigRaw, { env: deps.env });
+      const validated = validateConfigForDeps(effectiveConfigRaw, deps);
       if (!validated.ok) {
         observeLoadConfigSnapshot({
           ...createConfigFileSnapshot({
@@ -1315,7 +1341,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
       const resolvedConfigRaw = readResolution.resolvedConfigRaw;
       const legacyResolution = resolveLegacyConfigForRead(resolvedConfigRaw, effectiveParsed);
       const effectiveConfigRaw = legacyResolution.effectiveConfigRaw;
-      const validated = validateConfigObjectWithPlugins(effectiveConfigRaw, { env: deps.env });
+      const validated = validateConfigForDeps(effectiveConfigRaw, deps);
       if (!validated.ok) {
         return await finalizeReadConfigSnapshotInternalResult(deps, {
           snapshot: createConfigFileSnapshot({
@@ -1457,7 +1483,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
       }
     }
 
-    const validated = validateConfigObjectRawWithPlugins(persistCandidate, { env: deps.env });
+    const validated = validateRawConfigForDeps(persistCandidate, deps);
     if (!validated.ok) {
       const issue = validated.issues[0];
       const pathLabel = issue?.path ? issue.path : "<root>";
@@ -1758,15 +1784,17 @@ export function projectConfigOntoRuntimeSourceSnapshot(config: OpenClawConfig): 
   return coerceConfig(applyMergePatch(projectedSource, runtimePatch));
 }
 
-export function loadConfig(): OpenClawConfig {
+export function loadConfig(options?: { skipPluginValidation?: boolean }): OpenClawConfig {
   // First successful load becomes the process snapshot. Long-lived runtimes
   // should swap this snapshot via explicit reload/watcher paths instead of
   // reparsing openclaw.json on hot code paths.
-  return loadPinnedRuntimeConfig(() => createConfigIO().loadConfig());
+  return loadPinnedRuntimeConfig(() =>
+    createConfigIO(options?.skipPluginValidation ? { pluginValidation: "skip" } : {}).loadConfig(),
+  );
 }
 
-export function getRuntimeConfig(): OpenClawConfig {
-  return loadConfig();
+export function getRuntimeConfig(options?: { skipPluginValidation?: boolean }): OpenClawConfig {
+  return loadConfig(options);
 }
 
 export async function readBestEffortConfig(): Promise<OpenClawConfig> {

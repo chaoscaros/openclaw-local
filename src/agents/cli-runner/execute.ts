@@ -17,6 +17,7 @@ import { FailoverError, resolveFailoverStatus } from "../failover-error.js";
 import { classifyFailoverReason } from "../pi-embedded-helpers.js";
 import { applyPluginTextReplacements } from "../plugin-text-transforms.js";
 import { applySkillEnvOverridesFromSnapshot } from "../skills.js";
+import { getActiveSkillEnvKeys } from "../skills/env-overrides.js";
 import { prepareClaudeCliSkillsPlugin } from "./claude-skills-plugin.js";
 import {
   buildCliSupervisorScopeKey,
@@ -255,6 +256,11 @@ export async function executePreparedCliRun(
             config: params.config,
           })
         : undefined;
+      const activeSkillEnv = Object.fromEntries(
+        [...getActiveSkillEnvKeys()]
+          .map((key) => [key, process.env[key]] as const)
+          .filter((entry): entry is readonly [string, string] => entry[1] !== undefined),
+      );
       try {
         cliBackendLog.info(
           `cli exec: provider=${params.provider} model=${context.normalizedModel} promptChars=${params.prompt.length}`,
@@ -284,6 +290,7 @@ export async function executePreparedCliRun(
               }),
             );
           }
+          Object.assign(next, activeSkillEnv);
           Object.assign(next, context.preparedBackend.env);
 
           // Never mark Claude CLI as host-managed. That marker routes runs into
@@ -467,7 +474,10 @@ export async function executePreparedCliRun(
           ...parsed,
           rawText,
           finalPromptText: prompt,
-          text: applyPluginTextReplacements(rawText, context.backendResolved.textTransforms?.output),
+          text: applyPluginTextReplacements(
+            rawText,
+            context.backendResolved.textTransforms?.output,
+          ),
         };
       } finally {
         restoreSkillEnv?.();

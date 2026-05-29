@@ -18,7 +18,7 @@ async function writeClaudeBundleCommandFixture(params: {
   homeDir: string;
   pluginId: string;
   commands: Array<{ relativePath: string; contents: string[] }>;
-}) {
+}): Promise<string> {
   const pluginRoot = await writeClaudeBundleManifest({
     homeDir: params.homeDir,
     pluginId: params.pluginId,
@@ -33,6 +33,7 @@ async function writeClaudeBundleCommandFixture(params: {
       ]),
     ),
   );
+  return pluginRoot;
 }
 
 function expectEnabledClaudeBundleCommands(
@@ -54,8 +55,8 @@ describe("loadEnabledClaudeBundleCommands", () => {
     await withBundleHomeEnv(
       tempHarness,
       "openclaw-bundle-commands",
-      async ({ homeDir, workspaceDir }) => {
-        await writeClaudeBundleCommandFixture({
+      async ({ env, homeDir, workspaceDir }) => {
+        const pluginRoot = await writeClaudeBundleCommandFixture({
           homeDir,
           pluginId: "compound-bundle",
           commands: [
@@ -87,6 +88,23 @@ describe("loadEnabledClaudeBundleCommands", () => {
 
         const commands = loadEnabledClaudeBundleCommands({
           workspaceDir,
+          env,
+          deps: {
+            loadPluginManifestRegistry: () =>
+              ({
+                plugins: [
+                  {
+                    id: "compound-bundle",
+                    format: "bundle",
+                    bundleFormat: "claude",
+                    bundleCapabilities: ["commands"],
+                    origin: "global",
+                    rootDir: pluginRoot,
+                  },
+                ],
+                diagnostics: [],
+              }) as never,
+          },
           cfg: {
             plugins: {
               entries: createEnabledPluginEntries(["compound-bundle"]),

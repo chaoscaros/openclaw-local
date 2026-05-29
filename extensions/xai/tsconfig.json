@@ -35,6 +35,9 @@
       "openclaw/plugin-sdk/error-runtime": [
         "../../dist/plugin-sdk/src/plugin-sdk/error-runtime.d.ts"
       ],
+      "openclaw/plugin-sdk/memory-core-host-engine-embedding-providers": [
+        "../../dist/plugin-sdk/src/plugin-sdk/memory-core-host-engine-embedding-providers.d.ts"
+      ],
       "openclaw/plugin-sdk/provider-catalog-shared": [
         "../../dist/plugin-sdk/src/plugin-sdk/provider-catalog-shared.d.ts"
       ],

@@ -9,7 +9,6 @@ export const openaiCodexCatalogEntries = [
 ];
 
 export const expectedAugmentedOpenaiCodexCatalogEntries = [
-  { provider: "openai", id: "gpt-5.5", name: "gpt-5.5" },
   { provider: "openai", id: "gpt-5.5-pro", name: "gpt-5.5-pro" },
   { provider: "openai", id: "gpt-5.4", name: "gpt-5.4" },
   { provider: "openai", id: "gpt-5.4-pro", name: "gpt-5.4-pro" },
@@ -19,6 +18,11 @@ export const expectedAugmentedOpenaiCodexCatalogEntries = [
   { provider: "openai-codex", id: "gpt-5.4", name: "gpt-5.4" },
   { provider: "openai-codex", id: "gpt-5.4-pro", name: "gpt-5.4-pro" },
   { provider: "openai-codex", id: "gpt-5.4-mini", name: "gpt-5.4-mini" },
+];
+
+export const expectedRuntimeAugmentedOpenaiCodexCatalogEntries = [
+  { provider: "openai", id: "gpt-5.5", name: "gpt-5.5" },
+  ...expectedAugmentedOpenaiCodexCatalogEntries,
 ];
 
 export function expectCodexMissingAuthHint(
@@ -78,6 +82,9 @@ export async function expectAugmentedCodexCatalog(
       entries: typeof openaiCodexCatalogEntries;
     };
   }) => Promise<unknown>,
+  expectedEntries: ReadonlyArray<
+    Record<string, unknown>
+  > = expectedAugmentedOpenaiCodexCatalogEntries,
 ) {
   const result = (await augmentModelCatalogWithProviderPlugins({
     env: process.env,
@@ -86,8 +93,8 @@ export async function expectAugmentedCodexCatalog(
       entries: openaiCodexCatalogEntries,
     },
   })) as Array<Record<string, unknown>>;
-  expect(result).toHaveLength(expectedAugmentedOpenaiCodexCatalogEntries.length);
-  for (const entry of expectedAugmentedOpenaiCodexCatalogEntries) {
+  expect(result).toHaveLength(expectedEntries.length);
+  for (const entry of expectedEntries) {
     expect(result).toContainEqual(expect.objectContaining(entry));
   }
 }

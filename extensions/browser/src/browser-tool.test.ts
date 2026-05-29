@@ -620,6 +620,10 @@ describe("browser tool snapshot labels", () => {
   registerBrowserToolAfterEachReset();
 
   it("returns image + text when labels are requested", async () => {
+    configMocks.loadConfig.mockReturnValue({
+      browser: {},
+      agents: { defaults: { imageMaxDimensionPx: 2000 } },
+    } as never);
     const tool = createBrowserTool();
     const imageResult = {
       content: [
@@ -649,12 +653,41 @@ describe("browser tool snapshot labels", () => {
       expect.objectContaining({
         path: "/tmp/snap.png",
         extraText: expect.stringContaining("<<<EXTERNAL_UNTRUSTED_CONTENT"),
+        imageSanitization: { maxDimensionPx: 2000 },
       }),
     );
     expect(result).toEqual(imageResult);
     expect(result?.content).toHaveLength(2);
     expect(result?.content?.[0]).toMatchObject({ type: "text", text: "label text" });
     expect(result?.content?.[1]).toMatchObject({ type: "image" });
+  });
+});
+
+describe("browser tool screenshot image sanitization", () => {
+  registerBrowserToolAfterEachReset();
+
+  it("passes configured image sanitization to screenshot image results", async () => {
+    configMocks.loadConfig.mockReturnValue({
+      browser: {},
+      agents: { defaults: { imageMaxDimensionPx: 2000 } },
+    } as never);
+    toolCommonMocks.imageResultFromFile.mockResolvedValueOnce({
+      content: [{ type: "image", data: "base64", mimeType: "image/png" }],
+      details: { path: "/tmp/test.png" },
+    });
+
+    const tool = createBrowserTool();
+    await tool.execute?.("call-1", {
+      action: "screenshot",
+      target: "host",
+      targetId: "tab-1",
+    });
+
+    expect(toolCommonMocks.imageResultFromFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imageSanitization: { maxDimensionPx: 2000 },
+      }),
+    );
   });
 });
 

@@ -15,21 +15,31 @@ const { discordMessageActions } = await import("./channel-actions.js");
 
 describe("discordMessageActions", () => {
   it("returns no tool actions when no token-sourced Discord accounts are enabled", () => {
-    const discovery = discordMessageActions.describeMessageTool?.({
-      cfg: {
-        channels: {
-          discord: {
-            enabled: true,
+    const previousToken = process.env.DISCORD_BOT_TOKEN;
+    delete process.env.DISCORD_BOT_TOKEN;
+    try {
+      const discovery = discordMessageActions.describeMessageTool?.({
+        cfg: {
+          channels: {
+            discord: {
+              enabled: true,
+            },
           },
-        },
-      } as OpenClawConfig,
-    });
+        } as OpenClawConfig,
+      });
 
-    expect(discovery).toEqual({
-      actions: [],
-      capabilities: [],
-      schema: null,
-    });
+      expect(discovery).toEqual({
+        actions: [],
+        capabilities: [],
+        schema: null,
+      });
+    } finally {
+      if (previousToken === undefined) {
+        delete process.env.DISCORD_BOT_TOKEN;
+      } else {
+        process.env.DISCORD_BOT_TOKEN = previousToken;
+      }
+    }
   });
 
   it("describes enabled Discord actions for token-backed accounts", () => {

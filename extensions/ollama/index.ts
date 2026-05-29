@@ -5,8 +5,10 @@ import {
   type ProviderAuthMethodNonInteractiveContext,
   type ProviderAuthResult,
   type ProviderDiscoveryContext,
+  type ProviderReplayPolicy,
 } from "openclaw/plugin-sdk/plugin-entry";
 import {
+  buildOpenAICompatibleReplayPolicy,
   buildProviderReplayFamilyHooks,
   type ModelProviderConfig,
 } from "openclaw/plugin-sdk/provider-model-shared";
@@ -36,6 +38,11 @@ const DEFAULT_API_KEY = "ollama-local";
 const OPENAI_COMPATIBLE_REPLAY_HOOKS = buildProviderReplayFamilyHooks({
   family: "openai-compatible",
 });
+
+function buildNativeOllamaReplayPolicy(): ProviderReplayPolicy | undefined {
+  const policy = buildOpenAICompatibleReplayPolicy("openai-completions");
+  return policy ? { ...policy, sanitizeToolCallIds: false } : undefined;
+}
 
 type OllamaPluginConfig = {
   discovery?: {
@@ -244,6 +251,10 @@ export default definePluginEntry({
         });
       },
       ...OPENAI_COMPATIBLE_REPLAY_HOOKS,
+      buildReplayPolicy: (ctx) =>
+        ctx.modelApi === "ollama"
+          ? buildNativeOllamaReplayPolicy()
+          : buildOpenAICompatibleReplayPolicy(ctx.modelApi),
       resolveReasoningOutputMode: () => "native",
       wrapStreamFn: createConfiguredOllamaCompatStreamWrapper,
       createEmbeddingProvider: async ({ config, model, remote }) => {

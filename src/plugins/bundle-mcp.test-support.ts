@@ -94,9 +94,15 @@ export async function createBundleProbePlugin(homeDir: string) {
 export async function withBundleHomeEnv<T>(
   tempHarness: { createTempDir: (prefix: string) => Promise<string> },
   prefix: string,
-  run: (params: { homeDir: string; workspaceDir: string }) => Promise<T>,
+  run: (params: { env: NodeJS.ProcessEnv; homeDir: string; workspaceDir: string }) => Promise<T>,
 ): Promise<T> {
-  const env = captureEnv(["HOME", "USERPROFILE", "OPENCLAW_HOME", "OPENCLAW_STATE_DIR"]);
+  const env = captureEnv([
+    "HOME",
+    "USERPROFILE",
+    "OPENCLAW_HOME",
+    "OPENCLAW_STATE_DIR",
+    "OPENCLAW_BUNDLED_PLUGINS_DIR",
+  ]);
   try {
     const homeDir = await tempHarness.createTempDir(`${prefix}-home-`);
     const workspaceDir = await tempHarness.createTempDir(`${prefix}-workspace-`);
@@ -104,7 +110,12 @@ export async function withBundleHomeEnv<T>(
     process.env.USERPROFILE = homeDir;
     delete process.env.OPENCLAW_HOME;
     delete process.env.OPENCLAW_STATE_DIR;
-    return await run({ homeDir, workspaceDir });
+    delete process.env.OPENCLAW_BUNDLED_PLUGINS_DIR;
+    const scopedEnv: NodeJS.ProcessEnv = { ...process.env, HOME: homeDir, USERPROFILE: homeDir };
+    delete scopedEnv.OPENCLAW_HOME;
+    delete scopedEnv.OPENCLAW_STATE_DIR;
+    delete scopedEnv.OPENCLAW_BUNDLED_PLUGINS_DIR;
+    return await run({ env: scopedEnv, homeDir, workspaceDir });
   } finally {
     env.restore();
   }

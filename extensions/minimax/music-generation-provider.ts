@@ -2,7 +2,6 @@ import { extensionForMime } from "openclaw/plugin-sdk/media-mime";
 import type {
   GeneratedMusicAsset,
   MusicGenerationProvider,
-  MusicGenerationRequest,
 } from "openclaw/plugin-sdk/music-generation";
 import { isProviderApiKeyConfigured } from "openclaw/plugin-sdk/provider-auth";
 import { resolveApiKeyForProvider } from "openclaw/plugin-sdk/provider-auth-runtime";
@@ -104,14 +103,6 @@ async function downloadTrackFromUrl(params: {
   };
 }
 
-function buildPrompt(req: MusicGenerationRequest): string {
-  const parts = [req.prompt.trim()];
-  if (typeof req.durationSeconds === "number" && Number.isFinite(req.durationSeconds)) {
-    parts.push(`Target duration: about ${Math.max(1, Math.round(req.durationSeconds))} seconds.`);
-  }
-  return parts.join("\n\n");
-}
-
 function resolveMinimaxMusicModel(model: string | undefined): string {
   const trimmed = normalizeOptionalString(model);
   if (!trimmed) {
@@ -136,7 +127,6 @@ export function buildMinimaxMusicGenerationProvider(): MusicGenerationProvider {
         maxTracks: 1,
         supportsLyrics: true,
         supportsInstrumental: true,
-        supportsDuration: true,
         supportsFormat: true,
         supportedFormats: ["mp3"],
       },
@@ -182,7 +172,7 @@ export function buildMinimaxMusicGenerationProvider(): MusicGenerationProvider {
       const lyrics = normalizeOptionalString(req.lyrics);
       const body = {
         model,
-        prompt: buildPrompt(req),
+        prompt: req.prompt.trim(),
         ...(req.instrumental === true ? { is_instrumental: true } : {}),
         ...(lyrics ? { lyrics } : req.instrumental === true ? {} : { lyrics_optimizer: true }),
         output_format: "url",
@@ -246,9 +236,6 @@ export function buildMinimaxMusicGenerationProvider(): MusicGenerationProvider {
             ...(audioUrl ? { audioUrl } : {}),
             instrumental: req.instrumental === true,
             ...(lyrics ? { requestedLyrics: true } : {}),
-            ...(typeof req.durationSeconds === "number"
-              ? { requestedDurationSeconds: req.durationSeconds }
-              : {}),
           },
         };
       } finally {

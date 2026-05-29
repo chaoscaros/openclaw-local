@@ -47,6 +47,7 @@ type GatewayStatusSummary = {
   portSource: "service args" | "env/config";
   probeUrl: string;
   probeNote?: string;
+  version?: string | null;
 };
 
 type PortStatusSummary = {
@@ -168,6 +169,7 @@ export type DaemonStatus = {
     error?: string;
     url?: string;
     authWarning?: string;
+    version?: string;
   };
   health?: {
     healthy: boolean;
@@ -436,6 +438,12 @@ export async function gatherDaemonStatus(
   if (rpc?.ok) {
     rpcAuthWarning = undefined;
   }
+  const gatewayVersion =
+    opts.probe && rpc && "version" in rpc && typeof rpc.version === "string"
+      ? rpc.version
+      : opts.probe
+        ? null
+        : undefined;
   const health =
     opts.probe && loaded
       ? await loadRestartHealthModule()
@@ -470,7 +478,10 @@ export async function gatherDaemonStatus(
       daemon: daemonConfigSummary,
       ...(configMismatch ? { mismatch: true } : {}),
     },
-    gateway,
+    gateway: {
+      ...gateway,
+      ...(opts.probe ? { version: gatewayVersion } : {}),
+    },
     port: portStatus,
     ...(portCliStatus ? { portCli: portCliStatus } : {}),
     lastError,

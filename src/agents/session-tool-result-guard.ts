@@ -99,6 +99,7 @@ export function installSessionToolResultGuard(
     beforeMessageWriteHook?: (
       event: PluginHookBeforeMessageWriteEvent,
     ) => PluginHookBeforeMessageWriteResult | undefined;
+    onMessagePersisted?: (message: AgentMessage) => void | Promise<void>;
   },
 ): {
   flushPendingToolResults: () => void;
@@ -158,6 +159,7 @@ export function installSessionToolResultGuard(
         );
         if (flushed) {
           originalAppend(flushed as never);
+          void opts?.onMessagePersisted?.(flushed);
         }
       }
     }
@@ -205,7 +207,9 @@ export function installSessionToolResultGuard(
       if (!persisted) {
         return undefined;
       }
-      return originalAppend(persisted as never);
+      const result = originalAppend(persisted as never);
+      void opts?.onMessagePersisted?.(persisted);
+      return result;
     }
 
     // Skip tool call extraction for aborted/errored assistant messages.
@@ -239,6 +243,7 @@ export function installSessionToolResultGuard(
       return undefined;
     }
     const result = originalAppend(finalMessage as never);
+    void opts?.onMessagePersisted?.(finalMessage);
 
     const sessionFile = (
       sessionManager as { getSessionFile?: () => string | null }

@@ -128,7 +128,7 @@ const ERROR_PATTERNS = {
     "credit balance",
     "plans & billing",
     "insufficient balance",
-    /insufficient\b.*\bbalance/i,
+    /insufficient\b(?:\s+(?:account|credit|credits|usd|diem|api|provider|request|token|usage)){0,6}\s+balance/i,
     "insufficient usd or diem balance",
     /account balance.*recharge/i,
     /requires?\s+more\s+credits/i,

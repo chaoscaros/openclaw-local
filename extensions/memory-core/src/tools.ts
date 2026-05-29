@@ -12,6 +12,7 @@ import type {
 } from "openclaw/plugin-sdk/memory-core-host-runtime-files";
 import {
   resolveMemoryCorePluginConfig,
+  resolveMemoryDreamingConfig,
   resolveMemoryDeepDreamingConfig,
 } from "openclaw/plugin-sdk/memory-core-host-status";
 import { recordShortTermRecalls } from "./short-term-promotion.js";
@@ -213,6 +214,15 @@ export function createMemorySearchTool(options: {
             mode: citationsMode,
             sessionKey: options.agentSessionKey,
           });
+          const pluginConfig = resolveMemoryCorePluginConfig(cfg);
+          const dreamingEnabled = resolveMemoryDreamingConfig({
+            pluginConfig,
+            cfg,
+          }).enabled;
+          const dreaming = resolveMemoryDeepDreamingConfig({
+            pluginConfig,
+            cfg,
+          });
           const searchStartedAt = Date.now();
           let rawResults: MemorySearchResult[] = [];
           let surfacedMemoryResults: Array<MemorySearchResult & { corpus: "memory" }> = [];
@@ -256,17 +266,15 @@ export function createMemorySearchTool(options: {
               ...result,
               corpus: "memory" as const,
             }));
-            const sleepTimezone = resolveMemoryDeepDreamingConfig({
-              pluginConfig: resolveMemoryCorePluginConfig(cfg),
-              cfg,
-            }).timezone;
-            queueShortTermRecallTracking({
-              workspaceDir: status.workspaceDir,
-              query,
-              rawResults,
-              surfacedResults: memoryResults,
-              timezone: sleepTimezone,
-            });
+            if (dreamingEnabled) {
+              queueShortTermRecallTracking({
+                workspaceDir: status.workspaceDir,
+                query,
+                rawResults,
+                surfacedResults: memoryResults,
+                timezone: dreaming.timezone,
+              });
+            }
             provider = status.provider;
             model = status.model;
             fallback = status.fallback;

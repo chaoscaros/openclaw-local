@@ -96,13 +96,24 @@ const DIARY_START_MARKER = "<!-- openclaw:dreaming:diary:start -->";
 const DIARY_END_MARKER = "<!-- openclaw:dreaming:diary:end -->";
 const BACKFILL_ENTRY_MARKER = "openclaw:dreaming:backfill-entry";
 const DREAMS_FILE_LOCKS_KEY = Symbol.for("openclaw.memoryCore.dreamingNarrative.fileLocks");
+const NARRATIVE_SESSION_LOCKS_KEY = Symbol.for(
+  "openclaw.memoryCore.dreamingNarrative.sessionLocks",
+);
 
 type DreamsFileLockEntry = {
   withLock: ReturnType<typeof createAsyncLock>;
   refs: number;
 };
 
+type NarrativeSessionLockEntry = {
+  withLock: ReturnType<typeof createAsyncLock>;
+  refs: number;
+};
+
 const dreamsFileLocks = resolveGlobalMap<string, DreamsFileLockEntry>(DREAMS_FILE_LOCKS_KEY);
+const narrativeSessionLocks = resolveGlobalMap<string, NarrativeSessionLockEntry>(
+  NARRATIVE_SESSION_LOCKS_KEY,
+);
 
 let activeDetachedNarratives = 0;
 const detachedNarrativeQueue: Array<() => void> = [];
@@ -119,6 +130,23 @@ async function acquireDetachedNarrativeSlot(): Promise<void> {
     });
   }
   activeDetachedNarratives += 1;
+}
+
+async function withNarrativeSessionLock<T>(sessionKey: string, fn: () => Promise<T>): Promise<T> {
+  let lockEntry = narrativeSessionLocks.get(sessionKey);
+  if (!lockEntry) {
+    lockEntry = { withLock: createAsyncLock(), refs: 0 };
+    narrativeSessionLocks.set(sessionKey, lockEntry);
+  }
+  lockEntry.refs += 1;
+  try {
+    return await lockEntry.withLock(fn);
+  } finally {
+    lockEntry.refs -= 1;
+    if (lockEntry.refs <= 0 && narrativeSessionLocks.get(sessionKey) === lockEntry) {
+      narrativeSessionLocks.delete(sessionKey);
+    }
+  }
 }
 
 function isRequestScopedSubagentRuntimeError(err: unknown): boolean {
@@ -912,103 +940,116 @@ export async function generateAndAppendDreamNarrative(params: {
   });
   const idempotencyKey = buildNarrativeIdempotencyKey(sessionKey, nowMs);
   const message = buildNarrativePrompt(params.data);
-  let runId: string | null = null;
-  let waitStatus: string | null = null;
-  let didDeleteSession = false;
 
-  try {
-    runId = await startNarrativeRunOrFallback({
-      subagent: params.subagent,
-      idempotencyKey,
-      sessionKey,
-      message,
-      data: params.data,
-      workspaceDir: params.workspaceDir,
-      nowMs,
-      timezone: params.timezone,
-      logger: params.logger,
-    });
-    if (!runId) {
-      return;
-    }
-
-    const result = await params.subagent.waitForRun({
-      runId,
-      timeoutMs: NARRATIVE_TIMEOUT_MS,
-    });
-    waitStatus = result.status;
-
-    if (result.status !== "ok") {
-      params.logger.warn(
-        `memory-core: narrative generation ended with status=${result.status} for ${params.data.phase} phase.`,
-      );
-      return;
-    }
-
-    const { messages } = await params.subagent.getSessionMessages({
-      sessionKey,
-      limit: 5,
-    });
-
-    const narrative = extractNarrativeText(messages);
-    if (!narrative) {
-      params.logger.warn(
-        `memory-core: narrative generation produced no text for ${params.data.phase} phase.`,
-      );
-      return;
-    }
-
-    await appendNarrativeEntry({
-      workspaceDir: params.workspaceDir,
-      narrative,
-      nowMs,
-      timezone: params.timezone,
-    });
-
-    params.logger.info(
-      `memory-core: dream diary entry written for ${params.data.phase} phase [workspace=${params.workspaceDir}].`,
-    );
-  } catch (err) {
-    // Narrative generation is best-effort — never fail the parent phase.
-    params.logger.warn(
-      `memory-core: narrative generation failed for ${params.data.phase} phase: ${formatErrorMessage(err)}`,
-    );
-  } finally {
-    if (runId && waitStatus === "timeout") {
-      try {
-        const settle = await params.subagent.waitForRun({
-          runId,
-          timeoutMs: NARRATIVE_DELETE_SETTLE_TIMEOUT_MS,
-        });
-        if (settle.status !== "ok" && settle.status !== "error") {
-          params.logger.warn(
-            `memory-core: narrative cleanup wait ended with status=${settle.status} for ${params.data.phase} phase.`,
-          );
-        }
-      } catch (cleanupWaitErr) {
-        params.logger.warn(
-          `memory-core: narrative cleanup wait failed for ${params.data.phase} phase: ${formatErrorMessage(cleanupWaitErr)}`,
-        );
-      }
-    }
+  await withNarrativeSessionLock(sessionKey, async () => {
+    let runId: string | null = null;
+    let waitStatus: string | null = null;
+    let didDeleteSession = false;
 
     try {
-      await params.subagent.deleteSession({ sessionKey });
-      didDeleteSession = true;
-    } catch (cleanupErr) {
-      params.logger.warn(
-        `memory-core: narrative session cleanup failed for ${params.data.phase} phase: ${formatErrorMessage(cleanupErr)}`,
-      );
-    }
+      try {
+        await params.subagent.deleteSession({ sessionKey });
+      } catch (preCleanupErr) {
+        if (!isRequestScopedSubagentRuntimeError(preCleanupErr)) {
+          params.logger.warn(
+            `memory-core: narrative pre-cleanup failed for ${params.data.phase} phase: ${formatErrorMessage(preCleanupErr)}`,
+          );
+        }
+      }
 
-    await scrubDreamingNarrativeArtifacts(params.logger, {
-      targetSessionKey: didDeleteSession ? sessionKey : undefined,
-    }).catch((scrubErr: unknown) => {
-      params.logger.warn(
-        `memory-core: dreaming cleanup scrub failed for ${params.data.phase} phase: ${formatErrorMessage(scrubErr)}`,
+      runId = await startNarrativeRunOrFallback({
+        subagent: params.subagent,
+        idempotencyKey,
+        sessionKey,
+        message,
+        data: params.data,
+        workspaceDir: params.workspaceDir,
+        nowMs,
+        timezone: params.timezone,
+        logger: params.logger,
+      });
+      if (!runId) {
+        return;
+      }
+
+      const result = await params.subagent.waitForRun({
+        runId,
+        timeoutMs: NARRATIVE_TIMEOUT_MS,
+      });
+      waitStatus = result.status;
+
+      if (result.status !== "ok") {
+        params.logger.warn(
+          `memory-core: narrative generation ended with status=${result.status} for ${params.data.phase} phase.`,
+        );
+        return;
+      }
+
+      const { messages } = await params.subagent.getSessionMessages({
+        sessionKey,
+        limit: 5,
+      });
+
+      const narrative = extractNarrativeText(messages);
+      if (!narrative) {
+        params.logger.warn(
+          `memory-core: narrative generation produced no text for ${params.data.phase} phase.`,
+        );
+        return;
+      }
+
+      await appendNarrativeEntry({
+        workspaceDir: params.workspaceDir,
+        narrative,
+        nowMs,
+        timezone: params.timezone,
+      });
+
+      params.logger.info(
+        `memory-core: dream diary entry written for ${params.data.phase} phase [workspace=${params.workspaceDir}].`,
       );
-    });
-  }
+    } catch (err) {
+      // Narrative generation is best-effort — never fail the parent phase.
+      params.logger.warn(
+        `memory-core: narrative generation failed for ${params.data.phase} phase: ${formatErrorMessage(err)}`,
+      );
+    } finally {
+      if (runId && waitStatus === "timeout") {
+        try {
+          const settle = await params.subagent.waitForRun({
+            runId,
+            timeoutMs: NARRATIVE_DELETE_SETTLE_TIMEOUT_MS,
+          });
+          if (settle.status !== "ok" && settle.status !== "error") {
+            params.logger.warn(
+              `memory-core: narrative cleanup wait ended with status=${settle.status} for ${params.data.phase} phase.`,
+            );
+          }
+        } catch (cleanupWaitErr) {
+          params.logger.warn(
+            `memory-core: narrative cleanup wait failed for ${params.data.phase} phase: ${formatErrorMessage(cleanupWaitErr)}`,
+          );
+        }
+      }
+
+      try {
+        await params.subagent.deleteSession({ sessionKey });
+        didDeleteSession = true;
+      } catch (cleanupErr) {
+        params.logger.warn(
+          `memory-core: narrative session cleanup failed for ${params.data.phase} phase: ${formatErrorMessage(cleanupErr)}`,
+        );
+      }
+
+      await scrubDreamingNarrativeArtifacts(params.logger, {
+        targetSessionKey: didDeleteSession ? sessionKey : undefined,
+      }).catch((scrubErr: unknown) => {
+        params.logger.warn(
+          `memory-core: dreaming cleanup scrub failed for ${params.data.phase} phase: ${formatErrorMessage(scrubErr)}`,
+        );
+      });
+    }
+  });
 }
 
 export function runDetachedDreamNarrative(

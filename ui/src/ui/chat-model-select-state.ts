@@ -1,3 +1,4 @@
+import { t } from "../i18n/index.ts";
 import type { AppViewState } from "./app-view-state.ts";
 import {
   buildCatalogDisplayLookup,
@@ -107,7 +108,9 @@ export function resolveChatModelSelectState(
     currentOverride,
     defaultModel,
     defaultDisplay,
-    defaultLabel: defaultModel ? `__I18N_DEFAULT__(${defaultDisplay})` : "__I18N_DEFAULT_MODEL__",
+    defaultLabel: defaultModel
+      ? `${t("chatUi.default")} (${defaultDisplay})`
+      : t("chatUi.defaultModel"),
     options: buildChatModelOptions(catalog, displayLookup, currentOverride, defaultModel),
   };
 }

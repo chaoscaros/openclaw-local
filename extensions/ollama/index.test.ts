@@ -126,6 +126,21 @@ describe("ollama plugin", () => {
     });
   });
 
+  it("preserves native Ollama tool call ids during replay", () => {
+    const provider = registerProvider();
+
+    expect(
+      provider.buildReplayPolicy?.({
+        providerId: "ollama",
+        modelId: "qwen3:32b",
+        modelApi: "ollama",
+      }),
+    ).toMatchObject({
+      sanitizeToolCallIds: false,
+      toolCallIdMode: "strict",
+    });
+  });
+
   it("skips ambient discovery when plugin discovery is disabled", async () => {
     const provider = registerProviderWithPluginConfig({ discovery: { enabled: false } });
 
@@ -298,7 +313,7 @@ describe("ollama plugin", () => {
     expect((payloadSeen?.options as Record<string, unknown> | undefined)?.num_ctx).toBe(202752);
   });
 
-  it("owns replay policy for OpenAI-compatible Ollama routes only", () => {
+  it("owns replay policy for OpenAI-compatible and native Ollama routes", () => {
     const provider = registerProvider();
 
     expect(
@@ -335,7 +350,13 @@ describe("ollama plugin", () => {
         modelApi: "ollama",
         modelId: "qwen3.5:9b",
       } as never),
-    ).toBeUndefined();
+    ).toMatchObject({
+      sanitizeToolCallIds: false,
+      toolCallIdMode: "strict",
+      applyAssistantFirstOrderingFix: true,
+      validateGeminiTurns: true,
+      validateAnthropicTurns: true,
+    });
   });
 
   it("routes createStreamFn to the correct provider baseUrl for ollama2", () => {

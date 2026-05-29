@@ -327,6 +327,7 @@ interface OllamaTool {
 }
 
 interface OllamaToolCall {
+  id?: string;
   function: {
     name: string;
     arguments: Record<string, unknown>;
@@ -385,6 +386,10 @@ function ensureArgsObject(value: unknown): Record<string, unknown> {
   return parseJsonObjectPreservingUnsafeIntegers(value) ?? {};
 }
 
+function readOllamaToolCallId(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
 function normalizeOllamaCompatMessageToolArgs(payloadRecord: Record<string, unknown>): void {
   const messages = payloadRecord.messages;
   if (!Array.isArray(messages)) {
@@ -433,9 +438,17 @@ function extractToolCalls(content: unknown): OllamaToolCall[] {
   const result: OllamaToolCall[] = [];
   for (const part of parts) {
     if (part.type === "toolCall") {
-      result.push({ function: { name: part.name, arguments: ensureArgsObject(part.arguments) } });
+      const id = readOllamaToolCallId(part.id);
+      result.push({
+        ...(id ? { id } : {}),
+        function: { name: part.name, arguments: ensureArgsObject(part.arguments) },
+      });
     } else if (part.type === "tool_use") {
-      result.push({ function: { name: part.name, arguments: ensureArgsObject(part.input) } });
+      const id = readOllamaToolCallId(part.id);
+      result.push({
+        ...(id ? { id } : {}),
+        function: { name: part.name, arguments: ensureArgsObject(part.input) },
+      });
     }
   }
   return result;
@@ -531,7 +544,7 @@ export function buildAssistantMessage(
     for (const toolCall of toolCalls) {
       content.push({
         type: "toolCall",
-        id: `ollama_call_${randomUUID()}`,
+        id: readOllamaToolCallId(toolCall.id) ?? `ollama_call_${randomUUID()}`,
         name: toolCall.function.name,
         arguments: toolCall.function.arguments,
       });

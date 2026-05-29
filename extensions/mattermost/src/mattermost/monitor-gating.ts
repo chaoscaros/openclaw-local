@@ -1,10 +1,10 @@
 import type { ChatType, OpenClawConfig } from "./runtime-api.js";
 
 export function mapMattermostChannelTypeToChatType(channelType?: string | null): ChatType {
-  if (!channelType) {
-    return "channel";
+  const normalized = channelType?.trim().toUpperCase();
+  if (!normalized) {
+    return "direct";
   }
-  const normalized = channelType.trim().toUpperCase();
   if (normalized === "D") {
     return "direct";
   }

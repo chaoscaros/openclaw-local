@@ -207,6 +207,13 @@ export class OpenClawChannelBridge {
     if (!conversation) {
       throw new Error(`Conversation not found for session ${params.sessionKey}`);
     }
+    if (normalizeLowercaseStringOrEmpty(conversation.channel) === "webchat") {
+      return await this.requestGateway("chat.send", {
+        message: params.text,
+        sessionKey: conversation.sessionKey,
+        idempotencyKey: randomUUID(),
+      });
+    }
     return await this.requestGateway("send", {
       to: conversation.to,
       channel: conversation.channel,

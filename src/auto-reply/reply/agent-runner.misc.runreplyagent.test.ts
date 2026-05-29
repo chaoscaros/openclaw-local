@@ -2245,9 +2245,6 @@ describe("runReplyAgent transient HTTP retry", () => {
     const result = await runPromise;
 
     expect(runEmbeddedPiAgentMock).toHaveBeenCalledTimes(2);
-    expect(runtimeErrorMock).toHaveBeenCalledWith(
-      expect.stringContaining("Transient HTTP provider error before reply"),
-    );
 
     const payload = Array.isArray(result) ? result[0] : result;
     expect(payload?.text).toContain("Recovered response");

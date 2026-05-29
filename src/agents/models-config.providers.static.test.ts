@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 type StaticModule = typeof import("./models-config.providers.static.js");
 
@@ -24,50 +24,53 @@ function writeFixtureCatalog(dirName: string, exportNames: string[]) {
 writeFixtureCatalog("openrouter", ["buildOpenrouterProvider"]);
 writeFixtureCatalog("volcengine", ["buildDoubaoProvider", "buildDoubaoCodingProvider"]);
 
-let staticModule: StaticModule;
+let staticModule: StaticModule | undefined;
 
-beforeAll(async () => {
-  vi.resetModules();
-  vi.doMock("../plugins/bundled-plugin-metadata.js", () => ({
-    listBundledPluginMetadata: (_params: { rootDir: string }) => [
-      {
-        dirName: "openrouter",
-        publicSurfaceArtifacts: ["provider-catalog.js"],
-        manifest: { id: "openrouter", providers: ["openrouter"] },
-      },
-      {
-        dirName: "volcengine",
-        publicSurfaceArtifacts: ["provider-catalog.js"],
-        manifest: { id: "volcengine", providers: ["volcengine", "byteplus"] },
-      },
-      {
-        dirName: "ignored",
-        publicSurfaceArtifacts: ["api.js"],
-        manifest: { id: "ignored", providers: [] },
-      },
-    ],
-    resolveBundledPluginPublicSurfacePath: ({
-      rootDir,
-      dirName,
-      artifactBasename,
-    }: {
-      rootDir: string;
-      dirName: string;
-      artifactBasename: string;
-    }) => path.join(rootDir, "dist-runtime", "extensions", dirName, artifactBasename),
-  }));
-  staticModule = await import("./models-config.providers.static.js");
-});
+async function loadStaticModule(): Promise<StaticModule> {
+  staticModule ??= await import("./models-config.providers.static.js");
+  return staticModule;
+}
+
+const fixtureDeps = {
+  listMetadata: (_params?: { rootDir?: string }) => [
+    {
+      dirName: "openrouter",
+      publicSurfaceArtifacts: ["provider-catalog.js"],
+      manifest: { id: "openrouter", providers: ["openrouter"] },
+    },
+    {
+      dirName: "volcengine",
+      publicSurfaceArtifacts: ["provider-catalog.js"],
+      manifest: { id: "volcengine", providers: ["volcengine", "byteplus"] },
+    },
+    {
+      dirName: "ignored",
+      publicSurfaceArtifacts: ["api.js"],
+      manifest: { id: "ignored", providers: [] },
+    },
+  ],
+  resolvePublicSurfacePath: ({
+    rootDir,
+    dirName,
+    artifactBasename,
+  }: {
+    rootDir: string;
+    dirName: string;
+    artifactBasename: string;
+  }) => path.join(rootDir, "dist-runtime", "extensions", dirName, artifactBasename),
+};
 
 afterAll(() => {
-  vi.doUnmock("../plugins/bundled-plugin-metadata.js");
-  vi.resetModules();
   fs.rmSync(fixtureRoot, { recursive: true, force: true });
 });
 
 describe("models-config bundled provider catalogs", () => {
-  it("detects provider catalogs from plugin folders via metadata artifacts", () => {
-    const entries = staticModule.resolveBundledProviderCatalogEntries({ rootDir: fixtureRoot });
+  it("detects provider catalogs from plugin folders via metadata artifacts", async () => {
+    const module = await loadStaticModule();
+    const entries = module.resolveBundledProviderCatalogEntries({
+      rootDir: fixtureRoot,
+      deps: fixtureDeps,
+    });
     expect(entries.map((entry) => entry.dirName)).toEqual(["openrouter", "volcengine"]);
     expect(entries.find((entry) => entry.dirName === "volcengine")).toMatchObject({
       dirName: "volcengine",
@@ -76,8 +79,10 @@ describe("models-config bundled provider catalogs", () => {
   });
 
   it("loads provider catalog exports from detected plugin folders", async () => {
-    const exports = await staticModule.loadBundledProviderCatalogExportMap({
+    const module = await loadStaticModule();
+    const exports = await module.loadBundledProviderCatalogExportMap({
       rootDir: fixtureRoot,
+      deps: fixtureDeps,
     });
     expect(exports.buildOpenrouterProvider).toBeTypeOf("function");
     expect(exports.buildDoubaoProvider).toBeTypeOf("function");

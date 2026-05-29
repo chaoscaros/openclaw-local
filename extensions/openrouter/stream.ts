@@ -4,6 +4,10 @@ import { buildProviderStreamFamilyHooks } from "openclaw/plugin-sdk/provider-str
 
 const OPENROUTER_THINKING_STREAM_HOOKS = buildProviderStreamFamilyHooks("openrouter-thinking");
 
+type StreamOptionsWithPayload = Parameters<StreamFn>[2] & {
+  onPayload?: (payload: Record<string, unknown>, model: Parameters<StreamFn>[0]) => unknown;
+};
+
 function injectOpenRouterRouting(
   baseStreamFn: StreamFn | undefined,
   providerRouting?: Record<string, unknown>,
@@ -11,22 +15,33 @@ function injectOpenRouterRouting(
   if (!providerRouting) {
     return baseStreamFn;
   }
-  return (model, context, options) =>
-    (
+  return (model, context, options) => {
+    const streamFn =
       baseStreamFn ??
       ((nextModel) => {
         throw new Error(
           `OpenRouter routing wrapper requires an underlying streamFn for ${nextModel.id}.`,
         );
-      })
-    )(
+      });
+    const optionsWithPayload = options as StreamOptionsWithPayload | undefined;
+    const routedOptions = {
+      ...options,
+      onPayload: (payload: Record<string, unknown>, payloadModel: Parameters<StreamFn>[0]) => {
+        if (payload.provider === undefined) {
+          payload.provider = providerRouting;
+        }
+        return optionsWithPayload?.onPayload?.(payload, payloadModel);
+      },
+    } as Parameters<StreamFn>[2];
+    return streamFn(
       {
         ...model,
         compat: { ...model.compat, openRouterRouting: providerRouting },
       } as typeof model,
       context,
-      options,
+      routedOptions,
     );
+  };
 }
 
 export function wrapOpenRouterProviderStream(

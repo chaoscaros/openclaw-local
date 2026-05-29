@@ -181,6 +181,62 @@ describe("task-registry maintenance issue #60299", () => {
     expect(currentTasks.get(task.taskId)).toMatchObject({ status: "running" });
   });
 
+  it("explains stale running tasks retained by backing sessions", async () => {
+    const staleAt = Date.now() - 45 * 60_000;
+    const childSessionKey = "agent:main:subagent:child-retained";
+    const task = makeStaleTask({
+      runtime: "subagent",
+      childSessionKey,
+      runId: "run-child-retained",
+      createdAt: staleAt,
+      startedAt: staleAt,
+      lastEventAt: staleAt,
+    });
+
+    const { mod } = await loadMaintenanceModule({
+      tasks: [task],
+      sessionStore: { [childSessionKey]: { updatedAt: Date.now() } },
+    });
+
+    expect(mod.getTaskRegistryMaintenanceDiagnostics().staleRunningTasks).toContainEqual(
+      expect.objectContaining({
+        taskId: task.taskId,
+        decision: "retained",
+        reason: "backing_session_present",
+        childSessionKey,
+        runId: "run-child-retained",
+      }),
+    );
+  });
+
+  it("explains stale running tasks that maintenance would reconcile", async () => {
+    const staleAt = Date.now() - 45 * 60_000;
+    const childSessionKey = "agent:main:subagent:child-missing";
+    const task = makeStaleTask({
+      runtime: "subagent",
+      childSessionKey,
+      runId: "run-child-missing",
+      createdAt: staleAt,
+      startedAt: staleAt,
+      lastEventAt: staleAt,
+    });
+
+    const { mod } = await loadMaintenanceModule({
+      tasks: [task],
+      sessionStore: {},
+    });
+
+    expect(mod.getTaskRegistryMaintenanceDiagnostics().staleRunningTasks).toContainEqual(
+      expect.objectContaining({
+        taskId: task.taskId,
+        decision: "would_reconcile",
+        reason: "backing_session_missing",
+        childSessionKey,
+        runId: "run-child-missing",
+      }),
+    );
+  });
+
   it("tries detached recovery before marking stale tasks lost", async () => {
     const task = makeStaleTask({
       runtime: "subagent",

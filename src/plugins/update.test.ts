@@ -131,6 +131,7 @@ function createBundledPathInstallConfig(params: {
   installPath: string;
   sourcePath?: string;
   spec?: string;
+  version?: string;
 }): OpenClawConfig {
   return {
     plugins: {
@@ -141,6 +142,7 @@ function createBundledPathInstallConfig(params: {
           sourcePath: params.sourcePath ?? appBundledPluginRoot("feishu"),
           installPath: params.installPath,
           ...(params.spec ? { spec: params.spec } : {}),
+          ...(params.version ? { version: params.version } : {}),
         },
       },
     },
@@ -181,11 +183,17 @@ function expectNpmUpdateCall(params: {
   );
 }
 
-function createBundledSource(params?: { pluginId?: string; localPath?: string; npmSpec?: string }) {
+function createBundledSource(params?: {
+  pluginId?: string;
+  localPath?: string;
+  npmSpec?: string;
+  version?: string;
+}) {
   const pluginId = params?.pluginId ?? "feishu";
   return {
     pluginId,
     localPath: params?.localPath ?? appBundledPluginRoot(pluginId),
+    ...(params?.version ? { version: params.version } : {}),
     npmSpec: params?.npmSpec ?? `@openclaw/${pluginId}`,
   };
 }
@@ -699,6 +707,57 @@ describe("syncPluginsForUpdateChannel", () => {
     expect(resolveBundledPluginSourcesMock).toHaveBeenCalledWith({
       workspaceDir: "/workspace",
       env,
+    });
+  });
+
+  it("repairs stale compiled bundled plugin shadows during channel sync", async () => {
+    mockBundledSources(createBundledSource({ version: "2026.5.20" }));
+
+    const stalePath = "/tmp/old-openclaw/dist/extensions/feishu";
+    const result = await syncPluginsForUpdateChannel({
+      channel: "beta",
+      config: createBundledPathInstallConfig({
+        loadPaths: [stalePath],
+        sourcePath: stalePath,
+        installPath: stalePath,
+        spec: "@openclaw/feishu",
+        version: "2026.5.4",
+      }),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.summary.switchedToBundled).toEqual(["feishu"]);
+    expect(result.config.plugins?.load?.paths).toEqual([appBundledPluginRoot("feishu")]);
+    expectBundledPathInstall({
+      install: result.config.plugins?.installs?.feishu,
+      sourcePath: appBundledPluginRoot("feishu"),
+      installPath: appBundledPluginRoot("feishu"),
+      spec: "@openclaw/feishu",
+    });
+    expect(result.config.plugins?.installs?.feishu?.version).toBe("2026.5.20");
+  });
+
+  it("leaves versionless arbitrary local path installs untouched", async () => {
+    mockBundledSources(createBundledSource({ version: "2026.5.20" }));
+
+    const localPath = "/tmp/custom-plugins/feishu";
+    const result = await syncPluginsForUpdateChannel({
+      channel: "beta",
+      config: createBundledPathInstallConfig({
+        loadPaths: [localPath],
+        sourcePath: localPath,
+        installPath: localPath,
+        spec: "@openclaw/feishu",
+      }),
+    });
+
+    expect(result.summary.switchedToBundled).toEqual([]);
+    expect(result.config.plugins?.load?.paths).toEqual([localPath]);
+    expectBundledPathInstall({
+      install: result.config.plugins?.installs?.feishu,
+      sourcePath: localPath,
+      installPath: localPath,
+      spec: "@openclaw/feishu",
     });
   });
 

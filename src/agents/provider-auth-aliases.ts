@@ -10,11 +10,24 @@ export type ProviderAuthAliasLookupParams = {
   workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
   includeUntrustedWorkspacePlugins?: boolean;
+  deps?: ProviderAuthAliasLookupDeps;
+};
+
+export type ProviderAuthAliasLookupDeps = {
+  loadPluginManifestRegistry?: (
+    params?: Parameters<typeof loadPluginManifestRegistry>[0],
+  ) => ProviderAuthAliasRegistry;
 };
 
 type ProviderAuthAliasCandidate = {
   origin?: PluginOrigin;
   target: string;
+};
+type ProviderAuthAliasPlugin = Pick<PluginManifestRecord, "id" | "providerAuthAliases"> & {
+  origin?: PluginManifestRecord["origin"];
+};
+type ProviderAuthAliasRegistry = {
+  plugins: readonly ProviderAuthAliasPlugin[];
 };
 
 type PluginEntriesConfig = NonNullable<NonNullable<OpenClawConfig["plugins"]>["entries"]>;
@@ -60,7 +73,7 @@ function findPluginEntry(
 }
 
 function isWorkspacePluginTrustedForAuthAliases(
-  plugin: PluginManifestRecord,
+  plugin: ProviderAuthAliasPlugin,
   config: OpenClawConfig | undefined,
 ): boolean {
   const pluginsConfig = config?.plugins;
@@ -84,7 +97,7 @@ function isWorkspacePluginTrustedForAuthAliases(
 }
 
 function shouldUsePluginAuthAliases(
-  plugin: PluginManifestRecord,
+  plugin: ProviderAuthAliasPlugin,
   params: ProviderAuthAliasLookupParams | undefined,
 ): boolean {
   if (plugin.origin !== "workspace" || params?.includeUntrustedWorkspacePlugins === true) {
@@ -96,7 +109,8 @@ function shouldUsePluginAuthAliases(
 export function resolveProviderAuthAliasMap(
   params?: ProviderAuthAliasLookupParams,
 ): Record<string, string> {
-  const registry = loadPluginManifestRegistry({
+  const loadRegistry = params?.deps?.loadPluginManifestRegistry ?? loadPluginManifestRegistry;
+  const registry = loadRegistry({
     config: params?.config,
     workspaceDir: params?.workspaceDir,
     env: params?.env,

@@ -13,13 +13,13 @@ import {
   extractFirstTextBlock,
   extractAssistantVisibleText,
 } from "../shared/chat-message-content.js";
+import { listTasksForFlowId, listTasksForRelatedSessionKey } from "../tasks/runtime-internal.js";
 import type { TaskFlowRecord } from "../tasks/task-flow-registry.types.js";
 import {
   createManagedTaskFlow,
   getTaskFlowById,
   updateFlowRecordByIdExpectedRevision,
 } from "../tasks/task-flow-runtime-internal.js";
-import { listTasksForFlowId, listTasksForRelatedSessionKey } from "../tasks/task-registry.js";
 import { reconcileTaskRecordForOperatorInspection } from "../tasks/task-registry.maintenance.js";
 import type { TaskRecord } from "../tasks/task-registry.types.js";
 import { loadSessionEntry, readSessionMessages } from "./session-utils.js";

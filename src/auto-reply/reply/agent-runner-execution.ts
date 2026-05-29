@@ -301,6 +301,13 @@ function rollbackFallbackSelectionStateIfUnchanged(
  * Includes a countdown when the soonest cooldown expiry is known.
  */
 function buildRateLimitCooldownMessage(err: unknown): string {
+  if (isFallbackSummaryError(err) && hasBillingAttemptSummary(err)) {
+    return BILLING_ERROR_USER_MESSAGE;
+  }
+  const message = formatErrorMessage(err);
+  if (isBillingErrorMessage(message)) {
+    return BILLING_ERROR_USER_MESSAGE;
+  }
   if (!isFallbackSummaryError(err)) {
     return "⚠️ All models are temporarily rate-limited. Please try again in a few minutes.";
   }
@@ -325,6 +332,14 @@ function isPureTransientRateLimitSummary(err: unknown): boolean {
       const reason = attempt.reason;
       return reason === "rate_limit" || reason === "overloaded";
     })
+  );
+}
+
+function hasBillingAttemptSummary(err: unknown): boolean {
+  return (
+    isFallbackSummaryError(err) &&
+    err.attempts.length > 0 &&
+    err.attempts.some((attempt) => attempt.reason === "billing")
   );
 }
 
@@ -1584,7 +1599,9 @@ export async function runAgentTurnWithFallback(params: {
         continue;
       }
       const message = formatErrorMessage(err);
-      const isBilling = isBillingErrorMessage(message);
+      const isBilling = isFallbackSummaryError(err)
+        ? hasBillingAttemptSummary(err)
+        : isBillingErrorMessage(message);
       const isContextOverflow = !isBilling && isLikelyContextOverflowError(message);
       const isCompactionFailure = !isBilling && isCompactionFailureError(message);
       const isSessionCorruption = /function call turn comes immediately after/i.test(message);

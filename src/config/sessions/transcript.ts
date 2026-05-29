@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
+import { acquireSessionWriteLock } from "../../agents/session-write-lock.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { emitSessionTranscriptUpdate } from "../../sessions/transcript-events.js";
 import {
@@ -13,6 +14,7 @@ import { resolveAndPersistSessionFile } from "./session-file.js";
 import { loadSessionStore, normalizeStoreSessionKey } from "./store.js";
 import { parseSessionThreadInfo } from "./thread-info.js";
 import { resolveMirroredTranscriptText } from "./transcript-mirror.js";
+import { runWithOwnedSessionTranscriptWriteLock } from "./transcript-write-context.js";
 import type { SessionEntry } from "./types.js";
 
 async function ensureSessionHeader(params: {
@@ -205,8 +207,18 @@ export async function appendExactAssistantMessageToSessionTranscript(params: {
     ...params.message,
     ...(explicitIdempotencyKey ? { idempotencyKey: explicitIdempotencyKey } : {}),
   } as Parameters<SessionManager["appendMessage"]>[0];
-  const sessionManager = SessionManager.open(sessionFile);
-  const messageId = sessionManager.appendMessage(message);
+  const messageId = await runWithOwnedSessionTranscriptWriteLock(
+    { sessionFile, sessionKey },
+    async () => {
+      const lock = await acquireSessionWriteLock({ sessionFile, allowReentrant: true });
+      try {
+        const sessionManager = SessionManager.open(sessionFile);
+        return sessionManager.appendMessage(message);
+      } finally {
+        await lock.release();
+      }
+    },
+  );
 
   switch (params.updateMode ?? "inline") {
     case "inline":

@@ -33,6 +33,9 @@ export async function deliverReplies(params: {
   identity?: SlackSendIdentity;
 }) {
   for (const payload of params.replies) {
+    if (payload.isReasoning === true) {
+      continue;
+    }
     // Keep reply tags opt-in: when replyToMode is off, explicit reply tags
     // must not force threading.
     const inlineReplyToId = params.replyToMode === "off" ? undefined : payload.replyToId;
@@ -187,6 +190,9 @@ export async function deliverSlackSlashReplies(params: {
   const messages: string[] = [];
   const chunkLimit = Math.min(params.textLimit, SLACK_TEXT_LIMIT);
   for (const payload of params.replies) {
+    if (payload.isReasoning === true) {
+      continue;
+    }
     const reply = resolveSendableOutboundReplyParts(payload);
     const text =
       reply.hasText && !isSilentReplyText(reply.trimmedText, SILENT_REPLY_TOKEN)

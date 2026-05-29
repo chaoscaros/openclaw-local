@@ -26,6 +26,7 @@ import { summarizeTaskRecords } from "./task-registry.summary.js";
 import type { TaskRecord, TaskRegistrySummary } from "./task-registry.types.js";
 
 const TASK_RECONCILE_GRACE_MS = 5 * 60_000;
+const TASK_STALE_RUNNING_MS = 30 * 60_000;
 const TASK_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const TASK_SWEEP_INTERVAL_MS = 60_000;
 
@@ -83,6 +84,25 @@ export type TaskRegistryMaintenanceSummary = {
   pruned: number;
 };
 
+export type TaskRegistryMaintenanceTaskDiagnostic = {
+  taskId: string;
+  runtime: TaskRecord["runtime"];
+  status: TaskRecord["status"];
+  decision: "retained" | "would_reconcile";
+  reason:
+    | "active_cli_run"
+    | "backing_session_missing"
+    | "backing_session_present"
+    | "lost_grace_pending";
+  ageMs: number;
+  childSessionKey?: string;
+  runId?: string;
+};
+
+export type TaskRegistryMaintenanceDiagnostics = {
+  staleRunningTasks: TaskRegistryMaintenanceTaskDiagnostic[];
+};
+
 function findSessionEntryByKey(store: Record<string, unknown>, sessionKey: string): unknown {
   const direct = store[sessionKey];
   if (direct) {
@@ -105,9 +125,12 @@ function isTerminalTask(task: TaskRecord): boolean {
   return !isActiveTask(task);
 }
 
+function taskReferenceAt(task: TaskRecord): number {
+  return task.lastEventAt ?? task.startedAt ?? task.createdAt;
+}
+
 function hasLostGraceExpired(task: TaskRecord, now: number): boolean {
-  const referenceAt = task.lastEventAt ?? task.startedAt ?? task.createdAt;
-  return now - referenceAt >= TASK_RECONCILE_GRACE_MS;
+  return now - taskReferenceAt(task) >= TASK_RECONCILE_GRACE_MS;
 }
 
 function hasActiveCliRun(task: TaskRecord): boolean {
@@ -273,6 +296,49 @@ export function previewTaskRegistryMaintenance(): TaskRegistryMaintenanceSummary
     }
   }
   return { reconciled, recovered, cleanupStamped, pruned };
+}
+
+function explainActiveTaskRetention(
+  task: TaskRecord,
+  now: number,
+): Pick<TaskRegistryMaintenanceTaskDiagnostic, "decision" | "reason"> {
+  if (!hasLostGraceExpired(task, now)) {
+    return { decision: "retained", reason: "lost_grace_pending" };
+  }
+  if (!hasBackingSession(task)) {
+    return { decision: "would_reconcile", reason: "backing_session_missing" };
+  }
+  if (task.runtime === "cli" && hasActiveCliRun(task)) {
+    return { decision: "retained", reason: "active_cli_run" };
+  }
+  return { decision: "retained", reason: "backing_session_present" };
+}
+
+export function getTaskRegistryMaintenanceDiagnostics(): TaskRegistryMaintenanceDiagnostics {
+  taskRegistryMaintenanceRuntime.ensureTaskRegistryReady();
+  const now = Date.now();
+  const staleRunningTasks: TaskRegistryMaintenanceTaskDiagnostic[] = [];
+  for (const task of taskRegistryMaintenanceRuntime.listTaskRecords()) {
+    if (task.status !== "running") {
+      continue;
+    }
+    const ageMs = Math.max(0, now - taskReferenceAt(task));
+    if (ageMs < TASK_STALE_RUNNING_MS) {
+      continue;
+    }
+    const decision = explainActiveTaskRetention(task, now);
+    staleRunningTasks.push({
+      taskId: task.taskId,
+      runtime: task.runtime,
+      status: task.status,
+      decision: decision.decision,
+      reason: decision.reason,
+      ageMs,
+      ...(task.childSessionKey ? { childSessionKey: task.childSessionKey } : {}),
+      ...(task.runId ? { runId: task.runId } : {}),
+    });
+  }
+  return { staleRunningTasks };
 }
 
 /**

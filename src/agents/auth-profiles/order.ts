@@ -1,6 +1,9 @@
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { findNormalizedProviderValue, normalizeProviderId } from "../model-selection.js";
-import { resolveProviderIdForAuth } from "../provider-auth-aliases.js";
+import {
+  resolveProviderIdForAuth,
+  type ProviderAuthAliasLookupDeps,
+} from "../provider-auth-aliases.js";
 import {
   evaluateStoredCredentialEligibility,
   type AuthCredentialReasonCode,
@@ -26,24 +29,24 @@ export type AuthProfileEligibility = {
 
 export function resolveAuthProfileEligibility(params: {
   cfg?: OpenClawConfig;
+  providerAuthAliasDeps?: ProviderAuthAliasLookupDeps;
   store: AuthProfileStore;
   provider: string;
   profileId: string;
   now?: number;
 }): AuthProfileEligibility {
-  const providerAuthKey = resolveProviderIdForAuth(params.provider, { config: params.cfg });
+  const aliasParams = { config: params.cfg, deps: params.providerAuthAliasDeps };
+  const providerAuthKey = resolveProviderIdForAuth(params.provider, aliasParams);
   const cred = params.store.profiles[params.profileId];
   if (!cred) {
     return { eligible: false, reasonCode: "profile_missing" };
   }
-  if (resolveProviderIdForAuth(cred.provider, { config: params.cfg }) !== providerAuthKey) {
+  if (resolveProviderIdForAuth(cred.provider, aliasParams) !== providerAuthKey) {
     return { eligible: false, reasonCode: "provider_mismatch" };
   }
   const profileConfig = params.cfg?.auth?.profiles?.[params.profileId];
   if (profileConfig) {
-    if (
-      resolveProviderIdForAuth(profileConfig.provider, { config: params.cfg }) !== providerAuthKey
-    ) {
+    if (resolveProviderIdForAuth(profileConfig.provider, aliasParams) !== providerAuthKey) {
       return { eligible: false, reasonCode: "provider_mismatch" };
     }
     if (profileConfig.mode !== cred.type) {
@@ -65,13 +68,15 @@ export function resolveAuthProfileEligibility(params: {
 
 export function resolveAuthProfileOrder(params: {
   cfg?: OpenClawConfig;
+  providerAuthAliasDeps?: ProviderAuthAliasLookupDeps;
   store: AuthProfileStore;
   provider: string;
   preferredProfile?: string;
 }): string[] {
-  const { cfg, store, provider, preferredProfile } = params;
+  const { cfg, store, provider, preferredProfile, providerAuthAliasDeps } = params;
   const providerKey = normalizeProviderId(provider);
-  const providerAuthKey = resolveProviderIdForAuth(provider, { config: cfg });
+  const aliasParams = { config: cfg, deps: providerAuthAliasDeps };
+  const providerAuthKey = resolveProviderIdForAuth(provider, aliasParams);
   const now = Date.now();
 
   // Clear any cooldowns that have expired since the last check so profiles
@@ -85,13 +90,15 @@ export function resolveAuthProfileOrder(params: {
     ? Object.entries(cfg.auth.profiles)
         .filter(
           ([, profile]) =>
-            resolveProviderIdForAuth(profile.provider, { config: cfg }) === providerAuthKey,
+            resolveProviderIdForAuth(profile.provider, aliasParams) === providerAuthKey,
         )
         .map(([profileId]) => profileId)
     : [];
   const baseOrder =
     explicitOrder ??
-    (explicitProfiles.length > 0 ? explicitProfiles : listProfilesForProvider(store, provider));
+    (explicitProfiles.length > 0
+      ? explicitProfiles
+      : listProfilesForProvider(store, provider, { providerAuthAliasDeps }));
   if (baseOrder.length === 0) {
     return [];
   }
@@ -99,6 +106,7 @@ export function resolveAuthProfileOrder(params: {
   const isValidProfile = (profileId: string): boolean =>
     resolveAuthProfileEligibility({
       cfg,
+      providerAuthAliasDeps,
       store,
       provider,
       profileId,
@@ -111,7 +119,9 @@ export function resolveAuthProfileOrder(params: {
   // provider's stored credentials and use any valid entries.
   const allBaseProfilesMissing = baseOrder.every((profileId) => !store.profiles[profileId]);
   if (filtered.length === 0 && explicitProfiles.length > 0 && allBaseProfilesMissing) {
-    const storeProfiles = listProfilesForProvider(store, provider);
+    const storeProfiles = listProfilesForProvider(store, provider, {
+      providerAuthAliasDeps,
+    });
     filtered = storeProfiles.filter(isValidProfile);
   }
 

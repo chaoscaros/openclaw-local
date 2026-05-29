@@ -14,6 +14,16 @@ const MIN_PROMPT_BUDGET_RATIO = 0.5;
 
 export type { PreemptiveCompactionRoute } from "./preemptive-compaction.types.js";
 
+export type PreemptiveCompactionDecision = {
+  route: PreemptiveCompactionRoute;
+  shouldCompact: boolean;
+  estimatedPromptTokens: number;
+  promptBudgetBeforeReserve: number;
+  overflowTokens: number;
+  toolResultReducibleChars: number;
+  effectiveReserveTokens: number;
+};
+
 export function estimatePrePromptTokens(params: {
   messages: AgentMessage[];
   systemPrompt?: string;
@@ -42,15 +52,7 @@ export function shouldPreemptivelyCompactBeforePrompt(params: {
   prompt: string;
   contextTokenBudget: number;
   reserveTokens: number;
-}): {
-  route: PreemptiveCompactionRoute;
-  shouldCompact: boolean;
-  estimatedPromptTokens: number;
-  promptBudgetBeforeReserve: number;
-  overflowTokens: number;
-  toolResultReducibleChars: number;
-  effectiveReserveTokens: number;
-} {
+}): PreemptiveCompactionDecision {
   const estimatedPromptTokens = estimatePrePromptTokens(params);
   const contextTokenBudget = Math.max(1, Math.floor(params.contextTokenBudget));
   const requestedReserveTokens = Math.max(0, Math.floor(params.reserveTokens));
@@ -95,4 +97,33 @@ export function shouldPreemptivelyCompactBeforePrompt(params: {
     toolResultReducibleChars,
     effectiveReserveTokens,
   };
+}
+
+export function formatPrePromptPrecheckLog(params: {
+  result: PreemptiveCompactionDecision;
+  sessionKey?: string;
+  sessionId?: string;
+  provider: string;
+  modelId: string;
+  messageCount: number;
+  contextTokenBudget: number;
+  reserveTokens: number;
+  sessionFile?: string;
+}): string {
+  const { result } = params;
+  return (
+    `[context-overflow-precheck] pre-prompt check ` +
+    `sessionKey=${params.sessionKey ?? params.sessionId ?? "unknown"} ` +
+    `provider=${params.provider}/${params.modelId} ` +
+    `route=${result.route} ` +
+    `estimatedPromptTokens=${result.estimatedPromptTokens} ` +
+    `promptBudgetBeforeReserve=${result.promptBudgetBeforeReserve} ` +
+    `overflowTokens=${result.overflowTokens} ` +
+    `toolResultReducibleChars=${result.toolResultReducibleChars} ` +
+    `reserveTokens=${params.reserveTokens} ` +
+    `effectiveReserveTokens=${result.effectiveReserveTokens} ` +
+    `contextTokenBudget=${params.contextTokenBudget} ` +
+    `messages=${params.messageCount} ` +
+    `sessionFile=${params.sessionFile}`
+  );
 }

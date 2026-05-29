@@ -297,6 +297,31 @@ function collectAllowedValuesFromUnknownIssue(issue: unknown): unknown[] {
   return collection.values;
 }
 
+function appendNumericBoundHint(message: string, record: UnknownIssueRecord): string {
+  const origin = typeof record.origin === "string" ? record.origin : "";
+  if (origin !== "number") {
+    return message;
+  }
+  const inclusive = record.inclusive === true;
+  if (record.code === "too_big") {
+    const maximum = typeof record.maximum === "number" ? record.maximum : undefined;
+    if (maximum !== undefined) {
+      return inclusive
+        ? `${message} (maximum: ${maximum})`
+        : `${message} (must be less than ${maximum})`;
+    }
+  }
+  if (record.code === "too_small") {
+    const minimum = typeof record.minimum === "number" ? record.minimum : undefined;
+    if (minimum !== undefined) {
+      return inclusive
+        ? `${message} (minimum: ${minimum})`
+        : `${message} (must be greater than ${minimum})`;
+    }
+  }
+  return message;
+}
+
 function isBindingsIssuePath(pathSegments: readonly ConfigPathSegment[]): boolean {
   return pathSegments[0] === "bindings" && typeof pathSegments[1] === "number";
 }
@@ -482,6 +507,7 @@ function mapZodIssueToConfigIssue(issue: unknown): ConfigValidationIssue {
   const record = toIssueRecord(issue);
   const path = formatConfigPath(toConfigPathSegments(record?.path));
   const message = typeof record?.message === "string" ? record.message : "Invalid input";
+  const enrichedMessage = record ? appendNumericBoundHint(message, record) : message;
 
   const allowedValuesSummary = summarizeAllowedValues(collectAllowedValuesFromUnknownIssue(issue));
 
@@ -501,12 +527,12 @@ function mapZodIssueToConfigIssue(issue: unknown): ConfigValidationIssue {
   }
 
   if (!allowedValuesSummary) {
-    return { path, message };
+    return { path, message: enrichedMessage };
   }
 
   return {
     path,
-    message: appendAllowedValuesHint(message, allowedValuesSummary),
+    message: appendAllowedValuesHint(enrichedMessage, allowedValuesSummary),
     allowedValues: allowedValuesSummary.values,
     allowedValuesHiddenCount: allowedValuesSummary.hiddenCount,
   };

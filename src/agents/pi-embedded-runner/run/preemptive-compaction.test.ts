@@ -4,6 +4,7 @@ import { estimateToolResultReductionPotential } from "../tool-result-truncation.
 import {
   PREEMPTIVE_OVERFLOW_ERROR_TEXT,
   estimatePrePromptTokens,
+  formatPrePromptPrecheckLog,
   shouldPreemptivelyCompactBeforePrompt,
 } from "./preemptive-compaction.js";
 
@@ -82,6 +83,41 @@ describe("preemptive-compaction", () => {
     expect(result.shouldCompact).toBe(false);
     expect(result.route).toBe("fits");
     expect(result.estimatedPromptTokens).toBeLessThan(result.promptBudgetBeforeReserve);
+  });
+
+  it("formats all-route pre-prompt diagnostics for a fits decision", () => {
+    const result = shouldPreemptivelyCompactBeforePrompt({
+      messages: [makeAssistantHistory("short history")],
+      systemPrompt: "sys",
+      prompt: "hello",
+      contextTokenBudget: 10_000,
+      reserveTokens: 1_000,
+    });
+    const line = formatPrePromptPrecheckLog({
+      result,
+      sessionKey: "discord:channel:thread",
+      sessionId: "session-1",
+      provider: "anthropic",
+      modelId: "claude-opus-4-6",
+      messageCount: 1,
+      contextTokenBudget: 10_000,
+      reserveTokens: 1_000,
+      sessionFile: "sessions/session-1.json",
+    });
+
+    expect(line).toContain("[context-overflow-precheck] pre-prompt check");
+    expect(line).toContain("sessionKey=discord:channel:thread");
+    expect(line).toContain("provider=anthropic/claude-opus-4-6");
+    expect(line).toContain("route=fits");
+    expect(line).toContain(`estimatedPromptTokens=${result.estimatedPromptTokens}`);
+    expect(line).toContain(`promptBudgetBeforeReserve=${result.promptBudgetBeforeReserve}`);
+    expect(line).toContain("overflowTokens=0");
+    expect(line).toContain(`toolResultReducibleChars=${result.toolResultReducibleChars}`);
+    expect(line).toContain("reserveTokens=1000");
+    expect(line).toContain(`effectiveReserveTokens=${result.effectiveReserveTokens}`);
+    expect(line).toContain("contextTokenBudget=10000");
+    expect(line).toContain("messages=1");
+    expect(line).toContain("sessionFile=sessions/session-1.json");
   });
 
   it("caps reserve tokens so small context models keep usable prompt budget", () => {

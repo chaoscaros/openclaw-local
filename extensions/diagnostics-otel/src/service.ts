@@ -9,6 +9,7 @@ import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { ParentBasedSampler, TraceIdRatioBasedSampler } from "@opentelemetry/sdk-trace-base";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import { registerUnhandledRejectionHandler } from "openclaw/plugin-sdk/runtime-env";
 import type { DiagnosticEventPayload, OpenClawPluginService } from "../api.js";
 import { onDiagnosticEvent, redactSensitiveText, registerLogTransport } from "../api.js";
 
@@ -54,6 +55,72 @@ function formatError(err: unknown): string {
   }
 }
 
+function collectNestedErrorCandidates(err: unknown): unknown[] {
+  const queue: unknown[] = [err];
+  const seen = new Set<unknown>();
+  const candidates: unknown[] = [];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current == null || seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+    candidates.push(current);
+
+    if (Array.isArray(current)) {
+      for (const item of current) {
+        queue.push(item);
+      }
+      continue;
+    }
+    if (typeof current !== "object") {
+      continue;
+    }
+
+    const record = current as Record<string, unknown>;
+    for (const nested of [record.cause, record.reason, record.original, record.error]) {
+      queue.push(nested);
+    }
+    if (Array.isArray(record.errors)) {
+      for (const nested of record.errors) {
+        queue.push(nested);
+      }
+    }
+  }
+
+  return candidates;
+}
+
+function readErrorName(err: unknown): string | undefined {
+  if (!err || typeof err !== "object") {
+    return undefined;
+  }
+  const name = (err as { name?: unknown }).name;
+  return typeof name === "string" && name.trim() ? name : undefined;
+}
+
+function readErrorCode(err: unknown): string | number | undefined {
+  if (!err || typeof err !== "object") {
+    return undefined;
+  }
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "string" || typeof code === "number" ? code : undefined;
+}
+
+function findOtlpExporterError(reason: unknown): object | undefined {
+  for (const candidate of collectNestedErrorCandidates(reason)) {
+    if (
+      readErrorName(candidate) === "OTLPExporterError" &&
+      candidate &&
+      typeof candidate === "object"
+    ) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
 function redactOtelAttributes(attributes: Record<string, string | number | boolean>) {
   const redactedAttributes: Record<string, string | number | boolean> = {};
   for (const [key, value] of Object.entries(attributes)) {
@@ -67,6 +134,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
   let logProvider: LoggerProvider | null = null;
   let stopLogTransport: (() => void) | null = null;
   let unsubscribe: (() => void) | null = null;
+  let unregisterUnhandledRejectionHandler: (() => void) | null = null;
 
   return {
     id: "diagnostics-otel",
@@ -659,8 +727,22 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       if (logsEnabled) {
         ctx.logger.info("diagnostics-otel: logs exporter enabled (OTLP/Protobuf)");
       }
+
+      unregisterUnhandledRejectionHandler = registerUnhandledRejectionHandler((reason) => {
+        const otlpError = findOtlpExporterError(reason);
+        if (!otlpError) {
+          return false;
+        }
+        const code = readErrorCode(otlpError) ?? "unknown";
+        ctx.logger.warn(
+          `diagnostics-otel: suppressed OTLP exporter unhandled rejection (code=${String(code)})`,
+        );
+        return true;
+      });
     },
     async stop() {
+      unregisterUnhandledRejectionHandler?.();
+      unregisterUnhandledRejectionHandler = null;
       unsubscribe?.();
       unsubscribe = null;
       stopLogTransport?.();

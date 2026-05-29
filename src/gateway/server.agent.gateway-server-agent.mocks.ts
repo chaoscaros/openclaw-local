@@ -25,6 +25,6 @@ vi.mock("./server-plugins.js", async () => {
         gatewayMethods: params.baseMethods ?? [],
       };
     },
-    setFallbackGatewayContextResolver: vi.fn(),
+    setFallbackGatewayContextResolver: vi.fn(() => () => {}),
   };
 });

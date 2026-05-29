@@ -188,7 +188,7 @@ describe("runCronIsolatedAgentTurn — cron model override forwarding (#58065)",
             defaults: {
               model: {
                 provider: "anthropic",
-                model: "claude-opus-4-6",
+                primary: "anthropic/claude-opus-4-6",
                 fallbacks: ["openai/gpt-5.4", "google/gemini-2.5-pro"],
               },
             },

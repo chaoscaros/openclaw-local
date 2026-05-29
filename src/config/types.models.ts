@@ -29,10 +29,23 @@ type SupportedOpenAICompatFields = Pick<
   | "requiresThinkingAsText"
 >;
 
-type SupportedThinkingFormat =
+export type SupportedThinkingFormat =
   | NonNullable<OpenAICompletionsCompat["thinkingFormat"]>
   | "openrouter"
+  | "qwen"
   | "qwen-chat-template";
+
+export const MODEL_THINKING_FORMATS = [
+  "openai",
+  "openrouter",
+  "zai",
+  "qwen",
+  "qwen-chat-template",
+] as const satisfies readonly SupportedThinkingFormat[];
+
+export function isModelThinkingFormat(value: string): value is SupportedThinkingFormat {
+  return (MODEL_THINKING_FORMATS as readonly string[]).includes(value);
+}
 
 export type ModelCompatConfig = SupportedOpenAICompatFields & {
   thinkingFormat?: SupportedThinkingFormat;

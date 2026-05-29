@@ -1,5 +1,8 @@
 import { peekSystemEventEntries } from "openclaw/plugin-sdk/infra-runtime";
-import type { OpenClawConfig, OpenClawPluginApi } from "openclaw/plugin-sdk/memory-core";
+import type {
+  OpenClawConfig,
+  OpenClawPluginApi,
+} from "openclaw/plugin-sdk/memory-core-host-runtime-core";
 import {
   DEFAULT_MEMORY_DREAMING_FREQUENCY as DEFAULT_MEMORY_DREAMING_CRON_EXPR,
   DEFAULT_MEMORY_DEEP_DREAMING_LIMIT as DEFAULT_MEMORY_DREAMING_LIMIT,
@@ -176,21 +179,51 @@ async function runShortTermDreamingPromotion(params: {
   subagent?: Parameters<typeof generateAndAppendDreamNarrative>[0]["subagent"];
 }): Promise<ShortTermDreamingRunSummary> {
   if (!params.config.enabled) {
-    return { handled: true, reason: "memory-core: short-term dreaming disabled", workspaces: 0, candidates: 0, applied: 0, failed: 0, narrativeWritten: 0, narrativeSkipped: 0 };
+    return {
+      handled: true,
+      reason: "memory-core: short-term dreaming disabled",
+      workspaces: 0,
+      candidates: 0,
+      applied: 0,
+      failed: 0,
+      narrativeWritten: 0,
+      narrativeSkipped: 0,
+    };
   }
 
   const recencyHalfLifeDays =
     params.config.recencyHalfLifeDays ?? DEFAULT_MEMORY_DREAMING_RECENCY_HALF_LIFE_DAYS;
-  const workspaces = resolveDreamingWorkspaceTargets({ cfg: params.cfg, workspaceDir: params.workspaceDir });
+  const workspaces = resolveDreamingWorkspaceTargets({
+    cfg: params.cfg,
+    workspaceDir: params.workspaceDir,
+  });
   if (workspaces.length === 0) {
     params.logger.warn(
       "memory-core: dreaming promotion skipped because no memory workspace is available.",
     );
-    return { handled: true, reason: "memory-core: short-term dreaming missing workspace", workspaces: 0, candidates: 0, applied: 0, failed: 0, narrativeWritten: 0, narrativeSkipped: 0 };
+    return {
+      handled: true,
+      reason: "memory-core: short-term dreaming missing workspace",
+      workspaces: 0,
+      candidates: 0,
+      applied: 0,
+      failed: 0,
+      narrativeWritten: 0,
+      narrativeSkipped: 0,
+    };
   }
   if (params.config.limit === 0) {
     params.logger.info("memory-core: dreaming promotion skipped because limit=0.");
-    return { handled: true, reason: "memory-core: short-term dreaming disabled by limit", workspaces: workspaces.length, candidates: 0, applied: 0, failed: 0, narrativeWritten: 0, narrativeSkipped: 0 };
+    return {
+      handled: true,
+      reason: "memory-core: short-term dreaming disabled by limit",
+      workspaces: workspaces.length,
+      candidates: 0,
+      applied: 0,
+      failed: 0,
+      narrativeWritten: 0,
+      narrativeSkipped: 0,
+    };
   }
 
   if (params.config.verboseLogging) {

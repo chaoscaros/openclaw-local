@@ -16,6 +16,7 @@ import {
 import { openrouterMediaUnderstandingProvider } from "./media-understanding-provider.js";
 import { applyOpenrouterConfig, OPENROUTER_DEFAULT_MODEL_REF } from "./onboard.js";
 import { buildOpenrouterProvider } from "./provider-catalog.js";
+import { resolveOpenRouterExtraParamsForTransport } from "./provider-routing.js";
 import { wrapOpenRouterProviderStream } from "./stream.js";
 
 const PROVIDER_ID = "openrouter";
@@ -108,6 +109,7 @@ export default definePluginEntry({
       ...PASSTHROUGH_GEMINI_REPLAY_HOOKS,
       resolveReasoningOutputMode: () => "native",
       isModernModelRef: () => true,
+      prepareExtraParams: resolveOpenRouterExtraParamsForTransport,
       wrapStreamFn: wrapOpenRouterProviderStream,
       isCacheTtlEligible: (ctx) => isOpenRouterCacheTtlModel(ctx.modelId),
     });

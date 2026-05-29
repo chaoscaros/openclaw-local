@@ -363,24 +363,7 @@ describe("resolveModel forward-compat errors and overrides", () => {
   });
 
   it("does not override when no provider config exists", () => {
-    mockDiscoveredModel(discoverModels, {
-      provider: "anthropic",
-      modelId: "claude-sonnet-4-5",
-      templateModel: {
-        id: "claude-sonnet-4-5",
-        name: "Claude Sonnet 4.5",
-        provider: "anthropic",
-        api: "anthropic-messages",
-        baseUrl: "https://api.anthropic.com",
-        reasoning: true,
-        input: ["text", "image"],
-        cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
-        contextWindow: 200000,
-        maxTokens: 64000,
-      },
-    });
-
-    const result = resolveModelForTest("anthropic", "claude-sonnet-4-5", "/tmp/agent");
+    const result = resolveModelForTest("anthropic", "claude-sonnet-4-6", "/tmp/agent");
     expect(result.error).toBeUndefined();
     expect(result.model?.baseUrl).toBe("https://api.anthropic.com");
   });

@@ -5,6 +5,7 @@ import { loadPluginManifest } from "./manifest.js";
 export type BundledPluginSource = {
   pluginId: string;
   localPath: string;
+  version?: string;
   npmSpec?: string;
 };
 
@@ -63,6 +64,7 @@ export function resolveBundledPluginSources(params: {
     bundled.set(pluginId, {
       pluginId,
       localPath: candidate.rootDir,
+      ...(manifest.manifest.version ? { version: manifest.manifest.version } : {}),
       npmSpec,
     });
   }

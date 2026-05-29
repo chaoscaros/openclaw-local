@@ -106,6 +106,104 @@ describe("Codex app-server approval bridge", () => {
     );
   });
 
+  it("routes MCP elicitation approvals through plugin approvals", async () => {
+    const params = createParams();
+    mockCallGatewayTool
+      .mockResolvedValueOnce({ id: "plugin:approval-mcp", status: "accepted" })
+      .mockResolvedValueOnce({ id: "plugin:approval-mcp", decision: "allow-once" });
+
+    const result = await handleCodexAppServerApprovalRequest({
+      method: "mcpServer/elicitation/request",
+      requestParams: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        serverName: "computer-use",
+        mode: "form",
+        message: "Allow Codex to use Notes?",
+        requestedSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+      paramsForRun: params,
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+
+    expect(result).toEqual({ action: "accept", content: null, _meta: null });
+    expect(mockCallGatewayTool.mock.calls.map(([method]) => method)).toEqual([
+      "plugin.approval.request",
+      "plugin.approval.waitDecision",
+    ]);
+    expect(mockCallGatewayTool).toHaveBeenCalledWith(
+      "plugin.approval.request",
+      expect.any(Object),
+      expect.objectContaining({
+        pluginId: "openclaw-codex-app-server",
+        title: "Codex app-server MCP approval",
+        toolName: "codex_mcp_elicitation_approval",
+        description: expect.stringContaining("MCP server: computer-use"),
+      }),
+      { expectFinal: false },
+    );
+  });
+
+  it("maps persistent MCP elicitation approvals onto Codex metadata", async () => {
+    const params = createParams();
+    mockCallGatewayTool
+      .mockResolvedValueOnce({ id: "plugin:approval-mcp-session", status: "accepted" })
+      .mockResolvedValueOnce({ id: "plugin:approval-mcp-session", decision: "allow-always" });
+
+    const result = await handleCodexAppServerApprovalRequest({
+      method: "mcpServer/elicitation/request",
+      requestParams: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        serverName: "computer-use",
+        mode: "form",
+        message: "Allow Codex to use Notes?",
+        requestedSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+      paramsForRun: params,
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+
+    expect(result).toEqual({
+      action: "accept",
+      content: null,
+      _meta: { persist: "always" },
+    });
+  });
+
+  it("leaves unmappable MCP elicitation schemas to the client fallback", async () => {
+    const result = await handleCodexAppServerApprovalRequest({
+      method: "mcpServer/elicitation/request",
+      requestParams: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        serverName: "computer-use",
+        mode: "form",
+        message: "Allow Codex to use Notes?",
+        requestedSchema: {
+          type: "object",
+          properties: {
+            appName: { type: "string" },
+          },
+        },
+      },
+      paramsForRun: createParams(),
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+
+    expect(result).toBeUndefined();
+    expect(mockCallGatewayTool).not.toHaveBeenCalled();
+  });
+
   it("denies native file and command approvals in change-review mode before opening approval UI", async () => {
     const params = createParams();
     params.changeReviewModeEnabled = true;

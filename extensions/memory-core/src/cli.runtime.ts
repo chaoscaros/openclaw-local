@@ -2,7 +2,10 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { resolveMemoryRemDreamingConfig } from "openclaw/plugin-sdk/memory-core-host-status";
+import {
+  resolveMemoryDreamingConfig,
+  resolveMemoryRemDreamingConfig,
+} from "openclaw/plugin-sdk/memory-core-host-status";
 import { buildAgentSessionKey } from "openclaw/plugin-sdk/routing";
 import { resolvePreferredOpenClawTmpDir } from "openclaw/plugin-sdk/temp-path";
 import {
@@ -1178,8 +1181,13 @@ export async function runMemorySearch(
   const { config: cfg, diagnostics } = await loadMemoryCommandConfig("memory search");
   emitMemorySecretResolveDiagnostics(diagnostics, { json: Boolean(opts.json) });
   const agentId = resolveAgent(cfg, opts.agent);
+  const memoryPluginConfig = resolveMemoryPluginConfig(cfg);
+  const dreamingEnabled = resolveMemoryDreamingConfig({
+    pluginConfig: memoryPluginConfig,
+    cfg,
+  }).enabled;
   const dreaming = resolveShortTermPromotionDreamingConfig({
-    pluginConfig: resolveMemoryPluginConfig(cfg),
+    pluginConfig: memoryPluginConfig,
     cfg,
   });
   await withMemoryManagerForAgent({
@@ -1204,14 +1212,16 @@ export async function runMemorySearch(
         typeof (manager as { status?: () => { workspaceDir?: string } }).status === "function"
           ? manager.status().workspaceDir
           : undefined;
-      void recordShortTermRecalls({
-        workspaceDir,
-        query,
-        results,
-        timezone: dreaming.timezone,
-      }).catch(() => {
-        // Recall tracking is best-effort and must not block normal search results.
-      });
+      if (dreamingEnabled) {
+        void recordShortTermRecalls({
+          workspaceDir,
+          query,
+          results,
+          timezone: dreaming.timezone,
+        }).catch(() => {
+          // Recall tracking is best-effort and must not block normal search results.
+        });
+      }
       if (opts.json) {
         defaultRuntime.writeJson({ results });
         return;

@@ -62,6 +62,7 @@ describe("minimax music generation provider", () => {
         }),
         body: expect.objectContaining({
           model: "music-2.5+",
+          prompt: "upbeat dance-pop with female vocals",
           lyrics: "our city wakes",
           output_format: "url",
           audio_setting: {
@@ -72,6 +73,9 @@ describe("minimax music generation provider", () => {
         }),
       }),
     );
+    const body = postJsonRequestMock.mock.calls[0]?.[0]?.body as Record<string, unknown>;
+    expect(body.prompt).not.toContain("Target duration");
+    expect(body).not.toHaveProperty("duration");
     const headers = postJsonRequestMock.mock.calls[0]?.[0]?.headers as Headers | undefined;
     expect(headers?.get("content-type")).toBe("application/json");
     expect(result.tracks).toHaveLength(1);
@@ -82,6 +86,7 @@ describe("minimax music generation provider", () => {
         audioUrl: "https://example.com/out.mp3",
       }),
     );
+    expect(result.metadata).not.toHaveProperty("requestedDurationSeconds");
   });
 
   it("downloads tracks when url output is returned in data.audio", async () => {

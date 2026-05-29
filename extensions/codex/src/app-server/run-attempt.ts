@@ -175,7 +175,10 @@ export async function runCodexAppServerAttempt(
       return undefined;
     }
     if (request.method !== "item/tool/call") {
-      if (isCodexAppServerApprovalRequest(request.method)) {
+      if (
+        isCodexAppServerApprovalRequest(request.method) ||
+        request.method === "mcpServer/elicitation/request"
+      ) {
         return handleApprovalRequest({
           method: request.method,
           params: request.params,

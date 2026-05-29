@@ -150,4 +150,36 @@ describe("printDaemonStatus", () => {
     expect(runtime.log).toHaveBeenCalledWith(expect.stringContaining("ai.openclaw.gateway.rescue"));
     expect(runtime.error).not.toHaveBeenCalled();
   });
+
+  it("prints gateway version when gathered from the status RPC", () => {
+    printDaemonStatus(
+      {
+        service: {
+          label: "LaunchAgent",
+          loaded: true,
+          loadedText: "loaded",
+          notLoadedText: "not loaded",
+          runtime: { status: "running", pid: 8000 },
+        },
+        gateway: {
+          bindMode: "loopback",
+          bindHost: "127.0.0.1",
+          port: 18789,
+          portSource: "env/config",
+          probeUrl: "ws://127.0.0.1:18789",
+          version: "2026.5.20",
+        },
+        rpc: {
+          ok: true,
+          url: "ws://127.0.0.1:18789",
+          version: "2026.5.20",
+        },
+        extraServices: [],
+      },
+      { json: false },
+    );
+
+    expect(runtime.log).toHaveBeenCalledWith(expect.stringContaining("Gateway version"));
+    expect(runtime.log).toHaveBeenCalledWith(expect.stringContaining("2026.5.20"));
+  });
 });

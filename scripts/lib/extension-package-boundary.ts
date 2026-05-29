@@ -50,6 +50,9 @@ export const EXTENSION_PACKAGE_BOUNDARY_BASE_PATHS = {
     "../dist/plugin-sdk/src/plugin-sdk/channel-streaming.d.ts",
   ],
   "openclaw/plugin-sdk/error-runtime": ["../dist/plugin-sdk/src/plugin-sdk/error-runtime.d.ts"],
+  "openclaw/plugin-sdk/memory-core-host-engine-embedding-providers": [
+    "../dist/plugin-sdk/src/plugin-sdk/memory-core-host-engine-embedding-providers.d.ts",
+  ],
   "openclaw/plugin-sdk/provider-catalog-shared": [
     "../packages/plugin-sdk/dist/src/plugin-sdk/provider-catalog-shared.d.ts",
   ],

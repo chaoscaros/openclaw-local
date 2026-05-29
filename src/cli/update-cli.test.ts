@@ -263,7 +263,16 @@ describe("update-cli", () => {
   const expectPackageInstallSpec = (spec: string) => {
     expect(runGatewayUpdate).not.toHaveBeenCalled();
     expect(runCommandWithTimeout).toHaveBeenCalledWith(
-      ["npm", "i", "-g", spec, "--no-fund", "--no-audit", "--loglevel=error"],
+      [
+        "npm",
+        "i",
+        "-g",
+        spec,
+        "--no-fund",
+        "--no-audit",
+        "--loglevel=error",
+        "--min-release-age=0",
+      ],
       expect.any(Object),
     );
   };
@@ -658,7 +667,16 @@ describe("update-cli", () => {
       } else {
         expect(runGatewayUpdate).not.toHaveBeenCalled();
         expect(runCommandWithTimeout).toHaveBeenCalledWith(
-          ["npm", "i", "-g", "openclaw@latest", "--no-fund", "--no-audit", "--loglevel=error"],
+          [
+            "npm",
+            "i",
+            "-g",
+            "openclaw@latest",
+            "--no-fund",
+            "--no-audit",
+            "--loglevel=error",
+            "--min-release-age=0",
+          ],
           expect.any(Object),
         );
       }
@@ -689,7 +707,16 @@ describe("update-cli", () => {
 
     expect(runGatewayUpdate).not.toHaveBeenCalled();
     expect(runCommandWithTimeout).toHaveBeenCalledWith(
-      ["npm", "i", "-g", "openclaw@latest", "--no-fund", "--no-audit", "--loglevel=error"],
+      [
+        "npm",
+        "i",
+        "-g",
+        "openclaw@latest",
+        "--no-fund",
+        "--no-audit",
+        "--loglevel=error",
+        "--min-release-age=0",
+      ],
       expect.any(Object),
     );
   });

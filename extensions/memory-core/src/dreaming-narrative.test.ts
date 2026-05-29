@@ -28,6 +28,9 @@ import { createMemoryCoreTestHarness } from "./test-helpers.js";
 
 const { createTempWorkspace } = createMemoryCoreTestHarness();
 const DREAMS_FILE_LOCKS_KEY = Symbol.for("openclaw.memoryCore.dreamingNarrative.fileLocks");
+const NARRATIVE_SESSION_LOCKS_KEY = Symbol.for(
+  "openclaw.memoryCore.dreamingNarrative.sessionLocks",
+);
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -48,6 +51,7 @@ function createDeferred<T>(): Deferred<T> {
 afterEach(() => {
   vi.restoreAllMocks();
   resolveGlobalMap<string, unknown>(DREAMS_FILE_LOCKS_KEY).clear();
+  resolveGlobalMap<string, unknown>(NARRATIVE_SESSION_LOCKS_KEY).clear();
 });
 
 describe("buildNarrativePrompt", () => {
@@ -638,7 +642,7 @@ describe("generateAndAppendDreamNarrative", () => {
       deliver: false,
     });
     expect(subagent.waitForRun).toHaveBeenCalledOnce();
-    expect(subagent.deleteSession).toHaveBeenCalledOnce();
+    expect(subagent.deleteSession).toHaveBeenCalledTimes(2);
 
     const content = await fs.readFile(path.join(workspaceDir, "DREAMS.md"), "utf-8");
     expect(content).toContain("The repository whispered of forgotten endpoints.");
@@ -753,7 +757,8 @@ describe("generateAndAppendDreamNarrative", () => {
     expect(content).toContain("API endpoints need authentication");
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("request-scoped"));
     expect(logger.warn).not.toHaveBeenCalledWith(expect.stringContaining(workspaceDir));
-    expect(subagent.deleteSession).toHaveBeenCalledOnce();
+    expect(logger.warn).not.toHaveBeenCalledWith(expect.stringContaining("narrative pre-cleanup"));
+    expect(subagent.deleteSession).toHaveBeenCalledTimes(2);
   });
 
   it("falls back when the request-scoped runtime error is detected by stable code", async () => {
@@ -963,8 +968,67 @@ describe("generateAndAppendDreamNarrative", () => {
     expect(firstSessionKey).not.toBe(secondSessionKey);
     expect(firstSessionKey).toContain("dreaming-narrative-light-");
     expect(secondSessionKey).toContain("dreaming-narrative-light-");
-    expect(subagent.deleteSession.mock.calls[0]?.[0]?.sessionKey).toBe(firstSessionKey);
-    expect(subagent.deleteSession.mock.calls[1]?.[0]?.sessionKey).toBe(secondSessionKey);
+    const deleteKeys = subagent.deleteSession.mock.calls.map(
+      (call) => call[0]?.sessionKey as string | undefined,
+    );
+    expect(deleteKeys.filter((key) => key === firstSessionKey)).toHaveLength(2);
+    expect(deleteKeys.filter((key) => key === secondSessionKey)).toHaveLength(2);
+  });
+
+  it("serializes narratives that reuse a workspace and phase session", async () => {
+    const workspaceDir = await createTempWorkspace("openclaw-dreaming-narrative-");
+    const gates = Array.from({ length: 4 }, () => createDeferred<{ status: string }>());
+    let runCount = 0;
+    let waitCount = 0;
+    const subagent = {
+      run: vi.fn().mockImplementation(async () => ({ runId: `run-${++runCount}` })),
+      waitForRun: vi.fn().mockImplementation(async () => await gates[waitCount++].promise),
+      getSessionMessages: vi.fn().mockResolvedValue({
+        messages: [
+          { role: "user", content: "prompt" },
+          { role: "assistant", content: "A quiet memory took shape." },
+        ],
+      }),
+      deleteSession: vi.fn().mockResolvedValue(undefined),
+    };
+    const logger = createMockLogger();
+    const nowMs = Date.parse("2026-04-05T03:00:00Z");
+
+    const runs = Array.from({ length: 4 }, (_, index) =>
+      generateAndAppendDreamNarrative({
+        subagent,
+        workspaceDir,
+        data: { phase: "light", snippets: [`fragment-${index}`] },
+        nowMs,
+        logger,
+      }),
+    );
+
+    try {
+      await waitForCondition(() => {
+        expect(subagent.run).toHaveBeenCalledTimes(1);
+      });
+      expect(subagent.waitForRun).toHaveBeenCalledTimes(1);
+      expect(subagent.deleteSession).toHaveBeenCalledTimes(1);
+
+      for (const [index, gate] of gates.entries()) {
+        gate.resolve({ status: "ok" });
+        if (index < gates.length - 1) {
+          await waitForCondition(() => {
+            expect(subagent.run).toHaveBeenCalledTimes(index + 2);
+          });
+        }
+      }
+      await Promise.all(runs);
+    } finally {
+      for (const gate of gates) {
+        gate.resolve({ status: "ok" });
+      }
+    }
+
+    expect(subagent.deleteSession).toHaveBeenCalledTimes(8);
+    expect(subagent.run).toHaveBeenCalledTimes(4);
+    expect(subagent.waitForRun).toHaveBeenCalledTimes(4);
   });
 
   it("caps detached narratives and queues excess work", async () => {
@@ -997,10 +1061,9 @@ describe("generateAndAppendDreamNarrative", () => {
         logger,
       });
     }
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(subagent.run).toHaveBeenCalledTimes(3);
+    await waitForCondition(() => {
+      expect(subagent.run).toHaveBeenCalledTimes(3);
+    });
 
     gates[0].resolve({ status: "ok" });
     await waitForCondition(() => {
@@ -1010,7 +1073,7 @@ describe("generateAndAppendDreamNarrative", () => {
     gates[2].resolve({ status: "ok" });
     gates[3].resolve({ status: "ok" });
     await waitForCondition(() => {
-      expect(subagent.deleteSession).toHaveBeenCalledTimes(4);
+      expect(subagent.deleteSession).toHaveBeenCalledTimes(8);
     });
   });
 });

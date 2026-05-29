@@ -32,6 +32,7 @@ import {
 } from "./command-registration-policy.js";
 import { shouldEnsureCliPathForCommandPath } from "./command-startup-policy.js";
 import { maybeRunCliInContainer, parseCliContainerArgs } from "./container-target.js";
+import { withConsoleLogsRoutedToStderrForJson } from "./json-output-mode.js";
 import { applyCliProfileEnv, parseCliProfileArgs } from "./profile.js";
 import { tryRouteCli } from "./route.js";
 import { normalizeWindowsArgv } from "./windows-argv.js";
@@ -271,14 +272,11 @@ export async function runCli(argv: string[] = process.argv) {
     if (!shouldSkipPluginRegistration) {
       // Register plugin CLI commands before parsing
       const { registerPluginCliCommandsFromValidatedConfig } = await import("../plugins/cli.js");
-      const config = await registerPluginCliCommandsFromValidatedConfig(
-        program,
-        undefined,
-        undefined,
-        {
+      const config = await withConsoleLogsRoutedToStderrForJson(parseArgv, () =>
+        registerPluginCliCommandsFromValidatedConfig(program, undefined, undefined, {
           mode: "lazy",
           primary,
-        },
+        }),
       );
       if (config) {
         if (primary && !program.commands.some((command) => command.name() === primary)) {

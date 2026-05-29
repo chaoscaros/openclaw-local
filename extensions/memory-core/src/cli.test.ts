@@ -895,6 +895,24 @@ describe("memory cli", () => {
       });
 
       const close = vi.fn(async () => {});
+      loadConfig.mockReturnValue({
+        plugins: {
+          entries: {
+            "memory-core": {
+              config: {
+                dreaming: {
+                  enabled: true,
+                  phases: {
+                    deep: {
+                      maxAgeDays: 365,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
       mockManager({
         status: () => makeMemoryStatus({ workspaceDir }),
         close,
@@ -941,6 +959,24 @@ describe("memory cli", () => {
       });
 
       const close = vi.fn(async () => {});
+      loadConfig.mockReturnValue({
+        plugins: {
+          entries: {
+            "memory-core": {
+              config: {
+                dreaming: {
+                  enabled: true,
+                  phases: {
+                    deep: {
+                      maxAgeDays: 365,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
       mockManager({
         status: () => makeMemoryStatus({ workspaceDir }),
         close,
@@ -1545,6 +1581,24 @@ describe("memory cli", () => {
       });
 
       const close = vi.fn(async () => {});
+      loadConfig.mockReturnValue({
+        plugins: {
+          entries: {
+            "memory-core": {
+              config: {
+                dreaming: {
+                  enabled: true,
+                  phases: {
+                    deep: {
+                      maxAgeDays: 365,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
       mockManager({
         status: () => makeMemoryStatus({ workspaceDir }),
         close,
@@ -1599,6 +1653,19 @@ describe("memory cli", () => {
           source: "memory",
         },
       ]);
+      loadConfig.mockReturnValue({
+        plugins: {
+          entries: {
+            "memory-core": {
+              config: {
+                dreaming: {
+                  enabled: true,
+                },
+              },
+            },
+          },
+        },
+      });
       mockManager({
         search,
         status: () => makeMemoryStatus({ workspaceDir }),
@@ -1618,6 +1685,51 @@ describe("memory cli", () => {
         path: "memory/2026-04-03.md",
         recallCount: 1,
       });
+      expect(close).toHaveBeenCalled();
+    });
+  });
+
+  it("does not record short-term recall entries from memory search when dreaming is disabled", async () => {
+    await withTempWorkspace(async (workspaceDir) => {
+      const close = vi.fn(async () => {});
+      const search = vi.fn(async () => [
+        {
+          path: "memory/2026-04-03.md",
+          startLine: 1,
+          endLine: 2,
+          score: 0.91,
+          snippet: "Move backups to S3 Glacier.",
+          source: "memory",
+        },
+      ]);
+      loadConfig.mockReturnValue({
+        plugins: {
+          entries: {
+            "memory-core": {
+              config: {
+                dreaming: {
+                  enabled: false,
+                },
+              },
+            },
+          },
+        },
+      });
+      mockManager({
+        search,
+        status: () => makeMemoryStatus({ workspaceDir }),
+        close,
+      });
+
+      const writeJson = spyRuntimeJson(defaultRuntime);
+      await runMemoryCli(["search", "glacier", "--json"]);
+
+      const payload = firstWrittenJsonArg<{ results: Array<{ path: string }> }>(writeJson);
+      expect(payload?.results).toHaveLength(1);
+      expect(payload?.results[0]?.path).toBe("memory/2026-04-03.md");
+      await expect(
+        fs.stat(path.join(workspaceDir, "memory", ".dreams", "short-term-recall.json")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
       expect(close).toHaveBeenCalled();
     });
   });

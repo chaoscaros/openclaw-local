@@ -633,7 +633,7 @@ describe("ensureChannelSetupPluginInstalled", () => {
     const runtime = makeRuntime();
     const cfg: OpenClawConfig = {};
     loadPluginManifestRegistry.mockReturnValue({
-      plugins: [{ id: "custom-telegram-plugin", channels: ["telegram"] }],
+      plugins: [{ id: "custom-telegram-plugin", channels: ["telegram"], origin: "bundled" }],
       diagnostics: [],
     });
 
@@ -666,6 +666,7 @@ describe("ensureChannelSetupPluginInstalled", () => {
         {
           id: "custom-telegram-plugin",
           channels: [],
+          origin: "bundled",
           activation: {
             onChannels: ["telegram"],
           },
@@ -701,6 +702,7 @@ describe("ensureChannelSetupPluginInstalled", () => {
         {
           id: "custom-telegram-plugin",
           channels: [],
+          origin: "bundled",
           activation: {
             onChannels: ["telegram"],
           },

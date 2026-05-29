@@ -160,20 +160,27 @@ const subCliCommandCatalog = defineCommandDescriptorCatalog([
   },
 ] as const satisfies ReadonlyArray<SubCliDescriptor>);
 
-export const SUB_CLI_DESCRIPTORS = subCliCommandCatalog.descriptors;
+function filterQaLabItems<T>(
+  items: ReadonlyArray<T>,
+  getName: (item: T) => string,
+): ReadonlyArray<T> {
+  if (isQaLabCliAvailable()) {
+    return items;
+  }
+  return items.filter((item) => getName(item) !== "qa");
+}
+
+export const SUB_CLI_DESCRIPTORS = filterQaLabItems(
+  subCliCommandCatalog.descriptors,
+  (descriptor) => descriptor.name,
+);
 
 export function getSubCliEntries(): ReadonlyArray<SubCliDescriptor> {
-  const descriptors = subCliCommandCatalog.getDescriptors();
-  if (isQaLabCliAvailable()) {
-    return descriptors;
-  }
-  return descriptors.filter((descriptor) => descriptor.name !== "qa");
+  return filterQaLabItems(subCliCommandCatalog.getDescriptors(), (descriptor) => descriptor.name);
 }
 
 export function getSubCliCommandsWithSubcommands(): string[] {
-  const commands = subCliCommandCatalog.getCommandsWithSubcommands();
-  if (isQaLabCliAvailable()) {
-    return commands;
-  }
-  return commands.filter((command) => command !== "qa");
+  return [
+    ...filterQaLabItems(subCliCommandCatalog.getCommandsWithSubcommands(), (command) => command),
+  ];
 }

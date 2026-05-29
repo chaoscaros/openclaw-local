@@ -152,6 +152,18 @@ export type DiagnosticToolLoopEvent = DiagnosticBaseEvent & {
   pairedToolName?: string;
 };
 
+export type DiagnosticLargePayloadEvent = DiagnosticBaseEvent & {
+  type: "payload.large";
+  action: "rejected" | "truncated" | "chunked";
+  surface: string;
+  bytes?: number;
+  limitBytes?: number;
+  count?: number;
+  channel?: string;
+  pluginId?: string;
+  reason?: string;
+};
+
 export type DiagnosticEventPayload =
   | DiagnosticUsageEvent
   | DiagnosticWebhookReceivedEvent
@@ -165,7 +177,8 @@ export type DiagnosticEventPayload =
   | DiagnosticLaneDequeueEvent
   | DiagnosticRunAttemptEvent
   | DiagnosticHeartbeatEvent
-  | DiagnosticToolLoopEvent;
+  | DiagnosticToolLoopEvent
+  | DiagnosticLargePayloadEvent;
 
 export type DiagnosticEventInput = DiagnosticEventPayload extends infer Event
   ? Event extends DiagnosticEventPayload

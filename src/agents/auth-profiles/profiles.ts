@@ -1,6 +1,9 @@
 import { normalizeStringEntries } from "../../shared/string-normalization.js";
 import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
-import { resolveProviderIdForAuth } from "../provider-auth-aliases.js";
+import {
+  resolveProviderIdForAuth,
+  type ProviderAuthAliasLookupDeps,
+} from "../provider-auth-aliases.js";
 import { normalizeProviderId } from "../provider-id.js";
 import {
   ensureAuthProfileStoreForLocalUpdate,
@@ -124,26 +127,33 @@ export async function removeProviderAuthProfilesWithLock(params: {
   });
 }
 
-export function listProfilesForProvider(store: AuthProfileStore, provider: string): string[] {
-  const providerKey = resolveProviderIdForAuth(provider);
+export function listProfilesForProvider(
+  store: AuthProfileStore,
+  provider: string,
+  options?: { providerAuthAliasDeps?: ProviderAuthAliasLookupDeps },
+): string[] {
+  const aliasParams = { deps: options?.providerAuthAliasDeps };
+  const providerKey = resolveProviderIdForAuth(provider, aliasParams);
   return Object.entries(store.profiles)
-    .filter(([, cred]) => resolveProviderIdForAuth(cred.provider) === providerKey)
+    .filter(([, cred]) => resolveProviderIdForAuth(cred.provider, aliasParams) === providerKey)
     .map(([id]) => id);
 }
 
 export async function markAuthProfileGood(params: {
+  providerAuthAliasDeps?: ProviderAuthAliasLookupDeps;
   store: AuthProfileStore;
   provider: string;
   profileId: string;
   agentDir?: string;
 }): Promise<void> {
-  const { store, provider, profileId, agentDir } = params;
-  const providerKey = resolveProviderIdForAuth(provider);
+  const { store, provider, profileId, agentDir, providerAuthAliasDeps } = params;
+  const aliasParams = { deps: providerAuthAliasDeps };
+  const providerKey = resolveProviderIdForAuth(provider, aliasParams);
   const updated = await updateAuthProfileStoreWithLock({
     agentDir,
     updater: (freshStore) => {
       const profile = freshStore.profiles[profileId];
-      if (!profile || resolveProviderIdForAuth(profile.provider) !== providerKey) {
+      if (!profile || resolveProviderIdForAuth(profile.provider, aliasParams) !== providerKey) {
         return false;
       }
       freshStore.lastGood = { ...freshStore.lastGood, [providerKey]: profileId };
@@ -155,7 +165,7 @@ export async function markAuthProfileGood(params: {
     return;
   }
   const profile = store.profiles[profileId];
-  if (!profile || resolveProviderIdForAuth(profile.provider) !== providerKey) {
+  if (!profile || resolveProviderIdForAuth(profile.provider, aliasParams) !== providerKey) {
     return;
   }
   store.lastGood = { ...store.lastGood, [providerKey]: profileId };

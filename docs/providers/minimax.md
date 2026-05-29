@@ -256,7 +256,7 @@ The bundled `minimax` plugin also registers music generation through the shared
 
 - Default music model: `minimax/music-2.5+`
 - Also supports `minimax/music-2.5` and `minimax/music-2.0`
-- Prompt controls: `lyrics`, `instrumental`, `durationSeconds`
+- Prompt controls: `lyrics`, `instrumental`
 - Output format: `mp3`
 - Session-backed runs detach through the shared task/status flow, including `action: "status"`
 

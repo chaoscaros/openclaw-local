@@ -15,6 +15,20 @@ export type BundledProviderCatalogEntry = {
 
 type ProviderCatalogModule = Record<string, unknown>;
 type ProviderCatalogExportMap = Record<string, unknown>;
+type BundledProviderCatalogMetadata = {
+  dirName: string;
+  publicSurfaceArtifacts?: readonly string[];
+  manifest: {
+    id: string;
+    providers?: readonly string[];
+  };
+};
+type BundledProviderCatalogDeps = {
+  listMetadata?: (
+    params?: Parameters<typeof listBundledPluginMetadata>[0],
+  ) => readonly BundledProviderCatalogMetadata[];
+  resolvePublicSurfacePath?: typeof resolveBundledPluginPublicSurfacePath;
+};
 
 let providerCatalogEntriesCache: ReadonlyArray<BundledProviderCatalogEntry> | null = null;
 let providerCatalogModulesPromise: Promise<Readonly<Record<string, ProviderCatalogModule>>> | null =
@@ -23,18 +37,24 @@ let providerCatalogExportMapPromise: Promise<Readonly<ProviderCatalogExportMap>>
 
 export function resolveBundledProviderCatalogEntries(params?: {
   rootDir?: string;
+  deps?: BundledProviderCatalogDeps;
 }): ReadonlyArray<BundledProviderCatalogEntry> {
   const rootDir = params?.rootDir ?? DEFAULT_PROVIDER_CATALOG_ROOT;
-  if (rootDir === DEFAULT_PROVIDER_CATALOG_ROOT && providerCatalogEntriesCache) {
+  const deps = params?.deps;
+  const useCache = rootDir === DEFAULT_PROVIDER_CATALOG_ROOT && !deps;
+  if (useCache && providerCatalogEntriesCache) {
     return providerCatalogEntriesCache;
   }
 
   const entries: BundledProviderCatalogEntry[] = [];
-  for (const entry of listBundledPluginMetadata({ rootDir })) {
+  const listMetadata = deps?.listMetadata ?? listBundledPluginMetadata;
+  const resolvePublicSurfacePath =
+    deps?.resolvePublicSurfacePath ?? resolveBundledPluginPublicSurfacePath;
+  for (const entry of listMetadata({ rootDir })) {
     if (!entry.publicSurfaceArtifacts?.includes(PROVIDER_CATALOG_ARTIFACT_BASENAME)) {
       continue;
     }
-    const artifactPath = resolveBundledPluginPublicSurfacePath({
+    const artifactPath = resolvePublicSurfacePath({
       rootDir,
       dirName: entry.dirName,
       artifactBasename: PROVIDER_CATALOG_ARTIFACT_BASENAME,
@@ -51,7 +71,7 @@ export function resolveBundledProviderCatalogEntries(params?: {
   }
   entries.sort((left, right) => left.dirName.localeCompare(right.dirName));
 
-  if (rootDir === DEFAULT_PROVIDER_CATALOG_ROOT) {
+  if (useCache) {
     providerCatalogEntriesCache = entries;
   }
   return entries;
@@ -59,14 +79,17 @@ export function resolveBundledProviderCatalogEntries(params?: {
 
 export async function loadBundledProviderCatalogModules(params?: {
   rootDir?: string;
+  deps?: BundledProviderCatalogDeps;
 }): Promise<Readonly<Record<string, ProviderCatalogModule>>> {
   const rootDir = params?.rootDir ?? DEFAULT_PROVIDER_CATALOG_ROOT;
-  if (rootDir === DEFAULT_PROVIDER_CATALOG_ROOT && providerCatalogModulesPromise) {
+  const deps = params?.deps;
+  const useCache = rootDir === DEFAULT_PROVIDER_CATALOG_ROOT && !deps;
+  if (useCache && providerCatalogModulesPromise) {
     return providerCatalogModulesPromise;
   }
 
   const loadPromise = (async () => {
-    const entries = resolveBundledProviderCatalogEntries({ rootDir });
+    const entries = resolveBundledProviderCatalogEntries({ rootDir, deps });
     const modules = await Promise.all(
       entries.map(async (entry) => {
         const module = (await import(
@@ -78,7 +101,7 @@ export async function loadBundledProviderCatalogModules(params?: {
     return Object.freeze(Object.fromEntries(modules));
   })();
 
-  if (rootDir === DEFAULT_PROVIDER_CATALOG_ROOT) {
+  if (useCache) {
     providerCatalogModulesPromise = loadPromise;
   }
   return loadPromise;
@@ -86,14 +109,17 @@ export async function loadBundledProviderCatalogModules(params?: {
 
 export async function loadBundledProviderCatalogExportMap(params?: {
   rootDir?: string;
+  deps?: BundledProviderCatalogDeps;
 }): Promise<Readonly<ProviderCatalogExportMap>> {
   const rootDir = params?.rootDir ?? DEFAULT_PROVIDER_CATALOG_ROOT;
-  if (rootDir === DEFAULT_PROVIDER_CATALOG_ROOT && providerCatalogExportMapPromise) {
+  const deps = params?.deps;
+  const useCache = rootDir === DEFAULT_PROVIDER_CATALOG_ROOT && !deps;
+  if (useCache && providerCatalogExportMapPromise) {
     return providerCatalogExportMapPromise;
   }
 
   const loadPromise = (async () => {
-    const modules = await loadBundledProviderCatalogModules({ rootDir });
+    const modules = await loadBundledProviderCatalogModules({ rootDir, deps });
     const exports: ProviderCatalogExportMap = {};
     const exportOwners = new Map<string, string>();
 
@@ -116,7 +142,7 @@ export async function loadBundledProviderCatalogExportMap(params?: {
     return Object.freeze(exports);
   })();
 
-  if (rootDir === DEFAULT_PROVIDER_CATALOG_ROOT) {
+  if (useCache) {
     providerCatalogExportMapPromise = loadPromise;
   }
   return loadPromise;
