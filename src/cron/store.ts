@@ -26,6 +26,10 @@ function stripRuntimeOnlyCronFields(store: CronStoreFile): unknown {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
 function parseCronStoreForBackupComparison(raw: string): CronStoreFile | null {
   try {
     const parsed = parseJsonWithJson5Fallback(raw);
@@ -39,19 +43,18 @@ function normalizeCronStoreFile(parsed: unknown): CronStoreFile | null {
   if (Array.isArray(parsed)) {
     return {
       version: 1,
-      jobs: parsed.filter(Boolean) as CronStoreFile["jobs"],
+      jobs: parsed.filter(isRecord) as never as CronStoreFile["jobs"],
     };
   }
-  if (!parsed || typeof parsed !== "object") {
+  if (!isRecord(parsed)) {
     return null;
   }
-  const record = parsed as { version?: unknown; jobs?: unknown };
-  if (record.version !== 1 || !Array.isArray(record.jobs)) {
+  if (parsed.version !== 1 || !Array.isArray(parsed.jobs)) {
     return null;
   }
   return {
     version: 1,
-    jobs: record.jobs.filter(Boolean) as CronStoreFile["jobs"],
+    jobs: parsed.jobs.filter(isRecord) as never as CronStoreFile["jobs"],
   };
 }
 

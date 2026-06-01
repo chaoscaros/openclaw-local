@@ -2643,6 +2643,7 @@ export const chatHandlers: GatewayRequestHandlers = {
                   sessionFile: latestEntry?.sessionFile,
                   agentId,
                   createIfMissing: true,
+                  idempotencyKey: clientRunId,
                 });
                 if (appended.ok) {
                   message = appended.message;

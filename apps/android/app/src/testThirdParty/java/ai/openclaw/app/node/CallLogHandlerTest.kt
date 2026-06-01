@@ -1,6 +1,7 @@
 package ai.openclaw.app.node
 
 import android.content.Context
+import android.provider.CallLog
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -53,11 +54,49 @@ class CallLogHandlerTest : NodeHandlerRobolectricTest() {
     val payload = Json.parseToJsonElement(result.payloadJson ?: error("missing payload")).jsonObject
     val callLogs = payload.getValue("callLogs").jsonArray
     assertEquals(1, callLogs.size)
-    assertEquals("+123456", callLogs.first().jsonObject.getValue("number").jsonPrimitive.content)
-    assertEquals("lixuankai", callLogs.first().jsonObject.getValue("cachedName").jsonPrimitive.content)
-    assertEquals(1709280000000L, callLogs.first().jsonObject.getValue("date").jsonPrimitive.content.toLong())
-    assertEquals(60L, callLogs.first().jsonObject.getValue("duration").jsonPrimitive.content.toLong())
-    assertEquals(1, callLogs.first().jsonObject.getValue("type").jsonPrimitive.content.toInt())
+    assertEquals(
+      "+123456",
+      callLogs
+        .first()
+        .jsonObject
+        .getValue("number")
+        .jsonPrimitive.content,
+    )
+    assertEquals(
+      "lixuankai",
+      callLogs
+        .first()
+        .jsonObject
+        .getValue("cachedName")
+        .jsonPrimitive.content,
+    )
+    assertEquals(
+      1709280000000L,
+      callLogs
+        .first()
+        .jsonObject
+        .getValue("date")
+        .jsonPrimitive.content
+        .toLong(),
+    )
+    assertEquals(
+      60L,
+      callLogs
+        .first()
+        .jsonObject
+        .getValue("duration")
+        .jsonPrimitive.content
+        .toLong(),
+    )
+    assertEquals(
+      1,
+      callLogs
+        .first()
+        .jsonObject
+        .getValue("type")
+        .jsonPrimitive.content
+        .toInt(),
+    )
   }
 
   @Test
@@ -76,15 +115,23 @@ class CallLogHandlerTest : NodeHandlerRobolectricTest() {
         FakeCallLogDataSource(canRead = true, searchResults = listOf(callLog)),
       )
 
-    val result = handler.handleCallLogSearch(
-        """{"number":"123456","cachedName":"lixuankai","dateStart":1709270000000,"dateEnd":1709290000000,"duration":120,"type":2}"""
-    )
+    val result =
+      handler.handleCallLogSearch(
+        """{"number":"123456","cachedName":"lixuankai","dateStart":1709270000000,"dateEnd":1709290000000,"duration":120,"type":2}""",
+      )
 
     assertTrue(result.ok)
     val payload = Json.parseToJsonElement(result.payloadJson ?: error("missing payload")).jsonObject
     val callLogs = payload.getValue("callLogs").jsonArray
     assertEquals(1, callLogs.size)
-    assertEquals("lixuankai", callLogs.first().jsonObject.getValue("cachedName").jsonPrimitive.content)
+    assertEquals(
+      "lixuankai",
+      callLogs
+        .first()
+        .jsonObject
+        .getValue("cachedName")
+        .jsonPrimitive.content,
+    )
   }
 
   @Test
@@ -118,7 +165,14 @@ class CallLogHandlerTest : NodeHandlerRobolectricTest() {
     val payload = Json.parseToJsonElement(result.payloadJson ?: error("missing payload")).jsonObject
     val callLogsResult = payload.getValue("callLogs").jsonArray
     assertEquals(1, callLogsResult.size)
-    assertEquals("lixuankai2", callLogsResult.first().jsonObject.getValue("cachedName").jsonPrimitive.content)
+    assertEquals(
+      "lixuankai2",
+      callLogsResult
+        .first()
+        .jsonObject
+        .getValue("cachedName")
+        .jsonPrimitive.content,
+    )
   }
 
   @Test
@@ -143,7 +197,14 @@ class CallLogHandlerTest : NodeHandlerRobolectricTest() {
     val payload = Json.parseToJsonElement(result.payloadJson ?: error("missing payload")).jsonObject
     val callLogs = payload.getValue("callLogs").jsonArray
     assertEquals(1, callLogs.size)
-    assertEquals("+123456", callLogs.first().jsonObject.getValue("number").jsonPrimitive.content)
+    assertEquals(
+      "+123456",
+      callLogs
+        .first()
+        .jsonObject
+        .getValue("number")
+        .jsonPrimitive.content,
+    )
   }
 
   @Test
@@ -187,6 +248,13 @@ class CallLogHandlerTest : NodeHandlerRobolectricTest() {
   }
 
   @Test
+  fun callLogLikeFiltersEscapeWildcards() {
+    assertEquals("${CallLog.Calls.CACHED_NAME} LIKE ? ESCAPE '\\'", buildCallLogCachedNameLikeSelection())
+    assertEquals("${CallLog.Calls.NUMBER} LIKE ? ESCAPE '\\'", buildCallLogNumberLikeSelection())
+    assertEquals("%a\\%b\\_c\\\\d%", buildCallLogLikeArg("a%b_c\\d"))
+  }
+
+  @Test
   fun handleCallLogSearch_mapsSearchFailuresToUnavailable() {
     val handler =
       CallLogHandler.forTesting(
@@ -214,7 +282,10 @@ private class FakeCallLogDataSource(
 
   override fun hasReadPermission(context: Context): Boolean = canRead
 
-  override fun search(context: Context, request: CallLogSearchRequest): List<CallLogRecord> {
+  override fun search(
+    context: Context,
+    request: CallLogSearchRequest,
+  ): List<CallLogRecord> {
     lastRequest = request
     failure?.let { throw it }
     val startIndex = request.offset.coerceAtLeast(0)

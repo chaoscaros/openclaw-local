@@ -144,6 +144,44 @@ export type {
 export type { ProviderRuntimeModel } from "../plugins/provider-runtime-model.types.js";
 export type { OpenClawConfig };
 
+export type UnifiedModelCatalogKind =
+  | "text"
+  | "image_generation"
+  | "video_generation"
+  | "music_generation";
+
+export type UnifiedModelCatalogSource =
+  | "manifest"
+  | "provider-index"
+  | "static"
+  | "live"
+  | "cache"
+  | "configured"
+  | "runtime-refresh";
+
+export type UnifiedModelCatalogEntry<TCapabilities = unknown> = {
+  kind: UnifiedModelCatalogKind;
+  provider: string;
+  model: string;
+  label?: string;
+  source: UnifiedModelCatalogSource;
+  default?: boolean;
+  configured?: boolean;
+  capabilities?: TCapabilities;
+  modes?: readonly string[];
+  authEnvVars?: readonly string[];
+  docsPath?: string;
+  fetchedAt?: number;
+  expiresAt?: number;
+  warnings?: readonly string[];
+};
+
+export type UnifiedModelCatalogProviderContext = ProviderCatalogContext & {
+  signal?: AbortSignal;
+  includeLive?: boolean;
+  timeoutMs?: number;
+};
+
 export { buildPluginConfigSchema, emptyPluginConfigSchema } from "../plugins/config-schema.js";
 
 /** Options for a plugin entry that registers providers, tools, commands, or services. */

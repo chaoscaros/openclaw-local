@@ -130,6 +130,10 @@ export type DiscordVoiceConfig = {
   enabled?: boolean;
   /** Voice channels to auto-join on startup. */
   autoJoin?: DiscordVoiceAutoJoinConfig[];
+  /** If false, configured followUsers are ignored without removing the saved user list. */
+  followUsersEnabled?: boolean;
+  /** Discord user IDs that the bot should follow into voice channels. */
+  followUsers?: string[];
   /** Enable/disable DAVE end-to-end encryption (default: true; Discord may require this). */
   daveEncryption?: boolean;
   /** Consecutive decrypt failures before DAVE session reinitialization (default: 24). */

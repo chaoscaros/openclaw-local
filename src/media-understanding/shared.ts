@@ -20,6 +20,54 @@ const MAX_ERROR_CHARS = 300;
 const MAX_ERROR_RESPONSE_BYTES = 4096;
 const DEFAULT_GUARDED_HTTP_TIMEOUT_MS = 60_000;
 const MAX_AUDIT_CONTEXT_CHARS = 80;
+const DEFAULT_PROVIDER_OPERATION_POLL_INTERVAL_MS = 2_000;
+
+export type ProviderOperationDeadline = {
+  deadlineAtMs?: number;
+  label: string;
+  timeoutMs?: number;
+};
+
+export function createProviderOperationDeadline(params: {
+  timeoutMs?: number;
+  label: string;
+}): ProviderOperationDeadline {
+  if (
+    typeof params.timeoutMs !== "number" ||
+    !Number.isFinite(params.timeoutMs) ||
+    params.timeoutMs <= 0
+  ) {
+    return { label: params.label };
+  }
+  const timeoutMs = Math.floor(params.timeoutMs);
+  return {
+    deadlineAtMs: Date.now() + timeoutMs,
+    label: params.label,
+    timeoutMs,
+  };
+}
+
+export function resolveProviderOperationTimeoutMs(params: {
+  deadline: ProviderOperationDeadline;
+  defaultTimeoutMs: number;
+}): number {
+  const deadlineAtMs = params.deadline.deadlineAtMs;
+  if (typeof deadlineAtMs !== "number") {
+    return params.defaultTimeoutMs;
+  }
+  const remainingMs = deadlineAtMs - Date.now();
+  if (remainingMs <= 0) {
+    throw new Error(`${params.deadline.label} timed out after ${params.deadline.timeoutMs}ms`);
+  }
+  return Math.max(1, Math.min(params.defaultTimeoutMs, remainingMs));
+}
+
+export function createProviderOperationTimeoutResolver(params: {
+  deadline: ProviderOperationDeadline;
+  defaultTimeoutMs: number;
+}): () => number {
+  return () => resolveProviderOperationTimeoutMs(params);
+}
 
 function resolveGuardedHttpTimeoutMs(timeoutMs: number | undefined): number {
   if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
@@ -305,6 +353,42 @@ export async function postJsonRequest(params: {
   );
 }
 
+export async function waitProviderOperationPollInterval(params: {
+  signal?: AbortSignal;
+  intervalMs?: number;
+  deadline?: ProviderOperationDeadline;
+  pollIntervalMs?: number;
+}): Promise<void> {
+  const intervalMs =
+    typeof params.pollIntervalMs === "number" &&
+    Number.isFinite(params.pollIntervalMs) &&
+    params.pollIntervalMs > 0
+      ? params.pollIntervalMs
+      : typeof params.intervalMs === "number" &&
+          Number.isFinite(params.intervalMs) &&
+          params.intervalMs > 0
+        ? params.intervalMs
+        : DEFAULT_PROVIDER_OPERATION_POLL_INTERVAL_MS;
+  const waitMs = params.deadline
+    ? resolveProviderOperationTimeoutMs({
+        deadline: params.deadline,
+        defaultTimeoutMs: intervalMs,
+      })
+    : intervalMs;
+  if (params.signal?.aborted) {
+    throw params.signal.reason ?? new Error("Provider operation aborted");
+  }
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, waitMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(params.signal?.reason ?? new Error("Provider operation aborted"));
+    };
+    params.signal?.addEventListener("abort", onAbort, { once: true });
+    timer.unref?.();
+  });
+}
+
 export async function readErrorResponse(res: Response): Promise<string | undefined> {
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {
@@ -368,6 +452,21 @@ export async function assertOkOrThrowHttpError(res: Response, label: string): Pr
   const detail = await readErrorResponse(res);
   const suffix = detail ? `: ${detail}` : "";
   throw new Error(`${label} (HTTP ${res.status})${suffix}`);
+}
+
+export async function readProviderBinaryResponse(
+  res: Response,
+  label: string,
+  expectedKind: string,
+): Promise<ArrayBuffer> {
+  try {
+    return await res.arrayBuffer();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${label}: failed to read ${expectedKind} response (${message})`, {
+      cause: error,
+    });
+  }
 }
 
 export function requireTranscriptionText(

@@ -23,7 +23,7 @@ export type ProviderWizardOption = {
   groupId: string;
   groupLabel: string;
   groupHint?: string;
-  onboardingScopes?: Array<"text-inference" | "image-generation">;
+  onboardingScopes?: Array<"text-inference" | "image-generation" | "music-generation">;
   assistantPriority?: number;
   assistantVisibility?: "visible" | "manual-only";
 };

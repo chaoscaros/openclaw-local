@@ -17,15 +17,15 @@ const resolveProviderWizardOptions = vi.hoisted(() =>
 );
 
 function includesOnboardingScope(
-  scopes: readonly ("text-inference" | "image-generation")[] | undefined,
-  scope: "text-inference" | "image-generation",
+  scopes: readonly ("text-inference" | "image-generation" | "music-generation")[] | undefined,
+  scope: "text-inference" | "image-generation" | "music-generation",
 ): boolean {
   return scopes ? scopes.includes(scope) : scope === "text-inference";
 }
 
 vi.mock("../flows/provider-flow.js", () => ({
   resolveProviderSetupFlowContributions: vi.fn(
-    (params?: { scope?: "text-inference" | "image-generation" }) => {
+    (params?: { scope?: "text-inference" | "image-generation" | "music-generation" }) => {
       const scope = params?.scope ?? "text-inference";
       return [
         ...resolveManifestProviderAuthChoices()

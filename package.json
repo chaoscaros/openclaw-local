@@ -82,6 +82,10 @@
       "types": "./dist/plugin-sdk/runtime.d.ts",
       "default": "./dist/plugin-sdk/runtime.js"
     },
+    "./plugin-sdk/health": {
+      "types": "./dist/plugin-sdk/health.d.ts",
+      "default": "./dist/plugin-sdk/health.js"
+    },
     "./plugin-sdk/runtime-doctor": {
       "types": "./dist/plugin-sdk/runtime-doctor.d.ts",
       "default": "./dist/plugin-sdk/runtime-doctor.js"
@@ -277,6 +281,10 @@
     "./plugin-sdk/text-runtime": {
       "types": "./dist/plugin-sdk/text-runtime.d.ts",
       "default": "./dist/plugin-sdk/text-runtime.js"
+    },
+    "./plugin-sdk/string-coerce-runtime": {
+      "types": "./dist/plugin-sdk/string-coerce-runtime.d.ts",
+      "default": "./dist/plugin-sdk/string-coerce-runtime.js"
     },
     "./plugin-sdk/session-transcript-hit": {
       "types": "./dist/plugin-sdk/session-transcript-hit.d.ts",

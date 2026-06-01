@@ -82,6 +82,48 @@ describe("openrouter provider hooks", () => {
     });
   });
 
+  it("does not inject OpenRouter routing payload into custom proxy routes", async () => {
+    const provider = await registerSingleProviderPlugin(openrouterPlugin);
+    let capturedPayload: Record<string, unknown> | undefined;
+    const baseStreamFn = vi.fn(
+      (
+        ...args: Parameters<import("@mariozechner/pi-agent-core").StreamFn>
+      ): ReturnType<import("@mariozechner/pi-agent-core").StreamFn> => {
+        const payload: Record<string, unknown> = {};
+        void args[2]?.onPayload?.(payload, args[0]);
+        capturedPayload = payload;
+        return { async *[Symbol.asyncIterator]() {} } as never;
+      },
+    );
+
+    const wrapped = provider.wrapStreamFn?.({
+      provider: "openrouter",
+      modelId: "openai/gpt-5.4",
+      extraParams: {
+        provider: {
+          order: ["moonshot"],
+        },
+      },
+      streamFn: baseStreamFn,
+      thinkingLevel: "high",
+    } as never);
+
+    void wrapped?.(
+      {
+        provider: "openrouter",
+        api: "openai-completions",
+        id: "openai/gpt-5.4",
+        baseUrl: "https://proxy.example/v1",
+        compat: {},
+      } as never,
+      { messages: [] } as never,
+      {},
+    );
+
+    expect(baseStreamFn).toHaveBeenCalledOnce();
+    expect(capturedPayload).not.toHaveProperty("provider");
+  });
+
   it("merges resolved OpenRouter model params into transport params", async () => {
     const provider = await registerSingleProviderPlugin(openrouterPlugin);
     const patch = provider.prepareExtraParams?.({
@@ -130,5 +172,50 @@ describe("openrouter provider hooks", () => {
       order: ["openai"],
       require_parameters: true,
     });
+  });
+
+  it("keeps OpenRouter-routed Anthropic tool-use assistant messages when reasoning is enabled", async () => {
+    const provider = await registerSingleProviderPlugin(openrouterPlugin);
+    let capturedPayload: Record<string, unknown> | undefined;
+    const messages = [
+      { role: "user", content: "Use the tool." },
+      {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "toolu_1", name: "lookup", input: {} }],
+      },
+    ];
+    const baseStreamFn = vi.fn(
+      (
+        ...args: Parameters<import("@mariozechner/pi-agent-core").StreamFn>
+      ): ReturnType<import("@mariozechner/pi-agent-core").StreamFn> => {
+        const payload = { messages: [...messages] };
+        void args[2]?.onPayload?.(payload, args[0]);
+        capturedPayload = payload;
+        return { async *[Symbol.asyncIterator]() {} } as never;
+      },
+    );
+
+    const wrapped = provider.wrapStreamFn?.({
+      provider: "openrouter",
+      modelId: "anthropic/claude-opus-4.6",
+      streamFn: baseStreamFn,
+      thinkingLevel: "high",
+    } as never);
+
+    void wrapped?.(
+      {
+        provider: "openrouter",
+        api: "openai-completions",
+        id: "anthropic/claude-opus-4.6",
+        baseUrl: "https://openrouter.ai/api/v1",
+        compat: {},
+      } as never,
+      { messages: [] } as never,
+      {},
+    );
+
+    expect(capturedPayload?.messages).toEqual(messages);
+    expect(capturedPayload?.reasoning).toEqual({ effort: "high" });
+    expect(baseStreamFn).toHaveBeenCalledOnce();
   });
 });

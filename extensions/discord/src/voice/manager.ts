@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import type { Readable } from "node:stream";
-import { ChannelType, type Client, ReadyListener } from "@buape/carbon";
+import { ChannelType, type Client, ReadyListener, VoiceStateUpdateListener } from "@buape/carbon";
 import type { VoicePlugin } from "@buape/carbon/voice";
 import { resolveAgentDir } from "openclaw/plugin-sdk/agent-runtime";
 import { agentCommandFromIngress } from "openclaw/plugin-sdk/agent-runtime";
@@ -290,6 +290,26 @@ function scheduleTempCleanup(tempDir: string, delayMs: number = 30 * 60 * 1000):
   timer.unref();
 }
 
+function normalizeDiscordUserId(value: string): string | undefined {
+  const trimmed = value.trim();
+  const withoutDiscordPrefix = trimmed.startsWith("discord:") ? trimmed.slice(8) : trimmed;
+  const withoutUserPrefix = withoutDiscordPrefix.startsWith("user:")
+    ? withoutDiscordPrefix.slice(5)
+    : withoutDiscordPrefix;
+  return withoutUserPrefix.trim() || undefined;
+}
+
+function normalizeDiscordUserIds(entries: string[] | undefined): Set<string> {
+  const ids = new Set<string>();
+  for (const entry of entries ?? []) {
+    const id = normalizeDiscordUserId(entry);
+    if (id) {
+      ids.add(id);
+    }
+  }
+  return ids;
+}
+
 async function transcribeAudio(params: {
   cfg: OpenClawConfig;
   agentId: string;
@@ -310,6 +330,7 @@ export class DiscordVoiceManager {
   private readonly voiceEnabled: boolean;
   private autoJoinTask: Promise<void> | null = null;
   private readonly ownerAllowFrom: string[];
+  private readonly followedUserIds: Set<string>;
   private readonly speakerContextCache = new Map<
     string,
     {
@@ -336,6 +357,10 @@ export class DiscordVoiceManager {
     this.voiceEnabled = params.discordConfig.voice?.enabled !== false;
     this.ownerAllowFrom =
       params.discordConfig.allowFrom ?? params.discordConfig.dm?.allowFrom ?? [];
+    this.followedUserIds =
+      params.discordConfig.voice?.followUsersEnabled === false
+        ? new Set()
+        : normalizeDiscordUserIds(params.discordConfig.voice?.followUsers);
   }
 
   setBotUserId(id?: string) {
@@ -381,6 +406,37 @@ export class DiscordVoiceManager {
       this.autoJoinTask = null;
     });
     return this.autoJoinTask;
+  }
+
+  async handleVoiceStateUpdate(params: {
+    guildId?: string;
+    channelId?: string | null;
+    userId: string;
+  }): Promise<void> {
+    if (!this.voiceEnabled || this.followedUserIds.size === 0) {
+      return;
+    }
+    const userId = normalizeDiscordUserId(params.userId);
+    const guildId = params.guildId?.trim();
+    if (!userId || !guildId || !this.followedUserIds.has(userId) || userId === this.botUserId) {
+      return;
+    }
+    const channelId = params.channelId?.trim();
+    if (channelId) {
+      const result = await this.join({ guildId, channelId });
+      if (!result.ok) {
+        logger.warn(`discord voice: follow user ${userId} join failed: ${result.message}`);
+      }
+      return;
+    }
+    const active = this.sessions.get(guildId);
+    if (!active) {
+      return;
+    }
+    const result = await this.leave({ guildId, channelId: active.channelId });
+    if (!result.ok) {
+      logger.warn(`discord voice: follow user ${userId} leave failed: ${result.message}`);
+    }
   }
 
   status(): VoiceOperationResult[] {
@@ -1098,6 +1154,22 @@ export class DiscordVoiceReadyListener extends ReadyListener {
     void this.manager
       .autoJoin()
       .catch((err) => logger.warn(`discord voice: autoJoin failed: ${formatErrorMessage(err)}`));
+  }
+}
+
+type VoiceStateUpdateEvent = Parameters<VoiceStateUpdateListener["handle"]>[0];
+
+export class DiscordVoiceStateUpdateListener extends VoiceStateUpdateListener {
+  constructor(private manager: DiscordVoiceManager) {
+    super();
+  }
+
+  async handle(data: VoiceStateUpdateEvent, _client: Client): Promise<void> {
+    await this.manager.handleVoiceStateUpdate({
+      guildId: data.guildId,
+      channelId: data.channelId,
+      userId: data.userId,
+    });
   }
 }
 

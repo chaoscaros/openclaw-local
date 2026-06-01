@@ -151,6 +151,7 @@ export function resolveHeartbeatAckMaxChars(agentCfg?: { heartbeat?: { ackMaxCha
 export function resolveCronPayloadOutcome(params: {
   payloads: DeliveryPayload[];
   runLevelError?: unknown;
+  failureSignal?: { fatalForCron?: boolean };
   finalAssistantVisibleText?: string;
   preferFinalAssistantVisibleText?: boolean;
 }): CronPayloadOutcome {
@@ -182,6 +183,7 @@ export function resolveCronPayloadOutcome(params: {
   );
   const hasRecoveredToolWarning =
     !params.runLevelError &&
+    params.failureSignal?.fatalForCron !== true &&
     params.preferFinalAssistantVisibleText === true &&
     normalizedFinalAssistantVisibleText !== undefined &&
     !hasStructuredDeliveryPayloads &&

@@ -7,24 +7,13 @@ import {
   getTaskById,
   updateTaskNotifyPolicyById,
 } from "../tasks/runtime-internal.js";
-import {
-  listTaskFlowAuditFindings,
-  summarizeTaskFlowAuditFindings,
-  type TaskFlowAuditCode,
-  type TaskFlowAuditSeverity,
-} from "../tasks/task-flow-registry.audit.js";
+import { listTaskFlowAuditFindings } from "../tasks/task-flow-registry.audit.js";
 import {
   getInspectableTaskFlowAuditSummary,
   previewTaskFlowRegistryMaintenance,
   runTaskFlowRegistryMaintenance,
 } from "../tasks/task-flow-registry.maintenance.js";
-import type { TaskFlowRecord } from "../tasks/task-flow-registry.types.js";
-import {
-  listTaskAuditFindings,
-  summarizeTaskAuditFindings,
-  type TaskAuditCode,
-  type TaskAuditSeverity,
-} from "../tasks/task-registry.audit.js";
+import { listTaskAuditFindings, summarizeTaskAuditFindings } from "../tasks/task-registry.audit.js";
 import {
   getInspectableTaskAuditSummary,
   getInspectableTaskRegistrySummary,
@@ -39,6 +28,12 @@ import {
 import { summarizeTaskRecords } from "../tasks/task-registry.summary.js";
 import type { TaskNotifyPolicy, TaskRecord } from "../tasks/task-registry.types.js";
 import { isRich, theme } from "../terminal/theme.js";
+import {
+  buildTaskSystemAuditFindings,
+  type TaskSystemAuditCode,
+  type TaskSystemAuditFinding,
+  type TaskSystemAuditSeverity,
+} from "./tasks-audit-system.js";
 
 const RUNTIME_PAD = 8;
 const STATUS_PAD = 10;
@@ -139,37 +134,6 @@ function formatAgeMs(ageMs: number | undefined): string {
   return `${totalSeconds}s`;
 }
 
-type TaskSystemAuditCode = TaskAuditCode | TaskFlowAuditCode;
-type TaskSystemAuditSeverity = TaskAuditSeverity | TaskFlowAuditSeverity;
-
-type TaskSystemAuditFinding = {
-  kind: "task" | "task_flow";
-  severity: TaskSystemAuditSeverity;
-  code: TaskSystemAuditCode;
-  detail: string;
-  ageMs?: number;
-  status?: string;
-  token?: string;
-  task?: TaskRecord;
-  flow?: TaskFlowRecord;
-};
-
-function compareSystemAuditFindings(left: TaskSystemAuditFinding, right: TaskSystemAuditFinding) {
-  const severityRank = (severity: TaskSystemAuditSeverity) => (severity === "error" ? 0 : 1);
-  const severityDiff = severityRank(left.severity) - severityRank(right.severity);
-  if (severityDiff !== 0) {
-    return severityDiff;
-  }
-  const leftAge = left.ageMs ?? -1;
-  const rightAge = right.ageMs ?? -1;
-  if (leftAge !== rightAge) {
-    return rightAge - leftAge;
-  }
-  const leftCreatedAt = left.task?.createdAt ?? left.flow?.createdAt ?? 0;
-  const rightCreatedAt = right.task?.createdAt ?? right.flow?.createdAt ?? 0;
-  return leftCreatedAt - rightCreatedAt;
-}
-
 function formatAuditRows(findings: TaskSystemAuditFinding[], rich: boolean) {
   const header = [
     "Scope".padEnd(8),
@@ -213,53 +177,12 @@ function toSystemAuditFindings(params: {
 }) {
   const taskFindings = listTaskAuditFindings({ tasks: reconcileInspectableTasks() });
   const flowFindings = listTaskFlowAuditFindings();
-  const allFindings: TaskSystemAuditFinding[] = [
-    ...taskFindings.map((finding) => ({
-      kind: "task" as const,
-      severity: finding.severity,
-      code: finding.code,
-      detail: finding.detail,
-      ageMs: finding.ageMs,
-      status: finding.task.status,
-      token: finding.task.taskId,
-      task: finding.task,
-    })),
-    ...flowFindings.map((finding) => ({
-      kind: "task_flow" as const,
-      severity: finding.severity,
-      code: finding.code,
-      detail: finding.detail,
-      ageMs: finding.ageMs,
-      status: finding.flow?.status ?? "n/a",
-      token: finding.flow?.flowId,
-      ...(finding.flow ? { flow: finding.flow } : {}),
-    })),
-  ];
-  const filteredFindings = allFindings
-    .filter((finding) => {
-      if (params.severityFilter && finding.severity !== params.severityFilter) {
-        return false;
-      }
-      if (params.codeFilter && finding.code !== params.codeFilter) {
-        return false;
-      }
-      return true;
-    })
-    .toSorted(compareSystemAuditFindings);
-  const sortedAllFindings = [...allFindings].toSorted(compareSystemAuditFindings);
-  return {
-    allFindings: sortedAllFindings,
-    filteredFindings,
+  return buildTaskSystemAuditFindings({
     taskFindings,
     flowFindings,
-    summary: {
-      total: sortedAllFindings.length,
-      errors: sortedAllFindings.filter((finding) => finding.severity === "error").length,
-      warnings: sortedAllFindings.filter((finding) => finding.severity !== "error").length,
-      tasks: summarizeTaskAuditFindings(taskFindings),
-      taskFlows: summarizeTaskFlowAuditFindings(flowFindings),
-    },
-  };
+    severityFilter: params.severityFilter,
+    codeFilter: params.codeFilter,
+  });
 }
 
 export async function tasksListCommand(

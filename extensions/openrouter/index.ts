@@ -13,17 +13,21 @@ import {
   getOpenRouterModelCapabilities,
   loadOpenRouterModelCapabilities,
 } from "openclaw/plugin-sdk/provider-stream-family";
+import { buildOpenRouterImageGenerationProvider } from "./image-generation-provider.js";
 import { openrouterMediaUnderstandingProvider } from "./media-understanding-provider.js";
+import { buildOpenRouterMusicGenerationProvider } from "./music-generation-provider.js";
 import { applyOpenrouterConfig, OPENROUTER_DEFAULT_MODEL_REF } from "./onboard.js";
-import { buildOpenrouterProvider } from "./provider-catalog.js";
+import { buildOpenrouterProvider, OPENROUTER_BASE_URL } from "./provider-catalog.js";
 import { resolveOpenRouterExtraParamsForTransport } from "./provider-routing.js";
+import { buildOpenRouterSpeechProvider } from "./speech-provider.js";
 import { wrapOpenRouterProviderStream } from "./stream.js";
+import { buildOpenRouterVideoGenerationProvider } from "./video-generation-provider.js";
 
 const PROVIDER_ID = "openrouter";
-const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const OPENROUTER_DEFAULT_MAX_TOKENS = 8192;
 const OPENROUTER_CACHE_TTL_MODEL_PREFIXES = [
   "anthropic/",
+  "deepseek/",
   "moonshot/",
   "moonshotai/",
   "zai/",
@@ -114,5 +118,9 @@ export default definePluginEntry({
       isCacheTtlEligible: (ctx) => isOpenRouterCacheTtlModel(ctx.modelId),
     });
     api.registerMediaUnderstandingProvider(openrouterMediaUnderstandingProvider);
+    api.registerImageGenerationProvider(buildOpenRouterImageGenerationProvider());
+    api.registerMusicGenerationProvider(buildOpenRouterMusicGenerationProvider());
+    api.registerVideoGenerationProvider(buildOpenRouterVideoGenerationProvider());
+    api.registerSpeechProvider(buildOpenRouterSpeechProvider());
   },
 });

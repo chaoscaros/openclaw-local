@@ -600,6 +600,8 @@ export async function processDiscordMessage(
   let draftText = "";
   let hasStreamedMessage = false;
   let finalizedViaPreviewMessage = false;
+  let finalReplyStarted = false;
+  let finalReplyDelivered = false;
 
   const resolvePreviewFinalText = (text?: string) => {
     if (typeof text !== "string") {
@@ -636,6 +638,9 @@ export async function processDiscordMessage(
   };
 
   const updateDraftFromPartial = (text?: string) => {
+    if (finalReplyStarted || finalReplyDelivered) {
+      return;
+    }
     if (!draftStream || !text) {
       return;
     }
@@ -731,6 +736,9 @@ export async function processDiscordMessage(
           return;
         }
         const isFinal = info.kind === "final";
+        if (isFinal) {
+          finalReplyStarted = true;
+        }
         if (payload.isReasoning) {
           // Reasoning/thinking payloads should not be delivered to Discord.
           return;
@@ -845,7 +853,8 @@ export async function processDiscordMessage(
           mediaLocalRoots,
         });
         replyReference.markSent();
-        if (isFinal) {
+        if (isFinal && payload.isError !== true) {
+          finalReplyDelivered = true;
           observer?.onFinalReplyDelivered?.();
         }
       },

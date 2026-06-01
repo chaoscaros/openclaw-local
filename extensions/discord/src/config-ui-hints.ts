@@ -137,6 +137,14 @@ export const discordChannelConfigUiHints = {
     label: "Discord Voice Auto-Join",
     help: "Voice channels to auto-join on startup (list of guildId/channelId entries).",
   },
+  "voice.followUsersEnabled": {
+    label: "Discord Voice Follow Users Enabled",
+    help: "Toggle Discord voice follow-users behavior without removing the saved voice.followUsers list. Defaults to true when followUsers is configured.",
+  },
+  "voice.followUsers": {
+    label: "Discord Voice Follow Users",
+    help: "Discord user IDs that the bot should follow into voice channels.",
+  },
   "voice.daveEncryption": {
     label: "Discord Voice DAVE Encryption",
     help: "Toggle DAVE end-to-end encryption for Discord voice joins (default: true in @discordjs/voice; Discord may require this).",

@@ -241,6 +241,14 @@ function createTranscriptFixture(prefix: string) {
   mockState.transcriptPath = transcriptPath;
 }
 
+function readTranscriptEntries(transcriptPath: string): Array<{ message?: unknown }> {
+  return fs
+    .readFileSync(transcriptPath, "utf-8")
+    .split(/\r?\n/u)
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as { message?: unknown });
+}
+
 function createDreamingWorkspaceFixture(prefix: string, payload?: Record<string, unknown>) {
   const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   mockState.workspaceDir = workspaceDir;
@@ -658,6 +666,30 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     const register = context.registerToolEventRecipient as unknown as ReturnType<typeof vi.fn>;
     expect(register).toHaveBeenCalledWith("run-current", "conn-canon");
     expect(register).toHaveBeenCalledWith("run-same-session", "conn-canon");
+  });
+
+  it("persists non-agent delivery mirrors with the chat send idempotency key", async () => {
+    createTranscriptFixture("openclaw-chat-send-final-idem-");
+    mockState.finalText = "mirror text";
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-final-mirror",
+      expectBroadcast: false,
+    });
+
+    const persistedAssistant = readTranscriptEntries(mockState.transcriptPath)
+      .map((entry) => entry.message)
+      .find(
+        (message): message is Record<string, unknown> =>
+          Boolean(message) &&
+          typeof message === "object" &&
+          (message as { role?: unknown }).role === "assistant",
+      );
+    expect(persistedAssistant?.idempotencyKey).toBe("idem-final-mirror");
   });
 
   it("does not register tool-event recipients without tool-events capability", async () => {

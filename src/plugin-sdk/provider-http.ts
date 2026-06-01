@@ -5,12 +5,18 @@ export {
   assertOkOrThrowHttpError,
   fetchWithTimeout,
   fetchWithTimeoutGuarded,
+  createProviderOperationDeadline,
+  createProviderOperationTimeoutResolver,
   normalizeBaseUrl,
   postJsonRequest,
   postTranscriptionRequest,
+  readProviderBinaryResponse,
+  resolveProviderOperationTimeoutMs,
   resolveProviderHttpRequestConfig,
   requireTranscriptionText,
+  waitProviderOperationPollInterval,
 } from "../media-understanding/shared.js";
+export type { ProviderOperationDeadline } from "../media-understanding/shared.js";
 export type {
   ProviderAttributionPolicy,
   ProviderRequestCapabilities,
@@ -29,6 +35,7 @@ export type {
   ProviderRequestTlsOverride,
   ProviderRequestTransportOverrides,
 } from "../agents/provider-request-config.js";
+export { sanitizeConfiguredModelProviderRequest } from "../agents/provider-request-config.js";
 export {
   resolveProviderEndpoint,
   resolveProviderRequestCapabilities,

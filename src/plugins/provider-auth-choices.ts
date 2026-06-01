@@ -21,7 +21,7 @@ export type ProviderAuthChoiceMetadata = {
   cliFlag?: string;
   cliOption?: string;
   cliDescription?: string;
-  onboardingScopes?: ("text-inference" | "image-generation")[];
+  onboardingScopes?: ("text-inference" | "image-generation" | "music-generation")[];
 };
 
 export type ProviderOnboardAuthFlag = {

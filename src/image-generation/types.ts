@@ -1,5 +1,6 @@
 import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { SsrFPolicy } from "../infra/net/ssrf.js";
 import type { MediaNormalizationEntry } from "../media-generation/normalization.types.js";
 
 export type GeneratedImageAsset = {
@@ -44,6 +45,7 @@ export type ImageGenerationRequest = {
   aspectRatio?: string;
   resolution?: ImageGenerationResolution;
   inputImages?: ImageGenerationSourceImage[];
+  ssrfPolicy?: SsrFPolicy;
 };
 
 export type ImageGenerationResult = {

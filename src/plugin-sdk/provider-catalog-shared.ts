@@ -3,6 +3,7 @@
 // Keep provider-owned exports out of this subpath so plugin loaders can import it
 // without recursing through provider-specific facades.
 
+import { createHash } from "node:crypto";
 import { findNormalizedProviderKey } from "../agents/provider-id.js";
 import type { ModelDefinitionConfig } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -25,6 +26,47 @@ export type ConfiguredProviderCatalogEntry = {
   reasoning?: boolean;
   input?: Array<"text" | "image" | "document">;
 };
+
+type LiveCatalogCacheEntry<T> = {
+  expiresAt: number;
+  value: Promise<T>;
+};
+
+const liveCatalogCache = new Map<string, LiveCatalogCacheEntry<unknown>>();
+
+function buildLiveCatalogCacheKey(parts: readonly unknown[]): string {
+  return createHash("sha256").update(JSON.stringify(parts)).digest("hex");
+}
+
+export async function getCachedLiveCatalogValue<T>(params: {
+  keyParts: readonly unknown[];
+  load: () => Promise<T>;
+  ttlMs?: number;
+  now?: () => number;
+}): Promise<T> {
+  const now = params.now?.() ?? Date.now();
+  const ttlMs = params.ttlMs ?? 30_000;
+  const key = buildLiveCatalogCacheKey(params.keyParts);
+  const existing = liveCatalogCache.get(key) as LiveCatalogCacheEntry<T> | undefined;
+  if (existing && existing.expiresAt > now) {
+    return await existing.value;
+  }
+  const value = params.load();
+  liveCatalogCache.set(key, {
+    expiresAt: now + ttlMs,
+    value,
+  });
+  try {
+    return await value;
+  } catch (err) {
+    liveCatalogCache.delete(key);
+    throw err;
+  }
+}
+
+export function clearLiveCatalogCacheForTests(): void {
+  liveCatalogCache.clear();
+}
 
 function normalizeConfiguredCatalogModelInput(
   input: unknown,

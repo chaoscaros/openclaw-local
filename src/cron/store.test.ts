@@ -94,12 +94,18 @@ describe("cron store", () => {
     const first = makeStore("legacy-1", true).jobs[0];
     const second = makeStore("legacy-2", false).jobs[0];
     await fs.mkdir(path.dirname(store.storePath), { recursive: true });
-    await fs.writeFile(store.storePath, JSON.stringify([first, second], null, 2), "utf-8");
+    await fs.writeFile(
+      store.storePath,
+      JSON.stringify([first, "bad-row", null, second], null, 2),
+      "utf-8",
+    );
 
     const loaded = await loadCronStore(store.storePath);
 
     expect(loaded.version).toBe(1);
     expect(loaded.jobs.map((job) => job.id)).toEqual(["legacy-1", "legacy-2"]);
+    expect(loaded.jobs[0]?.state).toStrictEqual(first.state);
+    expect(loaded.jobs[1]?.enabled).toBe(false);
   });
 
   it("does not create a backup file when saving unchanged content", async () => {

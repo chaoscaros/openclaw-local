@@ -57,6 +57,7 @@ This page describes the current CLI behavior. If commands change, update this do
 - [`pairing`](/cli/pairing)
 - [`qr`](/cli/qr)
 - [`plugins`](/cli/plugins) (plugin commands)
+- [`policy`](/cli/policy) (plugin command)
 - [`codex`](/cli/codex)
 - [`channels`](/cli/channels)
 - [`security`](/cli/security)

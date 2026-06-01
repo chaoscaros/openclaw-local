@@ -49,6 +49,27 @@ describe("resolveCronPayloadOutcome", () => {
     ]);
   });
 
+  it("keeps explicit fatal cron signals fatal even when final assistant text exists", () => {
+    const result = resolveCronPayloadOutcome({
+      payloads: [
+        {
+          text: "⚠️ 🛠️ jq -s '{total:length}' (agent) failed",
+          isError: true,
+        },
+      ],
+      failureSignal: { fatalForCron: true },
+      finalAssistantVisibleText: "**Clawsweeper 6h report**\nClosed: 34 total",
+      preferFinalAssistantVisibleText: true,
+    });
+
+    expect(result.hasFatalErrorPayload).toBe(true);
+    expect(result.embeddedRunError).toBe("⚠️ 🛠️ jq -s '{total:length}' (agent) failed");
+    expect(result.outputText).toBe("⚠️ 🛠️ jq -s '{total:length}' (agent) failed");
+    expect(result.deliveryPayloads).toEqual([
+      { text: "⚠️ 🛠️ jq -s '{total:length}' (agent) failed", isError: true },
+    ]);
+  });
+
   it("treats transient error payloads as non-fatal when a later success exists", () => {
     const result = resolveCronPayloadOutcome({
       payloads: [

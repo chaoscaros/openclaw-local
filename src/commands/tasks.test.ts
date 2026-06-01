@@ -9,6 +9,7 @@ import {
   resetTaskRegistryDeliveryRuntimeForTests,
   resetTaskRegistryForTests,
 } from "../tasks/task-registry.js";
+import * as taskRegistryMaintenance from "../tasks/task-registry.maintenance.js";
 import { withTempDir } from "../test-helpers/temp-dir.js";
 import { tasksAuditCommand, tasksMaintenanceCommand } from "./tasks.js";
 
@@ -173,6 +174,20 @@ describe("tasks commands", () => {
       expect(payload.auditBefore.taskFlows.byCode.stale_running).toBe(0);
       expect(payload.auditAfter.byCode).toBeDefined();
       expect(payload.auditAfter.taskFlows.byCode.stale_running).toBe(0);
+    });
+  });
+
+  it("does not build JSON-only diagnostics for text maintenance output", async () => {
+    await withTaskCommandStateDir(async () => {
+      const diagnosticsSpy = vi.spyOn(
+        taskRegistryMaintenance,
+        "getTaskRegistryMaintenanceDiagnostics",
+      );
+      const runtime = createRuntime();
+
+      await tasksMaintenanceCommand({ json: false, apply: false }, runtime);
+
+      expect(diagnosticsSpy).not.toHaveBeenCalled();
     });
   });
 });

@@ -27,6 +27,8 @@ data class ChatSessionEntry(
   val key: String,
   val updatedAtMs: Long?,
   val displayName: String? = null,
+  val mode: String? = null,
+  val taskId: String? = null,
 )
 
 data class ChatHistory(

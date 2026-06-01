@@ -39,3 +39,28 @@ export function createEmptyTaskAuditSummary(): TaskAuditSummary {
     },
   };
 }
+
+export function compareTaskAuditFindingSortKeys(
+  left: {
+    severity: TaskAuditSeverity;
+    ageMs?: number;
+    createdAt?: number;
+  },
+  right: {
+    severity: TaskAuditSeverity;
+    ageMs?: number;
+    createdAt?: number;
+  },
+): number {
+  const severityRank = (severity: TaskAuditSeverity) => (severity === "error" ? 0 : 1);
+  const severityDiff = severityRank(left.severity) - severityRank(right.severity);
+  if (severityDiff !== 0) {
+    return severityDiff;
+  }
+  const leftAge = left.ageMs ?? -1;
+  const rightAge = right.ageMs ?? -1;
+  if (leftAge !== rightAge) {
+    return rightAge - leftAge;
+  }
+  return (left.createdAt ?? 0) - (right.createdAt ?? 0);
+}

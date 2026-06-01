@@ -42,6 +42,13 @@ export {
   trimToUndefined,
   truncateErrorDetail,
 } from "../tts/provider-error-utils.js";
+export {
+  createOpenAiCompatibleSpeechProvider,
+  type OpenAiCompatibleSpeechProviderBaseUrlPolicy,
+  type OpenAiCompatibleSpeechProviderConfig,
+  type OpenAiCompatibleSpeechProviderExtraJsonBodyField,
+  type OpenAiCompatibleSpeechProviderOptions,
+} from "../tts/openai-compatible-speech-provider.js";
 
 const TEMP_FILE_CLEANUP_DELAY_MS = 5 * 60 * 1000; // 5 minutes
 
