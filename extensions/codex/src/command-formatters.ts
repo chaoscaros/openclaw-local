@@ -111,7 +111,20 @@ export function buildHelp(): string {
     "- /codex account",
     "- /codex mcp",
     "- /codex skills",
+    "- /codex plugins [list|enable|disable]",
   ].join("\n");
+}
+
+export function formatCodexDisplayText(value: unknown): string {
+  const text =
+    typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+      ? String(value)
+      : JSON.stringify(value ?? "");
+  return text
+    .replaceAll("_", "＿")
+    .replaceAll("@", "＠")
+    .replaceAll("*", "∗")
+    .replaceAll("`", "｀");
 }
 
 function summarizeAccount(value: JsonValue | undefined): string {

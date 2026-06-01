@@ -893,6 +893,121 @@ describe("short-term promotion", () => {
     });
   });
 
+  it("compacts oldest promoted sections before appending when MEMORY.md exceeds budget", async () => {
+    await withTempWorkspace(async (workspaceDir) => {
+      await writeDailyMemoryNote(workspaceDir, "2026-04-29", [
+        "Notes",
+        "",
+        "Rotate the staging Postgres credentials after the incident review.",
+      ]);
+      const memoryPath = path.join(workspaceDir, "MEMORY.md");
+      await fs.writeFile(
+        memoryPath,
+        [
+          "# Long-Term Memory",
+          "",
+          "## Promoted From Short-Term Memory (2026-04-10)",
+          "<!-- openclaw-memory-promotion:legacy-old -->",
+          `- ${"old ".repeat(240)}`,
+          "## Promoted From Short-Term Memory (2026-04-20)",
+          "<!-- openclaw-memory-promotion:legacy-newer -->",
+          `- ${"newer ".repeat(80)}`,
+          "",
+        ].join("\n"),
+        "utf-8",
+      );
+      await recordShortTermRecalls({
+        workspaceDir,
+        query: "staging credentials",
+        results: [
+          {
+            path: "memory/2026-04-29.md",
+            startLine: 3,
+            endLine: 3,
+            score: 0.95,
+            snippet: "Rotate the staging Postgres credentials after the incident review.",
+            source: "memory",
+          },
+        ],
+      });
+      const ranked = await rankShortTermPromotionCandidates({
+        workspaceDir,
+        minScore: 0,
+        minRecallCount: 0,
+        minUniqueQueries: 0,
+      });
+
+      const applied = await applyShortTermPromotions({
+        workspaceDir,
+        candidates: ranked,
+        minScore: 0,
+        minRecallCount: 0,
+        minUniqueQueries: 0,
+        nowMs: Date.parse("2026-04-29T10:00:00.000Z"),
+        memoryFileMaxChars: 1_400,
+      });
+
+      expect(applied.applied).toBe(1);
+      expect(applied.compactedSections).toBeGreaterThan(0);
+      expect(applied.compactedDates).toContain("2026-04-10");
+      const memoryText = await fs.readFile(memoryPath, "utf-8");
+      expect(memoryText).not.toContain("(2026-04-10)");
+      expect(memoryText).not.toContain("legacy-old");
+      expect(memoryText).toContain("(2026-04-20)");
+      expect(memoryText).toContain("Rotate the staging Postgres credentials");
+    });
+  });
+
+  it("leaves MEMORY.md uncompacted when total stays within memoryFileMaxChars", async () => {
+    await withTempWorkspace(async (workspaceDir) => {
+      await writeDailyMemoryNote(workspaceDir, "2026-04-29", [
+        "Notes",
+        "",
+        "Keep the small-memory budget test boring.",
+      ]);
+      const memoryPath = path.join(workspaceDir, "MEMORY.md");
+      await fs.writeFile(
+        memoryPath,
+        "# Long-Term Memory\n\nSome small existing content.\n",
+        "utf-8",
+      );
+      await recordShortTermRecalls({
+        workspaceDir,
+        query: "boring budget",
+        results: [
+          {
+            path: "memory/2026-04-29.md",
+            startLine: 3,
+            endLine: 3,
+            score: 0.95,
+            snippet: "Keep the small-memory budget test boring.",
+            source: "memory",
+          },
+        ],
+      });
+      const ranked = await rankShortTermPromotionCandidates({
+        workspaceDir,
+        minScore: 0,
+        minRecallCount: 0,
+        minUniqueQueries: 0,
+      });
+
+      const applied = await applyShortTermPromotions({
+        workspaceDir,
+        candidates: ranked,
+        minScore: 0,
+        minRecallCount: 0,
+        minUniqueQueries: 0,
+        memoryFileMaxChars: 10_000,
+      });
+
+      expect(applied.compactedSections).toBe(0);
+      expect(applied.compactedDates).toEqual([]);
+      const memoryText = await fs.readFile(memoryPath, "utf-8");
+      expect(memoryText).toContain("Some small existing content.");
+    });
+  });
+
   it("filters out candidates older than maxAgeDays during ranking", async () => {
     await withTempWorkspace(async (workspaceDir) => {
       await recordShortTermRecalls({

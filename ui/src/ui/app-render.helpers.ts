@@ -1157,6 +1157,7 @@ export function renderChatMobileToggle(state: AppViewState) {
             </select>
           </label>
           ${renderChatThinkingSelect(state)} ${renderChatAutoScrollSelect(state)}
+          ${renderChatTaskHeaderBar(state)}
           <div class="chat-controls__thinking">
             <button
               class="btn btn--sm btn--icon ${showThinking ? "active" : ""}"

@@ -15,6 +15,7 @@ import {
   resolveMemoryDreamingConfig,
   resolveMemoryDeepDreamingConfig,
 } from "openclaw/plugin-sdk/memory-core-host-status";
+import { filterMemorySearchHitsBySessionVisibility } from "./session-search-visibility.js";
 import { recordShortTermRecalls } from "./short-term-promotion.js";
 import {
   clampResultsByInjectedChars,
@@ -188,7 +189,7 @@ export function createMemorySearchTool(options: {
     label: "Memory Search",
     name: "memory_search",
     description:
-      "Mandatory recall step: semantically search MEMORY.md + memory/*.md (and optional session transcripts) before answering questions about prior work, decisions, dates, people, preferences, or todos. Optional `corpus=wiki` or `corpus=all` also searches registered compiled-wiki supplements. If response has disabled=true, memory retrieval is unavailable and should be surfaced to the user.",
+      "Mandatory recall step: semantically search MEMORY.md + memory/*.md (and optional session transcripts) before answering questions about prior work, decisions, dates, people, preferences, or todos. Optional `corpus=wiki` or `corpus=all` also searches registered compiled-wiki supplements. `corpus=memory` restricts hits to indexed memory files; `corpus=sessions` restricts hits to indexed session transcripts using session history visibility rules. If response has disabled=true, memory retrieval is unavailable and should be surfaced to the user.",
     parameters: MemorySearchSchema,
     execute:
       ({ cfg, agentId }) =>
@@ -200,6 +201,7 @@ export function createMemorySearchTool(options: {
           | "memory"
           | "wiki"
           | "all"
+          | "sessions"
           | undefined;
         const { resolveMemoryBackendConfig } = await loadMemoryToolRuntime();
         const shouldQueryMemory = requestedCorpus !== "wiki";
@@ -225,7 +227,9 @@ export function createMemorySearchTool(options: {
           });
           const searchStartedAt = Date.now();
           let rawResults: MemorySearchResult[] = [];
-          let surfacedMemoryResults: Array<MemorySearchResult & { corpus: "memory" }> = [];
+          let surfacedMemoryResults: Array<
+            MemorySearchResult & { corpus: MemorySearchResult["source"] }
+          > = [];
           let provider: string | undefined;
           let model: string | undefined;
           let fallback: unknown;
@@ -255,6 +259,18 @@ export function createMemorySearchTool(options: {
                 runtimeDebug.push(debug);
               },
             });
+            rawResults = await filterMemorySearchHitsBySessionVisibility({
+              cfg,
+              agentId,
+              requesterSessionKey: options.agentSessionKey,
+              sandboxed: false,
+              hits: rawResults,
+            });
+            if (requestedCorpus === "sessions") {
+              rawResults = rawResults.filter((hit) => hit.source === "sessions");
+            } else if (requestedCorpus === "memory") {
+              rawResults = rawResults.filter((hit) => hit.source === "memory");
+            }
             const status = memory.manager.status();
             const decorated = decorateCitations(rawResults, includeCitations);
             const resolved = resolveMemoryBackendConfig({ cfg, agentId });
@@ -264,7 +280,7 @@ export function createMemorySearchTool(options: {
                 : decorated;
             surfacedMemoryResults = memoryResults.map((result) => ({
               ...result,
-              corpus: "memory" as const,
+              corpus: result.source,
             }));
             if (dreamingEnabled) {
               queueShortTermRecallTracking({

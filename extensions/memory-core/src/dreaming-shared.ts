@@ -18,5 +18,11 @@ export function includesSystemEventToken(cleanedBody: string, eventText: string)
   if (normalizedBody === normalizedEventText) {
     return true;
   }
-  return normalizedBody.split(/\r?\n/).some((line) => line.trim() === normalizedEventText);
+  return normalizedBody.split(/\r?\n/).some((line) => {
+    const trimmed = line.trim();
+    if (trimmed === normalizedEventText) {
+      return true;
+    }
+    return trimmed.replace(/^\[cron:[^\]]+\]\s*/, "") === normalizedEventText;
+  });
 }

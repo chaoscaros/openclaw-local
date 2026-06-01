@@ -103,4 +103,88 @@ describe("memory_search unavailable payloads", () => {
       expect.any(Number),
     );
   });
+
+  it("filters memory_search to session transcript hits for corpus=sessions", async () => {
+    setMemorySearchImpl(async () => [
+      {
+        path: "MEMORY.md",
+        startLine: 1,
+        endLine: 2,
+        score: 0.9,
+        snippet: "ramen",
+        source: "memory",
+      },
+      {
+        path: "sessions/main/debug.jsonl.deleted.2026-02-16T22-27-33.000Z",
+        startLine: 3,
+        endLine: 4,
+        score: 0.8,
+        snippet: "debug transcript",
+        source: "sessions",
+      },
+    ]);
+
+    const tool = createMemorySearchToolOrThrow({
+      config: {
+        agents: { list: [{ id: "main", default: true }] },
+        tools: { sessions: { visibility: "agent" } },
+      },
+      agentSessionKey: "agent:main:debug",
+    });
+    const result = await tool.execute("sessions", {
+      query: "debug",
+      corpus: "sessions",
+    });
+
+    expect(result.details).toMatchObject({
+      results: [
+        {
+          path: "sessions/main/debug.jsonl.deleted.2026-02-16T22-27-33.000Z",
+          corpus: "sessions",
+        },
+      ],
+    });
+  });
+
+  it("filters memory_search to memory file hits for corpus=memory", async () => {
+    setMemorySearchImpl(async () => [
+      {
+        path: "MEMORY.md",
+        startLine: 1,
+        endLine: 2,
+        score: 0.9,
+        snippet: "ramen",
+        source: "memory",
+      },
+      {
+        path: "sessions/main/debug.jsonl.deleted.2026-02-16T22-27-33.000Z",
+        startLine: 3,
+        endLine: 4,
+        score: 0.8,
+        snippet: "debug transcript",
+        source: "sessions",
+      },
+    ]);
+
+    const tool = createMemorySearchToolOrThrow({
+      config: {
+        agents: { list: [{ id: "main", default: true }] },
+        tools: { sessions: { visibility: "agent" } },
+      },
+      agentSessionKey: "agent:main:debug",
+    });
+    const result = await tool.execute("memory", {
+      query: "ramen",
+      corpus: "memory",
+    });
+
+    expect(result.details).toMatchObject({
+      results: [
+        {
+          path: "MEMORY.md",
+          corpus: "memory",
+        },
+      ],
+    });
+  });
 });

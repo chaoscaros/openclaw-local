@@ -177,6 +177,7 @@ export type CodexDynamicToolCallParams = {
 export type CodexDynamicToolCallResponse = {
   contentItems: CodexDynamicToolCallOutputContentItem[];
   success: boolean;
+  diagnosticTerminalType?: "completed" | "blocked" | "error";
 };
 
 export type CodexDynamicToolCallOutputContentItem =

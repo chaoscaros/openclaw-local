@@ -16,6 +16,10 @@ import {
   readString,
 } from "./command-formatters.js";
 import {
+  handleCodexPluginsSubcommand,
+  type CodexPluginsManagementIO,
+} from "./command-plugins-management.js";
+import {
   codexControlRequest,
   readCodexStatusProbes,
   requestOptions,
@@ -30,6 +34,7 @@ export type CodexCommandDeps = {
   requestOptions: typeof requestOptions;
   safeCodexControlRequest: typeof safeCodexControlRequest;
   writeCodexAppServerBinding: typeof writeCodexAppServerBinding;
+  codexPluginsManagementIo?: CodexPluginsManagementIO;
 };
 
 const defaultCodexCommandDeps: CodexCommandDeps = {
@@ -107,6 +112,14 @@ export async function handleCodexSubcommand(
         "Codex skills",
       ),
     };
+  }
+  if (normalized === "plugins") {
+    if (!deps.codexPluginsManagementIo) {
+      return {
+        text: "Codex sub-plugin management is not wired up in this runtime. Edit ~/.openclaw/openclaw.json or use `openclaw config patch` to change plugins.entries.codex.config.codexPlugins.",
+      };
+    }
+    return await handleCodexPluginsSubcommand(ctx, rest, deps.codexPluginsManagementIo);
   }
   if (normalized === "account") {
     const [account, limits] = await Promise.all([

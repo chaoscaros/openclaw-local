@@ -25,13 +25,20 @@ import {
   type CodexAppServerRuntimeOptions,
   type CodexAppServerStartOptions,
 } from "./config.js";
+import {
+  emitDynamicToolErrorDiagnostic,
+  emitDynamicToolStartedDiagnostic,
+  emitDynamicToolTerminalDiagnostic,
+} from "./dynamic-tool-diagnostics.js";
 import { createCodexDynamicToolBridge } from "./dynamic-tools.js";
 import { CodexAppServerEventProjector } from "./event-projector.js";
+import { CodexNativeSubagentTaskMirror } from "./native-subagent-task-mirror.js";
 import {
   isJsonObject,
   type CodexSandboxPolicy,
   type CodexServerNotification,
   type CodexDynamicToolCallParams,
+  type CodexDynamicToolCallResponse,
   type CodexTurnStartResponse,
   type JsonObject,
   type JsonValue,
@@ -137,6 +144,11 @@ export async function runCodexAppServerAttempt(
   }
 
   let projector: CodexAppServerEventProjector | undefined;
+  const nativeSubagentTaskMirror = new CodexNativeSubagentTaskMirror({
+    parentThreadId: thread.threadId,
+    requesterSessionKey: params.sessionKey,
+    agentId: sessionAgentId,
+  });
   let turnId: string | undefined;
   const pendingNotifications: CodexServerNotification[] = [];
   let completed = false;
@@ -148,6 +160,7 @@ export async function runCodexAppServerAttempt(
   let notificationQueue: Promise<void> = Promise.resolve();
 
   const handleNotification = async (notification: CodexServerNotification) => {
+    nativeSubagentTaskMirror.handleNotification(notification);
     if (!projector || !turnId) {
       pendingNotifications.push(notification);
       return;
@@ -194,7 +207,11 @@ export async function runCodexAppServerAttempt(
     if (!call || call.threadId !== thread.threadId || call.turnId !== turnId) {
       return undefined;
     }
-    return toolBridge.handleToolCall(call) as Promise<JsonValue>;
+    return handleDynamicToolCallWithDiagnostics({
+      call,
+      params,
+      handleToolCall: () => toolBridge.handleToolCall(call),
+    }) as Promise<JsonValue>;
   });
 
   let turn: CodexTurnStartResponse;
@@ -283,6 +300,36 @@ export async function runCodexAppServerAttempt(
     runAbortController.signal.removeEventListener("abort", abortListener);
     params.abortSignal?.removeEventListener("abort", abortFromUpstream);
     clearActiveEmbeddedRun(params.sessionId, handle, params.sessionKey);
+  }
+}
+
+async function handleDynamicToolCallWithDiagnostics(params: {
+  call: CodexDynamicToolCallParams;
+  params: EmbeddedRunAttemptParams;
+  handleToolCall: () => Promise<CodexDynamicToolCallResponse>;
+}): Promise<CodexDynamicToolCallResponse> {
+  const startedAt = Date.now();
+  const context = {
+    call: params.call,
+    runId: params.params.runId,
+    sessionId: params.params.sessionId,
+    sessionKey: params.params.sessionKey,
+  };
+  emitDynamicToolStartedDiagnostic(context);
+  try {
+    const response = await params.handleToolCall();
+    emitDynamicToolTerminalDiagnostic({
+      ...context,
+      response,
+      durationMs: Date.now() - startedAt,
+    });
+    return response;
+  } catch (error) {
+    emitDynamicToolErrorDiagnostic({
+      ...context,
+      durationMs: Date.now() - startedAt,
+    });
+    throw error;
   }
 }
 

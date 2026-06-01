@@ -12,6 +12,7 @@ import {
   type ConceptTagScriptCoverage,
 } from "./concept-vocabulary.js";
 import { asRecord } from "./dreaming-shared.js";
+import { compactMemoryForBudget, DEFAULT_MEMORY_FILE_MAX_CHARS } from "./memory-budget.js";
 
 const SHORT_TERM_PATH_RE = /(?:^|\/)memory\/(?:[^/]+\/)*(\d{4})-(\d{2})-(\d{2})\.md$/;
 const DREAMING_MEMORY_PATH_RE = /(?:^|\/)memory\/dreaming\//;
@@ -199,6 +200,7 @@ export type ApplyShortTermPromotionsOptions = {
   maxAgeDays?: number;
   nowMs?: number;
   timezone?: string;
+  memoryFileMaxChars?: number;
 };
 
 export type ApplyShortTermPromotionsResult = {
@@ -207,6 +209,8 @@ export type ApplyShortTermPromotionsResult = {
   appended: number;
   reconciledExisting: number;
   appliedCandidates: PromotionCandidate[];
+  compactedSections: number;
+  compactedDates: string[];
 };
 
 function clampScore(value: number): number {
@@ -1544,6 +1548,8 @@ export async function applyShortTermPromotions(
         appended: 0,
         reconciledExisting: 0,
         appliedCandidates: [],
+        compactedSections: 0,
+        compactedDates: [],
       };
     }
 
@@ -1559,12 +1565,25 @@ export async function applyShortTermPromotions(
     );
     const toAppend = rehydratedSelected.filter((candidate) => !existingMarkers.has(candidate.key));
 
+    let compactedDates: string[] = [];
     if (toAppend.length > 0) {
-      const header = existingMemory.trim().length > 0 ? "" : "# Long-Term Memory\n\n";
       const section = buildPromotionSection(toAppend, nowMs, options.timezone);
+      const budgetChars =
+        typeof options.memoryFileMaxChars === "number" &&
+        Number.isFinite(options.memoryFileMaxChars)
+          ? Math.max(0, Math.floor(options.memoryFileMaxChars))
+          : DEFAULT_MEMORY_FILE_MAX_CHARS;
+      const compaction = compactMemoryForBudget({
+        existingMemory,
+        newSection: section,
+        budgetChars,
+      });
+      compactedDates = compaction.droppedDates;
+      const baseMemory = compaction.compacted;
+      const header = baseMemory.trim().length > 0 ? "" : "# Long-Term Memory\n\n";
       await fs.writeFile(
         memoryPath,
-        `${header}${withTrailingNewline(existingMemory)}${section}`,
+        `${header}${withTrailingNewline(baseMemory)}${section}`,
         "utf-8",
       );
     }
@@ -1602,6 +1621,8 @@ export async function applyShortTermPromotions(
       appended: toAppend.length,
       reconciledExisting: alreadyWritten.length,
       appliedCandidates: rehydratedSelected,
+      compactedSections: compactedDates.length,
+      compactedDates,
     };
   });
 }

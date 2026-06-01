@@ -71,6 +71,7 @@ import ai.openclaw.app.LocationMode
 import ai.openclaw.app.MainViewModel
 import ai.openclaw.app.normalizeLocalHourMinute
 import ai.openclaw.app.NotificationPackageFilterMode
+import ai.openclaw.app.SensitiveFeatureConfig
 import ai.openclaw.app.node.DeviceNotificationListenerService
 
 @Composable
@@ -203,10 +204,11 @@ fun SettingsSheet(viewModel: MainViewModel) {
 
   val smsPermissionAvailable =
     remember {
-      BuildConfig.OPENCLAW_ENABLE_SMS &&
+      SensitiveFeatureConfig.smsEnabled &&
         context.packageManager?.hasSystemFeature(PackageManager.FEATURE_TELEPHONY) == true
     }
-  val callLogPermissionAvailable = remember { BuildConfig.OPENCLAW_ENABLE_CALL_LOG }
+  val callLogPermissionAvailable = remember { SensitiveFeatureConfig.callLogEnabled }
+  val photosPermissionAvailable = remember { SensitiveFeatureConfig.photosEnabled }
   val photosPermission =
     if (Build.VERSION.SDK_INT >= 33) {
       Manifest.permission.READ_MEDIA_IMAGES
@@ -243,8 +245,11 @@ fun SettingsSheet(viewModel: MainViewModel) {
   var photosPermissionGranted by
     remember {
       mutableStateOf(
-        ContextCompat.checkSelfPermission(context, photosPermission) ==
-          PackageManager.PERMISSION_GRANTED,
+        if (photosPermissionAvailable) {
+          ContextCompat.checkSelfPermission(context, photosPermission) == PackageManager.PERMISSION_GRANTED
+        } else {
+          false
+        },
       )
     }
   val photosPermissionLauncher =
@@ -346,8 +351,11 @@ fun SettingsSheet(viewModel: MainViewModel) {
           notificationListenerEnabled = isNotificationListenerEnabled(context)
           installedNotificationApps = queryInstalledApps(context, notificationForwardingPackages)
           photosPermissionGranted =
-            ContextCompat.checkSelfPermission(context, photosPermission) ==
-              PackageManager.PERMISSION_GRANTED
+            if (photosPermissionAvailable) {
+              ContextCompat.checkSelfPermission(context, photosPermission) == PackageManager.PERMISSION_GRANTED
+            } else {
+              false
+            }
           contactsPermissionGranted =
             ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) ==
               PackageManager.PERMISSION_GRANTED &&
@@ -975,31 +983,33 @@ fun SettingsSheet(viewModel: MainViewModel) {
       }
       item {
         Column(modifier = Modifier.settingsRowModifier()) {
-          ListItem(
-            modifier = Modifier.fillMaxWidth(),
-            colors = listItemColors,
-            headlineContent = { Text("Photos", style = mobileHeadline) },
-            supportingContent = { Text("Access recent photos.", style = mobileCallout) },
-            trailingContent = {
-              Button(
-                onClick = {
-                  if (photosPermissionGranted) {
-                    openAppSettings(context)
-                  } else {
-                    photosPermissionLauncher.launch(photosPermission)
-                  }
-                },
-                colors = settingsPrimaryButtonColors(),
-                shape = RoundedCornerShape(14.dp),
-              ) {
-                Text(
-                  if (photosPermissionGranted) "Manage" else "Grant",
-                  style = mobileCallout.copy(fontWeight = FontWeight.Bold),
-                )
-              }
-            },
-          )
-          HorizontalDivider(color = mobileBorder)
+          if (photosPermissionAvailable) {
+            ListItem(
+              modifier = Modifier.fillMaxWidth(),
+              colors = listItemColors,
+              headlineContent = { Text("Photos", style = mobileHeadline) },
+              supportingContent = { Text("Access recent photos.", style = mobileCallout) },
+              trailingContent = {
+                Button(
+                  onClick = {
+                    if (photosPermissionGranted) {
+                      openAppSettings(context)
+                    } else {
+                      photosPermissionLauncher.launch(photosPermission)
+                    }
+                  },
+                  colors = settingsPrimaryButtonColors(),
+                  shape = RoundedCornerShape(14.dp),
+                ) {
+                  Text(
+                    if (photosPermissionGranted) "Manage" else "Grant",
+                    style = mobileCallout.copy(fontWeight = FontWeight.Bold),
+                  )
+                }
+              },
+            )
+            HorizontalDivider(color = mobileBorder)
+          }
           ListItem(
             modifier = Modifier.fillMaxWidth(),
             colors = listItemColors,

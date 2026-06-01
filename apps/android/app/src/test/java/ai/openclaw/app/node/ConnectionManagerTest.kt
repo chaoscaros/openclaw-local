@@ -507,6 +507,7 @@ class ConnectionManagerTest {
     readSmsAvailable: Boolean = false,
     smsSearchPossible: Boolean = false,
     callLogAvailable: Boolean = false,
+    photosAvailable: Boolean = false,
     hasRecordAudioPermission: Boolean = false,
   ): ConnectionManager {
     val context = RuntimeEnvironment.getApplication()
@@ -527,6 +528,7 @@ class ConnectionManagerTest {
       readSmsAvailable = { readSmsAvailable },
       smsSearchPossible = { smsSearchPossible },
       callLogAvailable = { callLogAvailable },
+      photosAvailable = { photosAvailable },
       hasRecordAudioPermission = { hasRecordAudioPermission },
       manualTls = { false },
     )

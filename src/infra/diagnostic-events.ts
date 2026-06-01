@@ -152,6 +152,48 @@ export type DiagnosticToolLoopEvent = DiagnosticBaseEvent & {
   pairedToolName?: string;
 };
 
+export type DiagnosticToolExecutionStartedEvent = DiagnosticBaseEvent & {
+  type: "tool.execution.started";
+  runId?: string;
+  sessionKey?: string;
+  sessionId?: string;
+  toolName: string;
+  toolCallId?: string;
+};
+
+export type DiagnosticToolExecutionCompletedEvent = DiagnosticBaseEvent & {
+  type: "tool.execution.completed";
+  runId?: string;
+  sessionKey?: string;
+  sessionId?: string;
+  toolName: string;
+  toolCallId?: string;
+  durationMs?: number;
+};
+
+export type DiagnosticToolExecutionBlockedEvent = DiagnosticBaseEvent & {
+  type: "tool.execution.blocked";
+  runId?: string;
+  sessionKey?: string;
+  sessionId?: string;
+  toolName: string;
+  toolCallId?: string;
+  durationMs?: number;
+  deniedReason?: string;
+  reason?: string;
+};
+
+export type DiagnosticToolExecutionErrorEvent = DiagnosticBaseEvent & {
+  type: "tool.execution.error";
+  runId?: string;
+  sessionKey?: string;
+  sessionId?: string;
+  toolName: string;
+  toolCallId?: string;
+  durationMs?: number;
+  errorCategory?: string;
+};
+
 export type DiagnosticLargePayloadEvent = DiagnosticBaseEvent & {
   type: "payload.large";
   action: "rejected" | "truncated" | "chunked";
@@ -178,6 +220,10 @@ export type DiagnosticEventPayload =
   | DiagnosticRunAttemptEvent
   | DiagnosticHeartbeatEvent
   | DiagnosticToolLoopEvent
+  | DiagnosticToolExecutionStartedEvent
+  | DiagnosticToolExecutionCompletedEvent
+  | DiagnosticToolExecutionBlockedEvent
+  | DiagnosticToolExecutionErrorEvent
   | DiagnosticLargePayloadEvent;
 
 export type DiagnosticEventInput = DiagnosticEventPayload extends infer Event

@@ -3,7 +3,11 @@
 import { render } from "lit";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { i18n } from "../i18n/index.ts";
-import { renderChatTaskHeaderBar, resetChatTaskHeaderUiForTest } from "./app-render.helpers.ts";
+import {
+  renderChatMobileToggle,
+  renderChatTaskHeaderBar,
+  resetChatTaskHeaderUiForTest,
+} from "./app-render.helpers.ts";
 
 beforeAll(async () => {
   await i18n.setLocale("en");
@@ -103,6 +107,21 @@ function buildState(overrides: Record<string, unknown> = {}) {
     setCurrentSessionMode: vi.fn(),
     setCurrentTaskForSession: vi.fn(async (_taskId: string) => undefined),
     setTab: vi.fn(),
+    applySettings: vi.fn(),
+    connected: true,
+    client: {},
+    chatLoading: false,
+    chatSending: false,
+    chatRunId: null,
+    chatStream: null,
+    chatModelCatalog: [],
+    chatModelOverrides: {},
+    settings: {
+      chatAutoScroll: "near-bottom",
+      chatShowThinking: true,
+      chatShowToolCalls: false,
+      chatFocusMode: false,
+    },
     requestUpdate: undefined as undefined | (() => void),
     ...overrides,
   };
@@ -343,5 +362,26 @@ describe("renderChatTaskHeaderBar", () => {
     expect(openedText).toContain("已绑定任务 · task-missing");
     expect(openedText).toContain("请稍候或刷新任务列表");
     expect(openedText).toContain("可切换任务");
+  });
+
+  it("includes task mode controls in the mobile chat settings menu", async () => {
+    const container = document.createElement("div");
+    const state = buildState();
+    state.requestUpdate = () => {
+      render(renderChatMobileToggle(state as never), container);
+    };
+
+    render(renderChatMobileToggle(state as never), container);
+    await Promise.resolve();
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("当前任务");
+    expect(text).toContain("当前任务 A");
+    expect(
+      container.querySelector(".chat-controls-dropdown .chat-task-context-bar"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(".chat-controls-dropdown .chat-task-context-bar__mode"),
+    ).not.toBeNull();
   });
 });
