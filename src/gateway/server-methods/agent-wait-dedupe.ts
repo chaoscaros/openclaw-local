@@ -1,3 +1,9 @@
+import {
+  normalizeAgentRunTimeoutPhase,
+  normalizeProviderStarted,
+  type AgentRunTimeoutPhase,
+} from "../../agents/run-timeout-attribution.js";
+import { normalizeBlockedLivenessWaitStatus } from "../../shared/agent-liveness.js";
 import type { DedupeEntry } from "../server-shared.js";
 
 export type AgentWaitTerminalSnapshot = {
@@ -5,6 +11,9 @@ export type AgentWaitTerminalSnapshot = {
   startedAt?: number;
   endedAt?: number;
   error?: string;
+  livenessState?: string;
+  timeoutPhase?: AgentRunTimeoutPhase;
+  providerStarted?: boolean;
 };
 
 const AGENT_WAITERS_BY_RUN_ID = new Map<string, Set<() => void>>();
@@ -71,6 +80,10 @@ export function readTerminalSnapshotFromDedupeEntry(
         startedAt?: unknown;
         endedAt?: unknown;
         error?: unknown;
+        livenessState?: unknown;
+        timeoutPhase?: unknown;
+        providerStarted?: unknown;
+        result?: unknown;
         summary?: unknown;
       }
     | undefined;
@@ -87,13 +100,54 @@ export function readTerminalSnapshotFromDedupeEntry(
       : typeof payload?.summary === "string"
         ? payload.summary
         : entry.error?.message;
+  const resultMeta =
+    payload?.result && typeof payload.result === "object" && !Array.isArray(payload.result)
+      ? (payload.result as { meta?: unknown }).meta
+      : undefined;
+  const resultLivenessState =
+    resultMeta && typeof resultMeta === "object" && !Array.isArray(resultMeta)
+      ? (resultMeta as { livenessState?: unknown }).livenessState
+      : undefined;
+  const resultTimeoutPhase =
+    resultMeta && typeof resultMeta === "object" && !Array.isArray(resultMeta)
+      ? (resultMeta as { timeoutPhase?: unknown }).timeoutPhase
+      : undefined;
+  const resultProviderStarted =
+    resultMeta && typeof resultMeta === "object" && !Array.isArray(resultMeta)
+      ? (resultMeta as { providerStarted?: unknown }).providerStarted
+      : undefined;
+  const livenessState =
+    typeof payload?.livenessState === "string"
+      ? payload.livenessState
+      : typeof resultLivenessState === "string"
+        ? resultLivenessState
+        : undefined;
+  const timeoutPhase =
+    normalizeAgentRunTimeoutPhase(payload?.timeoutPhase) ??
+    normalizeAgentRunTimeoutPhase(resultTimeoutPhase);
+  const providerStarted =
+    normalizeProviderStarted(payload?.providerStarted) ??
+    normalizeProviderStarted(resultProviderStarted);
 
   if (status === "ok" || status === "timeout") {
-    return {
+    const normalized = normalizeBlockedLivenessWaitStatus({
       status,
+      livenessState,
+      error: errorMessage,
+    });
+    return {
+      status: normalized.status,
       startedAt,
       endedAt,
-      error: status === "timeout" ? errorMessage : undefined,
+      error:
+        normalized.status === "error"
+          ? normalized.error
+          : normalized.status === "timeout"
+            ? errorMessage
+            : undefined,
+      livenessState,
+      ...(timeoutPhase ? { timeoutPhase } : {}),
+      ...(providerStarted !== undefined ? { providerStarted } : {}),
     };
   }
   if (status === "error" || !entry.ok) {
@@ -102,6 +156,9 @@ export function readTerminalSnapshotFromDedupeEntry(
       startedAt,
       endedAt,
       error: errorMessage,
+      livenessState,
+      ...(timeoutPhase ? { timeoutPhase } : {}),
+      ...(providerStarted !== undefined ? { providerStarted } : {}),
     };
   }
   return null;

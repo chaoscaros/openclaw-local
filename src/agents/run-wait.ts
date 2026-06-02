@@ -1,5 +1,6 @@
 import { callGateway } from "../gateway/call.js";
 import { formatErrorMessage } from "../infra/errors.js";
+import { normalizeBlockedLivenessWaitStatus } from "../shared/agent-liveness.js";
 import { extractAssistantText, stripToolMessages } from "./tools/chat-history-text.js";
 
 type GatewayCaller = typeof callGateway;
@@ -23,6 +24,7 @@ export type AgentWaitResult = {
   startedAt?: number;
   endedAt?: number;
   yielded?: boolean;
+  livenessState?: string;
 };
 
 export type AgentRunsDrainResult = {
@@ -37,15 +39,23 @@ type RawAgentWaitResponse = {
   startedAt?: unknown;
   endedAt?: unknown;
   yielded?: unknown;
+  livenessState?: unknown;
 };
 
 function normalizeAgentWaitResult(
   status: AgentWaitResult["status"],
   wait?: RawAgentWaitResponse,
 ): AgentWaitResult {
-  const result: AgentWaitResult = { status };
-  if (typeof wait?.error === "string") {
-    result.error = wait.error;
+  const normalized = normalizeBlockedLivenessWaitStatus({
+    status,
+    livenessState: wait?.livenessState,
+    error: wait?.error,
+  });
+  const result: AgentWaitResult = {
+    status: normalized.status,
+  };
+  if (normalized.error) {
+    result.error = normalized.error;
   }
   if (typeof wait?.startedAt === "number") {
     result.startedAt = wait.startedAt;
@@ -55,6 +65,9 @@ function normalizeAgentWaitResult(
   }
   if (typeof wait?.yielded === "boolean") {
     result.yielded = wait.yielded;
+  }
+  if (typeof wait?.livenessState === "string") {
+    result.livenessState = wait.livenessState;
   }
   return result;
 }
