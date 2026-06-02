@@ -1,4 +1,5 @@
 import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
+import { isReplyPayloadStatusNotice } from "../reply-payload.js";
 import type { ReplyPayload } from "../types.js";
 import type { BlockStreamingCoalescing } from "./block-streaming.js";
 
@@ -26,6 +27,7 @@ export function createBlockReplyCoalescer(params: {
   let bufferAudioAsVoice: ReplyPayload["audioAsVoice"];
   let bufferIsReasoning: ReplyPayload["isReasoning"];
   let bufferIsCompactionNotice: ReplyPayload["isCompactionNotice"];
+  let bufferIsStatusNotice: ReplyPayload["isStatusNotice"];
   let idleTimer: NodeJS.Timeout | undefined;
 
   const clearIdleTimer = () => {
@@ -42,6 +44,7 @@ export function createBlockReplyCoalescer(params: {
     bufferAudioAsVoice = undefined;
     bufferIsReasoning = undefined;
     bufferIsCompactionNotice = undefined;
+    bufferIsStatusNotice = undefined;
   };
 
   const scheduleIdleFlush = () => {
@@ -73,6 +76,7 @@ export function createBlockReplyCoalescer(params: {
       audioAsVoice: bufferAudioAsVoice,
       isReasoning: bufferIsReasoning,
       isCompactionNotice: bufferIsCompactionNotice,
+      isStatusNotice: bufferIsStatusNotice,
     };
     resetBuffer();
     await onFlush(payload);
@@ -105,6 +109,7 @@ export function createBlockReplyCoalescer(params: {
       bufferAudioAsVoice = payload.audioAsVoice;
       bufferIsReasoning = payload.isReasoning;
       bufferIsCompactionNotice = payload.isCompactionNotice;
+      bufferIsStatusNotice = payload.isStatusNotice;
       bufferText = text;
       void flush({ force: true });
       return;
@@ -118,7 +123,11 @@ export function createBlockReplyCoalescer(params: {
     const visibilityConflict =
       bufferText &&
       (bufferIsReasoning !== payload.isReasoning ||
-        bufferIsCompactionNotice !== payload.isCompactionNotice);
+        bufferIsCompactionNotice !== payload.isCompactionNotice ||
+        isReplyPayloadStatusNotice({
+          isCompactionNotice: bufferIsCompactionNotice,
+          isStatusNotice: bufferIsStatusNotice,
+        }) !== isReplyPayloadStatusNotice(payload));
     if (
       bufferText &&
       (replyToConflict || bufferAudioAsVoice !== payload.audioAsVoice || visibilityConflict)
@@ -131,6 +140,7 @@ export function createBlockReplyCoalescer(params: {
       bufferAudioAsVoice = payload.audioAsVoice;
       bufferIsReasoning = payload.isReasoning;
       bufferIsCompactionNotice = payload.isCompactionNotice;
+      bufferIsStatusNotice = payload.isStatusNotice;
     }
 
     const nextText = bufferText ? `${bufferText}${joiner}${text}` : text;
@@ -141,6 +151,7 @@ export function createBlockReplyCoalescer(params: {
         bufferAudioAsVoice = payload.audioAsVoice;
         bufferIsReasoning = payload.isReasoning;
         bufferIsCompactionNotice = payload.isCompactionNotice;
+        bufferIsStatusNotice = payload.isStatusNotice;
         if (text.length >= maxChars) {
           void onFlush(payload);
           return;

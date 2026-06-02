@@ -103,6 +103,7 @@ function resolveImageToolMaxTokens(modelMaxTokens: number | undefined, requested
  */
 export function resolveImageModelConfigForTool(params: {
   cfg?: OpenClawConfig;
+  workspaceDir?: string;
   agentDir: string;
 }): ImageModelConfig | null {
   // Note: We intentionally do NOT gate based on primarySupportsImages here.
@@ -154,6 +155,8 @@ export function resolveImageModelConfigForTool(params: {
 
   return buildToolModelConfigFromCandidates({
     explicit,
+    cfg: params.cfg,
+    workspaceDir: params.workspaceDir,
     agentDir: params.agentDir,
     candidates: [...primaryCandidates, ...autoCandidates],
   });
@@ -296,6 +299,7 @@ export function createImageTool(options?: {
   }
   const imageModelConfig = resolveImageModelConfigForTool({
     cfg: options?.config,
+    workspaceDir: options?.workspaceDir,
     agentDir,
   });
   if (!imageModelConfig) {

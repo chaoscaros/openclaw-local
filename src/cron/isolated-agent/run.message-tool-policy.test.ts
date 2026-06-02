@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   clearFastTestEnv,
+  cleanupDirectCronSessionMock,
   dispatchCronDeliveryMock,
   isHeartbeatOnlyResponseMock,
   loadRunCronIsolatedAgentTurn,
+  makeCronSession,
   mockRunCronFallbackPassthrough,
   resetRunCronIsolatedAgentTurnHarness,
   resolveCronDeliveryPlanMock,
+  resolveCronSessionMock,
   resolveDeliveryTargetMock,
   restoreFastTestEnv,
   runEmbeddedPiAgentMock,
@@ -161,6 +164,104 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
         skipHeartbeatDelivery: true,
       }),
     );
+  });
+
+  it("does not dispatch announce delivery for fatal error payloads", async () => {
+    mockRunCronFallbackPassthrough();
+    resolveCronDeliveryPlanMock.mockReturnValue({
+      requested: true,
+      mode: "announce",
+      channel: "telegram",
+      to: "123",
+    });
+    runEmbeddedPiAgentMock.mockResolvedValue({
+      payloads: [
+        {
+          text: 'Codex error: {"type":"error","error":{"type":"server_error"}}',
+          isError: true,
+        },
+      ],
+      meta: { agentMeta: { usage: { input: 10, output: 20 } } },
+    });
+
+    const result = await runCronIsolatedAgentTurn({
+      ...makeParams(),
+      job: {
+        id: "fatal-error-payload",
+        name: "Fatal Error Payload",
+        schedule: { kind: "every", everyMs: 60_000 },
+        sessionTarget: "isolated",
+        payload: { kind: "agentTurn", message: "send a message" },
+        delivery: { mode: "announce", channel: "telegram", to: "123" },
+        deleteAfterRun: true,
+      } as never,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.error).toBe("cron isolated run returned an error payload");
+    expect(result.delivered).toBe(false);
+    expect(result.deliveryAttempted).toBe(false);
+    expect(dispatchCronDeliveryMock).not.toHaveBeenCalled();
+    expect(cleanupDirectCronSessionMock).toHaveBeenCalledWith({
+      job: expect.objectContaining({ id: "fatal-error-payload", deleteAfterRun: true }),
+      agentSessionKey: "agent:default:cron:message-tool-policy",
+      sessionId: "test-session-id",
+      retireReason: "cron-delete-after-run-fatal-error",
+    });
+    expect(result.delivery).toEqual(
+      expect.objectContaining({
+        resolved: expect.objectContaining({ ok: true, channel: "telegram", to: "123" }),
+      }),
+    );
+  });
+
+  it("releases isolated cron run context references after completion", async () => {
+    const cronSession = makeCronSession({
+      store: { "agent:default:cron:message-tool-policy": { retained: true } },
+    });
+    resolveCronSessionMock.mockReturnValue(cronSession);
+    const { getAgentRunContext, registerAgentRunContext } =
+      await import("../../infra/agent-events.js");
+    registerAgentRunContext("test-session-id", {
+      sessionKey: "agent:default:cron:message-tool-policy",
+      verboseLevel: "off",
+    });
+
+    await runCronIsolatedAgentTurn(makeParams());
+
+    expect(getAgentRunContext("test-session-id")).toBeUndefined();
+    expect(cronSession.store).toBeUndefined();
+  });
+
+  it("keeps shared cron run context active after completion", async () => {
+    const cronSession = makeCronSession({
+      store: { "agent:default:cron:message-tool-policy": { retained: true } },
+    });
+    resolveCronSessionMock.mockReturnValue(cronSession);
+    const { clearAgentRunContext, getAgentRunContext, registerAgentRunContext } =
+      await import("../../infra/agent-events.js");
+    registerAgentRunContext("test-session-id", {
+      sessionKey: "agent:default:cron:message-tool-policy",
+      verboseLevel: "off",
+    });
+
+    await runCronIsolatedAgentTurn({
+      ...makeParams(),
+      job: {
+        id: "message-tool-policy-current",
+        name: "Message Tool Policy Current",
+        schedule: { kind: "every", everyMs: 60_000 },
+        sessionTarget: "current",
+        payload: { kind: "agentTurn", message: "send a message" },
+        delivery: { mode: "none" },
+      } as never,
+    });
+
+    expect(getAgentRunContext("test-session-id")).toMatchObject({
+      sessionKey: "agent:default:cron:message-tool-policy",
+    });
+    expect(cronSession.store).toBeUndefined();
+    clearAgentRunContext("test-session-id");
   });
 
   it("skips cron delivery when the message tool already sent to the same target", async () => {

@@ -27,6 +27,8 @@ export type MediaGenerationTaskHandle = {
   taskLabel: string;
 };
 
+export type MediaGenerateAsyncStartCallback = (message: string) => Promise<void> | void;
+
 type CreateMediaGenerationTaskRunParams = {
   sessionKey?: string;
   requesterOrigin?: DeliveryContext;
@@ -131,6 +133,28 @@ export function recordMediaGenerationTaskProgress(params: {
     progressSummary: params.progressSummary,
     eventSummary: params.eventSummary,
   });
+}
+
+export async function notifyMediaGenerationAsyncTaskStarted(params: {
+  callback?: MediaGenerateAsyncStartCallback;
+  message: string;
+  toolName: string;
+  handle: MediaGenerationTaskHandle | null;
+  onFailure: (message: string, meta?: Record<string, unknown>) => void;
+}) {
+  if (!params.callback) {
+    return;
+  }
+  try {
+    await params.callback(params.message);
+  } catch (error) {
+    params.onFailure("Media generation async-start callback failed", {
+      toolName: params.toolName,
+      taskId: params.handle?.taskId,
+      runId: params.handle?.runId,
+      error,
+    });
+  }
 }
 
 export function completeMediaGenerationTaskRun(params: {

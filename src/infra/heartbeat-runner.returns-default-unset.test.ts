@@ -140,9 +140,17 @@ beforeAll(async () => {
     },
   };
 
+  const discordPlugin = createOutboundTestPlugin({
+    id: "discord",
+    outbound: {
+      deliveryMode: "direct",
+    },
+  });
+
   testRegistry = createTestRegistry([
     { pluginId: "whatsapp", plugin: whatsappPlugin, source: "test" },
     { pluginId: "telegram", plugin: telegramPlugin, source: "test" },
+    { pluginId: "discord", plugin: discordPlugin, source: "test" },
   ]);
   setActivePluginRegistry(testRegistry);
 
@@ -303,6 +311,7 @@ describe("resolveHeartbeatDeliveryTarget", () => {
         expected: {
           channel: "whatsapp",
           to: "120363401234567890@g.us",
+          chatType: undefined,
           accountId: undefined,
           lastChannel: undefined,
           lastAccountId: undefined,
@@ -349,6 +358,7 @@ describe("resolveHeartbeatDeliveryTarget", () => {
         expected: {
           channel: "whatsapp",
           to: "120363401234567890@g.us",
+          chatType: undefined,
           accountId: undefined,
           lastChannel: "whatsapp",
           lastAccountId: undefined,
@@ -361,6 +371,20 @@ describe("resolveHeartbeatDeliveryTarget", () => {
         expected: {
           channel: "telegram",
           to: "-100123",
+          chatType: "group",
+          accountId: undefined,
+          lastChannel: undefined,
+          lastAccountId: undefined,
+        },
+      },
+      {
+        name: "infer explicit discord channel target",
+        cfg: { agents: { defaults: { heartbeat: { target: "discord", to: "channel:123" } } } },
+        entry: baseEntry,
+        expected: {
+          channel: "discord",
+          to: "channel:123",
+          chatType: "channel",
           accountId: undefined,
           lastChannel: undefined,
           lastAccountId: undefined,
@@ -373,6 +397,7 @@ describe("resolveHeartbeatDeliveryTarget", () => {
         expected: {
           channel: "telegram",
           to: "5232990709",
+          chatType: "direct",
           accountId: undefined,
           lastChannel: "telegram",
           lastAccountId: undefined,
@@ -423,6 +448,7 @@ describe("resolveHeartbeatDeliveryTarget", () => {
       expected: {
         channel: "telegram",
         to: "-100123",
+        chatType: "group",
         accountId: "work",
         lastChannel: undefined,
         lastAccountId: undefined,
@@ -468,6 +494,7 @@ describe("resolveHeartbeatDeliveryTarget", () => {
     ).toEqual({
       channel: "whatsapp",
       to: "120363401234567890@g.us",
+      chatType: undefined,
       accountId: undefined,
       lastChannel: "whatsapp",
       lastAccountId: undefined,

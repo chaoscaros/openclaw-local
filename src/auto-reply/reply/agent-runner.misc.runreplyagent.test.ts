@@ -1793,6 +1793,19 @@ describe("runReplyAgent reminder commitment guard", () => {
     });
   });
 
+  it("ignores status notices when checking reminder commitments", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "I'll remind you tomorrow morning.", isStatusNotice: true }],
+      meta: {},
+      successfulCronAdds: 0,
+    });
+
+    const result = await createRun();
+    expect(result).toMatchObject({
+      text: "I'll remind you tomorrow morning.",
+    });
+  });
+
   it("keeps reminder commitment unchanged when cron.add succeeded", async () => {
     runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "I'll remind you tomorrow morning." }],

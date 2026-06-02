@@ -1,4 +1,5 @@
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
+import { formatBlockedLivenessError, isBlockedLivenessState } from "../shared/agent-liveness.js";
 import { extractTextFromChatContent } from "../shared/chat-content.js";
 import {
   captureSubagentCompletionReplyUsing,
@@ -53,6 +54,7 @@ export type AgentWaitResult = {
   startedAt?: number;
   endedAt?: number;
   error?: string;
+  livenessState?: string;
 };
 
 export type SubagentRunOutcome = {
@@ -298,7 +300,9 @@ export function applySubagentWaitOutcome(params: {
     endedAt: params.endedAt,
   };
   const waitError = typeof params.wait?.error === "string" ? params.wait.error : undefined;
-  if (params.wait?.status === "timeout") {
+  if (isBlockedLivenessState(params.wait?.livenessState)) {
+    next.outcome = { status: "error", error: formatBlockedLivenessError(waitError) };
+  } else if (params.wait?.status === "timeout") {
     next.outcome = { status: "timeout" };
   } else if (params.wait?.status === "error") {
     next.outcome = { status: "error", error: waitError };

@@ -75,4 +75,35 @@ describe("resolvePdfModelConfigForTool", () => {
       expect(resolvePdfModelConfigForTool({ cfg, agentDir })?.primary).toBe(ANTHROPIC_PDF_MODEL);
     });
   });
+
+  it("uses a config-authenticated custom provider image model as a PDF fallback", async () => {
+    await withTempPdfAgentDir(async (agentDir) => {
+      const cfg = {
+        ...withDefaultModel("hatchery/text-1"),
+        models: {
+          providers: {
+            hatchery: {
+              baseUrl: "https://example.com/v1",
+              apiKey: "sk-configured", // pragma: allowlist secret
+              models: [
+                {
+                  id: "vision-1",
+                  name: "Vision 1",
+                  reasoning: false,
+                  input: ["text", "image"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 32_000,
+                  maxTokens: 4_096,
+                },
+              ],
+            },
+          },
+        },
+      } as OpenClawConfig;
+
+      expect(resolvePdfModelConfigForTool({ cfg, agentDir })).toEqual({
+        primary: "hatchery/vision-1",
+      });
+    });
+  });
 });

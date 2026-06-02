@@ -79,11 +79,15 @@ function summarizeVideoGenerationCapabilities(
 
 export function createVideoGenerateListActionResult(
   config?: OpenClawConfig,
+  options?: { workspaceDir?: string; agentDir?: string },
 ): VideoGenerateActionResult {
   const providers = listRuntimeVideoGenerationProviders({ config });
   return createMediaGenerateProviderListActionResult({
     providers,
     emptyText: "No video-generation providers are registered.",
+    cfg: config,
+    workspaceDir: options?.workspaceDir,
+    agentDir: options?.agentDir,
     listModes: listSupportedVideoGenerationModes,
     summarizeCapabilities: summarizeVideoGenerationCapabilities,
   });

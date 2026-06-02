@@ -187,4 +187,19 @@ describe("createReplyToModeFilter", () => {
     expect(filter({ text: "hi", replyToId: "1" }).replyToId).toBe("1");
     expect(filter({ text: "next", replyToId: "1" }).replyToId).toBeUndefined();
   });
+
+  it("keeps status notices from consuming explicit or first reply threading", () => {
+    const offFilter = createReplyToModeFilter("off", { allowExplicitReplyTagsWhenOff: true });
+    expect(
+      offFilter({ text: "working", replyToId: "1", replyToTag: true, isStatusNotice: true })
+        .replyToId,
+    ).toBeUndefined();
+
+    const firstFilter = createReplyToModeFilter("first");
+    expect(firstFilter({ text: "working", replyToId: "1", isStatusNotice: true }).replyToId).toBe(
+      "1",
+    );
+    expect(firstFilter({ text: "answer", replyToId: "1" }).replyToId).toBe("1");
+    expect(firstFilter({ text: "follow-up", replyToId: "1" }).replyToId).toBeUndefined();
+  });
 });

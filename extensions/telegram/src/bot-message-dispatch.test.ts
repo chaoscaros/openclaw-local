@@ -291,6 +291,7 @@ describe("dispatchTelegramMessage draft streaming", () => {
     streamMode?: Parameters<typeof dispatchTelegramMessage>[0]["streamMode"];
     telegramDeps?: TelegramBotDeps;
     bot?: Bot;
+    opts?: Parameters<typeof dispatchTelegramMessage>[0]["opts"];
   }) {
     const bot = params.bot ?? createBot();
     await dispatchTelegramMessage({
@@ -303,7 +304,7 @@ describe("dispatchTelegramMessage draft streaming", () => {
       textLimit: 4096,
       telegramCfg: params.telegramCfg ?? {},
       telegramDeps: params.telegramDeps ?? telegramDepsForTest,
-      opts: { token: "token" },
+      opts: params.opts ?? { token: "token" },
     });
   }
 
@@ -2156,9 +2157,17 @@ describe("dispatchTelegramMessage draft streaming", () => {
     });
     deliverReplies.mockResolvedValue({ delivered: true });
 
-    await dispatchWithContext({ context: createContext() });
+    await dispatchWithContext({
+      context: createContext(),
+      opts: { token: "token", mediaMaxMb: 50 },
+    });
 
     expect(draftStream.clear).toHaveBeenCalledTimes(1);
+    expect(deliverReplies).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mediaMaxBytes: 50 * 1024 * 1024,
+      }),
+    );
   });
 
   it("clears stale preview when response is NO_REPLY", async () => {

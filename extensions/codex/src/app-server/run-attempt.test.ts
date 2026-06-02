@@ -13,7 +13,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CodexServerNotification } from "./protocol.js";
 import { runCodexAppServerAttempt, __testing } from "./run-attempt.js";
 import { writeCodexAppServerBinding } from "./session-binding.js";
-import { buildThreadResumeParams, buildTurnStartParams } from "./thread-lifecycle.js";
+import {
+  buildThreadResumeParams,
+  buildTurnStartParams,
+  codexDynamicToolsFingerprint,
+} from "./thread-lifecycle.js";
 
 let tempDir: string;
 
@@ -365,6 +369,66 @@ describe("runCodexAppServerAttempt", () => {
       aborted: false,
       timedOut: false,
     });
+  });
+
+  it("unsubscribes the main Codex thread after a completed turn", async () => {
+    const { request, requests, waitForMethod, completeTurn } = createAppServerHarness(
+      async (method) => {
+        if (method === "thread/start") {
+          return { thread: { id: "thread-1" }, model: "gpt-5.4-codex", modelProvider: "openai" };
+        }
+        if (method === "turn/start") {
+          return { turn: { id: "turn-1", status: "inProgress" } };
+        }
+        return {};
+      },
+    );
+
+    const run = runCodexAppServerAttempt(
+      createParams(path.join(tempDir, "session.jsonl"), path.join(tempDir, "workspace")),
+    );
+    await waitForMethod("turn/start");
+    await completeTurn({ threadId: "thread-1", turnId: "turn-1" });
+
+    await expect(run).resolves.toMatchObject({ aborted: false });
+    expect(request).toHaveBeenCalledWith(
+      "thread/unsubscribe",
+      { threadId: "thread-1" },
+      { timeoutMs: 5_000 },
+    );
+    expect(requests.map((entry) => entry.method)).toEqual([
+      "thread/start",
+      "turn/start",
+      "thread/unsubscribe",
+    ]);
+  });
+
+  it("unsubscribes the main Codex thread when turn start fails", async () => {
+    const { request, requests } = createAppServerHarness(async (method) => {
+      if (method === "thread/start") {
+        return { thread: { id: "thread-1" }, model: "gpt-5.4-codex", modelProvider: "openai" };
+      }
+      if (method === "turn/start") {
+        throw new Error("turn start exploded");
+      }
+      return {};
+    });
+
+    await expect(
+      runCodexAppServerAttempt(
+        createParams(path.join(tempDir, "session.jsonl"), path.join(tempDir, "workspace")),
+      ),
+    ).rejects.toThrow("turn start exploded");
+    expect(request).toHaveBeenCalledWith(
+      "thread/unsubscribe",
+      { threadId: "thread-1" },
+      { timeoutMs: 5_000 },
+    );
+    expect(requests.map((entry) => entry.method)).toEqual([
+      "thread/start",
+      "turn/start",
+      "thread/unsubscribe",
+    ]);
   });
 
   it("times out app-server startup before thread setup can hang forever", async () => {
@@ -746,6 +810,36 @@ describe("runCodexAppServerAttempt", () => {
     ).toEqual(expect.objectContaining({ sandboxPolicy }));
   });
 
+  it("keeps durable dynamic tool fingerprints independent from presentation mode", () => {
+    const inputSchema = {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        text: { type: "string" },
+      },
+      required: ["text"],
+    };
+
+    const directFingerprint = codexDynamicToolsFingerprint([
+      {
+        name: "message",
+        description: "Send a visible message",
+        inputSchema,
+      },
+    ]);
+    const searchableFingerprint = codexDynamicToolsFingerprint([
+      {
+        name: "message",
+        description: "Load and send a visible message",
+        inputSchema,
+        namespace: "openclaw",
+        deferLoading: true,
+      },
+    ]);
+
+    expect(searchableFingerprint).toBe(directFingerprint);
+  });
+
   it("preserves OpenClaw sandbox egress in Codex app-server sandbox policy", () => {
     const appServer = {
       start: {
@@ -867,6 +961,79 @@ describe("runCodexAppServerAttempt", () => {
     );
 
     expect(tools.map((tool) => tool.name)).toEqual(["sandbox_exec", "sandbox_process"]);
+  });
+
+  it("keeps the durable dynamic tool schema wider than a narrow toolsAllow policy", async () => {
+    const sessionFile = path.join(tempDir, "session.jsonl");
+    const workspaceDir = path.join(tempDir, "workspace");
+    const params = createParams(sessionFile, workspaceDir);
+    params.disableTools = false;
+    params.toolsAllow = ["message"];
+    __testing.setOpenClawCodingToolsFactoryForTests(() => [
+      createTestDynamicTool("message"),
+      createTestDynamicTool("web_search"),
+    ]);
+    const harness = createAppServerHarness(async (method) => {
+      if (method === "thread/start") {
+        return { thread: { id: "thread-1" }, modelProvider: "openai" };
+      }
+      if (method === "turn/start") {
+        return { turn: { id: "turn-1", status: "inProgress" } };
+      }
+      return {};
+    });
+
+    const run = runCodexAppServerAttempt(params);
+    await harness.waitForMethod("turn/start");
+    await harness.completeTurn({ threadId: "thread-1", turnId: "turn-1" });
+    await run;
+
+    const startRequest = harness.requests.find((entry) => entry.method === "thread/start");
+    const dynamicToolNames =
+      (
+        startRequest?.params as { dynamicTools?: Array<{ name?: string }> } | undefined
+      )?.dynamicTools?.map((tool) => tool.name) ?? [];
+
+    expect(dynamicToolNames).toEqual(["message", "web_search"]);
+  });
+
+  it("does not abort Codex dynamic tool turns for media async starts", async () => {
+    let factoryOptions:
+      | {
+          onYield?: (message: string) => Promise<void> | void;
+          onAsyncTaskStarted?: (message: string) => Promise<void> | void;
+        }
+      | undefined;
+    const sessionFile = path.join(tempDir, "session.jsonl");
+    const workspaceDir = path.join(tempDir, "workspace");
+    const params = createParams(sessionFile, workspaceDir);
+    const onAgentEvent = vi.fn();
+    params.disableTools = false;
+    params.onAgentEvent = onAgentEvent;
+    __testing.setOpenClawCodingToolsFactoryForTests((options) => {
+      factoryOptions = options;
+      return [createTestDynamicTool("image_generate"), createTestDynamicTool("sessions_yield")];
+    });
+    const input = createDynamicToolBuildInput(params, workspaceDir, createSandboxContext("docker"));
+
+    await __testing.buildDynamicTools(input);
+
+    await factoryOptions?.onAsyncTaskStarted?.("Image generation started.");
+    expect(input.onYieldDetected).not.toHaveBeenCalled();
+    expect(input.runAbortController.signal.aborted).toBe(false);
+    expect(onAgentEvent).toHaveBeenCalledWith({
+      stream: "codex_app_server.tool",
+      data: { name: "media_async_task_started", message: "Image generation started." },
+    });
+
+    await factoryOptions?.onYield?.("Waiting for subagent.");
+    expect(input.onYieldDetected).toHaveBeenCalledOnce();
+    expect(input.runAbortController.signal.aborted).toBe(true);
+    expect(input.runAbortController.signal.reason).toBe("sessions_yield");
+    expect(onAgentEvent).toHaveBeenCalledWith({
+      stream: "codex_app_server.tool",
+      data: { name: "sessions_yield", message: "Waiting for subagent." },
+    });
   });
 
   it("keeps sandbox exec result guidance pointed at sandbox_process", async () => {

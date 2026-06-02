@@ -60,6 +60,40 @@ describe("Codex app-server config", () => {
     ).toThrow("appServer.url is required");
   });
 
+  it("rejects Codex app-server command overrides that include inline arguments", () => {
+    expect(() =>
+      resolveCodexAppServerRuntimeOptions({
+        pluginConfig: {
+          appServer: {
+            command:
+              "node C:\\Users\\me\\.openclaw\\npm\\node_modules\\@openai\\codex\\bin\\codex.js",
+          },
+        },
+        env: {},
+      }),
+    ).toThrow(
+      "plugins.entries.codex.config.appServer.command must be only the Codex app-server executable path",
+    );
+    expect(() =>
+      resolveCodexAppServerRuntimeOptions({
+        pluginConfig: {},
+        env: {
+          OPENCLAW_CODEX_APP_SERVER_BIN:
+            "node C:\\Users\\me\\.openclaw\\npm\\node_modules\\@openai\\codex\\bin\\codex.js",
+        },
+      }),
+    ).toThrow("OPENCLAW_CODEX_APP_SERVER_BIN must be only the Codex app-server executable path");
+  });
+
+  it("preserves executable paths that contain spaces", () => {
+    const runtime = resolveCodexAppServerRuntimeOptions({
+      pluginConfig: { appServer: { command: "C:\\Program Files\\OpenAI Codex\\codex.exe" } },
+      env: {},
+    });
+
+    expect(runtime.start.command).toBe("C:\\Program Files\\OpenAI Codex\\codex.exe");
+  });
+
   it("keeps runtime config keys aligned with manifest schema and UI hints", async () => {
     const manifest = JSON.parse(
       await fs.readFile(new URL("../../openclaw.plugin.json", import.meta.url), "utf8"),

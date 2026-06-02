@@ -27,6 +27,10 @@ import type {
 import { ToolInputError, readNumberParam, readStringParam } from "./common.js";
 import { decodeDataUrl } from "./image-tool.helpers.js";
 import {
+  notifyMediaGenerationAsyncTaskStarted,
+  type MediaGenerateAsyncStartCallback,
+} from "./media-generate-background-shared.js";
+import {
   applyVideoGenerationModelConfigDefaults,
   buildMediaReferenceDetails,
   buildTaskRunDetails,
@@ -209,10 +213,12 @@ const VideoGenerateToolSchema = Type.Object({
 
 export function resolveVideoGenerationModelConfigForTool(params: {
   cfg?: OpenClawConfig;
+  workspaceDir?: string;
   agentDir?: string;
 }): ToolModelConfig | null {
   return resolveCapabilityModelConfigForTool({
     cfg: params.cfg,
+    workspaceDir: params.workspaceDir,
     agentDir: params.agentDir,
     modelConfig: params.cfg?.agents?.defaults?.videoGenerationModel,
     providers: listRuntimeVideoGenerationProviders({ config: params.cfg }),
@@ -765,10 +771,12 @@ export function createVideoGenerateTool(options?: {
   sandbox?: VideoGenerateSandboxConfig;
   fsPolicy?: ToolFsPolicy;
   scheduleBackgroundWork?: VideoGenerateBackgroundScheduler;
+  onAsyncTaskStarted?: MediaGenerateAsyncStartCallback;
 }): AnyAgentTool | null {
   const cfg: OpenClawConfig = options?.config ?? loadConfig();
   const videoGenerationModelConfig = resolveVideoGenerationModelConfigForTool({
     cfg,
+    workspaceDir: options?.workspaceDir,
     agentDir: options?.agentDir,
   });
   if (!videoGenerationModelConfig) {
@@ -799,7 +807,10 @@ export function createVideoGenerateTool(options?: {
         applyVideoGenerationModelConfigDefaults(cfg, videoGenerationModelConfig) ?? cfg;
 
       if (action === "list") {
-        return createVideoGenerateListActionResult(effectiveCfg);
+        return createVideoGenerateListActionResult(effectiveCfg, {
+          workspaceDir: options?.workspaceDir,
+          agentDir: options?.agentDir,
+        });
       }
 
       if (action === "status") {
@@ -998,6 +1009,14 @@ export function createVideoGenerateTool(options?: {
             });
             return;
           }
+        });
+
+        await notifyMediaGenerationAsyncTaskStarted({
+          callback: options?.onAsyncTaskStarted,
+          message: "Video generation started; wait for the generated video completion event.",
+          toolName: "video_generate",
+          handle: taskHandle,
+          onFailure: (message, meta) => log.warn(message, meta),
         });
 
         return {

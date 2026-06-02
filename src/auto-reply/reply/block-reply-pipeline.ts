@@ -3,6 +3,7 @@ import {
   resolveSendableOutboundReplyParts,
 } from "openclaw/plugin-sdk/reply-payload";
 import { logVerbose } from "../../globals.js";
+import { isReplyPayloadStatusNotice } from "../reply-payload.js";
 import type { ReplyPayload } from "../types.js";
 import { createBlockReplyCoalescer } from "./block-reply-coalescer.js";
 import type { BlockStreamingCoalescing } from "./block-streaming.js";
@@ -41,6 +42,7 @@ export function createAudioAsVoiceBuffer(params: {
 export function createBlockReplyPayloadKey(payload: ReplyPayload): string {
   const reply = resolveSendableOutboundReplyParts(payload);
   return JSON.stringify({
+    statusNotice: isReplyPayloadStatusNotice(payload),
     text: reply.trimmedText,
     mediaList: reply.mediaUrls,
     interactive: payload.interactive ?? null,
@@ -146,8 +148,10 @@ export function createBlockReplyPipeline(params: {
           return;
         }
         sentKeys.add(payloadKey);
-        sentContentKeys.add(contentKey);
-        didStream = true;
+        if (!isReplyPayloadStatusNotice(payload)) {
+          sentContentKeys.add(contentKey);
+          didStream = true;
+        }
       })
       .catch((err) => {
         if (err === timeoutError) {

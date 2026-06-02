@@ -2461,6 +2461,13 @@ export const chatHandlers: GatewayRequestHandlers = {
         })();
         await userTranscriptUpdatePromise;
       };
+      const emitUserTranscriptUpdateAfterAgentRun = async () => {
+        await emitUserTranscriptUpdate().catch((transcriptErr) => {
+          context.logGateway.warn(
+            `webchat user transcript update failed after agent run: ${formatForLog(transcriptErr)}`,
+          );
+        });
+      };
       let transcriptMediaRewriteDone = false;
       const rewriteUserTranscriptMedia = async () => {
         if (transcriptMediaRewriteDone) {
@@ -2592,6 +2599,14 @@ export const chatHandlers: GatewayRequestHandlers = {
       })
         .then(async () => {
           await rewriteUserTranscriptMedia();
+          const returnedAgentErrorPayloads = agentRunStarted
+            ? deliveredReplies.map((entry) => entry.payload).filter((payload) => payload.isError)
+            : [];
+          const returnedAgentErrorMessage =
+            returnedAgentErrorPayloads
+              .map((payload) => payload.text?.trim())
+              .filter((text): text is string => Boolean(text))
+              .join(" | ") || undefined;
           const shouldFlushBufferedFinal =
             !agentRunStarted ||
             deliveredReplies.some(
@@ -2671,20 +2686,45 @@ export const chatHandlers: GatewayRequestHandlers = {
               });
             }
           } else {
-            void emitUserTranscriptUpdate();
-            broadcastChatFinal({
-              context,
-              runId: clientRunId,
-              sessionKey,
-            });
+            if (returnedAgentErrorPayloads.length > 0) {
+              await emitUserTranscriptUpdateAfterAgentRun();
+              broadcastChatError({
+                context,
+                runId: clientRunId,
+                sessionKey,
+                errorMessage: returnedAgentErrorMessage,
+              });
+            } else {
+              void emitUserTranscriptUpdate();
+              broadcastChatFinal({
+                context,
+                runId: clientRunId,
+                sessionKey,
+              });
+            }
           }
+          const returnedAgentError =
+            returnedAgentErrorPayloads.length > 0
+              ? errorShape(
+                  ErrorCodes.UNAVAILABLE,
+                  returnedAgentErrorMessage ?? "agent returned an error payload",
+                )
+              : undefined;
           setGatewayDedupeEntry({
             dedupe: context.dedupe,
             key: `chat:${clientRunId}`,
             entry: {
               ts: Date.now(),
-              ok: true,
-              payload: { runId: clientRunId, status: "ok" as const },
+              ok: returnedAgentErrorPayloads.length === 0,
+              payload:
+                returnedAgentErrorPayloads.length > 0
+                  ? {
+                      runId: clientRunId,
+                      status: "error" as const,
+                      summary: returnedAgentErrorMessage ?? "agent returned an error payload",
+                    }
+                  : { runId: clientRunId, status: "ok" as const },
+              ...(returnedAgentError ? { error: returnedAgentError } : {}),
             },
           });
         })

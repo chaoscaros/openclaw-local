@@ -23,6 +23,10 @@ import type { DeliveryContext } from "../../utils/delivery-context.js";
 import { ToolInputError, readNumberParam, readStringParam } from "./common.js";
 import { decodeDataUrl } from "./image-tool.helpers.js";
 import {
+  notifyMediaGenerationAsyncTaskStarted,
+  type MediaGenerateAsyncStartCallback,
+} from "./media-generate-background-shared.js";
+import {
   applyMusicGenerationModelConfigDefaults,
   buildMediaReferenceDetails,
   buildTaskRunDetails,
@@ -113,10 +117,12 @@ const MusicGenerateToolSchema = Type.Object({
 
 export function resolveMusicGenerationModelConfigForTool(params: {
   cfg?: OpenClawConfig;
+  workspaceDir?: string;
   agentDir?: string;
 }): ToolModelConfig | null {
   return resolveCapabilityModelConfigForTool({
     cfg: params.cfg,
+    workspaceDir: params.workspaceDir,
     agentDir: params.agentDir,
     modelConfig: params.cfg?.agents?.defaults?.musicGenerationModel,
     providers: listRuntimeMusicGenerationProviders({ config: params.cfg }),
@@ -462,10 +468,12 @@ export function createMusicGenerateTool(options?: {
   sandbox?: MusicGenerateSandboxConfig;
   fsPolicy?: ToolFsPolicy;
   scheduleBackgroundWork?: MusicGenerateBackgroundScheduler;
+  onAsyncTaskStarted?: MediaGenerateAsyncStartCallback;
 }): AnyAgentTool | null {
   const cfg: OpenClawConfig = options?.config ?? loadConfig();
   const musicGenerationModelConfig = resolveMusicGenerationModelConfigForTool({
     cfg,
+    workspaceDir: options?.workspaceDir,
     agentDir: options?.agentDir,
   });
   if (!musicGenerationModelConfig) {
@@ -496,7 +504,10 @@ export function createMusicGenerateTool(options?: {
         applyMusicGenerationModelConfigDefaults(cfg, musicGenerationModelConfig) ?? cfg;
 
       if (action === "list") {
-        return createMusicGenerateListActionResult(effectiveCfg);
+        return createMusicGenerateListActionResult(effectiveCfg, {
+          workspaceDir: options?.workspaceDir,
+          agentDir: options?.agentDir,
+        });
       }
 
       if (action === "status") {
@@ -602,6 +613,14 @@ export function createMusicGenerateTool(options?: {
             });
             return;
           }
+        });
+
+        await notifyMediaGenerationAsyncTaskStarted({
+          callback: options?.onAsyncTaskStarted,
+          message: "Music generation started; wait for the generated music completion event.",
+          toolName: "music_generate",
+          handle: taskHandle,
+          onFailure: (message, meta) => log.warn(message, meta),
         });
 
         return {

@@ -9,6 +9,7 @@ import {
 } from "../../shared/string-coerce.js";
 import { resolveStatusTtsSnapshot } from "../../tts/status-config.js";
 import { resolveConfiguredTtsMode } from "../../tts/tts-config.js";
+import { isReplyPayloadStatusNotice } from "../reply-payload.js";
 import type { FinalizedMsgContext } from "../templating.js";
 import type { ReplyPayload } from "../types.js";
 import type { ReplyDispatchKind, ReplyDispatcher } from "./reply-dispatcher.types.js";
@@ -98,6 +99,9 @@ async function maybeApplyAcpTts(params: {
   skipTts?: boolean;
 }): Promise<ReplyPayload> {
   if (params.skipTts) {
+    return params.payload;
+  }
+  if (isReplyPayloadStatusNotice(params.payload)) {
     return params.payload;
   }
   const ttsStatus = resolveStatusTtsSnapshot({
@@ -277,7 +281,8 @@ export function createAcpDispatchDeliveryCoordinator(params: {
     payload: ReplyPayload,
     meta?: AcpDispatchDeliveryMeta,
   ): Promise<boolean> => {
-    if (kind === "block" && normalizeOptionalString(payload.text)) {
+    const isStatusNotice = isReplyPayloadStatusNotice(payload);
+    if (kind === "block" && !isStatusNotice && normalizeOptionalString(payload.text)) {
       if (state.accumulatedBlockText.length > 0) {
         state.accumulatedBlockText += "\n";
       }

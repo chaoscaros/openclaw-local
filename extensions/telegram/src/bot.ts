@@ -453,6 +453,7 @@ export function createTelegramBot(opts: TelegramBotOptions): TelegramBotInstance
     groupAllowFrom,
     replyToMode,
     textLimit,
+    mediaMaxBytes,
     useAccessGroups,
     nativeEnabled,
     nativeSkillsEnabled,

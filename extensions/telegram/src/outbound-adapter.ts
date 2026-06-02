@@ -114,7 +114,8 @@ export async function sendTelegramPayloadMessages(params: {
 
 export const telegramOutbound: ChannelOutboundAdapter = {
   deliveryMode: "direct",
-  chunker: markdownToTelegramHtmlChunks,
+  chunker: (text, limit, ctx) =>
+    markdownToTelegramHtmlChunks(text, limit, { tableMode: ctx?.formatting?.tableMode }),
   chunkerMode: "markdown",
   textChunkLimit: TELEGRAM_TEXT_CHUNK_LIMIT,
   resolveEffectiveTextChunkLimit: ({ fallbackLimit }) =>

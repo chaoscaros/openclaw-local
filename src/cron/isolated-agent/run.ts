@@ -5,6 +5,7 @@ import type { ThinkLevel } from "../../auto-reply/thinking.js";
 import type { CliDeps } from "../../cli/outbound-send-deps.js";
 import type { AgentDefaultsConfig } from "../../config/types.agent-defaults.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { clearAgentRunContext } from "../../infra/agent-events.js";
 import { resolveCronDeliveryPlan } from "../delivery-plan.js";
 import type { CronJob, CronRunTelemetry } from "../types.js";
 import {
@@ -127,6 +128,45 @@ type CronExecutionResult = Awaited<ReturnType<CronExecutionRuntime["executeCronR
 type CronModelCatalogRuntime = typeof import("./run-model-catalog.runtime.js");
 type CronDeliveryRuntime = typeof import("./run-delivery.runtime.js");
 type ResolvedCronDeliveryTarget = Awaited<ReturnType<CronDeliveryRuntime["resolveDeliveryTarget"]>>;
+
+function buildCronRunDeliveryTrace(params: {
+  resolvedDelivery: ResolvedCronDeliveryTarget;
+  messagingToolSentTargets?: Array<{ provider?: string; to?: string; accountId?: string }>;
+}): RunCronAgentTurnResult["delivery"] {
+  const resolved = params.resolvedDelivery.ok
+    ? {
+        ok: true,
+        channel: params.resolvedDelivery.channel,
+        to: params.resolvedDelivery.to,
+        accountId: params.resolvedDelivery.accountId,
+        source: params.resolvedDelivery.mode,
+      }
+    : {
+        ok: false,
+        channel: params.resolvedDelivery.channel,
+        to: params.resolvedDelivery.to,
+        accountId: params.resolvedDelivery.accountId,
+        source: params.resolvedDelivery.mode,
+        error: params.resolvedDelivery.error.message,
+      };
+  const messageToolSentTo = (params.messagingToolSentTargets ?? [])
+    .map((target) => {
+      const channel = typeof target.provider === "string" ? target.provider.trim() : "";
+      if (!channel) {
+        return undefined;
+      }
+      return {
+        channel,
+        ...(target.to ? { to: target.to } : {}),
+        ...(target.accountId ? { accountId: target.accountId } : {}),
+      };
+    })
+    .filter((target): target is NonNullable<typeof target> => Boolean(target));
+  return {
+    resolved,
+    ...(messageToolSentTo.length > 0 ? { messageToolSentTo } : {}),
+  };
+}
 
 function resolveCronToolPolicy(params: { deliveryMode: "announce" | "webhook" | "none" }) {
   const enableMessageTool = params.deliveryMode !== "webhook";
@@ -672,6 +712,7 @@ async function finalizeCronRun(params: {
     deliveryPayloads,
     deliveryPayloadHasStructuredContent,
     hasFatalErrorPayload,
+    hasFatalStructuredErrorPayload,
     embeddedRunError,
   } = resolveCronPayloadOutcome({
     payloads,
@@ -697,6 +738,7 @@ async function finalizeCronRun(params: {
     prepared.deliveryRequested &&
     isHeartbeatOnlyResponse(payloads, resolveHeartbeatAckMaxChars(prepared.agentCfg));
   const {
+    cleanupDirectCronSession,
     dispatchCronDelivery,
     matchesMessagingToolDeliveryTarget,
     resolveCronDeliveryBestEffort,
@@ -710,6 +752,27 @@ async function finalizeCronRun(params: {
         accountId: prepared.resolvedDelivery.accountId,
       }),
     );
+  if (hasFatalStructuredErrorPayload && prepared.deliveryRequested) {
+    await cleanupDirectCronSession({
+      job: prepared.input.job,
+      agentSessionKey: prepared.agentSessionKey,
+      sessionId: prepared.runSessionId,
+      retireReason: "cron-delete-after-run-fatal-error",
+    });
+    return prepared.withRunSession({
+      status: "error",
+      error: embeddedRunError ?? "cron isolated run returned an error payload",
+      summary,
+      outputText,
+      delivered: skipMessagingToolDelivery,
+      deliveryAttempted: skipMessagingToolDelivery,
+      delivery: buildCronRunDeliveryTrace({
+        resolvedDelivery: prepared.resolvedDelivery,
+        messagingToolSentTargets: finalRunResult.messagingToolSentTargets,
+      }),
+      ...telemetry,
+    });
+  }
   const deliveryResult = await dispatchCronDelivery({
     cfg: prepared.input.cfg,
     cfgWithAgentDefaults: prepared.cfgWithAgentDefaults,
@@ -761,6 +824,17 @@ async function finalizeCronRun(params: {
   });
 }
 
+function disposeCronRunContext(params: {
+  sessionId: string;
+  cronSession: MutableCronSession;
+  ownsRunContext: boolean;
+}): void {
+  if (params.ownsRunContext) {
+    clearAgentRunContext(params.sessionId);
+  }
+  (params.cronSession as { store?: unknown }).store = undefined;
+}
+
 export async function runCronIsolatedAgentTurn(
   params: RunCronAgentTurnParams,
 ): Promise<RunCronAgentTurnResult> {
@@ -777,6 +851,7 @@ export async function runCronIsolatedAgentTurn(
   if (!prepared.ok) {
     return prepared.result;
   }
+  const initialSessionId = prepared.context.cronSession.sessionEntry.sessionId;
 
   try {
     const { executeCronRun } = await loadCronExecutorRuntime();
@@ -819,5 +894,11 @@ export async function runCronIsolatedAgentTurn(
     });
   } catch (err) {
     return prepared.context.withRunSession({ status: "error", error: String(err) });
+  } finally {
+    disposeCronRunContext({
+      sessionId: initialSessionId,
+      cronSession: prepared.context.cronSession,
+      ownsRunContext: params.job.sessionTarget === "isolated",
+    });
   }
 }

@@ -10,6 +10,7 @@ type LockFilePayload = {
   createdAt?: string;
   /** Process start time in clock ticks (from /proc/pid/stat field 22). */
   starttime?: number;
+  maxHoldMs?: number;
 };
 
 function isValidLockNumber(value: unknown): value is number {
@@ -310,6 +311,9 @@ async function readLockPayload(lockPath: string): Promise<LockFilePayload | null
     if (isValidLockNumber(parsed.starttime)) {
       payload.starttime = parsed.starttime;
     }
+    if (isValidLockNumber(parsed.maxHoldMs) && parsed.maxHoldMs > 0) {
+      payload.maxHoldMs = parsed.maxHoldMs;
+    }
     return payload;
   } catch {
     return null;
@@ -320,6 +324,7 @@ function inspectLockPayload(
   payload: LockFilePayload | null,
   staleMs: number,
   nowMs: number,
+  opts: { respectMaxHold?: boolean } = {},
 ): LockInspectionDetails {
   const pid = isValidLockNumber(payload?.pid) && payload.pid > 0 ? payload.pid : null;
   const pidAlive = pid !== null ? isPidAlive(pid) : false;
@@ -351,6 +356,16 @@ function inspectLockPayload(
     staleReasons.push("invalid-createdAt");
   } else if (ageMs > staleMs) {
     staleReasons.push("too-old");
+  }
+  const holderMaxHoldMs =
+    isValidLockNumber(payload?.maxHoldMs) && payload.maxHoldMs > 0 ? payload.maxHoldMs : undefined;
+  if (
+    opts.respectMaxHold === true &&
+    typeof holderMaxHoldMs === "number" &&
+    ageMs !== null &&
+    ageMs > holderMaxHoldMs
+  ) {
+    staleReasons.push("hold-exceeded");
   }
 
   return {
@@ -511,7 +526,7 @@ export async function acquireSessionWriteLock(params: {
       handle = await fs.open(lockPath, "wx");
       const createdAt = new Date().toISOString();
       const starttime = getProcessStartTime(process.pid);
-      const lockPayload: LockFilePayload = { pid: process.pid, createdAt };
+      const lockPayload: LockFilePayload = { pid: process.pid, createdAt, maxHoldMs };
       if (starttime !== null) {
         lockPayload.starttime = starttime;
       }
@@ -548,7 +563,10 @@ export async function acquireSessionWriteLock(params: {
       }
       const payload = await readLockPayload(lockPath);
       const nowMs = Date.now();
-      const inspected = inspectLockPayload(payload, staleMs, nowMs);
+      const heldByThisProcess = HELD_LOCKS.has(normalizedSessionFile);
+      const inspected = inspectLockPayload(payload, staleMs, nowMs, {
+        respectMaxHold: !heldByThisProcess,
+      });
       const orphanSelfLock = shouldTreatAsOrphanSelfLock({
         payload,
         normalizedSessionFile,
@@ -580,6 +598,7 @@ export async function acquireSessionWriteLock(params: {
 export const __testing = {
   cleanupSignals: [...CLEANUP_SIGNALS],
   handleTerminationSignal,
+  inspectLockPayloadForTest: inspectLockPayload,
   releaseAllLocksSync,
   runLockWatchdogCheck,
 };

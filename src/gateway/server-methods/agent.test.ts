@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   getLatestSubagentRunByChildSessionKey: vi.fn(),
   replaceSubagentRunAfterSteer: vi.fn(),
   loadConfigReturn: {} as Record<string, unknown>,
+  resolveSendPolicy: vi.fn((_args?: { entry?: { sendPolicy?: string } }) => "allow"),
 }));
 
 vi.mock("../session-utils.js", async () => {
@@ -88,7 +89,7 @@ vi.mock("../session-reset-service.js", () => ({
 }));
 
 vi.mock("../../sessions/send-policy.js", () => ({
-  resolveSendPolicy: () => "allow",
+  resolveSendPolicy: (args?: { entry?: { sendPolicy?: string } }) => mocks.resolveSendPolicy(args),
 }));
 
 vi.mock("../../utils/delivery-context.js", async () => {
@@ -316,6 +317,7 @@ describe("gateway agent handler", () => {
       process.env.OPENCLAW_STATE_DIR = ORIGINAL_STATE_DIR;
     }
     resetTaskRegistryForTests();
+    mocks.resolveSendPolicy.mockReset().mockReturnValue("allow");
   });
 
   it("preserves ACP metadata from the current stored session entry", async () => {
@@ -352,6 +354,117 @@ describe("gateway agent handler", () => {
     expect(mocks.updateSessionStore).toHaveBeenCalled();
     expect(capturedEntry).toBeDefined();
     expect(capturedEntry?.acp).toEqual(existingAcpMeta);
+  });
+
+  it("preserves fresh model overrides when cached session entry is stale", async () => {
+    mocks.loadSessionEntry.mockReturnValue({
+      cfg: {},
+      storePath: "/tmp/sessions.json",
+      entry: {
+        sessionId: "subagent-session-id",
+        updatedAt: Date.now() - 1000,
+      },
+      canonicalKey: "agent:main:subagent:test-uuid",
+    });
+    let capturedEntry: Record<string, unknown> | undefined;
+    mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
+      const freshStore: Record<string, Record<string, unknown>> = {
+        "agent:main:subagent:test-uuid": {
+          sessionId: "subagent-session-id",
+          updatedAt: Date.now(),
+          modelOverride: "qwen3-coder:30b",
+          providerOverride: "ollama",
+        },
+      };
+      const result = await updater(freshStore);
+      capturedEntry = freshStore["agent:main:subagent:test-uuid"];
+      return result;
+    });
+    mocks.agentCommand.mockResolvedValue({
+      payloads: [{ text: "ok" }],
+      meta: { durationMs: 100 },
+    });
+
+    await invokeAgent(
+      {
+        message: "hi",
+        agentId: "main",
+        sessionKey: "agent:main:subagent:test-uuid",
+        idempotencyKey: "test-stale-model-override",
+      },
+      { reqId: "stale-model-override" },
+    );
+
+    expect(capturedEntry?.modelOverride).toBe("qwen3-coder:30b");
+    expect(capturedEntry?.providerOverride).toBe("ollama");
+  });
+
+  it("checks delivery sendPolicy against the fresh store entry", async () => {
+    mocks.loadSessionEntry.mockReturnValue({
+      cfg: {},
+      storePath: "/tmp/sessions.json",
+      entry: {
+        sessionId: "subagent-session-id",
+        updatedAt: Date.now() - 1000,
+      },
+      canonicalKey: "agent:main:subagent:test-policy",
+    });
+    let capturedEntry: Record<string, unknown> | undefined;
+    mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
+      const freshStore: Record<string, Record<string, unknown>> = {
+        "agent:main:subagent:test-policy": {
+          sessionId: "subagent-session-id",
+          updatedAt: Date.now(),
+          sendPolicy: "deny",
+          channel: "telegram",
+        },
+      };
+      const result = await updater(freshStore);
+      capturedEntry = freshStore["agent:main:subagent:test-policy"];
+      return result;
+    });
+    mocks.resolveSendPolicy.mockImplementation((args?: { entry?: { sendPolicy?: string } }) =>
+      args?.entry?.sendPolicy === "deny" ? "deny" : "allow",
+    );
+    mocks.agentCommand.mockClear();
+    mocks.agentCommand.mockResolvedValue({
+      payloads: [{ text: "ok" }],
+      meta: { durationMs: 100 },
+    });
+    const respond = vi.fn();
+
+    await invokeAgent(
+      {
+        message: "hi",
+        agentId: "main",
+        sessionKey: "agent:main:subagent:test-policy",
+        idempotencyKey: "test-stale-send-policy",
+      },
+      { reqId: "stale-send-policy", respond },
+    );
+
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "send blocked by session policy",
+      }),
+    );
+    expect(mocks.resolveSendPolicy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entry: expect.objectContaining({ sendPolicy: "deny" }),
+        sessionKey: "agent:main:subagent:test-policy",
+      }),
+    );
+    expect(capturedEntry).toMatchObject({
+      sessionId: "subagent-session-id",
+      sendPolicy: "deny",
+      channel: "telegram",
+    });
+    expect(capturedEntry).not.toHaveProperty("deliveryContext");
+    expect(capturedEntry).not.toHaveProperty("lastTo");
+    expect(mocks.agentCommand).not.toHaveBeenCalled();
   });
 
   it("forwards provider and model overrides for admin-scoped callers", async () => {

@@ -72,6 +72,10 @@ export function buildAssistantMessageWithZeroUsage(params: {
   });
 }
 
+// Used by live streams and offline session repair so failed assistant turns have
+// one stable placeholder that prompt replay can identify by provenance.
+export const STREAM_ERROR_FALLBACK_TEXT = "[assistant turn failed before producing content]";
+
 export function buildStreamErrorAssistantMessage(params: {
   model: StreamModelDescriptor;
   errorMessage: string;
@@ -80,7 +84,7 @@ export function buildStreamErrorAssistantMessage(params: {
   return {
     ...buildAssistantMessageWithZeroUsage({
       model: params.model,
-      content: [],
+      content: [{ type: "text", text: STREAM_ERROR_FALLBACK_TEXT }],
       stopReason: "error",
       timestamp: params.timestamp,
     }),

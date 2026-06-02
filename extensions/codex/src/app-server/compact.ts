@@ -24,6 +24,13 @@ type CodexNativeCompactionWaiter = {
 };
 
 const DEFAULT_CODEX_COMPACTION_WAIT_TIMEOUT_MS = 5 * 60 * 1000;
+const MAX_CODEX_NATIVE_COMPACTION_ATTEMPTS = 2;
+
+class CodexNativeCompactionTimeoutError extends Error {
+  constructor(readonly threadId: string) {
+    super(`timed out waiting for codex app-server compaction for ${threadId}`);
+  }
+}
 
 let clientFactory: CodexAppServerClientFactory = (startOptions) =>
   getSharedCodexAppServerClient({ startOptions });
@@ -38,25 +45,51 @@ export async function maybeCompactCodexAppServerSession(
     return { ok: false, compacted: false, reason: "no codex app-server thread binding" };
   }
 
-  const client = await clientFactory(appServer.start);
-  const waiter = createCodexNativeCompactionWaiter(client, binding.threadId);
-  let completion: CodexNativeCompactionCompletion;
-  try {
-    await client.request("thread/compact/start", {
-      threadId: binding.threadId,
-    });
-    embeddedAgentLog.info("started codex app-server compaction", {
-      sessionId: params.sessionId,
-      threadId: binding.threadId,
-    });
-    waiter.startTimeout();
-    completion = await waiter.promise;
-  } catch (error) {
-    waiter.cancel();
+  let completion: CodexNativeCompactionCompletion | undefined;
+  let attempt = 0;
+  for (attempt = 1; attempt <= MAX_CODEX_NATIVE_COMPACTION_ATTEMPTS; attempt += 1) {
+    const client = await clientFactory(appServer.start);
+    const waiter = createCodexNativeCompactionWaiter(client, binding.threadId);
+    try {
+      await client.request("thread/compact/start", {
+        threadId: binding.threadId,
+      });
+      embeddedAgentLog.info("started codex app-server compaction", {
+        sessionId: params.sessionId,
+        threadId: binding.threadId,
+        attempt,
+      });
+      waiter.startTimeout();
+      completion = await waiter.promise;
+      break;
+    } catch (error) {
+      waiter.cancel();
+      if (
+        error instanceof CodexNativeCompactionTimeoutError &&
+        error.threadId === binding.threadId
+      ) {
+        restartCodexAppServerAfterNativeCompactionTimeout(
+          client,
+          params,
+          binding.threadId,
+          attempt,
+        );
+        if (attempt < MAX_CODEX_NATIVE_COMPACTION_ATTEMPTS) {
+          continue;
+        }
+      }
+      return {
+        ok: false,
+        compacted: false,
+        reason: formatCompactionError(error),
+      };
+    }
+  }
+  if (!completion) {
     return {
       ok: false,
       compacted: false,
-      reason: formatCompactionError(error),
+      reason: `codex app-server compaction did not complete for ${binding.threadId}`,
     };
   }
   embeddedAgentLog.info("completed codex app-server compaction", {
@@ -79,9 +112,31 @@ export async function maybeCompactCodexAppServerSession(
         signal: completion.signal,
         turnId: completion.turnId,
         itemId: completion.itemId,
+        ...(attempt > 1
+          ? {
+              compactionAttempts: attempt,
+              recoveredAfterAppServerRestart: true,
+            }
+          : {}),
       },
     },
   };
+}
+
+function restartCodexAppServerAfterNativeCompactionTimeout(
+  client: CodexAppServerClient,
+  params: CompactEmbeddedPiSessionParams,
+  threadId: string,
+  attempt: number,
+): void {
+  embeddedAgentLog.warn("codex app-server compaction timed out; restarting app-server", {
+    sessionId: params.sessionId,
+    sessionKey: params.sessionKey,
+    threadId,
+    attempt,
+    maxAttempts: MAX_CODEX_NATIVE_COMPACTION_ATTEMPTS,
+  });
+  client.close();
 }
 
 function createCodexNativeCompactionWaiter(
@@ -133,7 +188,7 @@ function createCodexNativeCompactionWaiter(
         return;
       }
       timeout = setTimeout(() => {
-        failWaiter(new Error(`timed out waiting for codex app-server compaction for ${threadId}`));
+        failWaiter(new CodexNativeCompactionTimeoutError(threadId));
       }, resolveCompactionWaitTimeoutMs());
       timeout.unref?.();
     },

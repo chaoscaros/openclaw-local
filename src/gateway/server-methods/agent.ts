@@ -91,6 +91,12 @@ import type { GatewayRequestHandlerOptions, GatewayRequestHandlers } from "./typ
 
 const RESET_COMMAND_RE = /^\/(new|reset)(?:\s+([\s\S]*))?$/i;
 
+function compactSessionEntryPatch(patch: Partial<SessionEntry>): Partial<SessionEntry> {
+  return Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined),
+  ) as Partial<SessionEntry>;
+}
+
 function resolveSenderIsOwnerFromClient(client: GatewayRequestHandlerOptions["client"]): boolean {
   const scopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
   return scopes.includes(ADMIN_SCOPE);
@@ -632,62 +638,33 @@ export const agentHandlers: GatewayRequestHandlers = {
         route: deliveryFields.route,
         deliveryContext: effectiveDelivery,
       });
-      const nextEntryPatch: SessionEntry = {
+      const nextEntryPatch = compactSessionEntryPatch({
         sessionId,
         updatedAt: now,
-        thinkingLevel: entry?.thinkingLevel,
-        fastMode: entry?.fastMode,
-        verboseLevel: entry?.verboseLevel,
-        traceLevel: entry?.traceLevel,
-        reasoningLevel: entry?.reasoningLevel,
-        systemSent: entry?.systemSent,
-        sendPolicy: entry?.sendPolicy,
-        skillsSnapshot: entry?.skillsSnapshot,
         route: effectiveDeliveryFields.route,
         deliveryContext: effectiveDeliveryFields.deliveryContext,
-        lastChannel: effectiveDeliveryFields.lastChannel ?? entry?.lastChannel,
-        lastTo: effectiveDeliveryFields.lastTo ?? entry?.lastTo,
-        lastAccountId: effectiveDeliveryFields.lastAccountId ?? entry?.lastAccountId,
-        lastThreadId: effectiveDeliveryFields.lastThreadId ?? entry?.lastThreadId,
-        modelOverride: entry?.modelOverride,
-        providerOverride: entry?.providerOverride,
-        label: labelValue,
+        lastChannel: effectiveDeliveryFields.lastChannel,
+        lastTo: effectiveDeliveryFields.lastTo,
+        lastAccountId: effectiveDeliveryFields.lastAccountId,
+        lastThreadId: effectiveDeliveryFields.lastThreadId,
+        ...(labelValue ? { label: labelValue } : {}),
         spawnedBy: spawnedByValue,
-        spawnedWorkspaceDir: entry?.spawnedWorkspaceDir,
-        spawnDepth: entry?.spawnDepth,
-        channel: entry?.channel ?? request.channel?.trim(),
+        channel: request.channel?.trim(),
         groupId: resolvedGroupId ?? entry?.groupId,
         groupChannel: resolvedGroupChannel ?? entry?.groupChannel,
         space: resolvedGroupSpace ?? entry?.space,
-        ...(rotatedSessionId
-          ? {
-              status: undefined,
-              startedAt: undefined,
-              endedAt: undefined,
-              runtimeMs: undefined,
-              abortedLastRun: undefined,
-              sessionFile: undefined,
-            }
-          : {}),
-        cliSessionIds: entry?.cliSessionIds,
-        claudeCliSessionId: entry?.claudeCliSessionId,
-      };
-      sessionEntry = mergeSessionEntry(entry, nextEntryPatch);
-      const sendPolicy = resolveSendPolicy({
-        cfg,
-        entry,
-        sessionKey: canonicalKey,
-        channel: entry?.channel,
-        chatType: entry?.chatType,
       });
-      if (sendPolicy === "deny") {
-        respond(
-          false,
-          undefined,
-          errorShape(ErrorCodes.INVALID_REQUEST, "send blocked by session policy"),
-        );
-        return;
+      if (rotatedSessionId) {
+        Object.assign(nextEntryPatch, {
+          status: undefined,
+          startedAt: undefined,
+          endedAt: undefined,
+          runtimeMs: undefined,
+          abortedLastRun: undefined,
+          sessionFile: undefined,
+        });
       }
+      sessionEntry = mergeSessionEntry(entry, nextEntryPatch);
       resolvedSessionId = sessionId;
       const canonicalSessionKey = canonicalKey;
       resolvedSessionKey = canonicalSessionKey;
@@ -700,11 +677,40 @@ export const agentHandlers: GatewayRequestHandlers = {
             key: requestedSessionKey,
             store,
           });
-          const merged = mergeSessionEntry(store[primaryKey], nextEntryPatch);
+          const freshEntry = store[primaryKey];
+          const patch = { ...nextEntryPatch };
+          if (freshEntry?.sessionId && freshEntry.sessionId !== entry?.sessionId) {
+            patch.sessionId = freshEntry.sessionId;
+            delete patch.status;
+            delete patch.startedAt;
+            delete patch.endedAt;
+            delete patch.runtimeMs;
+            delete patch.abortedLastRun;
+            delete patch.sessionFile;
+          }
+          const merged = mergeSessionEntry(freshEntry, patch);
           store[primaryKey] = merged;
           return merged;
         });
-        sessionEntry = persisted;
+        if (persisted) {
+          sessionEntry = persisted;
+          resolvedSessionId = persisted.sessionId;
+        }
+      }
+      const sendPolicy = resolveSendPolicy({
+        cfg,
+        entry: sessionEntry,
+        sessionKey: canonicalKey,
+        channel: sessionEntry?.channel,
+        chatType: sessionEntry?.chatType,
+      });
+      if (sendPolicy === "deny") {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "send blocked by session policy"),
+        );
+        return;
       }
       if (canonicalSessionKey === mainSessionKey || canonicalSessionKey === "global") {
         context.addChatRun(idem, {

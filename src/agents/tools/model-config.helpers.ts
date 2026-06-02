@@ -10,7 +10,7 @@ import {
   listProfilesForProvider,
 } from "../auth-profiles.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
-import { resolveEnvApiKey } from "../model-auth.js";
+import { hasUsableCustomProviderApiKey, resolveEnvApiKey } from "../model-auth.js";
 import { resolveConfiguredModelRef } from "../model-selection.js";
 
 export type ToolModelConfig = { primary?: string; fallbacks?: string[] };
@@ -50,6 +50,18 @@ export function hasAuthForProvider(params: { provider: string; agentDir?: string
   return listProfilesForProvider(store, params.provider).length > 0;
 }
 
+export function hasProviderAuthForTool(params: {
+  provider: string;
+  cfg?: OpenClawConfig;
+  workspaceDir?: string;
+  agentDir?: string;
+}): boolean {
+  if (hasAuthForProvider({ provider: params.provider, agentDir: params.agentDir })) {
+    return true;
+  }
+  return hasUsableCustomProviderApiKey(params.cfg, params.provider);
+}
+
 export function coerceToolModelConfig(model?: AgentModelConfig): ToolModelConfig {
   const primary = resolveAgentModelPrimaryValue(model);
   const fallbacks = resolveAgentModelFallbackValues(model);
@@ -61,6 +73,8 @@ export function coerceToolModelConfig(model?: AgentModelConfig): ToolModelConfig
 
 export function buildToolModelConfigFromCandidates(params: {
   explicit: ToolModelConfig;
+  cfg?: OpenClawConfig;
+  workspaceDir?: string;
   agentDir?: string;
   candidates: Array<string | null | undefined>;
   isProviderConfigured?: (provider: string) => boolean;
@@ -78,7 +92,12 @@ export function buildToolModelConfigFromCandidates(params: {
     const provider = trimmed.slice(0, trimmed.indexOf("/")).trim();
     const providerConfigured =
       params.isProviderConfigured?.(provider) ??
-      hasAuthForProvider({ provider, agentDir: params.agentDir });
+      hasProviderAuthForTool({
+        provider,
+        cfg: params.cfg,
+        workspaceDir: params.workspaceDir,
+        agentDir: params.agentDir,
+      });
     if (!provider || !providerConfigured) {
       continue;
     }

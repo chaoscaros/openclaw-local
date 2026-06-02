@@ -1,4 +1,6 @@
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { getProviderEnvVars } from "../../secrets/provider-env-vars.js";
+import { isCapabilityProviderConfigured } from "./media-tool-shared.js";
 
 type MediaGenerateActionResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -20,6 +22,9 @@ export function createMediaGenerateProviderListActionResult<
 >(params: {
   providers: TProvider[];
   emptyText: string;
+  cfg?: OpenClawConfig;
+  workspaceDir?: string;
+  agentDir?: string;
   listModes: (provider: TProvider) => string[];
   summarizeCapabilities: (provider: TProvider) => string;
 }): MediaGenerateActionResult {
@@ -32,11 +37,19 @@ export function createMediaGenerateProviderListActionResult<
 
   const lines = params.providers.map((provider) => {
     const authHints = getProviderEnvVars(provider.id);
+    const configured = isCapabilityProviderConfigured({
+      providers: params.providers,
+      provider,
+      cfg: params.cfg,
+      workspaceDir: params.workspaceDir,
+      agentDir: params.agentDir,
+    });
     const capabilities = params.summarizeCapabilities(provider);
     return [
       `${provider.id}: default=${provider.defaultModel ?? "none"}`,
       provider.models?.length ? `models=${provider.models.join(", ")}` : null,
       capabilities ? `capabilities=${capabilities}` : null,
+      `configured=${configured ? "yes" : "no"}`,
       authHints.length > 0 ? `auth=${authHints.join(" / ")}` : null,
     ]
       .filter((entry): entry is string => Boolean(entry))
@@ -51,6 +64,13 @@ export function createMediaGenerateProviderListActionResult<
         defaultModel: provider.defaultModel,
         models: provider.models ?? [],
         modes: params.listModes(provider),
+        configured: isCapabilityProviderConfigured({
+          providers: params.providers,
+          provider,
+          cfg: params.cfg,
+          workspaceDir: params.workspaceDir,
+          agentDir: params.agentDir,
+        }),
         authEnvVars: getProviderEnvVars(provider.id),
         capabilities: provider.capabilities,
       })),

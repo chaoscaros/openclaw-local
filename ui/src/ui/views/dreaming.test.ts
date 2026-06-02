@@ -508,6 +508,94 @@ describe("dreaming view", () => {
     setDreamSubTab("scene");
   });
 
+  it("keeps non-report memory palace card clicks on details", () => {
+    setDreamSubTab("diary");
+    setDreamDiarySubTab("palace");
+    const container = document.createElement("div");
+    let props: DreamingProps;
+    const rerender = () => render(renderDreaming(props), container);
+    props = buildProps({ onRequestUpdate: rerender });
+    rerender();
+
+    container
+      .querySelector<HTMLElement>("[data-palace-page='syntheses/travel-system.md']")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(container.textContent).toContain("页面详情");
+    setDreamDiarySubTab("dreams");
+    setDreamSubTab("scene");
+  });
+
+  it("opens report memory palace cards on primary click", async () => {
+    setDreamSubTab("diary");
+    setDreamDiarySubTab("palace");
+    const onOpenWikiPage = vi.fn().mockResolvedValue({
+      title: "Weekly stock report",
+      path: "reports/weekly-stock.md",
+      content: "# Weekly stock report\n\nSummary content.",
+      totalLines: 2,
+      truncated: false,
+    });
+    const container = document.createElement("div");
+    let props: DreamingProps;
+    const rerender = () => render(renderDreaming(props), container);
+    props = buildProps({
+      onOpenWikiPage,
+      onRequestUpdate: rerender,
+      wikiMemoryPalace: {
+        totalItems: 1,
+        totalClaims: 0,
+        totalQuestions: 0,
+        totalContradictions: 0,
+        clusters: [
+          {
+            key: "report",
+            label: "Reports",
+            itemCount: 1,
+            claimCount: 0,
+            questionCount: 0,
+            contradictionCount: 0,
+            items: [
+              {
+                pagePath: "reports/weekly-stock.md",
+                title: "Weekly stock report",
+                kind: "report",
+                claimCount: 0,
+                questionCount: 0,
+                contradictionCount: 0,
+                claims: [],
+                questions: [],
+                contradictions: [],
+                snippet: "Weekly stock summary.",
+                updatedAt: "2026-04-12T10:00:00.000Z",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    rerender();
+
+    container
+      .querySelector<HTMLElement>("[data-palace-page='reports/weekly-stock.md']")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onOpenWikiPage).toHaveBeenCalledWith("reports/weekly-stock.md");
+    expect(container.querySelector(".dreams-diary__insight-list")?.textContent ?? "").not.toContain(
+      "页面详情",
+    );
+    expect(collapseText(container.querySelector(".dreams-diary__preview-title")?.textContent)).toBe(
+      "Weekly stock report",
+    );
+    expect(collapseText(container.querySelector(".dreams-diary__preview-body")?.textContent)).toBe(
+      "# Weekly stock report Summary content.",
+    );
+    setDreamDiarySubTab("dreams");
+    setDreamSubTab("scene");
+  });
+
   it("renders the memory palace inside the diary tab", () => {
     setDreamSubTab("diary");
     setDreamDiarySubTab("palace");

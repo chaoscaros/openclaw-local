@@ -1,4 +1,5 @@
 import { onAgentEvent } from "../../infra/agent-events.js";
+import { formatBlockedLivenessError, isBlockedLivenessState } from "../../shared/agent-liveness.js";
 
 const AGENT_RUN_CACHE_TTL_MS = 10 * 60_000;
 /**
@@ -19,6 +20,7 @@ type AgentRunSnapshot = {
   startedAt?: number;
   endedAt?: number;
   error?: string;
+  livenessState?: string;
   ts: number;
 };
 
@@ -86,12 +88,15 @@ function createSnapshotFromLifecycleEvent(params: {
     typeof data?.startedAt === "number" ? data.startedAt : agentRunStarts.get(runId);
   const endedAt = typeof data?.endedAt === "number" ? data.endedAt : undefined;
   const error = typeof data?.error === "string" ? data.error : undefined;
+  const livenessState = typeof data?.livenessState === "string" ? data.livenessState : undefined;
+  const blocked = isBlockedLivenessState(livenessState);
   return {
     runId,
-    status: phase === "error" ? "error" : data?.aborted ? "timeout" : "ok",
+    status: phase === "error" || blocked ? "error" : data?.aborted ? "timeout" : "ok",
     startedAt,
     endedAt,
-    error,
+    error: blocked ? formatBlockedLivenessError(error) : error,
+    livenessState,
     ts: Date.now(),
   };
 }

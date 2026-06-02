@@ -5,8 +5,12 @@ import {
   installProviderHttpMockCleanup,
 } from "../../test/helpers/media-generation/provider-http-mocks.js";
 
-const { postJsonRequestMock, fetchWithTimeoutMock, resolveProviderHttpRequestConfigMock } =
-  getProviderHttpMocks();
+const {
+  postJsonRequestMock,
+  fetchWithTimeoutMock,
+  fetchWithTimeoutGuardedMock,
+  resolveProviderHttpRequestConfigMock,
+} = getProviderHttpMocks();
 
 let buildOpenAIVideoGenerationProvider: typeof import("./video-generation-provider.js").buildOpenAIVideoGenerationProvider;
 
@@ -220,13 +224,99 @@ describe("openai video generation provider", () => {
     expect(postJsonRequestMock).not.toHaveBeenCalled();
     expect(fetchWithTimeoutMock).toHaveBeenNthCalledWith(
       1,
-      "https://api.openai.com/v1/videos",
+      "https://api.openai.com/v1/videos/edits",
       expect.objectContaining({
         method: "POST",
         body: expect.any(FormData),
       }),
       120000,
       fetch,
+    );
+    const form = fetchWithTimeoutMock.mock.calls[0]?.[1]?.body;
+    expect(form).toBeInstanceOf(FormData);
+    expect((form as FormData).get("video")).toBeInstanceOf(File);
+    expect((form as FormData).get("input_reference")).toBeNull();
+  });
+
+  it("threads request network policy through status and download requests", async () => {
+    postJsonRequestMock.mockResolvedValue({
+      response: {
+        json: async () => ({
+          id: "vid_policy",
+          model: "sora-2",
+          status: "queued",
+        }),
+      },
+      release: vi.fn(async () => {}),
+    });
+    fetchWithTimeoutGuardedMock
+      .mockResolvedValueOnce({
+        response: {
+          json: async () => ({
+            id: "vid_policy",
+            model: "sora-2",
+            status: "completed",
+          }),
+        },
+        release: vi.fn(async () => {}),
+      })
+      .mockResolvedValueOnce({
+        response: {
+          headers: new Headers({ "content-type": "video/mp4" }),
+          arrayBuffer: async () => Buffer.from("mp4-bytes"),
+        },
+        release: vi.fn(async () => {}),
+      });
+
+    const provider = buildOpenAIVideoGenerationProvider();
+    await provider.generateVideo({
+      provider: "openai",
+      model: "sora-2",
+      prompt: "Render via private relay",
+      cfg: {
+        models: {
+          providers: {
+            openai: {
+              baseUrl: "http://127.0.0.1:44080/v1",
+              request: { allowPrivateNetwork: true },
+              models: [],
+            },
+          },
+        },
+      },
+    });
+
+    expect(resolveProviderHttpRequestConfigMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({ allowPrivateNetwork: true }),
+      }),
+    );
+    expect(postJsonRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowPrivateNetwork: true,
+      }),
+    );
+    expect(fetchWithTimeoutGuardedMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:44080/v1/videos/vid_policy",
+      expect.objectContaining({ method: "GET" }),
+      120000,
+      fetch,
+      expect.objectContaining({
+        ssrfPolicy: { allowPrivateNetwork: true },
+        auditContext: "openai-video-status",
+      }),
+    );
+    expect(fetchWithTimeoutGuardedMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:44080/v1/videos/vid_policy/content?variant=video",
+      expect.objectContaining({ method: "GET" }),
+      120000,
+      fetch,
+      expect.objectContaining({
+        ssrfPolicy: { allowPrivateNetwork: true },
+        auditContext: "openai-video-download",
+      }),
     );
   });
 

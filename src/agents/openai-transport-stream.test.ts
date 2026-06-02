@@ -1682,6 +1682,195 @@ describe("openai transport stream", () => {
     expect(params).toHaveProperty("tool_choice", "required");
   });
 
+  it("omits tools from completions payload when model compat sets supportsTools to false", () => {
+    const params = buildOpenAICompletionsParams(
+      {
+        id: "venice-no-tools",
+        name: "Venice No Tools",
+        api: "openai-completions",
+        provider: "venice",
+        baseUrl: "https://api.venice.ai/api/v1",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 4096,
+        maxTokens: 2048,
+        compat: { supportsTools: false },
+      } satisfies Model<"openai-completions">,
+      {
+        systemPrompt: "You are a helpful assistant",
+        messages: [],
+        tools: [
+          {
+            name: "noop",
+            description: "noop tool",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+      } as never,
+      {
+        toolChoice: "required",
+      },
+    );
+
+    expect(params).not.toHaveProperty("tools");
+    expect(params).not.toHaveProperty("tool_choice");
+  });
+
+  it("omits tool-history tools fallback when model compat sets supportsTools to false", () => {
+    const params = buildOpenAICompletionsParams(
+      {
+        id: "venice-no-tools",
+        name: "Venice No Tools",
+        api: "openai-completions",
+        provider: "venice",
+        baseUrl: "https://api.venice.ai/api/v1",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 4096,
+        maxTokens: 2048,
+        compat: { supportsTools: false },
+      } satisfies Model<"openai-completions">,
+      {
+        systemPrompt: "You are a helpful assistant",
+        messages: [
+          {
+            role: "assistant",
+            content: [{ type: "toolCall", id: "call_1", name: "noop", arguments: {} }],
+          },
+          {
+            role: "toolResult",
+            toolCallId: "call_1",
+            content: [{ type: "text", text: "ok" }],
+          },
+        ],
+      } as never,
+      undefined,
+    );
+
+    expect(params).not.toHaveProperty("tools");
+  });
+
+  it("accumulates arguments for parallel tool calls with split indices", async () => {
+    const model = {
+      id: "kimi-for-coding",
+      name: "Kimi for Coding",
+      api: "openai-completions",
+      provider: "kimi-code",
+      baseUrl: "https://api.moonshot.cn",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 200000,
+      maxTokens: 8192,
+    } satisfies Model<"openai-completions">;
+
+    const output = {
+      role: "assistant" as const,
+      content: [],
+      api: model.api,
+      provider: model.provider,
+      model: model.id,
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    };
+
+    const mockChunks = [
+      {
+        id: "chatcmpl-parallel",
+        object: "chat.completion.chunk" as const,
+        created: 1,
+        model: model.id,
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_0",
+                  type: "function",
+                  function: { name: "exec", arguments: "" },
+                },
+                {
+                  index: 1,
+                  id: "call_1",
+                  type: "function",
+                  function: { name: "read", arguments: "" },
+                },
+              ],
+            },
+            logprobs: null,
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: "chatcmpl-parallel",
+        object: "chat.completion.chunk" as const,
+        created: 1,
+        model: model.id,
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [{ index: 0, function: { arguments: '{"command":"ls"}' } }],
+            },
+            logprobs: null,
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: "chatcmpl-parallel",
+        object: "chat.completion.chunk" as const,
+        created: 1,
+        model: model.id,
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [{ index: 1, function: { arguments: '{"path":"/tmp"}' } }],
+            },
+            logprobs: null,
+            finish_reason: "tool_calls" as const,
+          },
+        ],
+      },
+    ] as const;
+
+    async function* mockStream() {
+      for (const chunk of mockChunks) {
+        yield chunk as never;
+      }
+    }
+
+    await __testing.processOpenAICompletionsStream(mockStream(), output, model, { push() {} });
+
+    expect(output.content).toHaveLength(2);
+    expect(output.content[0]).toMatchObject({
+      type: "toolCall",
+      id: "call_0",
+      name: "exec",
+      arguments: { command: "ls" },
+    });
+    expect(output.content[1]).toMatchObject({
+      type: "toolCall",
+      id: "call_1",
+      name: "read",
+      arguments: { path: "/tmp" },
+    });
+  });
+
   it("resets stopReason to stop when finish_reason is tool_calls but tool_calls array is empty", async () => {
     const model = {
       id: "nemotron-3-super",

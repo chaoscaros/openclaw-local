@@ -61,6 +61,7 @@ let openClawCodingToolsFactory: OpenClawCodingToolsFactory = createOpenClawCodin
 
 const SANDBOX_EXEC_TOOL_NAME = "sandbox_exec";
 const SANDBOX_PROCESS_TOOL_NAME = "sandbox_process";
+const CODEX_APP_SERVER_UNSUBSCRIBE_TIMEOUT_MS = 5_000;
 
 export async function runCodexAppServerAttempt(
   params: EmbeddedRunAttemptParams,
@@ -115,8 +116,22 @@ export async function runCodexAppServerAttempt(
       yieldDetected = true;
     },
   });
+  const registeredTools = await buildDynamicTools({
+    params,
+    resolvedWorkspace,
+    effectiveWorkspace,
+    sandboxSessionKey,
+    sandbox,
+    runAbortController,
+    sessionAgentId,
+    ignoreToolsAllow: true,
+    onYieldDetected: () => {
+      yieldDetected = true;
+    },
+  });
   const toolBridge = createCodexDynamicToolBridge({
     tools,
+    registeredTools,
     signal: runAbortController.signal,
   });
   let client: CodexAppServerClient;
@@ -227,6 +242,10 @@ export async function runCodexAppServerAttempt(
       { timeoutMs: params.timeoutMs, signal: runAbortController.signal },
     );
   } catch (error) {
+    await unsubscribeCodexThreadBestEffort(client, {
+      threadId: thread.threadId,
+      timeoutMs: CODEX_APP_SERVER_UNSUBSCRIBE_TIMEOUT_MS,
+    });
     notificationCleanup();
     requestCleanup();
     params.abortSignal?.removeEventListener("abort", abortFromUpstream);
@@ -295,11 +314,38 @@ export async function runCodexAppServerAttempt(
     };
   } finally {
     clearTimeout(timeout);
+    if (!timedOut) {
+      await unsubscribeCodexThreadBestEffort(client, {
+        threadId: thread.threadId,
+        timeoutMs: CODEX_APP_SERVER_UNSUBSCRIBE_TIMEOUT_MS,
+      });
+    }
     notificationCleanup();
     requestCleanup();
     runAbortController.signal.removeEventListener("abort", abortListener);
     params.abortSignal?.removeEventListener("abort", abortFromUpstream);
     clearActiveEmbeddedRun(params.sessionId, handle, params.sessionKey);
+  }
+}
+
+async function unsubscribeCodexThreadBestEffort(
+  client: CodexAppServerClient,
+  params: {
+    threadId: string;
+    timeoutMs: number;
+  },
+): Promise<void> {
+  try {
+    await client.request(
+      "thread/unsubscribe",
+      { threadId: params.threadId },
+      { timeoutMs: params.timeoutMs },
+    );
+  } catch (error) {
+    embeddedAgentLog.debug("codex app-server thread unsubscribe cleanup failed", {
+      threadId: params.threadId,
+      error,
+    });
   }
 }
 
@@ -355,6 +401,7 @@ type DynamicToolBuildParams = {
   sandbox: Awaited<ReturnType<typeof resolveSandboxContext>>;
   runAbortController: AbortController;
   sessionAgentId: string | undefined;
+  ignoreToolsAllow?: boolean;
   onYieldDetected: () => void;
 };
 
@@ -421,9 +468,18 @@ async function buildDynamicTools(input: DynamicToolBuildParams) {
       });
       input.runAbortController.abort("sessions_yield");
     },
+    onAsyncTaskStarted: (message) => {
+      params.onAgentEvent?.({
+        stream: "codex_app_server.tool",
+        data: { name: "media_async_task_started", message },
+      });
+    },
   });
   const toolsWithSandboxShell = addSandboxShellDynamicToolsIfAvailable(allTools, allTools, input);
-  const filteredTools = filterDynamicToolsForAllowlist(toolsWithSandboxShell, params.toolsAllow);
+  const filteredTools =
+    input.ignoreToolsAllow === true
+      ? toolsWithSandboxShell
+      : filterDynamicToolsForAllowlist(toolsWithSandboxShell, params.toolsAllow);
   return normalizeProviderToolSchemas({
     tools: filteredTools,
     provider: params.provider,

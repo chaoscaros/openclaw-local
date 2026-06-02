@@ -27,7 +27,7 @@ export async function startOrResumeThread(params: {
   dynamicTools: JsonValue[];
   appServer: CodexAppServerRuntimeOptions;
 }): Promise<CodexAppServerThreadBinding> {
-  const dynamicToolsFingerprint = fingerprintDynamicTools(params.dynamicTools);
+  const dynamicToolsFingerprint = codexDynamicToolsFingerprint(params.dynamicTools);
   const userMcpServersConfigPatch = buildCodexUserMcpServersThreadConfigPatch(params.params.config);
   const userMcpServersFingerprint = fingerprintUserMcpServersConfigPatch(userMcpServersConfigPatch);
   let binding = await readCodexAppServerBinding(params.params.sessionFile);
@@ -177,8 +177,24 @@ export function buildTurnStartParams(
   };
 }
 
-function fingerprintDynamicTools(dynamicTools: JsonValue[]): string {
-  return JSON.stringify(dynamicTools.map(stabilizeJsonValue));
+export function codexDynamicToolsFingerprint(dynamicTools: JsonValue[]): string {
+  return JSON.stringify(dynamicTools.map(fingerprintDynamicToolSpec));
+}
+
+function fingerprintDynamicToolSpec(tool: JsonValue): JsonValue {
+  if (!isJsonObject(tool)) {
+    return stabilizeJsonValue(tool);
+  }
+  const stable: JsonObject = {};
+  for (const [key, child] of Object.entries(tool).toSorted(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
+    if (key === "description" || key === "deferLoading" || key === "namespace") {
+      continue;
+    }
+    stable[key] = stabilizeJsonValue(child);
+  }
+  return stable;
 }
 
 function stabilizeJsonValue(value: JsonValue): JsonValue {

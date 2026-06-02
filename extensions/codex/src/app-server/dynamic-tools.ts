@@ -17,6 +17,7 @@ import {
 } from "./protocol.js";
 
 export type CodexDynamicToolBridge = {
+  availableSpecs: CodexDynamicToolSpec[];
   specs: CodexDynamicToolSpec[];
   handleToolCall: (params: CodexDynamicToolCallParams) => Promise<CodexDynamicToolCallResponse>;
   telemetry: {
@@ -32,9 +33,12 @@ export type CodexDynamicToolBridge = {
 
 export function createCodexDynamicToolBridge(params: {
   tools: AnyAgentTool[];
+  registeredTools?: AnyAgentTool[];
   signal: AbortSignal;
 }): CodexDynamicToolBridge {
   const toolMap = new Map(params.tools.map((tool) => [tool.name, tool]));
+  const registeredTools = params.registeredTools ?? params.tools;
+  const registeredToolNames = new Set(registeredTools.map((tool) => tool.name));
   const telemetry: CodexDynamicToolBridge["telemetry"] = {
     didSendViaMessagingTool: false,
     messagingToolSentTexts: [],
@@ -45,7 +49,12 @@ export function createCodexDynamicToolBridge(params: {
   };
 
   return {
-    specs: params.tools.map((tool) => ({
+    availableSpecs: params.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: toJsonValue(tool.parameters),
+    })),
+    specs: registeredTools.map((tool) => ({
       name: tool.name,
       description: tool.description,
       inputSchema: toJsonValue(tool.parameters),
@@ -54,6 +63,17 @@ export function createCodexDynamicToolBridge(params: {
     handleToolCall: async (call) => {
       const tool = toolMap.get(call.tool);
       if (!tool) {
+        if (registeredToolNames.has(call.tool)) {
+          return {
+            contentItems: [
+              {
+                type: "inputText",
+                text: `OpenClaw tool is not available for this turn: ${call.tool}`,
+              },
+            ],
+            success: false,
+          };
+        }
         return {
           contentItems: [{ type: "inputText", text: `Unknown OpenClaw tool: ${call.tool}` }],
           success: false,

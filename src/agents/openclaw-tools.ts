@@ -20,6 +20,7 @@ import { createCronTool } from "./tools/cron-tool.js";
 import { createGatewayTool } from "./tools/gateway-tool.js";
 import { createImageGenerateTool } from "./tools/image-generate-tool.js";
 import { createImageTool } from "./tools/image-tool.js";
+import type { MediaGenerateAsyncStartCallback } from "./tools/media-generate-background-shared.js";
 import { createMessageTool } from "./tools/message-tool.js";
 import { createMusicGenerateTool } from "./tools/music-generate-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
@@ -110,6 +111,8 @@ export function createOpenClawTools(
     spawnWorkspaceDir?: string;
     /** Callback invoked when sessions_yield tool is called. */
     onYield?: (message: string) => Promise<void> | void;
+    /** Callback invoked when a media tool starts async background work. */
+    onAsyncTaskStarted?: MediaGenerateAsyncStartCallback;
     /** Allow plugin tools for this tool set to late-bind the gateway subagent. */
     allowGatewaySubagentBinding?: boolean;
   } & SpawnedToolContext,
@@ -157,6 +160,7 @@ export function createOpenClawTools(
     workspaceDir,
     sandbox,
     fsPolicy: options?.fsPolicy,
+    onAsyncTaskStarted: options?.onAsyncTaskStarted,
   });
   const videoGenerateTool = createVideoGenerateTool({
     config: options?.config,
@@ -166,6 +170,7 @@ export function createOpenClawTools(
     workspaceDir,
     sandbox,
     fsPolicy: options?.fsPolicy,
+    onAsyncTaskStarted: options?.onAsyncTaskStarted,
   });
   const musicGenerateTool = createMusicGenerateTool({
     config: options?.config,
@@ -175,6 +180,7 @@ export function createOpenClawTools(
     workspaceDir,
     sandbox,
     fsPolicy: options?.fsPolicy,
+    onAsyncTaskStarted: options?.onAsyncTaskStarted,
   });
   const pdfTool = options?.agentDir?.trim()
     ? createPdfTool({

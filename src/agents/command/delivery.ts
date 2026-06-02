@@ -24,11 +24,21 @@ import type { OutboundSessionContext } from "../../infra/outbound/session-contex
 import type { RuntimeEnv } from "../../runtime.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
 import { AGENT_LANE_NESTED } from "../lanes.js";
+import type { MessagingToolSend } from "../pi-embedded-messaging.types.js";
 import type { AgentCommandOpts } from "./types.js";
 
 type RunResult = Awaited<ReturnType<(typeof import("../pi-embedded.js"))["runEmbeddedPiAgent"]>>;
 
 const NESTED_LOG_PREFIX = "[agent:nested]";
+
+type AgentCommandDeliveryResult = {
+  payloads: ReturnType<typeof projectOutboundPayloadPlanForJson>;
+  meta: RunResult["meta"];
+  didSendViaMessagingTool?: boolean;
+  messagingToolSentTexts?: string[];
+  messagingToolSentMediaUrls?: string[];
+  messagingToolSentTargets?: MessagingToolSend[];
+};
 
 function formatNestedLogPrefix(opts: AgentCommandOpts, sessionKey?: string): string {
   const parts = [NESTED_LOG_PREFIX];
@@ -65,6 +75,39 @@ function logNestedOutput(
     }
     runtime.log(`${prefix} ${line}`);
   }
+}
+
+function hasNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function hasNonEmptyStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.some(hasNonEmptyString);
+}
+
+function hasNonEmptyArray<T>(value: T[] | undefined): value is T[] {
+  return Array.isArray(value) && value.length > 0;
+}
+
+function buildDeliveryResult(params: {
+  payloads: AgentCommandDeliveryResult["payloads"];
+  meta: AgentCommandDeliveryResult["meta"];
+  result: RunResult;
+}): AgentCommandDeliveryResult {
+  return {
+    payloads: params.payloads,
+    meta: params.meta,
+    ...(params.result.didSendViaMessagingTool === true ? { didSendViaMessagingTool: true } : {}),
+    ...(hasNonEmptyStringArray(params.result.messagingToolSentTexts)
+      ? { messagingToolSentTexts: params.result.messagingToolSentTexts }
+      : {}),
+    ...(hasNonEmptyStringArray(params.result.messagingToolSentMediaUrls)
+      ? { messagingToolSentMediaUrls: params.result.messagingToolSentMediaUrls }
+      : {}),
+    ...(hasNonEmptyArray(params.result.messagingToolSentTargets)
+      ? { messagingToolSentTargets: params.result.messagingToolSentTargets }
+      : {}),
+  };
 }
 
 export function normalizeAgentCommandReplyPayloads(params: {
@@ -281,13 +324,17 @@ export async function deliverAgentCommandResult(params: {
       ),
     );
     if (!deliver) {
-      return { payloads: normalizedPayloads, meta: result.meta };
+      return buildDeliveryResult({
+        payloads: normalizedPayloads,
+        meta: result.meta,
+        result,
+      });
     }
   }
 
   if (!payloads || payloads.length === 0) {
     runtime.log("No reply from agent.");
-    return { payloads: [], meta: result.meta };
+    return buildDeliveryResult({ payloads: [], meta: result.meta, result });
   }
 
   const deliveryPayloads = projectOutboundPayloadPlanForOutbound(outboundPayloadPlan);
@@ -329,5 +376,5 @@ export async function deliverAgentCommandResult(params: {
     }
   }
 
-  return { payloads: normalizedPayloads, meta: result.meta };
+  return buildDeliveryResult({ payloads: normalizedPayloads, meta: result.meta, result });
 }

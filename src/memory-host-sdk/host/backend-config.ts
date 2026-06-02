@@ -151,6 +151,10 @@ function isPathInsideRoot(candidatePath: string, rootPath: string): boolean {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
+function escapeQmdExactFilePattern(fileName: string): string {
+  return fileName.replace(/[\\*?[\]{}()!+@]/g, "\\$&");
+}
+
 function ensureUniqueName(base: string, existing: Set<string>): string {
   let name = sanitizeName(base);
   if (!existing.has(name)) {
@@ -282,21 +286,29 @@ function resolveCustomPaths(
     } catch {
       return;
     }
-    const pattern = normalizeOptionalString(entry.pattern) || "**/*.md";
-    const dedupeKey = `${resolved}\u0000${pattern}`;
+    let collectionPath = resolved;
+    let pattern = normalizeOptionalString(entry.pattern) || "**/*.md";
+    try {
+      const stat = fs.statSync(resolved);
+      if (stat.isFile()) {
+        collectionPath = path.dirname(resolved);
+        pattern = escapeQmdExactFilePattern(path.basename(resolved));
+      }
+    } catch {}
+    const dedupeKey = `${collectionPath}\u0000${pattern}`;
     if (seenRoots.has(dedupeKey)) {
       return;
     }
     seenRoots.add(dedupeKey);
     const explicitName = entry.name?.trim();
     const baseName =
-      explicitName && !isPathInsideRoot(resolved, workspaceDir)
+      explicitName && !isPathInsideRoot(collectionPath, workspaceDir)
         ? explicitName
         : scopeCollectionBase(explicitName || `custom-${index + 1}`, agentId);
     const name = ensureUniqueName(baseName, existing);
     collections.push({
       name,
-      path: resolved,
+      path: collectionPath,
       pattern,
       kind: "custom",
     });

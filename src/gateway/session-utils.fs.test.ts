@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 import { createToolSummaryPreviewTranscriptLines } from "./session-preview.test-helpers.js";
+import { archiveSessionTranscriptsDetailed } from "./session-transcript-files.fs.js";
 import {
   archiveSessionTranscripts,
   readFirstUserMessageFromTranscript,
@@ -1033,5 +1034,36 @@ describe("archiveSessionTranscripts", () => {
     expect(archived).toHaveLength(1);
     expect(archived[0]).toContain(".deleted.");
     expect(fs.existsSync(transcriptPath)).toBe(false);
+  });
+
+  test("invokes onArchiveError when archiving a candidate fails", () => {
+    const sessionId = "sess-archive-error";
+    const transcriptPath = path.join(tmpDir, `${sessionId}.jsonl`);
+    fs.writeFileSync(transcriptPath, '{"type":"session"}\n', "utf-8");
+    const renameError = Object.assign(new Error("EACCES: permission denied"), {
+      code: "EACCES",
+    });
+    const renameSpy = vi.spyOn(fs, "renameSync").mockImplementation(() => {
+      throw renameError;
+    });
+    const errors: Array<{ err: unknown; sourcePath: string }> = [];
+
+    try {
+      const archived = archiveSessionTranscriptsDetailed({
+        sessionId,
+        storePath,
+        reason: "reset",
+        onArchiveError: (err, sourcePath) => {
+          errors.push({ err, sourcePath });
+        },
+      });
+
+      expect(archived).toEqual([]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toEqual({ err: renameError, sourcePath: fs.realpathSync(transcriptPath) });
+      expect(fs.existsSync(transcriptPath)).toBe(true);
+    } finally {
+      renameSpy.mockRestore();
+    }
   });
 });

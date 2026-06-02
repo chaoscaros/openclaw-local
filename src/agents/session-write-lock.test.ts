@@ -203,6 +203,88 @@ describe("acquireSessionWriteLock", () => {
     });
   });
 
+  it("marks live lock payloads stale once they exceed max hold", () => {
+    const nowMs = Date.now();
+    const inspected = __testing.inspectLockPayloadForTest(
+      {
+        pid: process.pid,
+        createdAt: new Date(nowMs - 30_000).toISOString(),
+        maxHoldMs: 10_000,
+      },
+      60_000,
+      nowMs,
+      { respectMaxHold: true },
+    );
+
+    expect(inspected.stale).toBe(true);
+    expect(inspected.staleReasons).toEqual(["hold-exceeded"]);
+  });
+
+  it("keeps live lock payloads fresh until holder max hold expires", () => {
+    const nowMs = Date.now();
+    const inspected = __testing.inspectLockPayloadForTest(
+      {
+        pid: process.pid,
+        createdAt: new Date(nowMs - 30_000).toISOString(),
+        maxHoldMs: 60_000,
+      },
+      60_000,
+      nowMs,
+      { respectMaxHold: true },
+    );
+
+    expect(inspected.stale).toBe(false);
+    expect(inspected.staleReasons).toEqual([]);
+  });
+
+  it("does not reclaim an active in-process lock through max-hold acquisition", async () => {
+    await withTempSessionLockFile(async ({ sessionFile, lockPath }) => {
+      const lock = await acquireSessionWriteLock({ sessionFile, timeoutMs: 500, maxHoldMs: 1 });
+      await fs.writeFile(
+        lockPath,
+        JSON.stringify({
+          pid: process.pid,
+          createdAt: new Date(Date.now() - 30_000).toISOString(),
+          maxHoldMs: 1,
+        }),
+        "utf8",
+      );
+
+      await expect(
+        acquireSessionWriteLock({
+          sessionFile,
+          timeoutMs: 50,
+          staleMs: 60_000,
+          allowReentrant: false,
+        }),
+      ).rejects.toThrow(/session file locked/);
+      await expect(fs.access(lockPath)).resolves.toBeUndefined();
+      await lock.release();
+    });
+  });
+
+  it("reclaims max-hold exceeded locks during acquisition", async () => {
+    await withTempSessionLockFile(async ({ sessionFile, lockPath }) => {
+      await fs.writeFile(
+        lockPath,
+        JSON.stringify({
+          pid: process.pid,
+          createdAt: new Date(Date.now() - 30_000).toISOString(),
+          starttime: FAKE_STARTTIME,
+          maxHoldMs: 1,
+        }),
+        "utf8",
+      );
+
+      const lock = await acquireSessionWriteLock({
+        sessionFile,
+        timeoutMs: 500,
+        staleMs: 60_000,
+      });
+      await lock.release();
+    });
+  });
+
   it("watchdog releases stale in-process locks", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-lock-"));
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -230,6 +312,53 @@ describe("acquireSessionWriteLock", () => {
       });
     } finally {
       warnSpy.mockRestore();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not clean live locks just because holder max hold expired", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-lock-policy-"));
+    const sessionsDir = path.join(root, "sessions");
+    await fs.mkdir(sessionsDir, { recursive: true });
+    const nowMs = Date.now();
+    const lockPath = path.join(sessionsDir, "held-past-max.jsonl.lock");
+
+    try {
+      await fs.writeFile(
+        lockPath,
+        JSON.stringify({
+          pid: process.pid,
+          createdAt: new Date(nowMs - 30_000).toISOString(),
+          maxHoldMs: 10_000,
+        }),
+        "utf8",
+      );
+
+      const result = await cleanStaleLockFiles({
+        sessionsDir,
+        staleMs: 60_000,
+        nowMs,
+        removeStale: true,
+      });
+
+      expect(
+        result.locks.map((entry) => ({
+          name: path.basename(entry.lockPath),
+          removed: entry.removed,
+          stale: entry.stale,
+          staleReasons: entry.staleReasons,
+        })),
+      ).toEqual([
+        {
+          name: "held-past-max.jsonl.lock",
+          removed: false,
+          stale: false,
+          staleReasons: [],
+        },
+      ]);
+      expect(result.cleaned).toEqual([]);
+      await expect(fs.access(lockPath)).resolves.toBeUndefined();
+    } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
   });

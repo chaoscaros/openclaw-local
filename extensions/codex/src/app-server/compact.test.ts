@@ -105,24 +105,94 @@ describe("maybeCompactCodexAppServerSession", () => {
       },
     });
   });
+
+  it("restarts the app-server and retries when native compaction times out", async () => {
+    const previousTimeout = process.env.OPENCLAW_CODEX_COMPACTION_WAIT_TIMEOUT_MS;
+    process.env.OPENCLAW_CODEX_COMPACTION_WAIT_TIMEOUT_MS = "100";
+    const first = createFakeCodexClient();
+    const second = createFakeCodexClient();
+    let factoryCalls = 0;
+    __testing.setCodexAppServerClientFactoryForTests(async () => {
+      factoryCalls += 1;
+      return factoryCalls === 1 ? first.client : second.client;
+    });
+    try {
+      const sessionFile = path.join(tempDir, "session.jsonl");
+      await writeCodexAppServerBinding(sessionFile, {
+        threadId: "thread-1",
+        cwd: tempDir,
+      });
+
+      const pendingResult = maybeCompactCodexAppServerSession({
+        sessionId: "session-1",
+        sessionKey: "agent:main:session-1",
+        sessionFile,
+        workspaceDir: tempDir,
+        currentTokenCount: 456,
+      });
+      await vi.waitFor(() => {
+        expect(first.request).toHaveBeenCalledWith("thread/compact/start", {
+          threadId: "thread-1",
+        });
+      });
+      await vi.waitFor(() => {
+        expect(first.close).toHaveBeenCalledTimes(1);
+        expect(second.request).toHaveBeenCalledWith("thread/compact/start", {
+          threadId: "thread-1",
+        });
+      });
+      second.emit({
+        method: "item/completed",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-2",
+          item: { type: "contextCompaction", id: "compact-2" },
+        },
+      });
+
+      await expect(pendingResult).resolves.toMatchObject({
+        ok: true,
+        compacted: true,
+        result: {
+          details: {
+            signal: "item/completed",
+            itemId: "compact-2",
+            compactionAttempts: 2,
+            recoveredAfterAppServerRestart: true,
+          },
+        },
+      });
+      expect(second.close).not.toHaveBeenCalled();
+    } finally {
+      if (previousTimeout === undefined) {
+        delete process.env.OPENCLAW_CODEX_COMPACTION_WAIT_TIMEOUT_MS;
+      } else {
+        process.env.OPENCLAW_CODEX_COMPACTION_WAIT_TIMEOUT_MS = previousTimeout;
+      }
+    }
+  });
 });
 
 function createFakeCodexClient(): {
   client: CodexAppServerClient;
   request: ReturnType<typeof vi.fn>;
+  close: ReturnType<typeof vi.fn>;
   emit: (notification: CodexServerNotification) => void;
 } {
   const handlers = new Set<(notification: CodexServerNotification) => void>();
   const request = vi.fn(async () => ({}));
+  const close = vi.fn();
   return {
     client: {
       request,
+      close,
       addNotificationHandler(handler: (notification: CodexServerNotification) => void) {
         handlers.add(handler);
         return () => handlers.delete(handler);
       },
     } as unknown as CodexAppServerClient,
     request,
+    close,
     emit(notification: CodexServerNotification): void {
       for (const handler of handlers) {
         handler(notification);

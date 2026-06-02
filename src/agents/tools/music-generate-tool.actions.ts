@@ -45,11 +45,15 @@ function summarizeMusicGenerationCapabilities(
 
 export function createMusicGenerateListActionResult(
   config?: OpenClawConfig,
+  options?: { workspaceDir?: string; agentDir?: string },
 ): MusicGenerateActionResult {
   const providers = listRuntimeMusicGenerationProviders({ config });
   return createMediaGenerateProviderListActionResult({
     providers,
     emptyText: "No music-generation providers are registered.",
+    cfg: config,
+    workspaceDir: options?.workspaceDir,
+    agentDir: options?.agentDir,
     listModes: listSupportedMusicGenerationModes,
     summarizeCapabilities: summarizeMusicGenerationCapabilities,
   });

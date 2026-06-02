@@ -14,6 +14,7 @@ import {
   resolveEmbeddedAgentBaseStreamFn,
   resolveAttemptFsWorkspaceOnly,
   resolveEmbeddedAgentStreamFn,
+  resolveEmbeddedAttemptSessionWriteLockOptions,
   resolveUnknownToolGuardThreshold,
   resolvePromptBuildHookResult,
   resolvePromptModeForSession,
@@ -437,6 +438,16 @@ describe("resolveUnknownToolGuardThreshold", () => {
 
   it("uses the configured threshold override when provided", () => {
     expect(resolveUnknownToolGuardThreshold({ enabled: true, unknownToolThreshold: 4 })).toBe(4);
+  });
+});
+
+describe("resolveEmbeddedAttemptSessionWriteLockOptions", () => {
+  it("bounds post-prompt session lock max hold to compaction timeout instead of run timeout", () => {
+    expect(
+      resolveEmbeddedAttemptSessionWriteLockOptions({
+        compactionTimeoutMs: 600_000,
+      }),
+    ).toEqual({ maxHoldMs: 720_000 });
   });
 });
 
@@ -1725,9 +1736,11 @@ describe("wrapStreamFnSanitizeMalformedToolCalls", () => {
     );
 
     const wrapped = wrapStreamFnSanitizeMalformedToolCalls(baseFn as never, new Set(["read"]));
-    const stream = wrapped({ api: "google-gemini" } as never, { messages } as never, {} as never) as
-      | FakeWrappedStream
-      | Promise<FakeWrappedStream>;
+    const stream = wrapped(
+      { api: "google-gemini" } as never,
+      { messages } as never,
+      {} as never,
+    ) as FakeWrappedStream | Promise<FakeWrappedStream>;
     await Promise.resolve(stream);
 
     expect(baseFn).toHaveBeenCalledTimes(1);

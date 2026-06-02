@@ -26,6 +26,8 @@ import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
 } from "../../shared/string-coerce.js";
+import { stripUnsupportedCitationControlMarkers } from "../../shared/text/citation-control-markers.js";
+import { stripFormattedReasoningMessage } from "../../shared/text/formatted-reasoning-message.js";
 import {
   GATEWAY_CLIENT_MODES,
   GATEWAY_CLIENT_NAMES,
@@ -237,6 +239,22 @@ function applyCrossContextMessageDecoration({
     params.components = applied.componentsBuilder;
   }
   return applied.message;
+}
+
+function normalizeSendMessageBodyAliases(params: Record<string, unknown>): void {
+  if (typeof params.message === "string" && params.message.trim()) {
+    params.message = stripFormattedReasoningMessage(params.message);
+    return;
+  }
+  for (const alias of ["SendMessage", "content", "text"] as const) {
+    const value = params[alias];
+    if (typeof value !== "string" || !value.trim()) {
+      continue;
+    }
+    params.message = stripFormattedReasoningMessage(value);
+    console.warn(`[message-tool] normalized alias "${alias}" to "message" for send action`);
+    return;
+  }
 }
 
 async function maybeApplyCrossContextMarker(params: {
@@ -531,7 +549,7 @@ async function handleSendAction(ctx: ResolvedActionContext): Promise<MessageActi
   mergedMediaUrls.length = 0;
   mergedMediaUrls.push(...normalizedMediaUrls);
 
-  message = parsed.text;
+  message = stripUnsupportedCitationControlMarkers(parsed.text);
   params.message = message;
   if (!params.replyTo && parsed.replyToId) {
     params.replyTo = parsed.replyToId;
@@ -843,6 +861,9 @@ export async function runMessageAction(
     args: params,
     toolContext: input.toolContext,
   });
+  if (action === "send") {
+    normalizeSendMessageBodyAliases(params);
+  }
 
   const channel = await resolveChannel(cfg, params, input.toolContext);
   let accountId = readStringParam(params, "accountId") ?? input.defaultAccountId;

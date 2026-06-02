@@ -230,7 +230,6 @@ import { buildEmbeddedAttemptToolRunContext } from "./attempt.tool-run-context.j
 import { waitForCompactionRetryWithAggregateTimeout } from "./compaction-retry-aggregate-timeout.js";
 import {
   resolveRunTimeoutDuringCompaction,
-  resolveRunTimeoutWithCompactionGraceMs,
   selectCompactionTimeoutSnapshot,
   shouldFlagCompactionTimeout,
 } from "./compaction-timeout.js";
@@ -321,6 +320,16 @@ export function resolveUnknownToolGuardThreshold(loopDetection?: {
     return undefined;
   }
   return loopDetection.unknownToolThreshold ?? UNKNOWN_TOOL_THRESHOLD;
+}
+
+export function resolveEmbeddedAttemptSessionWriteLockOptions(params: {
+  compactionTimeoutMs: number;
+}): { maxHoldMs: number } {
+  return {
+    maxHoldMs: resolveSessionLockMaxHoldFromTimeout({
+      timeoutMs: params.compactionTimeoutMs,
+    }),
+  };
 }
 
 function summarizeMessagePayload(msg: AgentMessage): { textChars: number; imageBlocks: number } {
@@ -448,11 +457,8 @@ export async function runEmbeddedAttempt(
 
     const sessionLock = await acquireSessionWriteLock({
       sessionFile: params.sessionFile,
-      maxHoldMs: resolveSessionLockMaxHoldFromTimeout({
-        timeoutMs: resolveRunTimeoutWithCompactionGraceMs({
-          runTimeoutMs: params.timeoutMs,
-          compactionTimeoutMs: resolveCompactionTimeoutMs(params.config),
-        }),
+      ...resolveEmbeddedAttemptSessionWriteLockOptions({
+        compactionTimeoutMs: resolveCompactionTimeoutMs(params.config),
       }),
     });
     const ownedTranscriptWriteContext = {

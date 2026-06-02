@@ -12,6 +12,7 @@ import {
   projectOutboundPayloadPlanForJson,
   projectOutboundPayloadPlanForMirror,
   projectOutboundPayloadPlanForOutbound,
+  summarizeOutboundPayloadForTransport,
 } from "./payloads.js";
 
 function resolveMirrorProjection(payloads: readonly ReplyPayload[]) {
@@ -311,6 +312,24 @@ describe("normalizeReplyPayloadsForDelivery", () => {
       },
     ]);
   });
+
+  it("strips unsupported citation control markers from delivery text", () => {
+    expect(
+      normalizeReplyPayloadsForDelivery([
+        { text: "Answer citeturn1search0\nNext line citeturn2search1" },
+      ]),
+    ).toEqual([
+      {
+        text: "Answer\nNext line",
+        mediaUrls: undefined,
+        mediaUrl: undefined,
+        replyToId: undefined,
+        replyToCurrent: false,
+        replyToTag: false,
+        audioAsVoice: false,
+      },
+    ]);
+  });
 });
 
 describe("normalizeOutboundPayloadsForJson", () => {
@@ -426,6 +445,14 @@ describe("normalizeOutboundPayloads", () => {
     ).toEqual([{ text: "BTW\nQuestion: what is 17 * 19?\n\n323", mediaUrls: [] }]);
   });
 
+  it("strips unsupported citation control markers from outbound payloads", () => {
+    expect(
+      normalizeOutboundPayloads([
+        { text: "Answer citeturn1search0\nNext line citeturn2search1" },
+      ]),
+    ).toEqual([{ text: "Answer\nNext line", mediaUrls: [] }]);
+  });
+
   it("keeps delivery and mirror projections aligned", () => {
     const payloads: ReplyPayload[] = [
       { text: "Hello" },
@@ -446,6 +473,22 @@ describe("normalizeOutboundPayloads", () => {
     expect(mirrorProjection.mediaUrls).toEqual(
       deliveryProjection.flatMap((payload) => payload.mediaUrls),
     );
+  });
+});
+
+describe("summarizeOutboundPayloadForTransport", () => {
+  it("strips unsupported citation control markers from transport text", () => {
+    expect(
+      summarizeOutboundPayloadForTransport({
+        text: "Answer citeturn1search0\nNext line citeturn2search1",
+      }),
+    ).toEqual({
+      text: "Answer\nNext line",
+      mediaUrls: [],
+      audioAsVoice: undefined,
+      interactive: undefined,
+      channelData: undefined,
+    });
   });
 });
 

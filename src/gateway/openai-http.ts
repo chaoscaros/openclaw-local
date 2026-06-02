@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ImageContent } from "../agents/command/types.js";
+import { STREAM_ERROR_FALLBACK_TEXT } from "../agents/stream-message-shared.js";
 import { normalizeUsage, toOpenAiChatCompletionsUsage } from "../agents/usage.js";
 import { createDefaultDeps } from "../cli/deps.js";
 import { agentCommandFromIngress } from "../commands/agent.js";
@@ -53,6 +54,7 @@ type OpenAiChatMessage = {
   role?: unknown;
   content?: unknown;
   name?: unknown;
+  stopReason?: unknown;
 };
 
 type OpenAiChatCompletionRequest = {
@@ -415,7 +417,7 @@ function buildAgentPrompt(
       normalizedRole === "user" && !content && hasImage && i === activeUserMessageIndex
         ? IMAGE_ONLY_USER_MESSAGE
         : content;
-    if (!messageContent) {
+    if (!messageContent && normalizedRole !== "tool") {
       continue;
     }
 
@@ -432,6 +434,10 @@ function buildAgentPrompt(
     conversationEntries.push({
       role: normalizedRole,
       entry: { sender, body: messageContent },
+      internalStreamError:
+        normalizedRole === "assistant" &&
+        normalizeOptionalString(msg.stopReason) === "error" &&
+        messageContent.trim() === STREAM_ERROR_FALLBACK_TEXT,
     });
   }
 

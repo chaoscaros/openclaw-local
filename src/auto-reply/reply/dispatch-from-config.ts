@@ -34,6 +34,7 @@ import {
   logMessageQueued,
   logSessionStateChange,
 } from "../../logging/diagnostic.js";
+import { matchPluginCommand } from "../../plugins/commands.js";
 import {
   buildPluginBindingDeclinedText,
   buildPluginBindingErrorText,
@@ -56,8 +57,17 @@ import {
   shouldAttemptTtsPayload,
 } from "../../tts/tts-config.js";
 import { INTERNAL_MESSAGE_CHANNEL, normalizeMessageChannel } from "../../utils/message-channel.js";
+import {
+  findCommandByNativeName,
+  normalizeCommandBody,
+  resolveTextCommand,
+} from "../commands-registry.js";
 import type { BlockReplyContext } from "../get-reply-options.types.js";
-import { getReplyPayloadMetadata, type ReplyPayload } from "../reply-payload.js";
+import {
+  getReplyPayloadMetadata,
+  isReplyPayloadStatusNotice,
+  type ReplyPayload,
+} from "../reply-payload.js";
 import type { FinalizedMsgContext } from "../templating.js";
 import { normalizeVerboseLevel } from "../thinking.js";
 import {
@@ -133,6 +143,9 @@ function resolveEffectiveReplyRoute(params: {
 async function maybeApplyTtsToReplyPayload(
   params: Parameters<Awaited<ReturnType<typeof loadTtsRuntime>>["maybeApplyTtsToPayload"]>[0],
 ) {
+  if (isReplyPayloadStatusNotice(params.payload)) {
+    return params.payload;
+  }
   if (!shouldAttemptTtsPayload({ cfg: params.cfg, ttsAuto: params.ttsAuto })) {
     return params.payload;
   }
@@ -233,6 +246,32 @@ const createShouldEmitVerboseProgress = (params: {
     shouldEmitFull: () => resolveLevel() === "full",
   };
 };
+
+function shouldBypassPluginOwnedBindingForCommand(ctx: FinalizedMsgContext): boolean {
+  if (!ctx.CommandAuthorized) {
+    return false;
+  }
+  if (ctx.CommandSource === "native") {
+    return true;
+  }
+  const commandBody = normalizeCommandBody(
+    ctx.BodyForCommands ?? ctx.CommandBody ?? ctx.RawBody ?? ctx.Body ?? "",
+    { botUsername: ctx.BotUsername },
+  );
+  if (!commandBody.startsWith("/")) {
+    return false;
+  }
+  if (resolveTextCommand(commandBody)) {
+    return true;
+  }
+  const provider = normalizeOptionalString(ctx.Provider ?? ctx.Surface);
+  const commandName = commandBody.slice(1).split(/\s+/, 1)[0];
+  if (commandName && findCommandByNativeName(commandName, provider)) {
+    return true;
+  }
+  return matchPluginCommand(commandBody) !== null;
+}
+
 export type {
   DispatchFromConfigParams,
   DispatchFromConfigResult,
@@ -544,7 +583,11 @@ export async function dispatchReplyFromConfig(
 
   if (pluginOwnedBinding) {
     touchConversationBindingRecord(pluginOwnedBinding.bindingId);
-    if (suppressDelivery) {
+    if (shouldBypassPluginOwnedBindingForCommand(ctx)) {
+      logVerbose(
+        `plugin-bound inbound command escaped plugin binding (plugin=${pluginOwnedBinding.pluginId} session=${sessionKey ?? "unknown"}); falling through to command processing`,
+      );
+    } else if (suppressDelivery) {
       // Plugin-bound inbound handlers typically emit outbound replies we
       // cannot rewind. When automatic source delivery is suppressed, skip the
       // plugin claim and fall through to normal suppressed agent processing.
@@ -835,6 +878,7 @@ export async function dispatchReplyFromConfig(
 
     const toolStartStatusesSent = new Set<string>();
     let toolStartStatusCount = 0;
+    let didSendPlanStatusNotice = false;
     const normalizeWorkingLabel = (label: string) => {
       const collapsed = label.replace(/\s+/g, " ").trim();
       if (collapsed.length <= 80) {
@@ -847,14 +891,10 @@ export async function dispatchReplyFromConfig(
       const steps = (payload.steps ?? [])
         .map((step) => step.replace(/\s+/g, " ").trim())
         .filter(Boolean);
-      const parts: string[] = [];
-      if (explanation) {
-        parts.push(explanation);
-      }
       if (steps.length > 0) {
-        parts.push(steps.map((step, index) => `${index + 1}. ${step}`).join("\n"));
+        return steps.map((step, index) => `${index + 1}. ${step}`).join("\n");
       }
-      return parts.join("\n\n").trim() || "Planning next steps.";
+      return explanation || "Planning next steps.";
     };
     const maybeSendWorkingStatus = async (label: string): Promise<void> => {
       if (suppressDelivery) {
@@ -886,11 +926,13 @@ export async function dispatchReplyFromConfig(
       explanation?: string;
       steps?: string[];
     }): Promise<void> => {
-      if (suppressDelivery || !shouldEmitVerboseProgress()) {
+      if (suppressDelivery || !shouldEmitVerboseProgress() || didSendPlanStatusNotice) {
         return;
       }
+      didSendPlanStatusNotice = true;
       const replyPayload: ReplyPayload = {
         text: formatPlanUpdateText(payload),
+        isStatusNotice: true,
       };
       if (shouldRouteToOriginating) {
         await sendPayloadAsync(replyPayload, undefined, false);
@@ -1072,7 +1114,7 @@ export async function dispatchReplyFromConfig(
             // Accumulate block text for TTS generation after streaming.
             // Exclude compaction status notices — they are informational UI
             // signals and must not be synthesised into the spoken reply.
-            if (payload.text && !payload.isCompactionNotice) {
+            if (payload.text && !isReplyPayloadStatusNotice(payload)) {
               if (accumulatedBlockText.length > 0) {
                 accumulatedBlockText += "\n";
               }

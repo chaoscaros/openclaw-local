@@ -1,3 +1,4 @@
+import { detectWindowsSpawnCommandInlineArgs } from "openclaw/plugin-sdk/windows-spawn";
 import { z } from "zod";
 
 export type CodexAppServerTransportMode = "stdio" | "websocket";
@@ -42,6 +43,8 @@ export type CodexPluginConfig = {
     serviceTier?: string;
   };
 };
+
+type CodexAppServerCommandSource = "config" | "env" | "managed";
 
 export const CODEX_APP_SERVER_CONFIG_KEYS = [
   "transport",
@@ -109,8 +112,17 @@ export function resolveCodexAppServerRuntimeOptions(
   const env = params.env ?? process.env;
   const config = readCodexPluginConfig(params.pluginConfig).appServer ?? {};
   const transport = resolveTransport(config.transport);
-  const command =
-    readNonEmptyString(config.command) ?? env.OPENCLAW_CODEX_APP_SERVER_BIN ?? "codex";
+  const configCommand = readNonEmptyString(config.command);
+  const envCommand = readNonEmptyString(env.OPENCLAW_CODEX_APP_SERVER_BIN);
+  const command = configCommand ?? envCommand ?? "codex";
+  const commandSource: CodexAppServerCommandSource = configCommand
+    ? "config"
+    : envCommand
+      ? "env"
+      : "managed";
+  if (commandSource === "config" || commandSource === "env") {
+    assertCodexAppServerCommandHasNoInlineArgs({ command, source: commandSource });
+  }
   const args = resolveArgs(config.args, env.OPENCLAW_CODEX_APP_SERVER_ARGS);
   const headers = normalizeHeaders(config.headers);
   const authToken = readNonEmptyString(config.authToken);
@@ -146,6 +158,27 @@ export function resolveCodexAppServerRuntimeOptions(
       ? { serviceTier: readNonEmptyString(config.serviceTier) }
       : {}),
   };
+}
+
+function assertCodexAppServerCommandHasNoInlineArgs(params: {
+  command: string;
+  source: CodexAppServerCommandSource;
+}): void {
+  const inlineArgs = detectWindowsSpawnCommandInlineArgs(params.command);
+  if (!inlineArgs) {
+    return;
+  }
+  const sourceLabel =
+    params.source === "env"
+      ? "OPENCLAW_CODEX_APP_SERVER_BIN"
+      : "plugins.entries.codex.config.appServer.command";
+  const argsLabel =
+    params.source === "env"
+      ? "OPENCLAW_CODEX_APP_SERVER_ARGS"
+      : "plugins.entries.codex.config.appServer.args";
+  throw new Error(
+    `${sourceLabel} must be only the Codex app-server executable path; "${inlineArgs.executable}" was configured with inline arguments "${inlineArgs.arguments}". Move those arguments to ${argsLabel}, or remove the override to use the managed Codex startup path.`,
+  );
 }
 
 export function codexAppServerStartOptionsKey(options: CodexAppServerStartOptions): string {

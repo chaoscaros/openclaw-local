@@ -9,10 +9,11 @@ const providerHttpMocks = vi.hoisted(() => ({
   resolveApiKeyForProviderMock: vi.fn(async () => ({ apiKey: "provider-key" })),
   postJsonRequestMock: vi.fn(),
   fetchWithTimeoutMock: vi.fn(),
+  fetchWithTimeoutGuardedMock: vi.fn(),
   assertOkOrThrowHttpErrorMock: vi.fn(async () => {}),
   resolveProviderHttpRequestConfigMock: vi.fn((params: ResolveProviderHttpRequestConfigParams) => ({
     baseUrl: params.baseUrl ?? params.defaultBaseUrl,
-    allowPrivateNetwork: false,
+    allowPrivateNetwork: params.request?.allowPrivateNetwork === true,
     headers: new Headers(params.defaultHeaders),
     dispatcherPolicy: undefined,
   })),
@@ -25,8 +26,11 @@ vi.mock("openclaw/plugin-sdk/provider-auth-runtime", () => ({
 vi.mock("openclaw/plugin-sdk/provider-http", () => ({
   assertOkOrThrowHttpError: providerHttpMocks.assertOkOrThrowHttpErrorMock,
   fetchWithTimeout: providerHttpMocks.fetchWithTimeoutMock,
+  fetchWithTimeoutGuarded: providerHttpMocks.fetchWithTimeoutGuardedMock,
   postJsonRequest: providerHttpMocks.postJsonRequestMock,
   resolveProviderHttpRequestConfig: providerHttpMocks.resolveProviderHttpRequestConfigMock,
+  sanitizeConfiguredModelProviderRequest: (value: unknown) =>
+    value && typeof value === "object" ? value : undefined,
 }));
 
 export function getProviderHttpMocks() {
@@ -38,6 +42,7 @@ export function installProviderHttpMockCleanup(): void {
     providerHttpMocks.resolveApiKeyForProviderMock.mockClear();
     providerHttpMocks.postJsonRequestMock.mockReset();
     providerHttpMocks.fetchWithTimeoutMock.mockReset();
+    providerHttpMocks.fetchWithTimeoutGuardedMock.mockReset();
     providerHttpMocks.assertOkOrThrowHttpErrorMock.mockClear();
     providerHttpMocks.resolveProviderHttpRequestConfigMock.mockClear();
   });

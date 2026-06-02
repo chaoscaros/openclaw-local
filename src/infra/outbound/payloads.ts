@@ -12,6 +12,7 @@ import {
   hasReplyPayloadContent,
   type InteractiveReply,
 } from "../../interactive/payload.js";
+import { stripUnsupportedCitationControlMarkers } from "../../shared/text/citation-control-markers.js";
 
 export type NormalizedOutboundPayload = {
   text: string;
@@ -94,17 +95,21 @@ function createOutboundPayloadPlanEntry(payload: ReplyPayload): OutboundPayloadP
     return null;
   }
   const parsed = parseReplyDirectives(payload.text ?? "");
+  const parsedTextBeforeCitationStrip = parsed.text ?? "";
+  const strippedText = stripUnsupportedCitationControlMarkers(parsedTextBeforeCitationStrip);
+  const strippedParsed =
+    strippedText === parsedTextBeforeCitationStrip ? parsed : parseReplyDirectives(strippedText);
   const explicitMediaUrls = payload.mediaUrls ?? parsed.mediaUrls;
   const explicitMediaUrl = payload.mediaUrl ?? parsed.mediaUrl;
   const mergedMedia = mergeMediaUrls(
     explicitMediaUrls,
     explicitMediaUrl ? [explicitMediaUrl] : undefined,
   );
-  const parsedText = parsed.text ?? "";
+  const parsedText = strippedParsed.text ?? "";
   if (isSuppressedRelayStatusText(parsedText) && mergedMedia.length === 0) {
     return null;
   }
-  if (parsed.isSilent && mergedMedia.length === 0) {
+  if (strippedParsed.isSilent && mergedMedia.length === 0) {
     return null;
   }
   const hasMultipleMedia = (explicitMediaUrls?.length ?? 0) > 1;
@@ -220,7 +225,7 @@ export function summarizeOutboundPayloadForTransport(
 ): NormalizedOutboundPayload {
   const parts = resolveSendableOutboundReplyParts(payload);
   return {
-    text: parts.text,
+    text: stripUnsupportedCitationControlMarkers(parts.text),
     mediaUrls: parts.mediaUrls,
     audioAsVoice: payload.audioAsVoice === true ? true : undefined,
     interactive: payload.interactive,

@@ -3,6 +3,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { callGateway } from "../gateway/call.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
+import { formatBlockedLivenessError, isBlockedLivenessState } from "../shared/agent-liveness.js";
 import { createRunningTaskRun } from "../tasks/task-executor.js";
 import { type DeliveryContext, normalizeDeliveryContext } from "../utils/delivery-context.js";
 import { isRecoverableAgentWaitError, waitForAgentRun } from "./run-wait.js";
@@ -136,7 +137,8 @@ export function createSubagentRunManager(params: {
       if (wait.status === "pending") {
         return;
       }
-      if (wait.yielded === true) {
+      const waitBlocked = isBlockedLivenessState(wait.livenessState);
+      if (wait.yielded === true && !waitBlocked) {
         if (
           markSubagentRunPausedAfterYield({
             entry,
@@ -148,7 +150,8 @@ export function createSubagentRunManager(params: {
         }
         return;
       }
-      if (wait.status === "error" && isRecoverableAgentWaitError(wait.error)) {
+      const waitStatus = waitBlocked ? "error" : wait.status;
+      if (waitStatus === "error" && isRecoverableAgentWaitError(wait.error)) {
         params.scheduleOrphanRecovery({ delayMs: 1_000 });
         const scheduledEntry = entry;
         setTimeout(() => {
@@ -176,11 +179,12 @@ export function createSubagentRunManager(params: {
         entry.endedAt = Date.now();
         mutated = true;
       }
-      const waitError = typeof wait.error === "string" ? wait.error : undefined;
+      const rawWaitError = typeof wait.error === "string" ? wait.error : undefined;
+      const waitError = waitBlocked ? formatBlockedLivenessError(rawWaitError) : rawWaitError;
       const outcome: SubagentRunOutcome =
-        wait.status === "error"
+        waitStatus === "error"
           ? { status: "error", error: waitError }
-          : wait.status === "timeout"
+          : waitStatus === "timeout"
             ? { status: "timeout" }
             : { status: "ok" };
       if (!runOutcomesEqual(entry.outcome, outcome)) {
@@ -195,7 +199,7 @@ export function createSubagentRunManager(params: {
         endedAt: entry.endedAt,
         outcome,
         reason:
-          wait.status === "error" ? SUBAGENT_ENDED_REASON_ERROR : SUBAGENT_ENDED_REASON_COMPLETE,
+          waitStatus === "error" ? SUBAGENT_ENDED_REASON_ERROR : SUBAGENT_ENDED_REASON_COMPLETE,
         sendFarewell: true,
         accountId: entry.requesterOrigin?.accountId,
         triggerCleanup: true,

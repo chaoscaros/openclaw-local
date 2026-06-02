@@ -67,6 +67,39 @@ describe("waitForAgentJob", () => {
     expect(snapshot?.endedAt).toBe(200);
   });
 
+  it("maps blocked lifecycle end events to error snapshots", async () => {
+    const runId = `run-blocked-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const waitPromise = waitForAgentJob({ runId, timeoutMs: 1_000 });
+
+    emitAgentEvent({
+      runId,
+      stream: "lifecycle",
+      data: { phase: "start", startedAt: 450 },
+    });
+    emitAgentEvent({
+      runId,
+      stream: "lifecycle",
+      data: {
+        phase: "end",
+        startedAt: 450,
+        endedAt: 500,
+        livenessState: "blocked",
+        error: "Context overflow: prompt too large for the model.",
+      },
+    });
+
+    const snapshot = await waitPromise;
+    expect(snapshot).toEqual(
+      expect.objectContaining({
+        status: "error",
+        startedAt: 450,
+        endedAt: 500,
+        error: "Context overflow: prompt too large for the model.",
+        livenessState: "blocked",
+      }),
+    );
+  });
+
   it("keeps non-aborted lifecycle end events as ok", async () => {
     const snapshot = await runLifecycleScenario({
       runIdPrefix: "run-ok",

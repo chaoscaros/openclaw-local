@@ -22,6 +22,8 @@ export type ReplyPayload = {
    *  Should be excluded from TTS transcript accumulation so compaction
    *  status lines are not synthesised into the spoken assistant reply. */
   isCompactionNotice?: boolean;
+  /** Marks this payload as transient status, not assistant answer content. */
+  isStatusNotice?: boolean;
   /** Channel-specific payload data (per-channel envelope). */
   channelData?: Record<string, unknown>;
 };
@@ -50,4 +52,10 @@ export function getReplyPayloadMetadata(payload: object): ReplyPayloadMetadata |
 export function copyReplyPayloadMetadata<T extends object>(source: object, target: T): T {
   const metadata = replyPayloadMetadata.get(source);
   return metadata ? setReplyPayloadMetadata(target, metadata) : target;
+}
+
+export function isReplyPayloadStatusNotice(
+  payload: Pick<ReplyPayload, "isCompactionNotice" | "isStatusNotice">,
+): boolean {
+  return Boolean(payload.isCompactionNotice || payload.isStatusNotice);
 }

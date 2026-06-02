@@ -24,7 +24,7 @@ const mockState = vi.hoisted(() => ({
   finalPayload: null as { text?: string; mediaUrl?: string } | null,
   dispatchedReplies: [] as Array<{
     kind: "tool" | "block" | "final";
-    payload: { text?: string; mediaUrl?: string; mediaUrls?: string[] };
+    payload: { text?: string; mediaUrl?: string; mediaUrls?: string[]; isError?: boolean };
   }>,
   dispatchError: null as Error | null,
   triggerAgentRunStart: false,
@@ -143,6 +143,7 @@ vi.mock("../../auto-reply/dispatch.js", () => ({
           }
           params.dispatcher.sendFinalReply({
             text: reply.payload.text ?? "",
+            isError: reply.payload.isError,
           });
         }
       } else {
@@ -500,6 +501,65 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
       dreamingAssistApplied: false,
       dreamingAssistReason: "no_strategy",
     });
+  });
+
+  it("broadcasts returned agent-run error payloads after an agent starts", async () => {
+    createTranscriptFixture("openclaw-chat-send-agent-returned-error-");
+    const errorMessage = "LLM idle timeout (120s): no response from model";
+    mockState.triggerAgentRunStart = true;
+    mockState.dispatchedReplies = [
+      {
+        kind: "final",
+        payload: {
+          text: errorMessage,
+          isError: true,
+        },
+      },
+    ];
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-agent-returned-error",
+      message: "please keep working",
+      waitFor: "dedupe",
+    });
+
+    const errorBroadcast = (
+      context.broadcast as unknown as ReturnType<typeof vi.fn>
+    ).mock.calls.find(
+      (call) => (call[1] as { state?: unknown } | undefined)?.state === "error",
+    )?.[1];
+    expect(errorBroadcast).toMatchObject({
+      runId: "idem-agent-returned-error",
+      sessionKey: "main",
+      state: "error",
+      errorMessage,
+    });
+    const dedupe = context.dedupe.get("chat:idem-agent-returned-error");
+    expect(dedupe?.ok).toBe(false);
+    expect(dedupe?.payload).toMatchObject({
+      runId: "idem-agent-returned-error",
+      status: "error",
+      summary: errorMessage,
+    });
+    expect(
+      mockState.emittedTranscriptUpdates.some(
+        (update) =>
+          typeof update.message === "object" &&
+          update.message !== null &&
+          (update.message as { role?: unknown }).role === "user",
+      ),
+    ).toBe(true);
+    const assistantUpdates = mockState.emittedTranscriptUpdates.filter(
+      (update) =>
+        typeof update.message === "object" &&
+        update.message !== null &&
+        (update.message as { role?: unknown }).role === "assistant",
+    );
+    expect(assistantUpdates).toStrictEqual([]);
   });
 
   it("returns scope_mismatch when a fresh dreaming strategy belongs to another task or session", async () => {

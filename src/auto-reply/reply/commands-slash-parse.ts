@@ -16,6 +16,10 @@ export function parseSlashCommandActionArgs(raw: string, slash: string): SlashCo
   if (!normalizeLowercaseStringOrEmpty(trimmed).startsWith(slashLower)) {
     return { kind: "no-match" };
   }
+  const charAfter = trimmed.charAt(slash.length);
+  if (charAfter && !/[\s:]/.test(charAfter)) {
+    return { kind: "no-match" };
+  }
   const rest = trimmed.slice(slash.length).trim();
   if (!rest) {
     return { kind: "empty" };

@@ -392,6 +392,30 @@ describe("createAcpDispatchDeliveryCoordinator", () => {
     expect(coordinator.hasDeliveredVisibleText()).toBe(false);
   });
 
+  it("keeps status block notices out of ACP accumulated output and TTS", async () => {
+    const dispatcher = createDispatcher();
+    const coordinator = createAcpDispatchDeliveryCoordinator({
+      cfg: createAcpTestConfig(),
+      ctx: buildTestCtx({
+        Provider: "discord",
+        Surface: "discord",
+        SessionKey: "agent:codex-acp:session-1",
+      }),
+      dispatcher,
+      inboundAudio: false,
+      shouldRouteToOriginating: false,
+    });
+
+    await coordinator.deliver("block", { text: "I'll remind you soon", isStatusNotice: true });
+    await coordinator.deliver("block", { text: "final block" }, { skipTts: true });
+    await coordinator.settleVisibleText();
+
+    expect(coordinator.getBlockCount()).toBe(1);
+    expect(coordinator.getAccumulatedBlockText()).toBe("final block");
+    expect(ttsMocks.maybeApplyTtsToPayload).not.toHaveBeenCalled();
+    expect(dispatcher.sendBlockReply).toHaveBeenCalledTimes(2);
+  });
+
   it("routes ACP replies through the configured default account when AccountId is omitted", async () => {
     const coordinator = createAcpDispatchDeliveryCoordinator({
       cfg: createAcpTestConfig({

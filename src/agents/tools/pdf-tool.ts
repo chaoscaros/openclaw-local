@@ -253,7 +253,11 @@ export function createPdfTool(options?: {
     return null;
   }
 
-  const pdfModelConfig = resolvePdfModelConfigForTool({ cfg: options?.config, agentDir });
+  const pdfModelConfig = resolvePdfModelConfigForTool({
+    cfg: options?.config,
+    workspaceDir: options?.workspaceDir,
+    agentDir,
+  });
   if (!pdfModelConfig) {
     return null;
   }

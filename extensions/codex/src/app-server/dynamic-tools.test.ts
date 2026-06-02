@@ -175,4 +175,41 @@ describe("createCodexDynamicToolBridge", () => {
       messagingToolSentTargets: [],
     });
   });
+
+  it("can register a durable tool schema while denying execution for the current turn", async () => {
+    const execute = vi.fn(async () => ({
+      content: [{ type: "text" as const, text: "web result" }],
+      details: {},
+    }));
+    const bridge = createCodexDynamicToolBridge({
+      tools: [createTool({ name: "message" })],
+      registeredTools: [
+        createTool({ name: "message" }),
+        createTool({ name: "web_search", execute }),
+      ],
+      signal: new AbortController().signal,
+    });
+
+    expect(bridge.availableSpecs.map((tool) => tool.name)).toEqual(["message"]);
+    expect(bridge.specs.map((tool) => tool.name)).toEqual(["message", "web_search"]);
+
+    const result = await bridge.handleToolCall({
+      threadId: "thread-1",
+      turnId: "turn-1",
+      callId: "call-1",
+      tool: "web_search",
+      arguments: {},
+    });
+
+    expect(result).toEqual({
+      success: false,
+      contentItems: [
+        {
+          type: "inputText",
+          text: "OpenClaw tool is not available for this turn: web_search",
+        },
+      ],
+    });
+    expect(execute).not.toHaveBeenCalled();
+  });
 });

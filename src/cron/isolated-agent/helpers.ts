@@ -18,6 +18,7 @@ export type CronPayloadOutcome = {
   deliveryPayloads: DeliveryPayload[];
   deliveryPayloadHasStructuredContent: boolean;
   hasFatalErrorPayload: boolean;
+  hasFatalStructuredErrorPayload: boolean;
   embeddedRunError?: string;
 };
 
@@ -191,6 +192,7 @@ export function resolveCronPayloadOutcome(params: {
     errorPayloads.every((payload) => isCronToolWarning(payload?.text));
   const hasFatalErrorPayload =
     hasErrorPayload && !hasSuccessfulPayloadAfterLastError && !hasRecoveredToolWarning;
+  const hasFatalStructuredErrorPayload = hasFatalErrorPayload;
   // Keep structured/media announce payloads intact. Only collapse purely textual
   // cron announce output to the final assistant-visible answer.
   const shouldUseFinalAssistantVisibleText =
@@ -224,6 +226,7 @@ export function resolveCronPayloadOutcome(params: {
     deliveryPayloads: resolvedDeliveryPayloads,
     deliveryPayloadHasStructuredContent,
     hasFatalErrorPayload,
+    hasFatalStructuredErrorPayload,
     embeddedRunError: hasFatalErrorPayload
       ? (lastErrorPayloadText ?? "cron isolated run returned an error payload")
       : undefined,

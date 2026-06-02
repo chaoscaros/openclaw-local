@@ -8,6 +8,21 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+## 2026.5.22
+
+### Changes
+
+- Build/plugins: add changed-package shrinkwrap generation lanes for bundled plugin runtime dependency validation.
+- Agents/tools: align media, model-config, timeout, liveness, and execution-result handling with the 2026.5.22 official update set.
+
+### Fixes
+
+- Codex app-server: retry native compaction once after timeout and keep embedded attempt session write locks bounded by the compaction timeout.
+- Cron: suppress delivery announcements for fatal structured run errors and release isolated cron run context after completion.
+- Auto-reply: keep task/status notices out of final-answer coalescing, TTS, reminder, and reply-threading paths.
+- Control UI: preserve the updated task, mode, and dreaming mobile surfaces while absorbing the 2026.5.22 UI fixes.
+- Channels/providers/memory: include the Telegram, OpenAI provider, Google OAuth, memory host, logs, and terminal fixes from the 2026.5.22 iteration.
+
 ## 2026.5.19
 
 ### Fixes

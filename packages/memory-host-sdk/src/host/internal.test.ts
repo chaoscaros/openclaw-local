@@ -54,9 +54,16 @@ describe("normalizeExtraMemoryPaths", () => {
       "./notes",
       absPath,
       absPath,
+      "~/shared-notes",
+      "~",
       "",
     ]);
-    expect(result).toEqual([path.resolve(workspaceDir, "notes"), absPath]);
+    expect(result).toEqual([
+      path.resolve(workspaceDir, "notes"),
+      absPath,
+      path.join(os.homedir(), "shared-notes"),
+      os.homedir(),
+    ]);
   });
 });
 

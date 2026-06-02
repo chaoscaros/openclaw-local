@@ -226,6 +226,80 @@ describe("openai codex provider", () => {
     });
   });
 
+  it("restores [text,image] input on stale gpt-5.5 rows that omit input", () => {
+    const provider = buildOpenAICodexProviderPlugin();
+
+    const model = provider.normalizeResolvedModel?.({
+      provider: "openai-codex",
+      modelId: "gpt-5.5",
+      model: {
+        id: "gpt-5.5",
+        name: "gpt-5.5",
+        provider: "openai-codex",
+        api: "openai-codex-responses",
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+        reasoning: true,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 1_050_000,
+        contextTokens: 272_000,
+        maxTokens: 128_000,
+      },
+    } as never);
+
+    expect(model?.input).toEqual(["text", "image"]);
+  });
+
+  it("preserves [text,image] input on rows that already declare image capability", () => {
+    const provider = buildOpenAICodexProviderPlugin();
+
+    const model = provider.normalizeResolvedModel?.({
+      provider: "openai-codex",
+      modelId: "gpt-5.5",
+      model: {
+        id: "gpt-5.5",
+        name: "gpt-5.5",
+        provider: "openai-codex",
+        api: "openai-codex-responses",
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+        reasoning: true,
+        input: ["text", "image"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 1_050_000,
+        contextTokens: 272_000,
+        maxTokens: 128_000,
+      },
+    } as never);
+
+    if (model) {
+      expect(model.input).toEqual(["text", "image"]);
+    }
+  });
+
+  it("leaves legacy codex-suffix model rows text-only", () => {
+    const provider = buildOpenAICodexProviderPlugin();
+
+    const model = provider.normalizeResolvedModel?.({
+      provider: "openai-codex",
+      modelId: "gpt-5.3-codex",
+      model: {
+        id: "gpt-5.3-codex",
+        name: "gpt-5.3-codex",
+        provider: "openai-codex",
+        api: "openai-codex-responses",
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+        reasoning: true,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 400_000,
+        contextTokens: 272_000,
+        maxTokens: 128_000,
+      },
+    } as never);
+
+    if (model?.input) {
+      expect(model.input).not.toContain("image");
+    }
+  });
+
   it("resolves gpt-5.5-pro with pro pricing and native context", () => {
     const provider = buildOpenAICodexProviderPlugin();
 

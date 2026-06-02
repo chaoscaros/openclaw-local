@@ -14,7 +14,7 @@ import type { ImageModelConfig } from "./image-tool.helpers.js";
 import {
   buildToolModelConfigFromCandidates,
   coerceToolModelConfig,
-  hasAuthForProvider,
+  hasProviderAuthForTool,
   hasToolModelConfig,
   resolveDefaultModelRef,
   type ToolModelConfig,
@@ -122,6 +122,7 @@ export function isCapabilityProviderConfigured<T extends CapabilityProvider>(par
   provider?: T;
   providerId?: string;
   cfg?: OpenClawConfig;
+  workspaceDir?: string;
   agentDir?: string;
 }): boolean {
   const provider =
@@ -132,7 +133,12 @@ export function isCapabilityProviderConfigured<T extends CapabilityProvider>(par
     });
   if (!provider) {
     return params.providerId
-      ? hasAuthForProvider({ provider: params.providerId, agentDir: params.agentDir })
+      ? hasProviderAuthForTool({
+          provider: params.providerId,
+          cfg: params.cfg,
+          workspaceDir: params.workspaceDir,
+          agentDir: params.agentDir,
+        })
       : false;
   }
   if (provider.isConfigured) {
@@ -141,7 +147,12 @@ export function isCapabilityProviderConfigured<T extends CapabilityProvider>(par
       agentDir: params.agentDir,
     });
   }
-  return hasAuthForProvider({ provider: provider.id, agentDir: params.agentDir });
+  return hasProviderAuthForTool({
+    provider: provider.id,
+    cfg: params.cfg,
+    workspaceDir: params.workspaceDir,
+    agentDir: params.agentDir,
+  });
 }
 
 export function resolveSelectedCapabilityProvider<T extends CapabilityProvider>(params: {
@@ -163,6 +174,7 @@ export function resolveSelectedCapabilityProvider<T extends CapabilityProvider>(
 
 export function resolveCapabilityModelCandidatesForTool<T extends CapabilityProvider>(params: {
   cfg?: OpenClawConfig;
+  workspaceDir?: string;
   agentDir?: string;
   providers: T[];
 }): string[] {
@@ -178,6 +190,7 @@ export function resolveCapabilityModelCandidatesForTool<T extends CapabilityProv
         providers: params.providers,
         provider,
         cfg: params.cfg,
+        workspaceDir: params.workspaceDir,
         agentDir: params.agentDir,
       })
     ) {
@@ -208,6 +221,7 @@ export function resolveCapabilityModelCandidatesForTool<T extends CapabilityProv
 
 export function resolveCapabilityModelConfigForTool<T extends CapabilityProvider>(params: {
   cfg?: OpenClawConfig;
+  workspaceDir?: string;
   agentDir?: string;
   modelConfig?: AgentModelConfig;
   providers: T[];
@@ -218,9 +232,12 @@ export function resolveCapabilityModelConfigForTool<T extends CapabilityProvider
   }
   return buildToolModelConfigFromCandidates({
     explicit,
+    cfg: params.cfg,
+    workspaceDir: params.workspaceDir,
     agentDir: params.agentDir,
     candidates: resolveCapabilityModelCandidatesForTool({
       cfg: params.cfg,
+      workspaceDir: params.workspaceDir,
       agentDir: params.agentDir,
       providers: params.providers,
     }),
@@ -229,6 +246,7 @@ export function resolveCapabilityModelConfigForTool<T extends CapabilityProvider
         providers: params.providers,
         providerId,
         cfg: params.cfg,
+        workspaceDir: params.workspaceDir,
         agentDir: params.agentDir,
       }),
   });

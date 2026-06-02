@@ -10,6 +10,7 @@ import {
   getRuntimeConfig,
   isNixMode,
   loadConfig,
+  normalizeStateDirEnv,
   readConfigFileSnapshot,
   registerConfigWriteListener,
   writeConfigFile,
@@ -52,7 +53,10 @@ import { coreGatewayHandlers } from "./server-methods.js";
 import { loadGatewayModelCatalog } from "./server-model-catalog.js";
 import { createGatewayNodeSessionRuntime } from "./server-node-session-runtime.js";
 import { reloadDeferredGatewayPlugins } from "./server-plugin-bootstrap.js";
-import { clearFallbackGatewayContext, setFallbackGatewayContextResolver } from "./server-plugins.js";
+import {
+  clearFallbackGatewayContext,
+  setFallbackGatewayContextResolver,
+} from "./server-plugins.js";
 import { startManagedGatewayConfigReloader } from "./server-reload-handlers.js";
 import { createGatewayRequestContext } from "./server-request-context.js";
 import { resolveGatewayRuntimeConfig } from "./server-runtime-config.js";
@@ -207,6 +211,7 @@ export async function startGatewayServer(
   port = 18789,
   opts: GatewayServerOptions = {},
 ): Promise<GatewayServer> {
+  normalizeStateDirEnv(process.env);
   const minimalTestGateway =
     process.env.VITEST === "1" && process.env.OPENCLAW_TEST_MINIMAL_GATEWAY === "1";
 

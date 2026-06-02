@@ -45,6 +45,12 @@ describe("createBlockReplyPayloadKey", () => {
     const b = createBlockReplyPayloadKey({ text: "hello" });
     expect(a).toBe(b);
   });
+
+  it("produces different keys for status notices and answer content", () => {
+    const status = createBlockReplyPayloadKey({ text: "working", isStatusNotice: true });
+    const answer = createBlockReplyPayloadKey({ text: "working" });
+    expect(status).not.toBe(answer);
+  });
 });
 
 describe("createBlockReplyContentKey", () => {
@@ -114,5 +120,49 @@ describe("createBlockReplyPipeline dedup with threading", () => {
     await pipeline.flush({ force: true });
 
     expect(sent).toEqual([{ interactive }]);
+  });
+
+  it("does not treat status notices as streamed answer content", async () => {
+    const sent: Array<{ text?: string; isStatusNotice?: boolean }> = [];
+    const pipeline = createBlockReplyPipeline({
+      onBlockReply: async (payload) => {
+        sent.push({ text: payload.text, isStatusNotice: payload.isStatusNotice });
+      },
+      timeoutMs: 5000,
+    });
+
+    pipeline.enqueue({ text: "working", isStatusNotice: true });
+    await pipeline.flush();
+
+    expect(sent).toEqual([{ text: "working", isStatusNotice: true }]);
+    expect(pipeline.didStream()).toBe(false);
+    expect(pipeline.hasSentPayload({ text: "working" })).toBe(false);
+  });
+
+  it("keeps status notices separate from answer text during coalescing", async () => {
+    const sent: Array<{ text?: string; isStatusNotice?: boolean }> = [];
+    const pipeline = createBlockReplyPipeline({
+      onBlockReply: async (payload) => {
+        sent.push({ text: payload.text, isStatusNotice: payload.isStatusNotice });
+      },
+      timeoutMs: 5000,
+      coalescing: {
+        minChars: 1,
+        maxChars: 200,
+        idleMs: 0,
+        joiner: "\n",
+      },
+    });
+
+    pipeline.enqueue({ text: "working", isStatusNotice: true });
+    pipeline.enqueue({ text: "final answer" });
+    await pipeline.flush({ force: true });
+
+    expect(sent).toEqual([
+      { text: "working", isStatusNotice: true },
+      { text: "final answer", isStatusNotice: undefined },
+    ]);
+    expect(pipeline.didStream()).toBe(true);
+    expect(pipeline.hasSentPayload({ text: "final answer" })).toBe(true);
   });
 });

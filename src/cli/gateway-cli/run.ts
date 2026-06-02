@@ -10,9 +10,10 @@ import type {
 import {
   CONFIG_PATH,
   loadConfig,
+  normalizeStateDirEnv,
   readConfigFileSnapshot,
-  resolveStateDir,
   resolveGatewayPort,
+  resolveStateDir,
 } from "../../config/config.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { hasConfiguredSecretInput } from "../../config/types.secrets.js";
@@ -249,6 +250,7 @@ function isHealthyGatewayLockError(err: unknown): boolean {
 }
 
 async function runGatewayCommand(opts: GatewayRunOpts) {
+  normalizeStateDirEnv(process.env);
   const isDevProfile = normalizeOptionalLowercaseString(process.env.OPENCLAW_PROFILE) === "dev";
   const devMode = Boolean(opts.dev) || isDevProfile;
   if (opts.reset && !devMode) {

@@ -20,6 +20,7 @@ import { getProviderEnvVars } from "../../secrets/provider-env-vars.js";
 import { resolveUserPath } from "../../utils.js";
 import { ToolInputError, readNumberParam, readStringParam } from "./common.js";
 import { decodeDataUrl } from "./image-tool.helpers.js";
+import type { MediaGenerateAsyncStartCallback } from "./media-generate-background-shared.js";
 import {
   applyImageGenerationModelConfigDefaults,
   buildMediaReferenceDetails,
@@ -132,10 +133,12 @@ function formatImageGenerationAuthHint(provider: {
 
 export function resolveImageGenerationModelConfigForTool(params: {
   cfg?: OpenClawConfig;
+  workspaceDir?: string;
   agentDir?: string;
 }): ToolModelConfig | null {
   return resolveCapabilityModelConfigForTool({
     cfg: params.cfg,
+    workspaceDir: params.workspaceDir,
     agentDir: params.agentDir,
     modelConfig: params.cfg?.agents?.defaults?.imageGenerationModel,
     providers: listRuntimeImageGenerationProviders({ config: params.cfg }),
@@ -381,10 +384,12 @@ export function createImageGenerateTool(options?: {
   workspaceDir?: string;
   sandbox?: ImageGenerateSandboxConfig;
   fsPolicy?: ToolFsPolicy;
+  onAsyncTaskStarted?: MediaGenerateAsyncStartCallback;
 }): AnyAgentTool | null {
   const cfg = options?.config ?? loadConfig();
   const imageGenerationModelConfig = resolveImageGenerationModelConfigForTool({
     cfg,
+    workspaceDir: options?.workspaceDir,
     agentDir: options?.agentDir,
   });
   if (!imageGenerationModelConfig) {
@@ -421,6 +426,7 @@ export function createImageGenerateTool(options?: {
             providers: runtimeProviders,
             provider,
             cfg: effectiveCfg,
+            workspaceDir: options?.workspaceDir,
             agentDir: options?.agentDir,
           }),
           authEnvVars: getImageGenerationProviderAuthEnvVars(provider.id),
