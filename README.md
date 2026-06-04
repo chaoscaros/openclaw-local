@@ -4,15 +4,14 @@
 
 ## 项目定位
 
-这个项目基于 OpenClaw `v2026.4.14` 本地复制出来，作为我自己的长期本地改版版本使用。
+这个项目从官方 OpenClaw fork 出来，作为长期本地改版版本使用。当前本地线已经持续吸收并整理到 2026.5.x 系列，具体版本以 `package.json`、左下角 UI 版本和当前分支提交为准。
 
 目标是：
 
 - 保留官方 OpenClaw 仓库原样，方便后续同步和参考
-- 在这个项目里持续做我自己的本地优化和定制
-- 将我常用的默认技能、交互体验优化、界面调整一起固化下来
-
-当前项目为本地长期维护版本。
+- 在这个项目里持续做本地优化和定制
+- 固化常用默认技能、交互体验优化和界面调整
+- 按 tag 分批吸收官方改动，先在开发分支整理，再进入 QA 验证
 
 Git 仓库：
 
@@ -20,116 +19,88 @@ Git 仓库：
 git@github.com:chaoscaros/openclaw-local.git
 ```
 
-## 和官方仓库的关系
+## 本地中文说明文档
 
-官方仓库保留为上游参考版本，不作为我的日常改版仓库。
+本地 fork 的配置、命令、迭代流程和验收保护点已经单独整理到：
 
-我自己的改动只放在当前这个本地 fork 项目中。
+```text
+local-docs/
+```
 
-这样做的好处：
+阅读入口：
 
-- 官方仓库保持干净
-- 本地改版和官方版本职责分离
-- 后续要对比、挑改动、同步上游会更清晰
+- `local-docs/README.md`：本地手册总览和阅读顺序
+- `local-docs/workflow.md`：分支、tag 迭代、提交、QA 流程
+- `local-docs/configuration.md`：`openclaw.json`、`.env.example`、初始化命令和路径规则
+- `local-docs/commands.md`：本地常用命令和 CLI 文档分类索引
+- `local-docs/verification.md`：构建、UI 构建、定向测试和收尾检查
+- `local-docs/feature-guards.md`：任务模式、Dreaming、Control UI、Gateway、移动端保护点
 
-## 当前已内置的本地定制
+官方风格产品文档仍在 `docs/`，例如 `docs/cli/index.md`、`docs/gateway/`、`docs/web/`。本地中文维护说明优先写入 `local-docs/`，README 只保留入口。
 
-### 1. Chat 发送体验优化
+## 分支约定
 
-已包含一批针对聊天区交互体验的本地优化：
+当前本地维护使用三条主线：
 
-- 优化发送后首包前的 loading 表现
-- 降低发送中消息闪烁、消失、被旧 history 覆盖的概率
-- 调整 loading 气泡样式，让它更自然
-- 避免运行中的状态被不必要的 history reload 打断
+- `codex/dev`：开发分支，日常迭代和官方 tag 吸收都先在这里做
+- `codex/qa`：测试分支，`codex/dev` 本地验证通过后再合并到这里
+- `main`：正式版本分支，只有 QA 没问题后才合并
 
-### 2. 默认技能：dev-spec-first
+常规流程见 `local-docs/workflow.md`。
 
-本项目已内置并默认启用 `dev-spec-first` 技能。
+## 快速启动
 
-作用：
-
-- 默认先整理规格，不直接改代码
-- 只有在用户明确说“直接开发 / 应用修改 / 直接改代码”时才进入开发模式
-- 用来约束需求分析和开发边界，减少误改和过度执行
-
-当前项目内技能位于项目内的 `.agents/skills/dev-spec-first`。
-
-如需扩展技能，可通过项目内 skills 目录或配置里的额外 skills 目录接入。
-
-### 3. 项目默认配置
-
-项目根目录包含本地配置文件 `openclaw.json`。
-
-目前已配置：
-
-- 默认 agent workspace 指向当前项目目录
-- 默认启用 `dev-spec-first`
-- 额外扫描外部 skills 目录
-
-## 启动方式
-
-在项目目录下运行：
+首次安装依赖：
 
 ```bash
 pnpm install
+```
+
+构建代码和 UI：
+
+```bash
 pnpm build
-pnpm fast
+pnpm ui:build
 ```
 
-如果依赖已经安装过，通常只需要：
+快速启动本地 gateway：
 
 ```bash
 pnpm fast
 ```
 
-## 常用开发命令
+如果用户已经在本机启动服务，开发过程中不要擅自重启后台服务。需要重启时，先说明原因，由用户操作。
 
-### 查看 Git 状态
-
-```bash
-git status
-```
-
-### 提交改动
+## 常用入口
 
 ```bash
-git add .
-git commit -m "你的提交说明"
-git push
+pnpm openclaw --help
+pnpm openclaw gateway status
+pnpm openclaw doctor
+pnpm openclaw dashboard --no-open
 ```
 
-### 运行定向测试
+初始化命令、命令分类和对应文档位置见 `local-docs/commands.md`。
 
-例如 UI/chat 相关测试：
+## 默认本地定制
 
-```bash
-pnpm vitest run ui/src/ui/views/chat.test.ts ui/src/ui/app-chat.test.ts ui/src/ui/controllers/chat.test.ts ui/src/ui/app-gateway.sessions.node.test.ts
-```
+当前本地版本重点包含：
+
+- Chat 发送体验优化
+- 任务模式和移动端任务入口
+- 默认 `dev-spec-first` 技能
+- Memory / Dreaming 保护
+- Control UI 任务、归档、日志、使用情况等入口
+- Gateway / Runtime 稳定性修复
+
+详细保护点见 `local-docs/feature-guards.md`。
 
 ## README 使用原则
 
-这个 README 代表的是**我自己的本地版本说明**，不是官方 OpenClaw 的总说明。
+这个 README 代表的是本地版本入口，不是官方 OpenClaw 总说明。
 
-所以这里应该优先记录：
+后续新增内容时：
 
-- 这个本地版本是干什么的
-- 和官方仓库怎么分工
-- 我自己加了哪些本地定制
-- 我平时怎么启动、怎么维护、怎么提交
-
-而不是照搬官方 README 的完整介绍。
-
-## 后续建议
-
-后面可以继续补充这些内容：
-
-- 我的本地定制清单
-- 默认技能说明
-- 常见问题排查记录
-- 与官方版本同步的流程
-- 本地 UI / 交互改动的说明
-
----
-
-如果后续这个项目继续长期维护，这份 README 应该持续按“我的本地版本说明”方向演进。
+- 本地配置、命令、流程、验收规则写入 `local-docs/`
+- 官方通用 CLI / gateway / web 文档继续写入 `docs/`
+- README 只保留项目定位、快速启动和文档入口
