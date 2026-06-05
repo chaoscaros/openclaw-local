@@ -1,7 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  expandPathEnvironmentVariables,
   expandHomePrefix,
   resolveEffectiveHomeDir,
   resolveHomeRelativePath,
@@ -79,6 +78,63 @@ describe("resolveEffectiveHomeDir", () => {
     },
   ])("$name", ({ env, expected }) => {
     expect(resolveEffectiveHomeDir(env)).toBe(path.resolve(expected));
+  });
+
+  it("derives home from PREFIX on Android/Termux when HOME is unset", () => {
+    const env = {
+      PREFIX: "/data/data/com.termux/files/usr",
+      ANDROID_DATA: "/data",
+    } as NodeJS.ProcessEnv;
+    expect(resolveEffectiveHomeDir(env, () => "/home")).toBe(
+      path.resolve("/data/data/com.termux/files/home"),
+    );
+  });
+
+  it("prefers HOME over PREFIX-derived path on Termux", () => {
+    const env = {
+      HOME: "/data/data/com.termux/files/home",
+      PREFIX: "/data/data/com.termux/files/usr",
+      ANDROID_DATA: "/data",
+    } as NodeJS.ProcessEnv;
+    expect(resolveEffectiveHomeDir(env)).toBe(path.resolve("/data/data/com.termux/files/home"));
+  });
+
+  it("ignores PREFIX without com.termux to avoid false positives in generic chroots", () => {
+    const env = {
+      PREFIX: "/usr",
+      ANDROID_DATA: "/data",
+    } as NodeJS.ProcessEnv;
+    expect(resolveEffectiveHomeDir(env, () => "/fallback")).toBe(path.resolve("/fallback"));
+  });
+
+  it("ignores PREFIX values that only mention com.termux outside the Termux app root", () => {
+    const env = {
+      PREFIX: "/tmp/com.termux/usr",
+      ANDROID_DATA: "/data",
+    } as NodeJS.ProcessEnv;
+    expect(resolveEffectiveHomeDir(env, () => "/fallback")).toBe(path.resolve("/fallback"));
+  });
+
+  it("uses Termux PREFIX for tilde expansion when HOME is unset", () => {
+    const env = {
+      OPENCLAW_HOME: "~/workspace",
+      PREFIX: "/data/data/com.termux/files/usr",
+      ANDROID_DATA: "/data",
+    } as NodeJS.ProcessEnv;
+    expect(
+      resolveEffectiveHomeDir(env, () => {
+        throw new Error("no homedir");
+      }),
+    ).toBe(path.resolve("/data/data/com.termux/files/home/workspace"));
+  });
+
+  it("expands OPENCLAW_HOME when set to ~", () => {
+    const env = {
+      OPENCLAW_HOME: "~/svc",
+      HOME: "/home/alice",
+    } as NodeJS.ProcessEnv;
+
+    expect(resolveEffectiveHomeDir(env)).toBe(path.resolve("/home/alice/svc"));
   });
 });
 
@@ -160,37 +216,6 @@ describe("expandHomePrefix", () => {
   });
 });
 
-describe("expandPathEnvironmentVariables", () => {
-  it.each([
-    {
-      name: "expands Windows percent variables",
-      input: "%USERPROFILE%\\openclaw-state",
-      env: { USERPROFILE: "C:\\Users\\alice" } as NodeJS.ProcessEnv,
-      expected: "C:\\Users\\alice\\openclaw-state",
-    },
-    {
-      name: "expands braced POSIX variables",
-      input: "${OPENCLAW_ROOT}/config/openclaw.json",
-      env: { OPENCLAW_ROOT: "/srv/openclaw" } as NodeJS.ProcessEnv,
-      expected: "/srv/openclaw/config/openclaw.json",
-    },
-    {
-      name: "expands plain POSIX variables",
-      input: "$OPENCLAW_ROOT/state",
-      env: { OPENCLAW_ROOT: "/srv/openclaw" } as NodeJS.ProcessEnv,
-      expected: "/srv/openclaw/state",
-    },
-    {
-      name: "keeps unknown variables unchanged",
-      input: "%UNKNOWN%/$UNKNOWN/${UNKNOWN}",
-      env: {} as NodeJS.ProcessEnv,
-      expected: "%UNKNOWN%/$UNKNOWN/${UNKNOWN}",
-    },
-  ])("$name", ({ input, env, expected }) => {
-    expect(expandPathEnvironmentVariables(input, env)).toBe(expected);
-  });
-});
-
 describe("resolveHomeRelativePath", () => {
   it.each([
     {
@@ -215,14 +240,6 @@ describe("resolveHomeRelativePath", () => {
         env: { OPENCLAW_HOME: "/srv/openclaw-home" } as NodeJS.ProcessEnv,
       },
       expected: path.resolve("/srv/openclaw-home/docs"),
-    },
-    {
-      name: "expands environment variables before resolving",
-      input: "%OPENCLAW_ROOT%/config/openclaw.json",
-      opts: {
-        env: { OPENCLAW_ROOT: "/srv/openclaw" } as NodeJS.ProcessEnv,
-      },
-      expected: path.resolve("/srv/openclaw/config/openclaw.json"),
     },
     {
       name: "falls back to cwd when tilde paths have no home source",

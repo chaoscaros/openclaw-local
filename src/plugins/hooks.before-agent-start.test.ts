@@ -5,7 +5,7 @@
  * propagated through the hook merger, including priority ordering and
  * backward compatibility.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createHookRunner } from "./hooks.js";
 import { addStaticTestHooks, addTestHook, TEST_PLUGIN_AGENT_CTX } from "./hooks.test-helpers.js";
 import { createEmptyPluginRegistry, type PluginRegistry } from "./registry.js";
@@ -27,16 +27,21 @@ function addBeforeAgentStartHook(
 }
 
 const stubCtx = TEST_PLUGIN_AGENT_CTX;
+const EMPTY_BEFORE_AGENT_START_RESULT = {
+  appendContext: undefined,
+  appendSystemContext: undefined,
+  modelOverride: undefined,
+  prependContext: undefined,
+  prependSystemContext: undefined,
+  providerOverride: undefined,
+  systemPrompt: undefined,
+} satisfies PluginHookBeforeAgentStartResult;
 
 describe("before_agent_start hook merger", () => {
   let registry: PluginRegistry;
 
   beforeEach(() => {
     registry = createEmptyPluginRegistry();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   const runWithSingleHook = async (result: PluginHookBeforeAgentStartResult, priority?: number) => {
@@ -57,10 +62,10 @@ describe("before_agent_start hook merger", () => {
       result: PluginHookBeforeAgentStartResult;
       priority?: number;
     }>,
-    expected: Partial<PluginHookBeforeAgentStartResult>,
+    expected: PluginHookBeforeAgentStartResult,
   ) => {
     const result = await runWithHooks(hooks);
-    expect(result).toEqual(expect.objectContaining(expected));
+    expect(result).toEqual(expected);
     return result;
   };
 
@@ -84,6 +89,7 @@ describe("before_agent_start hook merger", () => {
       "returns modelOverride from a single plugin",
       { modelOverride: "llama3.3:8b" },
       {
+        ...EMPTY_BEFORE_AGENT_START_RESULT,
         modelOverride: "llama3.3:8b",
       },
     ],
@@ -91,6 +97,7 @@ describe("before_agent_start hook merger", () => {
       "returns providerOverride from a single plugin",
       { providerOverride: "ollama" },
       {
+        ...EMPTY_BEFORE_AGENT_START_RESULT,
         providerOverride: "ollama",
       },
     ],
@@ -101,6 +108,7 @@ describe("before_agent_start hook merger", () => {
         providerOverride: "ollama",
       },
       {
+        ...EMPTY_BEFORE_AGENT_START_RESULT,
         modelOverride: "llama3.3:8b",
         providerOverride: "ollama",
       },
@@ -113,6 +121,7 @@ describe("before_agent_start hook merger", () => {
         providerOverride: "ollama",
       },
       {
+        ...EMPTY_BEFORE_AGENT_START_RESULT,
         systemPrompt: "You are a helpful assistant",
         modelOverride: "llama3.3:8b",
         providerOverride: "ollama",
@@ -128,7 +137,7 @@ describe("before_agent_start hook merger", () => {
         { pluginId: "low-priority", result: { modelOverride: "gpt-5.4" }, priority: 1 },
         { pluginId: "high-priority", result: { modelOverride: "llama3.3:8b" }, priority: 10 },
       ],
-      { modelOverride: "llama3.3:8b" },
+      { ...EMPTY_BEFORE_AGENT_START_RESULT, modelOverride: "llama3.3:8b" },
     );
     expect(result?.modelOverride).toBe("llama3.3:8b");
   });
@@ -199,7 +208,7 @@ describe("before_agent_start hook merger", () => {
       registry,
       pluginId: "ctx-spy",
       hookName: "before_agent_start",
-      handler: ((_event: unknown, ctx: typeof stubCtx) => {
+      handler: ((eventValue: unknown, ctx: typeof stubCtx) => {
         capturedCtx = ctx;
         return {};
       }) as PluginHookRegistration["handler"],
@@ -208,58 +217,6 @@ describe("before_agent_start hook merger", () => {
     const runner = createHookRunner(registry);
     await runner.runBeforeAgentStart({ prompt: "test" }, stubCtx);
 
-    expect(capturedCtx).toBeDefined();
-    expect(capturedCtx?.runId).toBe("test-run-id");
-  });
-
-  it("fails open with the default timeout when a handler hangs", async () => {
-    vi.useFakeTimers();
-    const error = vi.fn();
-    addBeforeAgentStartHook(
-      registry,
-      "hanging-plugin",
-      () => new Promise<PluginHookBeforeAgentStartResult>(() => {}),
-      10,
-    );
-    const runner = createHookRunner(registry, { logger: { warn: vi.fn(), error } });
-
-    const resultPromise = runner.runBeforeAgentStart({ prompt: "hello" }, stubCtx);
-    await vi.advanceTimersByTimeAsync(15_000);
-
-    await expect(resultPromise).resolves.toBeUndefined();
-    expect(error).toHaveBeenCalledWith(
-      "[hooks] before_agent_start handler from hanging-plugin failed: Error: timed out after 15000ms",
-    );
-  });
-
-  it("keeps later before_agent_start contributions after a timed-out handler", async () => {
-    vi.useFakeTimers();
-    const error = vi.fn();
-    addBeforeAgentStartHook(
-      registry,
-      "hanging-plugin",
-      () => new Promise<PluginHookBeforeAgentStartResult>(() => {}),
-      10,
-    );
-    addBeforeAgentStartHook(
-      registry,
-      "fast-plugin",
-      () => ({ modelOverride: "fallback-model", prependContext: "fast context" }),
-      1,
-    );
-    const runner = createHookRunner(registry, { logger: { warn: vi.fn(), error } });
-
-    const resultPromise = runner.runBeforeAgentStart({ prompt: "hello" }, stubCtx);
-    await vi.advanceTimersByTimeAsync(15_000);
-
-    await expect(resultPromise).resolves.toEqual(
-      expect.objectContaining({
-        modelOverride: "fallback-model",
-        prependContext: "fast context",
-      }),
-    );
-    expect(error).toHaveBeenCalledWith(
-      expect.stringContaining("before_agent_start handler from hanging-plugin failed"),
-    );
+    expect(capturedCtx).toBe(stubCtx);
   });
 });

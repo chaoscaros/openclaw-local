@@ -1,5 +1,5 @@
 import type { ApiClientOptions } from "grammy";
-import { normalizeOptionalLowercaseString } from "openclaw/plugin-sdk/text-runtime";
+import { normalizeOptionalLowercaseString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { TelegramTransport } from "./fetch.js";
 import { isTelegramMisdirectedRequestError, tagTelegramNetworkError } from "./network-errors.js";
 import { resolveTelegramRequestTimeoutMs } from "./request-timeouts.js";
@@ -134,6 +134,7 @@ export function createTelegramClientFetch(params: {
       ? params.shutdownSignal
       : undefined;
     const requestSignal = isTelegramAbortSignalLike(init?.signal) ? init.signal : undefined;
+
     const canForceTransportFallback = (reason: string) =>
       !shutdownSignal?.aborted &&
       !requestSignal?.aborted &&

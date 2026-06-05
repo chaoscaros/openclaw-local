@@ -12,7 +12,6 @@ vi.mock("../../plugins/provider-runtime.js", async () => {
     applyProviderResolvedModelCompatWithPlugins: () => undefined,
     applyProviderResolvedTransportWithPlugin: () => undefined,
     buildProviderUnknownModelHintWithPlugin: () => undefined,
-    clearProviderRuntimeHookCache: () => {},
     normalizeProviderTransportWithPlugin: () => undefined,
     normalizeProviderResolvedModelWithPlugin: () => undefined,
     prepareProviderDynamicModel: async () => {},
@@ -45,6 +44,7 @@ vi.mock("../pi-model-discovery.js", () => ({
 }));
 
 import type { OpenClawConfig } from "../../config/config.js";
+import { resetModelDiscoveryCacheForTest } from "./model-discovery-cache.js";
 import {
   expectResolvedForwardCompatFallbackResult,
   expectUnknownModelErrorResult,
@@ -58,6 +58,7 @@ import {
 } from "./model.test-harness.js";
 
 beforeEach(() => {
+  resetModelDiscoveryCacheForTest();
   resetMockDiscoverModels(discoverModels);
 });
 
@@ -139,7 +140,7 @@ describe("resolveModel forward-compat errors and overrides", () => {
     );
   });
 
-  it("rejects direct openai gpt-5.3-codex-spark with a removal hint", () => {
+  it("rejects direct openai gpt-5.3-codex-spark with a codex-only hint", () => {
     const result = resolveModelForTest("openai", "gpt-5.3-codex-spark", "/tmp/agent");
 
     expect(result.model).toBeUndefined();
@@ -169,7 +170,7 @@ describe("resolveModel forward-compat errors and overrides", () => {
     );
   });
 
-  it("rejects azure openai gpt-5.3-codex-spark with a removal hint", () => {
+  it("rejects azure openai gpt-5.3-codex-spark with a codex-only hint", () => {
     const result = resolveModelForTest(
       "azure-openai-responses",
       "gpt-5.3-codex-spark",
@@ -220,12 +221,12 @@ describe("resolveModel forward-compat errors and overrides", () => {
 
     const result = resolveModelForTest("openai-codex", "gpt-5.4", "/tmp/agent", cfg);
     expect(result.error).toBeUndefined();
-    expect(result.model).toMatchObject({
-      api: "openai-codex-responses",
-      baseUrl: "https://custom.example.com",
-      headers: { "X-Custom-Auth": "token-123" },
-      id: "gpt-5.4",
-      provider: "openai-codex",
+    expect(result.model?.api).toBe("openai-codex-responses");
+    expect(result.model?.baseUrl).toBe("https://custom.example.com");
+    expect(result.model?.id).toBe("gpt-5.4");
+    expect(result.model?.provider).toBe("openai-codex");
+    expect((result.model as unknown as { headers?: Record<string, string> }).headers).toEqual({
+      "X-Custom-Auth": "token-123",
     });
   });
 
@@ -363,6 +364,23 @@ describe("resolveModel forward-compat errors and overrides", () => {
   });
 
   it("does not override when no provider config exists", () => {
+    mockDiscoveredModel(discoverModels, {
+      provider: "anthropic",
+      modelId: "claude-sonnet-4-6",
+      templateModel: {
+        id: "claude-sonnet-4-6",
+        name: "Claude Sonnet 4.6",
+        provider: "anthropic",
+        api: "anthropic-messages",
+        baseUrl: "https://api.anthropic.com",
+        reasoning: true,
+        input: ["text", "image"],
+        cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+        contextWindow: 200000,
+        maxTokens: 64000,
+      },
+    });
+
     const result = resolveModelForTest("anthropic", "claude-sonnet-4-6", "/tmp/agent");
     expect(result.error).toBeUndefined();
     expect(result.model?.baseUrl).toBe("https://api.anthropic.com");

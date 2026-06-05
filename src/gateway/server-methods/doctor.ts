@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
-import { loadConfig } from "../../config/config.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
   isSameMemoryDreamingDay,
@@ -16,20 +15,15 @@ import { getActiveMemorySearchManager } from "../../plugins/memory-runtime.js";
 import { formatError } from "../server-utils.js";
 import {
   dedupeDreamDiaryEntries,
+  previewGroundedRemMarkdown,
+  previewRemHarness,
   removeBackfillDiaryEntries,
   removeGroundedShortTermCandidates,
-  previewGroundedRemMarkdown,
   repairDreamingArtifacts,
-  resolveShortTermPromotionDreamingConfig,
-  runShortTermDreamingPromotionNow,
   writeBackfillDiaryEntries,
 } from "./doctor.memory-core-runtime.js";
 import { asRecord, normalizeTrimmedString } from "./record-shared.js";
 import type { GatewayRequestHandlers } from "./types.js";
-import { listTaskModeTasks } from "../task-mode-store.js";
-import { loadSessionStore, resolveDefaultSessionStorePath } from "../../config/sessions.js";
-import { readSessionMessages } from "../session-utils.js";
-import { extractAssistantVisibleText, extractFirstTextBlock } from "../../shared/chat-message-content.js";
 
 const SHORT_TERM_STORE_RELATIVE_PATH = path.join("memory", ".dreams", "short-term-recall.json");
 const SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH = path.join("memory", ".dreams", "phase-signals.json");
@@ -37,14 +31,10 @@ const MANAGED_DEEP_SLEEP_CRON_NAME = "Memory Dreaming Promotion";
 const MANAGED_DEEP_SLEEP_CRON_TAG = "[managed-by=memory-core.short-term-promotion]";
 const DEEP_SLEEP_SYSTEM_EVENT_TEXT = "__openclaw_memory_core_short_term_promotion_dream__";
 const DREAM_DIARY_FILE_NAMES = ["DREAMS.md", "dreams.md"] as const;
-const DREAMING_LAST_RUN_RELATIVE_PATH = path.join("memory", ".dreams", "last-run.json");
-
-type DreamingLastRunPayload = NonNullable<DoctorMemoryDreamingPayload["lastRun"]>;
-const DREAMING_RUN_LOGGER = {
-  info: (_message: string) => {},
-  warn: (_message: string) => {},
-  error: (_message: string) => {},
-};
+const REM_HARNESS_DEFAULT_CANDIDATE_LIMIT = 25;
+const REM_HARNESS_MAX_CANDIDATE_LIMIT = 100;
+const REM_HARNESS_MAX_GROUNDED_FILES = 10;
+const REM_HARNESS_MAX_REM_PREVIEW_LIMIT = 50;
 
 type DoctorMemoryDreamingPhasePayload = {
   enabled: boolean;
@@ -90,23 +80,6 @@ type DoctorMemoryDreamingEntryPayload = {
   lastRecalledAt?: string;
 };
 
-type DreamingLearningSourcePayload = {
-  kind: "task" | "chat" | "memory";
-  label: string;
-  detail: string;
-};
-
-type DreamingLearningSummaryPayload = {
-  summary: string;
-  recommendation: string;
-  assistanceStrategy: string;
-  sessionKey?: string;
-  taskId?: string;
-  durableSignals: string[];
-  temporaryFocus: string[];
-  sources: DreamingLearningSourcePayload[];
-};
-
 type DoctorMemoryDreamingPayload = {
   enabled: boolean;
   timezone?: string;
@@ -131,17 +104,6 @@ type DoctorMemoryDreamingPayload = {
   shortTermEntries: DoctorMemoryDreamingEntryPayload[];
   signalEntries: DoctorMemoryDreamingEntryPayload[];
   promotedEntries: DoctorMemoryDreamingEntryPayload[];
-  lastRun?: {
-    at: string;
-    workspaces: number;
-    candidates: number;
-    applied: number;
-    failed: number;
-    narrativeWritten: number;
-    narrativeSkipped: number;
-    zeroAppliedReason?: string;
-    learningSummary?: DreamingLearningSummaryPayload;
-  };
   phases: {
     light: DoctorMemoryLightDreamingPayload;
     deep: DoctorMemoryDeepDreamingPayload;
@@ -155,6 +117,10 @@ export type DoctorMemoryStatusPayload = {
   embedding: {
     ok: boolean;
     error?: string;
+    checked?: boolean;
+    cached?: boolean;
+    checkedAtMs?: number;
+    cacheExpiresAtMs?: number;
   };
   dreaming?: DoctorMemoryDreamingPayload;
 };
@@ -174,8 +140,7 @@ export type DoctorMemoryDreamActionPayload = {
     | "reset"
     | "resetGroundedShortTerm"
     | "repairDreamingArtifacts"
-    | "dedupeDreamDiary"
-    | "run";
+    | "dedupeDreamDiary";
   path?: string;
   found?: boolean;
   scannedFiles?: number;
@@ -191,338 +156,79 @@ export type DoctorMemoryDreamActionPayload = {
   warnings?: string[];
   dedupedEntries?: number;
   keptEntries?: number;
-  runSummary?: {
-    at: string;
-    workspaces: number;
-    candidates: number;
-    applied: number;
-    failed: number;
-    narrativeWritten: number;
-    narrativeSkipped: number;
-    zeroAppliedReason?: string;
-    learningSummary?: DreamingLearningSummaryPayload;
+};
+
+export type DoctorMemoryRemHarnessCandidatePayload = {
+  key: string;
+  path: string;
+  startLine: number;
+  endLine: number;
+  snippet: string;
+  recallCount: number;
+  uniqueQueries: number;
+  avgScore: number;
+  maxScore: number;
+  ageDays: number;
+  firstRecalledAt: string;
+  lastRecalledAt: string;
+  promoted: boolean;
+  promotedAt?: string;
+};
+
+export type DoctorMemoryRemHarnessCandidateTruthPayload = {
+  snippet: string;
+  confidence: number;
+};
+
+export type DoctorMemoryRemHarnessGroundedFilePayload = {
+  path: string;
+  renderedMarkdown: string;
+};
+
+export type DoctorMemoryRemHarnessSuccessPayload = {
+  ok: true;
+  agentId: string;
+  workspaceDir: string;
+  remConfig: {
+    enabled: boolean;
+    lookbackDays: number;
+    limit: number;
+    minPatternStrength: number;
+  };
+  deepConfig: {
+    minScore: number;
+    minRecallCount: number;
+    minUniqueQueries: number;
+    recencyHalfLifeDays: number;
+    maxAgeDays: number | null;
+  };
+  rem: {
+    skipped: boolean;
+    sourceEntryCount: number;
+    reflections: string[];
+    candidateTruths: DoctorMemoryRemHarnessCandidateTruthPayload[];
+    bodyLines: string[];
+  };
+  grounded: {
+    scannedFiles: number;
+    files: DoctorMemoryRemHarnessGroundedFilePayload[];
+  } | null;
+  deep: {
+    candidateLimit: number;
+    truncated: boolean;
+    candidates: DoctorMemoryRemHarnessCandidatePayload[];
   };
 };
 
-function normalizeDreamingLearningSummary(value: unknown): DreamingLearningSummaryPayload | undefined {
-  const record = asRecord(value);
-  const summary = normalizeTrimmedString(record?.summary);
-  const recommendation = normalizeTrimmedString(record?.recommendation);
-  const assistanceStrategy = normalizeTrimmedString(record?.assistanceStrategy);
-  if (!summary || !recommendation || !assistanceStrategy) {
-    return undefined;
-  }
-  const durableSignals = Array.isArray(record?.durableSignals)
-    ? record.durableSignals.map((item) => normalizeTrimmedString(item)).filter((item): item is string => Boolean(item)).slice(0, 3)
-    : [];
-  const temporaryFocus = Array.isArray(record?.temporaryFocus)
-    ? record.temporaryFocus.map((item) => normalizeTrimmedString(item)).filter((item): item is string => Boolean(item)).slice(0, 3)
-    : [];
-  const sources = Array.isArray(record?.sources)
-    ? record.sources
-        .map((entry) => {
-          const source = asRecord(entry);
-          const kind = source?.kind;
-          const label = normalizeTrimmedString(source?.label);
-          const detail = normalizeTrimmedString(source?.detail);
-          if ((kind !== "task" && kind !== "chat" && kind !== "memory") || !label || !detail) {
-            return null;
-          }
-          return { kind, label, detail } satisfies DreamingLearningSourcePayload;
-        })
-        .filter((entry): entry is DreamingLearningSourcePayload => Boolean(entry))
-        .slice(0, 3)
-    : [];
-  return {
-    summary,
-    recommendation,
-    assistanceStrategy,
-    ...(normalizeTrimmedString(record?.sessionKey) ? { sessionKey: normalizeTrimmedString(record?.sessionKey) } : {}),
-    ...(normalizeTrimmedString(record?.taskId) ? { taskId: normalizeTrimmedString(record?.taskId) } : {}),
-    durableSignals,
-    temporaryFocus,
-    sources,
-  };
-}
-
-async function readDreamingLastRun(workspaceDir: string): Promise<DreamingLastRunPayload | undefined> {
-  const filePath = path.join(workspaceDir, DREAMING_LAST_RUN_RELATIVE_PATH);
-  let raw: string;
-  try {
-    raw = await fs.readFile(filePath, "utf-8");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
-      return undefined;
-    }
-    throw err;
-  }
-  const record = asRecord(JSON.parse(raw));
-  const at = normalizeTrimmedString(record?.at);
-  if (!at) {
-    return undefined;
-  }
-  return {
-    at,
-    workspaces: toNonNegativeInt(record?.workspaces),
-    candidates: toNonNegativeInt(record?.candidates),
-    applied: toNonNegativeInt(record?.applied),
-    failed: toNonNegativeInt(record?.failed),
-    narrativeWritten: toNonNegativeInt(record?.narrativeWritten),
-    narrativeSkipped: toNonNegativeInt(record?.narrativeSkipped),
-    ...(normalizeLegacyDreamingZeroAppliedReason(normalizeTrimmedString(record?.zeroAppliedReason))
-      ? { zeroAppliedReason: normalizeLegacyDreamingZeroAppliedReason(normalizeTrimmedString(record?.zeroAppliedReason)) }
-      : {}),
-    ...(normalizeDreamingLearningSummary(record?.learningSummary)
-      ? { learningSummary: normalizeDreamingLearningSummary(record?.learningSummary) }
-      : {}),
-  };
-}
-
-function deriveDreamingZeroAppliedReason(summary: {
-  workspaces: number;
-  candidates: number;
-  applied: number;
-  failed: number;
-  narrativeWritten: number;
-  narrativeSkipped: number;
-}): string | undefined {
-  if (summary.applied > 0) {
-    return undefined;
-  }
-  if (summary.workspaces <= 0) {
-    return "本次运行没有可用的记忆整理工作区。";
-  }
-  if (summary.failed > 0 && summary.candidates <= 0) {
-    return "本次整理在进入提升前就遇到了工作区失败。";
-  }
-  if (summary.candidates <= 0) {
-    return "没有足够强的候选记忆进入提升集合。";
-  }
-  if (summary.narrativeSkipped > 0 && summary.narrativeWritten <= 0) {
-    return "发现了候选记忆，但都没达到提升阈值；由于证据偏弱，这次叙事也被跳过。";
-  }
-  return "发现了候选记忆，但都没达到当前提升阈值。";
-}
-
-function normalizeLegacyDreamingZeroAppliedReason(value: string | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  if (value === "No dreaming workspace was available for this run.") {
-    return "本次运行没有可用的记忆整理工作区。";
-  }
-  if (value === "Dreaming run encountered workspace failures before any candidate could be promoted.") {
-    return "本次整理在进入提升前就遇到了工作区失败。";
-  }
-  if (value === "No candidate memories were strong enough to enter the promotion set.") {
-    return "没有足够强的候选记忆进入提升集合。";
-  }
-  if (value === "Candidates were found, but none met the promotion threshold; diary narrative was skipped because evidence stayed weak.") {
-    return "发现了候选记忆，但都没达到提升阈值；由于证据偏弱，这次叙事也被跳过。";
-  }
-  if (value === "Candidates were found, but none met the current promotion threshold.") {
-    return "发现了候选记忆，但都没达到当前提升阈值。";
-  }
-  return value;
-}
-
-function normalizeDreamingSourceDetail(value: string | undefined, maxLen = 140): string | undefined {
-  const normalized = normalizeTrimmedString(value)?.replace(/\s+/g, " ");
-  if (!normalized) {
-    return undefined;
-  }
-  return normalized.length <= maxLen ? normalized : `${normalized.slice(0, maxLen - 1).trim()}…`;
-}
-
-function splitDreamingActionItems(value: string | undefined): string[] {
-  const normalized = normalizeTrimmedString(value);
-  if (!normalized) {
-    return [];
-  }
-  const numbered = Array.from(normalized.matchAll(/(?:^|\s)(?:\d+[.)]|[-*•])\s*([^\n]+?)(?=(?:\s+(?:\d+[.)]|[-*•])\s*)|$)/g))
-    .map((match) => normalizeDreamingSourceDetail(match[1], 80))
-    .filter((item): item is string => Boolean(item));
-  if (numbered.length >= 2) {
-    return numbered.slice(0, 3);
-  }
-  const ordered = normalized
-    .split(/\n+|[；;]+|(?=先)|(?=再)|(?=然后)|(?=接着)|(?=最后)/)
-    .map((item) => item.replace(/^\s*(?:先|再|然后|接着|最后)\s*/u, ""))
-    .map((item) => normalizeDreamingSourceDetail(item, 80))
-    .filter((item): item is string => Boolean(item));
-  return Array.from(new Set(ordered)).slice(0, 3);
-}
-
-function looksDurableLearningSignal(value: string | undefined): boolean {
-  return /(偏好|喜欢|习惯|总是|优先|请用|避免|不要|always|prefer|usually|habit)/iu.test(value ?? "");
-}
-
-function looksTemporaryLearningSignal(value: string | undefined): boolean {
-  return /(核对|验证|确认|继续|修复|排查|联调|测试|回归|实现|补|check|verify|continue|fix|test)/iu.test(value ?? "");
-}
-
-function buildDreamingRecommendation(params: { durableSignals: string[]; temporaryFocus: string[]; }): string {
-  const durable = params.durableSignals[0];
-  const focus = params.temporaryFocus[0];
-  if (durable && focus) {
-    return `下次协助时，保持“${durable}”，同时优先推进“${focus}”。`;
-  }
-  if (durable) {
-    return `下次协助时，继续保持“${durable}”。`;
-  }
-  if (focus) {
-    return `下次协助时，优先继续推进“${focus}”。`;
-  }
-  return "下次协助时，先综合任务、聊天和本地记忆再行动。";
-}
-
-function buildDreamingAssistanceStrategy(params: { durableSignals: string[]; temporaryFocus: string[]; }): string {
-  const durable = params.durableSignals[0];
-  const focus = params.temporaryFocus[0];
-  if (durable && focus) {
-    return `先按“${focus}”拆成清单执行，过程中持续遵守“${durable}”。`;
-  }
-  if (focus) {
-    return `先围绕“${focus}”给出更明确的分步清单和验证顺序。`;
-  }
-  if (durable) {
-    return `后续回复继续遵守“${durable}”，减少偏离。`;
-  }
-  return "后续优先给出更明确的下一步和验证方式。";
-}
-
-function extractChatMessageText(message: unknown, role: "user" | "assistant"): string | undefined {
-  if (!message || typeof message !== "object") {
-    return undefined;
-  }
-  const actualRole = typeof (message as { role?: unknown }).role === "string" ? (message as { role?: string }).role : "";
-  if (actualRole !== role) {
-    return undefined;
-  }
-  const text = role === "assistant" ? extractAssistantVisibleText(message) : extractFirstTextBlock(message);
-  return normalizeDreamingSourceDetail(typeof text === "string" ? text : undefined, 180);
-}
-
-async function buildDreamingLearningSummary(workspaceDir: string): Promise<DreamingLearningSummaryPayload | undefined> {
-  const sources: DreamingLearningSourcePayload[] = [];
-  const durableSignals: string[] = [];
-  const temporaryFocus: string[] = [];
-
-  const { tasks } = await listTaskModeTasks();
-  const currentTask = tasks[0] ?? null;
-  if (currentTask) {
-    const taskDetail = normalizeDreamingSourceDetail(
-      [currentTask.title, currentTask.nextStep ? `next: ${currentTask.nextStep}` : null, currentTask.progressSummary].filter(Boolean).join(" · "),
-    );
-    if (taskDetail) {
-      sources.push({ kind: "task", label: currentTask.title || "Current task", detail: taskDetail });
-    }
-    const taskSteps = splitDreamingActionItems(currentTask.nextStep ?? currentTask.description ?? currentTask.progressSummary);
-    temporaryFocus.push(...taskSteps);
-
-    const sessionKey = normalizeTrimmedString(currentTask.lastSessionKey);
-    if (sessionKey) {
-      const store = loadSessionStore(resolveDefaultSessionStorePath());
-      const sessionEntry = store[sessionKey];
-      if (sessionEntry?.sessionId) {
-        const messages = readSessionMessages(sessionEntry.sessionId, resolveDefaultSessionStorePath(), sessionEntry.sessionFile);
-        const userMessages = messages.map((message) => extractChatMessageText(message, "user")).filter((item): item is string => Boolean(item));
-        const assistantMessages = messages.map((message) => extractChatMessageText(message, "assistant")).filter((item): item is string => Boolean(item));
-        const latestUser = userMessages.at(-1);
-        const latestAssistant = assistantMessages.at(-1);
-        const chatDetail = normalizeDreamingSourceDetail([latestUser ? `user: ${latestUser}` : null, latestAssistant ? `assistant: ${latestAssistant}` : null].filter(Boolean).join(" · "), 180);
-        if (chatDetail) {
-          sources.push({ kind: "chat", label: "Recent chat", detail: chatDetail });
-        }
-        const userActionItems = splitDreamingActionItems(latestUser);
-        if (userActionItems.length > 0) {
-          temporaryFocus.push(...userActionItems);
-        }
-        for (const candidate of [latestUser, latestAssistant]) {
-          const normalized = normalizeDreamingSourceDetail(candidate, 90);
-          if (!normalized) {
-            continue;
-          }
-          if (looksDurableLearningSignal(normalized) && !looksTemporaryLearningSignal(normalized)) {
-            durableSignals.push(normalized);
-          }
-        }
-      }
-    }
-  }
-
-  const dailyFiles = await listWorkspaceDailyFiles(path.join(workspaceDir, "memory"));
-  const latestDailyFile = dailyFiles.at(-1);
-  if (latestDailyFile) {
-    try {
-      const raw = await fs.readFile(latestDailyFile, "utf-8");
-      const memoryLine = raw
-        .split("\n")
-        .map((line) => line.replace(/^[-*]\s*/, "").trim())
-        .find((line) => line.length > 0 && !line.startsWith("#"));
-      const memoryDetail = normalizeDreamingSourceDetail(memoryLine, 140);
-      if (memoryDetail) {
-        sources.push({ kind: "memory", label: path.basename(latestDailyFile), detail: memoryDetail });
-        if (looksDurableLearningSignal(memoryDetail) && !looksTemporaryLearningSignal(memoryDetail)) {
-          durableSignals.push(memoryDetail);
-        }
-      }
-    } catch {
-      // ignore local memory read failures for learning summary
-    }
-  }
-
-  const normalizedDurable = Array.from(
-    new Set(
-      durableSignals
-        .map((item) => normalizeDreamingSourceDetail(item, 90))
-        .filter((item): item is string => Boolean(item)),
-    ),
-  ).slice(0, 3);
-  const normalizedFocus = Array.from(
-    new Set(
-      temporaryFocus
-        .map((item) => normalizeDreamingSourceDetail(item, 80))
-        .filter((item): item is string => Boolean(item))
-        .filter((item) => !looksDurableLearningSignal(item)),
-    ),
-  ).slice(0, 3);
-  if (sources.length === 0 && normalizedDurable.length === 0 && normalizedFocus.length === 0) {
-    return undefined;
-  }
-  const summaryParts = [
-    normalizedFocus[0] ? `当前聚焦：${normalizedFocus[0]}` : null,
-    normalizedDurable[0] ? `持续保留：${normalizedDurable[0]}` : null,
-    sources[0] ? `主要来源：${sources[0].label}` : null,
-  ].filter((item): item is string => Boolean(item));
-  return {
-    summary: summaryParts.join(" · ") || "本轮 dreaming 已整理一份跨任务、聊天和本地记忆的学习摘要。",
-    recommendation: buildDreamingRecommendation({ durableSignals: normalizedDurable, temporaryFocus: normalizedFocus }),
-    assistanceStrategy: buildDreamingAssistanceStrategy({ durableSignals: normalizedDurable, temporaryFocus: normalizedFocus }),
-    ...(currentTask?.lastSessionKey ? { sessionKey: currentTask.lastSessionKey } : {}),
-    ...(currentTask?.id ? { taskId: currentTask.id } : {}),
-    durableSignals: normalizedDurable,
-    temporaryFocus: normalizedFocus,
-    sources: sources.slice(0, 3),
-  };
-}
-
-async function writeDreamingLastRun(params: {
+export type DoctorMemoryRemHarnessErrorPayload = {
+  ok: false;
+  agentId: string;
   workspaceDir: string;
-  summary: Omit<DreamingLastRunPayload, "at">;
-}): Promise<DreamingLastRunPayload> {
-  const filePath = path.join(params.workspaceDir, DREAMING_LAST_RUN_RELATIVE_PATH);
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  const payload: DreamingLastRunPayload = {
-    at: new Date().toISOString(),
-    ...params.summary,
-  };
-  await fs.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
-  return payload;
-}
+  error: string;
+};
 
 function extractIsoDayFromPath(filePath: string): string | null {
-  const match = filePath.replaceAll("\\", "/").match(/(\d{4}-\d{2}-\d{2})\.md$/i);
+  const match = filePath.replaceAll("\\", "/").match(/(\d{4}-\d{2}-\d{2})(?:-[^/]+)?\.md$/i);
   return match?.[1] ?? null;
 }
 
@@ -544,7 +250,7 @@ async function listWorkspaceDailyFiles(memoryDir: string): Promise<string[]> {
     throw err;
   }
   return entries
-    .filter((name) => /^\d{4}-\d{2}-\d{2}\.md$/i.test(name))
+    .filter((name) => /^\d{4}-\d{2}-\d{2}(?:-[^/]+)?\.md$/i.test(name))
     .map((name) => path.join(memoryDir, name))
     .toSorted((left, right) => left.localeCompare(right));
 }
@@ -753,7 +459,25 @@ function trimDreamingEntries(
   entries: DoctorMemoryDreamingEntryPayload[],
   compare: (a: DoctorMemoryDreamingEntryPayload, b: DoctorMemoryDreamingEntryPayload) => number,
 ): DoctorMemoryDreamingEntryPayload[] {
-  return entries.toSorted(compare).slice(0, DREAMING_ENTRY_LIST_LIMIT);
+  const selected: DoctorMemoryDreamingEntryPayload[] = [];
+  for (const entry of entries) {
+    let insertAt = selected.length;
+    for (let index = 0; index < selected.length; index += 1) {
+      if (compare(entry, selected[index]) < 0) {
+        insertAt = index;
+        break;
+      }
+    }
+    if (insertAt < DREAMING_ENTRY_LIST_LIMIT) {
+      selected.splice(insertAt, 0, entry);
+      if (selected.length > DREAMING_ENTRY_LIST_LIMIT) {
+        selected.pop();
+      }
+    } else if (selected.length < DREAMING_ENTRY_LIST_LIMIT) {
+      selected.push(entry);
+    }
+  }
+  return selected;
 }
 
 async function loadDreamingStoreStats(
@@ -1152,9 +876,23 @@ async function readDreamDiary(
   };
 }
 
+function shouldProbeMemoryEmbeddings(params: unknown): boolean {
+  if (!params || typeof params !== "object") {
+    return false;
+  }
+  const record = params as Record<string, unknown>;
+  return record.probe === true || record.deep === true;
+}
+
+const SKIPPED_MEMORY_EMBEDDING_PROBE = {
+  ok: false,
+  checked: false,
+  error: "memory embedding readiness not checked; run `openclaw memory status --deep` to probe",
+} as const;
+
 export const doctorHandlers: GatewayRequestHandlers = {
-  "doctor.memory.status": async ({ respond, context }) => {
-    const cfg = loadConfig();
+  "doctor.memory.status": async ({ respond, context, params }) => {
+    const cfg = context.getRuntimeConfig();
     const agentId = resolveDefaultAgentId(cfg);
     const { manager, error } = await getActiveMemorySearchManager({
       cfg,
@@ -1175,16 +913,20 @@ export const doctorHandlers: GatewayRequestHandlers = {
 
     try {
       const status = manager.status();
-      let embedding = await manager.probeEmbeddingAvailability();
+      const shouldProbe = shouldProbeMemoryEmbeddings(params);
+      let embedding = shouldProbe
+        ? await manager.probeEmbeddingAvailability()
+        : (manager.getCachedEmbeddingAvailability?.() ?? SKIPPED_MEMORY_EMBEDDING_PROBE);
       if (!embedding.ok && !embedding.error) {
         embedding = { ok: false, error: "memory embeddings unavailable" };
       }
       const nowMs = Date.now();
       const dreamingConfig = resolveDreamingConfig(cfg);
       const workspaceDir = normalizeTrimmedString((status as Record<string, unknown>).workspaceDir);
-      const configuredWorkspaces = resolveMemoryDreamingWorkspaces(cfg).map(
-        (entry) => entry.workspaceDir,
-      );
+      const configuredWorkspaces = resolveMemoryDreamingWorkspaces(cfg, {
+        primaryWorkspaceDir: workspaceDir,
+        primaryAgentId: resolveDefaultAgentId(cfg),
+      }).map((entry) => entry.workspaceDir);
       const allWorkspaces =
         configuredWorkspaces.length > 0 ? configuredWorkspaces : workspaceDir ? [workspaceDir] : [];
       const storeStats =
@@ -1216,7 +958,6 @@ export const doctorHandlers: GatewayRequestHandlers = {
         dreaming: {
           ...dreamingConfig,
           ...storeStats,
-          ...(workspaceDir ? { lastRun: await readDreamingLastRun(workspaceDir) } : {}),
           phases: {
             light: {
               ...dreamingConfig.phases.light,
@@ -1247,8 +988,8 @@ export const doctorHandlers: GatewayRequestHandlers = {
       await manager.close?.().catch(() => {});
     }
   },
-  "doctor.memory.dreamDiary": async ({ respond }) => {
-    const cfg = loadConfig();
+  "doctor.memory.dreamDiary": async ({ respond, context }) => {
+    const cfg = context.getRuntimeConfig();
     const agentId = resolveDefaultAgentId(cfg);
     const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
     const dreamDiary = await readDreamDiary(workspaceDir);
@@ -1258,8 +999,8 @@ export const doctorHandlers: GatewayRequestHandlers = {
     };
     respond(true, payload, undefined);
   },
-  "doctor.memory.backfillDreamDiary": async ({ respond }) => {
-    const cfg = loadConfig();
+  "doctor.memory.backfillDreamDiary": async ({ respond, context }) => {
+    const cfg = context.getRuntimeConfig();
     const agentId = resolveDefaultAgentId(cfg);
     const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
     const memoryDir = path.join(workspaceDir, "memory");
@@ -1316,8 +1057,8 @@ export const doctorHandlers: GatewayRequestHandlers = {
     };
     respond(true, payload, undefined);
   },
-  "doctor.memory.resetDreamDiary": async ({ respond }) => {
-    const cfg = loadConfig();
+  "doctor.memory.resetDreamDiary": async ({ respond, context }) => {
+    const cfg = context.getRuntimeConfig();
     const agentId = resolveDefaultAgentId(cfg);
     const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
     const removed = await removeBackfillDiaryEntries({ workspaceDir });
@@ -1331,8 +1072,8 @@ export const doctorHandlers: GatewayRequestHandlers = {
     };
     respond(true, payload, undefined);
   },
-  "doctor.memory.resetGroundedShortTerm": async ({ respond }) => {
-    const cfg = loadConfig();
+  "doctor.memory.resetGroundedShortTerm": async ({ respond, context }) => {
+    const cfg = context.getRuntimeConfig();
     const agentId = resolveDefaultAgentId(cfg);
     const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
     const removed = await removeGroundedShortTermCandidates({ workspaceDir });
@@ -1343,8 +1084,8 @@ export const doctorHandlers: GatewayRequestHandlers = {
     };
     respond(true, payload, undefined);
   },
-  "doctor.memory.repairDreamingArtifacts": async ({ respond }) => {
-    const cfg = loadConfig();
+  "doctor.memory.repairDreamingArtifacts": async ({ respond, context }) => {
+    const cfg = context.getRuntimeConfig();
     const agentId = resolveDefaultAgentId(cfg);
     const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
     const repair = await repairDreamingArtifacts({ workspaceDir });
@@ -1360,8 +1101,8 @@ export const doctorHandlers: GatewayRequestHandlers = {
     };
     respond(true, payload, undefined);
   },
-  "doctor.memory.dedupeDreamDiary": async ({ respond }) => {
-    const cfg = loadConfig();
+  "doctor.memory.dedupeDreamDiary": async ({ respond, context }) => {
+    const cfg = context.getRuntimeConfig();
     const agentId = resolveDefaultAgentId(cfg);
     const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
     const dedupe = await dedupeDreamDiaryEntries({ workspaceDir });
@@ -1377,40 +1118,109 @@ export const doctorHandlers: GatewayRequestHandlers = {
     };
     respond(true, payload, undefined);
   },
-  "doctor.memory.run": async ({ respond }) => {
-    const cfg = loadConfig();
+  "doctor.memory.remHarness": async ({ params, respond, context }) => {
+    const cfg = context.getRuntimeConfig();
     const agentId = resolveDefaultAgentId(cfg);
     const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
-    const summary = await runShortTermDreamingPromotionNow({
-      workspaceDir,
-      cfg,
-      config: resolveShortTermPromotionDreamingConfig({
-        pluginConfig: resolveMemoryDreamingPluginConfig(cfg),
+    const req = asRecord(params);
+    const grounded = Boolean(req?.grounded);
+    const includePromoted = Boolean(req?.includePromoted);
+    const requestedLimit =
+      typeof req?.limit === "number" && Number.isFinite(req.limit)
+        ? Math.floor(req.limit)
+        : REM_HARNESS_DEFAULT_CANDIDATE_LIMIT;
+    const candidateLimit = Math.max(1, Math.min(REM_HARNESS_MAX_CANDIDATE_LIMIT, requestedLimit));
+    try {
+      const preview = await previewRemHarness({
+        workspaceDir,
         cfg,
-      }),
-      logger: DREAMING_RUN_LOGGER,
-    });
-    const learningSummary = await buildDreamingLearningSummary(workspaceDir);
-    const runSummary = await writeDreamingLastRun({
-      workspaceDir,
-      summary: {
-        workspaces: summary.workspaces,
-        candidates: summary.candidates,
-        applied: summary.applied,
-        failed: summary.failed,
-        narrativeWritten: summary.narrativeWritten,
-        narrativeSkipped: summary.narrativeSkipped,
-        ...(deriveDreamingZeroAppliedReason(summary)
-          ? { zeroAppliedReason: deriveDreamingZeroAppliedReason(summary) }
-          : {}),
-        ...(learningSummary ? { learningSummary } : {}),
-      },
-    });
-    const payload: DoctorMemoryDreamActionPayload = {
-      agentId,
-      action: "run",
-      runSummary,
-    };
-    respond(true, payload, undefined);
+        pluginConfig: resolveMemoryDreamingPluginConfig(cfg),
+        grounded,
+        includePromoted,
+        candidateLimit,
+        groundedFileLimit: REM_HARNESS_MAX_GROUNDED_FILES,
+        remPreviewLimit: REM_HARNESS_MAX_REM_PREVIEW_LIMIT,
+      });
+      const groundedPayload: DoctorMemoryRemHarnessSuccessPayload["grounded"] = preview.grounded
+        ? {
+            scannedFiles: preview.grounded.scannedFiles,
+            files: preview.grounded.files.map((file) => ({
+              path: file.path,
+              renderedMarkdown: file.renderedMarkdown,
+            })),
+          }
+        : grounded
+          ? { scannedFiles: 0, files: [] }
+          : null;
+
+      const payload: DoctorMemoryRemHarnessSuccessPayload = {
+        ok: true,
+        agentId,
+        workspaceDir,
+        remConfig: {
+          enabled: preview.remConfig.enabled,
+          lookbackDays: preview.remConfig.lookbackDays,
+          limit: preview.remConfig.limit,
+          minPatternStrength: preview.remConfig.minPatternStrength,
+        },
+        deepConfig: {
+          minScore: preview.deepConfig.minScore,
+          minRecallCount: preview.deepConfig.minRecallCount,
+          minUniqueQueries: preview.deepConfig.minUniqueQueries,
+          recencyHalfLifeDays: preview.deepConfig.recencyHalfLifeDays,
+          maxAgeDays:
+            typeof preview.deepConfig.maxAgeDays === "number"
+              ? preview.deepConfig.maxAgeDays
+              : null,
+        },
+        rem: {
+          skipped: preview.remSkipped,
+          sourceEntryCount: preview.rem.sourceEntryCount,
+          reflections: [...preview.rem.reflections],
+          candidateTruths: preview.rem.candidateTruths.map((truth) => ({
+            snippet: truth.snippet,
+            confidence: truth.confidence,
+          })),
+          bodyLines: [...preview.rem.bodyLines],
+        },
+        grounded: groundedPayload,
+        deep: {
+          candidateLimit,
+          truncated: preview.deep.truncated,
+          candidates: preview.deep.candidates.map((candidate) => {
+            const promoted =
+              typeof candidate.promotedAt === "string" && candidate.promotedAt.length > 0;
+            const payload: DoctorMemoryRemHarnessCandidatePayload = {
+              key: candidate.key,
+              path: candidate.path,
+              startLine: candidate.startLine,
+              endLine: candidate.endLine,
+              snippet: candidate.snippet,
+              recallCount: candidate.recallCount,
+              uniqueQueries: candidate.uniqueQueries,
+              avgScore: candidate.avgScore,
+              maxScore: candidate.maxScore,
+              ageDays: candidate.ageDays,
+              firstRecalledAt: candidate.firstRecalledAt,
+              lastRecalledAt: candidate.lastRecalledAt,
+              promoted,
+            };
+            if (promoted) {
+              payload.promotedAt = candidate.promotedAt;
+            }
+            return payload;
+          }),
+        },
+      };
+      respond(true, payload, undefined);
+    } catch (err) {
+      const payload: DoctorMemoryRemHarnessErrorPayload = {
+        ok: false,
+        agentId,
+        workspaceDir,
+        error: `gateway rem-harness probe failed: ${formatError(err)}`,
+      };
+      respond(true, payload, undefined);
+    }
   },
 };

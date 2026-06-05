@@ -584,10 +584,7 @@ function renderRows(row: GatewaySessionRow, props: SessionsProps) {
           style="padding: 6px 10px; font-size: 13px; border: 1px solid var(--border); border-radius: var(--radius-sm); min-width: 90px;"
           @change=${(e: Event) => {
             const value = (e.target as HTMLSelectElement).value as "normal" | "task";
-            props.onPatch(row.key, {
-              mode: value,
-              taskId: value === "normal" ? null : (row.taskId ?? null),
-            });
+            props.onPatch(row.key, { mode: value });
           }}
         >
           <option value="normal" ?selected=${(row.mode ?? "normal") === "normal"}>normal</option>

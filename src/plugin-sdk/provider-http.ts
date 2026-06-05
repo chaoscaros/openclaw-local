@@ -3,20 +3,54 @@
 
 export {
   assertOkOrThrowHttpError,
-  fetchWithTimeout,
-  fetchWithTimeoutGuarded,
+  assertOkOrThrowProviderError,
+  assertProviderBinaryResponseContent,
+  createProviderHttpError,
+  extractProviderErrorDetail,
+  extractProviderRequestId,
+  formatProviderErrorPayload,
+  formatProviderHttpErrorMessage,
+  readProviderBinaryResponse,
+  readProviderJsonArrayFieldResponse,
+  readProviderJsonObjectResponse,
+  readProviderJsonResponse,
+  readResponseTextLimited,
+  truncateErrorDetail,
+} from "../agents/provider-http-errors.js";
+export {
+  buildAudioTranscriptionFormData,
   createProviderOperationDeadline,
   createProviderOperationTimeoutResolver,
+  fetchProviderDownloadResponse,
+  fetchProviderOperationResponse,
+  fetchWithTimeout,
+  fetchWithTimeoutGuarded,
   normalizeBaseUrl,
+  pollProviderOperationJson,
   postJsonRequest,
+  postMultipartRequest,
   postTranscriptionRequest,
-  readProviderBinaryResponse,
   resolveProviderOperationTimeoutMs,
   resolveProviderHttpRequestConfig,
+  resolveAudioTranscriptionUploadFileName,
   requireTranscriptionText,
+  sanitizeConfiguredModelProviderRequest,
   waitProviderOperationPollInterval,
 } from "../media-understanding/shared.js";
-export type { ProviderOperationDeadline } from "../media-understanding/shared.js";
+export type {
+  ProviderOperationDeadline,
+  ProviderOperationTimeoutMs,
+} from "../media-understanding/shared.js";
+export {
+  executeProviderOperationWithRetry,
+  providerOperationRetryConfig,
+} from "../provider-runtime/operation-retry.js";
+export type {
+  ProviderOperationRetryStage,
+  TransientProviderRetryConfig,
+  TransientProviderRetryOptions,
+  TransientProviderRetryParams,
+} from "../provider-runtime/operation-retry.js";
 export type {
   ProviderAttributionPolicy,
   ProviderRequestCapabilities,
@@ -35,7 +69,7 @@ export type {
   ProviderRequestTlsOverride,
   ProviderRequestTransportOverrides,
 } from "../agents/provider-request-config.js";
-export { sanitizeConfiguredModelProviderRequest } from "../agents/provider-request-config.js";
+export { resolveProviderRequestHeaders } from "../agents/provider-request-config.js";
 export {
   resolveProviderEndpoint,
   resolveProviderRequestCapabilities,

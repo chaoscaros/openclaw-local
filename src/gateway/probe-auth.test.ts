@@ -14,7 +14,7 @@ function expectUnresolvedProbeTokenWarning(cfg: OpenClawConfig) {
     env: {} as NodeJS.ProcessEnv,
   });
 
-  expect(result.auth).toEqual({});
+  expect(result.auth).toStrictEqual({});
   expect(result.warning).toContain("gateway.auth.token");
   expect(result.warning).toContain("unresolved");
 }
@@ -85,7 +85,7 @@ describe("resolveGatewayProbeAuthSafe", () => {
           remote: {
             url: "wss://gateway.example",
             token: "remote-token",
-            password: "remote-password",
+            password: "remote-password", // pragma: allowlist secret
           },
         },
       } as OpenClawConfig,
@@ -243,7 +243,7 @@ describe("resolveGatewayProbeAuthSafeWithSecretInputs", () => {
       env: {} as NodeJS.ProcessEnv,
     });
 
-    expect(result.auth).toEqual({});
+    expect(result.auth).toStrictEqual({});
     expect(result.warning).toContain("gateway.auth.token");
     expect(result.warning).toContain("unresolved");
   });

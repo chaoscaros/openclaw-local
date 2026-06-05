@@ -9,7 +9,7 @@ describe("shouldSkipHeartbeatOnlyDelivery", () => {
     expect(shouldSkipHeartbeatOnlyDelivery([], 300)).toBe(true);
   });
 
-  it("suppresses when any payload is a heartbeat ack and no non-text content is present", () => {
+  it("suppresses when any payload is a heartbeat ack and no media is present", () => {
     expect(
       shouldSkipHeartbeatOnlyDelivery(
         [{ text: "Checked inbox and calendar." }, { text: "HEARTBEAT_OK" }],
@@ -27,24 +27,17 @@ describe("shouldSkipHeartbeatOnlyDelivery", () => {
     ).toBe(false);
   });
 
-  it("does not suppress when rich reply content is present", () => {
+  it("does not suppress when rich content is present", () => {
     expect(
       shouldSkipHeartbeatOnlyDelivery(
         [
-          { text: "HEARTBEAT_OK" },
           {
-            interactive: {
+            text: "HEARTBEAT_OK",
+            presentation: {
               blocks: [{ type: "buttons", buttons: [{ label: "Open", value: "open" }] }],
             },
           },
         ],
-        300,
-      ),
-    ).toBe(false);
-
-    expect(
-      shouldSkipHeartbeatOnlyDelivery(
-        [{ text: "HEARTBEAT_OK" }, { channelData: { webchat: { cardId: "card-1" } } }],
         300,
       ),
     ).toBe(false);

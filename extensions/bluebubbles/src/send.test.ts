@@ -10,7 +10,7 @@ import {
   installBlueBubblesFetchTestHooks,
   mockBlueBubblesPrivateApiStatusOnce,
 } from "./test-harness.js";
-import { _setFetchGuardForTesting, type BlueBubblesSendTarget } from "./types.js";
+import { setFetchGuardForTesting, type BlueBubblesSendTarget } from "./types.js";
 
 const mockFetch = vi.fn();
 const privateApiStatusMock = vi.mocked(getCachedBlueBubblesPrivateApiStatus);
@@ -474,7 +474,7 @@ describe("send", () => {
         expect(result.messageId).toBe("msg-loopback");
         expect(policies).toEqual([{ allowPrivateNetwork: true }, { allowPrivateNetwork: true }]);
       } finally {
-        _setFetchGuardForTesting(null);
+        setFetchGuardForTesting(null);
       }
     });
 
@@ -493,7 +493,7 @@ describe("send", () => {
         expect(result.messageId).toBe("msg-private-ip");
         expect(policies).toEqual([{ allowPrivateNetwork: true }, { allowPrivateNetwork: true }]);
       } finally {
-        _setFetchGuardForTesting(null);
+        setFetchGuardForTesting(null);
       }
     });
 

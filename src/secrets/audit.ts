@@ -105,7 +105,6 @@ type AuditCollector = {
 
 const REF_RESOLVE_FALLBACK_CONCURRENCY = 8;
 const MAX_AUDIT_MODELS_JSON_BYTES = 5 * 1024 * 1024;
-
 function addFinding(collector: AuditCollector, finding: SecretsAuditFinding): void {
   collector.findings.push(finding);
 }
@@ -257,6 +256,7 @@ function collectAuthStoreSecrets(params: {
         refValue: entry.refValue,
         defaults: params.defaults,
       });
+      const authoredValueRef = coerceSecretRef(entry.value, params.defaults);
       if (ref) {
         params.collector.refAssignments.push({
           file: params.authStorePath,
@@ -266,6 +266,9 @@ function collectAuthStoreSecrets(params: {
           provider: entry.provider,
         });
         trackAuthProviderState(params.collector, entry.provider, entry.kind);
+      }
+      if (authoredValueRef) {
+        continue;
       }
       if (isNonEmptyString(entry.value)) {
         addFinding(params.collector, {

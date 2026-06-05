@@ -398,6 +398,72 @@ describe("config form renderer", () => {
     };
     const analysis = analyzeConfigSchema(schema);
     expect(analysis.unsupportedPaths).not.toContain("mixed");
+
+    const typedWithAnyBranchSchema = {
+      type: "object",
+      properties: {
+        lastTouchedAt: {
+          title: "Config Last Touched At",
+          description: "ISO timestamp of the last config write.",
+          anyOf: [{ type: "string" }, {}],
+        },
+      },
+    };
+    const typedWithAnyBranchAnalysis = analyzeConfigSchema(typedWithAnyBranchSchema);
+    expect(typedWithAnyBranchAnalysis.unsupportedPaths).toEqual(["lastTouchedAt"]);
+
+    const nullableSingleBranchSchema = {
+      type: "object",
+      properties: {
+        note: {
+          anyOf: [{ type: "string", nullable: true }],
+        },
+      },
+    };
+    const nullableSingleBranchAnalysis = analyzeConfigSchema(nullableSingleBranchSchema);
+    expect(nullableSingleBranchAnalysis.unsupportedPaths).toEqual([]);
+    expect(nullableSingleBranchAnalysis.schema?.properties?.note?.nullable).toBe(true);
+  });
+
+  it("accepts transform-backed public config schema shapes", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        lastTouchedAt: {
+          anyOf: [{ type: "string" }, { type: "number" }],
+        },
+        setupCommand: {
+          anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
+        },
+        allowedDomains: {
+          type: "array",
+          items: { type: "string" },
+        },
+        chatMessageMaxWidth: {
+          type: "string",
+        },
+      },
+    };
+    const analysis = analyzeConfigSchema(schema);
+    expect(analysis.unsupportedPaths).toEqual([]);
+
+    const container = document.createElement("div");
+    render(
+      renderConfigForm({
+        schema: analysis.schema,
+        uiHints: {},
+        unsupportedPaths: analysis.unsupportedPaths,
+        value: {
+          lastTouchedAt: "2026-05-05T00:00:00.000Z",
+          setupCommand: "apt-get update",
+          allowedDomains: ["example.com"],
+          chatMessageMaxWidth: "960px",
+        },
+        onPatch: vi.fn(),
+      }),
+      container,
+    );
+    expect(container.textContent).not.toContain("Unsupported schema node");
   });
 
   it("supports nullable types", () => {

@@ -8,6 +8,7 @@ describe("session run state", () => {
     expect(isSessionRunActive({ status: "done" })).toBe(false);
     expect(isSessionRunActive({ hasActiveRun: true })).toBe(true);
     expect(isSessionRunActive({ hasActiveRun: true, status: "done" })).toBe(false);
+    expect(isSessionRunActive({ hasActiveRun: false, status: "running" })).toBe(false);
   });
 
   it("prefers a local run id over stale session-row status", () => {

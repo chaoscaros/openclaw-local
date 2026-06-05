@@ -4,9 +4,9 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..");
+const currentFile = fileURLToPath(import.meta.url);
+const currentDir = path.dirname(currentFile);
+const repoRoot = path.resolve(currentDir, "..");
 const openclawEntry = path.join(repoRoot, "openclaw.mjs");
 
 const child = spawn(process.execPath, [openclawEntry, "gateway", "--verbose"], {

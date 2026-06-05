@@ -1,8 +1,11 @@
 {
   "name": "@openclaw/irc",
-  "version": "2026.4.12",
+  "version": "2026.5.26",
   "description": "OpenClaw IRC channel plugin",
   "type": "module",
+  "dependencies": {
+    "zod": "4.4.3"
+  },
   "devDependencies": {
     "@openclaw/plugin-sdk": "workspace:*"
   },
@@ -27,6 +30,12 @@
       ],
       "systemImage": "network",
       "configuredState": {
+        "env": {
+          "allOf": [
+            "IRC_HOST",
+            "IRC_NICK"
+          ]
+        },
         "specifier": "./configured-state",
         "exportName": "hasIrcConfiguredState"
       }

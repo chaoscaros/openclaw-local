@@ -10,6 +10,7 @@ import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
 } from "../../shared/string-coerce.js";
+import { normalizeUniqueSingleOrTrimmedStringList } from "../../shared/string-normalization.js";
 import { normalizeChannelId as normalizeChatChannelId } from "../registry.js";
 import { getLoadedChannelPlugin, normalizeChannelId as normalizeAnyChannelId } from "./registry.js";
 
@@ -77,20 +78,7 @@ function getMessagingAdapter(channel: string) {
 }
 
 function dedupeConversationIds(values: Array<string | undefined | null>): string[] {
-  const seen = new Set<string>();
-  const resolved: string[] = [];
-  for (const value of values) {
-    if (typeof value !== "string") {
-      continue;
-    }
-    const trimmed = value.trim();
-    if (!trimmed || seen.has(trimmed)) {
-      continue;
-    }
-    seen.add(trimmed);
-    resolved.push(trimmed);
-  }
-  return resolved;
+  return normalizeUniqueSingleOrTrimmedStringList(values);
 }
 
 function buildGenericConversationResolution(rawId: string): ResolvedSessionConversation | null {
@@ -148,16 +136,16 @@ function resolveBundledSessionConversationFallback(params: {
     return null;
   }
   const dirName = normalizeResolvedChannel(params.channel);
-  let resolveSessionConversation: BundledSessionKeyModule["resolveSessionConversation"];
+  let loaded: BundledSessionKeyModule | null = null;
   try {
-    resolveSessionConversation =
-      tryLoadActivatedBundledPluginPublicSurfaceModuleSync<BundledSessionKeyModule>({
-        dirName,
-        artifactBasename: SESSION_KEY_API_ARTIFACT_BASENAME,
-      })?.resolveSessionConversation;
+    loaded = tryLoadActivatedBundledPluginPublicSurfaceModuleSync<BundledSessionKeyModule>({
+      dirName,
+      artifactBasename: SESSION_KEY_API_ARTIFACT_BASENAME,
+    });
   } catch {
     return null;
   }
+  const resolveSessionConversation = loaded?.resolveSessionConversation;
   if (typeof resolveSessionConversation !== "function") {
     return null;
   }
@@ -182,6 +170,10 @@ function isBundledSessionConversationFallbackDisabled(channel: string): boolean 
   return !!entry && typeof entry === "object" && entry.enabled === false;
 }
 
+function shouldProbeBundledSessionConversationFallback(rawId: string): boolean {
+  return rawId.includes(":");
+}
+
 function resolveSessionConversationResolution(params: {
   channel: string;
   kind: "group" | "channel";
@@ -200,7 +192,10 @@ function resolveSessionConversationResolution(params: {
       rawId,
     }),
   );
-  const shouldTryBundledFallback = params.bundledFallback !== false && !messaging;
+  const shouldTryBundledFallback =
+    params.bundledFallback !== false &&
+    !messaging &&
+    shouldProbeBundledSessionConversationFallback(rawId);
   const resolved =
     pluginResolved ??
     (shouldTryBundledFallback

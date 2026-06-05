@@ -73,7 +73,8 @@ const collectAncestorChain = (startPid, table) => {
   return collected;
 };
 
-const listListeningPids = () => parsePidList(run("lsof", ["-n", "-P", "-t", `-iTCP:${TARGET_PORT}`, "-sTCP:LISTEN"]));
+const listListeningPids = () =>
+  parsePidList(run("lsof", ["-n", "-P", "-t", `-iTCP:${TARGET_PORT}`, "-sTCP:LISTEN"]));
 
 const uniqueByPid = (processes) => {
   const map = new Map();
@@ -114,7 +115,9 @@ const main = async () => {
   ]);
 
   if (targeted.length === 0) {
-    console.log(`[stop-fast] No OpenClaw fast/gateway process found. Port ${TARGET_PORT} is already free.`);
+    console.log(
+      `[stop-fast] No OpenClaw fast/gateway process found. Port ${TARGET_PORT} is already free.`,
+    );
     return;
   }
 
@@ -132,7 +135,9 @@ const main = async () => {
   const remainingListeners = listListeningPids();
   if (remainingListeners.length > 0) {
     const refreshed = readProcessTable();
-    const stubborn = uniqueByPid(remainingListeners.flatMap((pid) => collectAncestorChain(pid, refreshed)));
+    const stubborn = uniqueByPid(
+      remainingListeners.flatMap((pid) => collectAncestorChain(pid, refreshed)),
+    );
     for (const proc of stubborn.toSorted((a, b) => b.pid - a.pid)) {
       if (isAlive(proc.pid) && sendSignal(proc.pid, "SIGKILL")) {
         forceKilled.push(proc);
@@ -163,7 +168,9 @@ const main = async () => {
     return;
   }
 
-  console.log(`[stop-fast] Port ${TARGET_PORT} is still in use by PID(s): ${finalListeners.join(", ")}`);
+  console.log(
+    `[stop-fast] Port ${TARGET_PORT} is still in use by PID(s): ${finalListeners.join(", ")}`,
+  );
   process.exitCode = 1;
 };
 

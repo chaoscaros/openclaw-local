@@ -4,12 +4,12 @@ const REDACTED_TELEGRAM_FIELD = "[redacted]";
 const TELEGRAM_RAW_UPDATE_ALWAYS_REDACT_KEYS = new Set([
   "added_to_attachment_menu",
   "author_signature",
-  "bio",
   "caption",
   "chat_instance",
   "data",
-  "description",
   "email",
+  "bio",
+  "description",
   "explanation",
   "file_id",
   "file_unique_id",
@@ -17,8 +17,8 @@ const TELEGRAM_RAW_UPDATE_ALWAYS_REDACT_KEYS = new Set([
   "invite_link",
   "is_premium",
   "language_code",
-  "last_name",
   "latitude",
+  "last_name",
   "longitude",
   "name",
   "phone_number",
@@ -40,8 +40,8 @@ const TELEGRAM_RAW_UPDATE_ID_REDACT_KEYS = new Set([
   "option_ids",
   "poll_id",
   "sender_chat_id",
-  "user_chat_id",
   "user_id",
+  "user_chat_id",
 ]);
 
 function shouldRedactTelegramRawUpdateValue(key: string, parentKey: string | undefined): boolean {

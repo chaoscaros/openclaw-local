@@ -1,128 +1,68 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type { PluginManifestRecord, PluginManifestRegistry } from "./manifest-registry.js";
-import type { PluginRegistrySnapshot } from "./plugin-registry.js";
 
-const mocks = vi.hoisted(() => ({
-  loadPluginRegistrySnapshot: vi.fn<() => PluginRegistrySnapshot>(() => ({
-    plugins: [],
-    diagnostics: [],
-  })),
-  loadPluginManifestRegistry: vi.fn<() => PluginManifestRegistry>(() => ({
-    plugins: [],
-    diagnostics: [],
-  })),
+const loadPluginMetadataSnapshot = vi.hoisted(() => vi.fn());
+
+vi.mock("./plugin-metadata-snapshot.js", () => ({
+  loadPluginMetadataSnapshot,
 }));
 
-vi.mock("./plugin-registry.js", () => ({
-  loadPluginRegistrySnapshot: mocks.loadPluginRegistrySnapshot,
-}));
+import { resolveManifestContractRuntimePluginResolution } from "./manifest-contract-runtime.js";
 
-vi.mock("./manifest-registry.js", () => ({
-  loadPluginManifestRegistry: mocks.loadPluginManifestRegistry,
-}));
-
-let resolveManifestContractRuntimePluginResolution: typeof import("./manifest-contract-runtime.js").resolveManifestContractRuntimePluginResolution;
-
-function createManifestPlugin(
-  params: Pick<PluginManifestRecord, "id" | "origin" | "contracts">,
-): PluginManifestRecord {
-  return {
-    id: params.id,
-    channels: [],
-    providers: [],
-    cliBackends: [],
-    skills: [],
-    hooks: [],
-    origin: params.origin,
-    rootDir: `/tmp/${params.id}`,
-    source: params.origin,
-    manifestPath: `/tmp/${params.id}/openclaw.plugin.json`,
-    contracts: params.contracts,
-  };
-}
-
-describe("manifest contract runtime", () => {
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    const runtime = await import("./manifest-contract-runtime.js");
-    resolveManifestContractRuntimePluginResolution =
-      runtime.resolveManifestContractRuntimePluginResolution;
+describe("resolveManifestContractRuntimePluginResolution", () => {
+  beforeEach(() => {
+    loadPluginMetadataSnapshot.mockReset();
+    loadPluginMetadataSnapshot.mockReturnValue({
+      index: { plugins: [] },
+      plugins: [],
+    });
   });
 
-  it("returns bundled compat ids plus enabled contract owners", () => {
-    const cfg = {
-      plugins: { entries: { workspaceMigration: { enabled: true } } },
-    } as OpenClawConfig;
-    mocks.loadPluginRegistrySnapshot.mockReturnValue({
+  it("resolves contract plugins from the shared metadata snapshot", () => {
+    loadPluginMetadataSnapshot.mockReturnValue({
+      index: {
+        plugins: [
+          {
+            pluginId: "bundled-search",
+            origin: "bundled",
+            enabled: true,
+            enabledByDefault: true,
+          },
+          {
+            pluginId: "external-search",
+            origin: "global",
+            enabled: true,
+            enabledByDefault: true,
+          },
+        ],
+      },
       plugins: [
-        { pluginId: "bundledMigration", origin: "bundled", enabled: false },
-        { pluginId: "workspaceMigration", origin: "workspace", enabled: true },
-        { pluginId: "disabledMigration", origin: "workspace", enabled: false },
-      ],
-      diagnostics: [],
-    });
-    mocks.loadPluginManifestRegistry.mockReturnValue({
-      plugins: [
-        createManifestPlugin({
-          id: "bundledMigration",
+        {
+          id: "bundled-search",
           origin: "bundled",
-          contracts: { migrationProviders: ["bundled-import"] },
-        }),
-        createManifestPlugin({
-          id: "workspaceMigration",
-          origin: "workspace",
-          contracts: { migrationProviders: ["workspace-import"] },
-        }),
-        createManifestPlugin({
-          id: "disabledMigration",
-          origin: "workspace",
-          contracts: { migrationProviders: ["disabled-import"] },
-        }),
+          contracts: { webSearchProviders: ["search"] },
+        },
+        {
+          id: "external-search",
+          origin: "global",
+          contracts: { webSearchProviders: ["search"] },
+        },
       ],
-      diagnostics: [],
     });
 
     expect(
       resolveManifestContractRuntimePluginResolution({
-        cfg,
-        contract: "migrationProviders",
+        cfg: {},
+        contract: "webSearchProviders",
+        value: "search",
       }),
     ).toEqual({
-      pluginIds: ["bundledMigration", "workspaceMigration"],
-      bundledCompatPluginIds: ["bundledMigration"],
+      pluginIds: ["bundled-search", "external-search"],
+      bundledCompatPluginIds: ["bundled-search"],
     });
-    expect(mocks.loadPluginRegistrySnapshot).toHaveBeenCalledWith({
-      config: cfg,
+    expect(loadPluginMetadataSnapshot).toHaveBeenCalledWith({
+      config: {},
       env: process.env,
       preferPersisted: false,
-    });
-  });
-
-  it("filters contract owners by specific value", () => {
-    mocks.loadPluginRegistrySnapshot.mockReturnValue({
-      plugins: [{ pluginId: "workspaceMigration", origin: "workspace", enabled: true }],
-      diagnostics: [],
-    });
-    mocks.loadPluginManifestRegistry.mockReturnValue({
-      plugins: [
-        createManifestPlugin({
-          id: "workspaceMigration",
-          origin: "workspace",
-          contracts: { migrationProviders: ["workspace-import", "other-import"] },
-        }),
-      ],
-      diagnostics: [],
-    });
-
-    expect(
-      resolveManifestContractRuntimePluginResolution({
-        contract: "migrationProviders",
-        value: "workspace-import",
-      }),
-    ).toEqual({
-      pluginIds: ["workspaceMigration"],
-      bundledCompatPluginIds: [],
     });
   });
 });

@@ -9,13 +9,14 @@ type RuntimeWebProviderMetadata = {
 
 type ProviderWithCredential = {
   envVars: string[];
+  authProviderId?: string;
   requiresCredential?: boolean;
 };
 
-export function resolveWebProviderConfig<
-  TKind extends "search" | "fetch",
-  TConfig extends Record<string, unknown>,
->(cfg: OpenClawConfig | undefined, kind: TKind): TConfig | undefined {
+export function resolveWebProviderConfig(
+  cfg: OpenClawConfig | undefined,
+  kind: "search" | "fetch",
+): Record<string, unknown> | undefined {
   const webConfig = cfg?.tools?.web;
   if (!webConfig || typeof webConfig !== "object") {
     return undefined;
@@ -24,7 +25,7 @@ export function resolveWebProviderConfig<
   if (!toolConfig || typeof toolConfig !== "object") {
     return undefined;
   }
-  return toolConfig as TConfig;
+  return toolConfig as Record<string, unknown>;
 }
 
 export function readWebProviderEnvValue(
@@ -58,10 +59,16 @@ export function hasWebProviderEntryCredential<
     config: OpenClawConfig | undefined;
     toolConfig: TConfig;
   }) => unknown;
+  resolveFallbackRawValue?: (params: {
+    provider: TProvider;
+    config: OpenClawConfig | undefined;
+    toolConfig: TConfig;
+  }) => unknown;
   resolveEnvValue: (params: {
     provider: TProvider;
     configuredEnvVarId?: string;
   }) => string | undefined;
+  resolveProviderAuthValue?: (providerId: string) => boolean;
 }): boolean {
   if (!providerRequiresCredential(params.provider)) {
     return true;
@@ -81,11 +88,40 @@ export function hasWebProviderEntryCredential<
   if (fromConfig) {
     return true;
   }
-  return Boolean(
+  if (
+    params.provider.authProviderId &&
+    params.resolveProviderAuthValue?.(params.provider.authProviderId)
+  ) {
+    return true;
+  }
+  if (
     params.resolveEnvValue({
       provider: params.provider,
       configuredEnvVarId: configuredRef?.source === "env" ? configuredRef.id : undefined,
-    }),
+    })
+  ) {
+    return true;
+  }
+  const fallbackRawValue = params.resolveFallbackRawValue?.({
+    provider: params.provider,
+    config: params.config,
+    toolConfig: params.toolConfig,
+  });
+  const fallbackRef = resolveSecretInputRef({ value: fallbackRawValue }).ref;
+  if (fallbackRef && fallbackRef.source !== "env") {
+    return true;
+  }
+  const fallbackConfig = normalizeSecretInput(normalizeSecretInputString(fallbackRawValue));
+  if (fallbackConfig) {
+    return true;
+  }
+  return Boolean(
+    fallbackRef?.source === "env"
+      ? params.resolveEnvValue({
+          provider: params.provider,
+          configuredEnvVarId: fallbackRef.id,
+        })
+      : undefined,
   );
 }
 
@@ -133,8 +169,7 @@ export function resolveWebProviderDefinition<
     providers,
   });
   const providerId =
-    params.providerId ??
-    (params.runtimeMetadata ? params.runtimeMetadata.selectedProvider : autoProviderId);
+    params.providerId ?? params.runtimeMetadata?.selectedProvider ?? autoProviderId;
   if (!providerId) {
     return null;
   }

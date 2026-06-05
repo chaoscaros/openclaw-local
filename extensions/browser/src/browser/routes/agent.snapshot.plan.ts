@@ -1,4 +1,7 @@
-import { normalizeOptionalString, readStringValue } from "openclaw/plugin-sdk/text-runtime";
+import {
+  normalizeOptionalString,
+  readStringValue,
+} from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { ResolvedBrowserProfile } from "../config.js";
 import {
   DEFAULT_AI_SNAPSHOT_EFFICIENT_DEPTH,
@@ -12,10 +15,11 @@ import {
 } from "../profile-capabilities.js";
 import { toBoolean, toNumber, toStringOrEmpty } from "./utils.js";
 
-export type BrowserSnapshotPlan = {
+type BrowserSnapshotPlan = {
   format: "ai" | "aria";
   mode?: "efficient";
   labels?: boolean;
+  urls?: boolean;
   limit?: number;
   resolvedMaxChars?: number;
   interactive?: boolean;
@@ -24,6 +28,7 @@ export type BrowserSnapshotPlan = {
   refsMode?: "aria" | "role";
   selectorValue?: string;
   frameSelectorValue?: string;
+  timeoutMs?: number;
   wantsRoleSnapshot: boolean;
 };
 
@@ -34,6 +39,7 @@ export function resolveSnapshotPlan(params: {
 }): BrowserSnapshotPlan {
   const mode = params.query.mode === "efficient" ? "efficient" : undefined;
   const labels = toBoolean(params.query.labels) ?? undefined;
+  const urls = toBoolean(params.query.urls) ?? undefined;
   const explicitFormat =
     params.query.format === "aria" ? "aria" : params.query.format === "ai" ? "ai" : undefined;
   const format = resolveDefaultSnapshotFormat({
@@ -70,11 +76,17 @@ export function resolveSnapshotPlan(params: {
     depthRaw ?? (mode === "efficient" ? DEFAULT_AI_SNAPSHOT_EFFICIENT_DEPTH : undefined);
   const selectorValue = normalizeOptionalString(toStringOrEmpty(params.query.selector));
   const frameSelectorValue = normalizeOptionalString(toStringOrEmpty(params.query.frame));
+  const timeoutMsRaw = toNumber(params.query.timeoutMs);
+  const timeoutMs =
+    timeoutMsRaw !== undefined && Number.isFinite(timeoutMsRaw) && timeoutMsRaw > 0
+      ? Math.max(1, Math.floor(timeoutMsRaw))
+      : undefined;
 
   return {
     format,
     mode,
     labels,
+    urls,
     limit,
     resolvedMaxChars,
     interactive,
@@ -83,8 +95,10 @@ export function resolveSnapshotPlan(params: {
     refsMode,
     selectorValue,
     frameSelectorValue,
+    timeoutMs,
     wantsRoleSnapshot:
       labels === true ||
+      urls === true ||
       mode === "efficient" ||
       interactive === true ||
       compact === true ||

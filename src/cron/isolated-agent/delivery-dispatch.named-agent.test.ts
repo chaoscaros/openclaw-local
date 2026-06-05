@@ -1,9 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { matchesMessagingToolDeliveryTarget } from "./delivery-dispatch.js";
-
-const normalizeTargetForProviderMock = vi.hoisted(() =>
-  vi.fn((_provider: string, raw?: string) => raw?.trim()),
-);
+import { describe, expect, it, vi } from "vitest";
+import { sourceDeliveryTargetsMatch } from "../../infra/outbound/source-delivery-plan.js";
 
 // Mock the announce flow dependencies to test the fallback behavior.
 vi.mock("../../agents/subagent-announce.js", () => ({
@@ -12,22 +8,11 @@ vi.mock("../../agents/subagent-announce.js", () => ({
 vi.mock("../../agents/subagent-registry-read.js", () => ({
   countActiveDescendantRuns: vi.fn().mockReturnValue(0),
 }));
-vi.mock("../../infra/outbound/target-normalization.js", () => ({
-  normalizeTargetForProvider: (...args: Parameters<typeof normalizeTargetForProviderMock>) =>
-    normalizeTargetForProviderMock(...args),
-}));
 
-beforeEach(() => {
-  normalizeTargetForProviderMock.mockClear();
-  normalizeTargetForProviderMock.mockImplementation((_provider: string, raw?: string) =>
-    raw?.trim(),
-  );
-});
-
-describe("matchesMessagingToolDeliveryTarget", () => {
+describe("sourceDeliveryTargetsMatch", () => {
   it("matches when channel and to agree", () => {
     expect(
-      matchesMessagingToolDeliveryTarget(
+      sourceDeliveryTargetsMatch(
         { provider: "telegram", to: "123456" },
         { channel: "telegram", to: "123456" },
       ),
@@ -36,7 +21,7 @@ describe("matchesMessagingToolDeliveryTarget", () => {
 
   it("rejects when channel differs", () => {
     expect(
-      matchesMessagingToolDeliveryTarget(
+      sourceDeliveryTargetsMatch(
         { provider: "whatsapp", to: "123456" },
         { channel: "telegram", to: "123456" },
       ),
@@ -45,7 +30,7 @@ describe("matchesMessagingToolDeliveryTarget", () => {
 
   it("rejects when to is missing from delivery", () => {
     expect(
-      matchesMessagingToolDeliveryTarget(
+      sourceDeliveryTargetsMatch(
         { provider: "telegram", to: "123456" },
         { channel: "telegram", to: undefined },
       ),
@@ -54,25 +39,34 @@ describe("matchesMessagingToolDeliveryTarget", () => {
 
   it("rejects when channel is missing from delivery", () => {
     expect(
-      matchesMessagingToolDeliveryTarget(
+      sourceDeliveryTargetsMatch(
         { provider: "telegram", to: "123456" },
         { channel: undefined, to: "123456" },
       ),
     ).toBe(false);
   });
 
-  it("strips :topic:NNN suffix from target.to before comparing", () => {
+  it("matches topic suffixes against the resolved delivery thread", () => {
     expect(
-      matchesMessagingToolDeliveryTarget(
+      sourceDeliveryTargetsMatch(
         { provider: "telegram", to: "-1003597428309:topic:462" },
-        { channel: "telegram", to: "-1003597428309" },
+        { channel: "telegram", to: "-1003597428309", threadId: 462 },
       ),
     ).toBe(true);
   });
 
+  it("rejects matching room targets when thread ids differ", () => {
+    expect(
+      sourceDeliveryTargetsMatch(
+        { provider: "telegram", to: "-1003597428309", threadId: "111" },
+        { channel: "telegram", to: "-1003597428309", threadId: 462 },
+      ),
+    ).toBe(false);
+  });
+
   it("matches when provider is 'message' (generic)", () => {
     expect(
-      matchesMessagingToolDeliveryTarget(
+      sourceDeliveryTargetsMatch(
         { provider: "message", to: "123456" },
         { channel: "telegram", to: "123456" },
       ),
@@ -81,7 +75,7 @@ describe("matchesMessagingToolDeliveryTarget", () => {
 
   it("rejects when accountIds differ", () => {
     expect(
-      matchesMessagingToolDeliveryTarget(
+      sourceDeliveryTargetsMatch(
         { provider: "telegram", to: "123456", accountId: "bot-a" },
         { channel: "telegram", to: "123456", accountId: "bot-b" },
       ),
@@ -90,35 +84,20 @@ describe("matchesMessagingToolDeliveryTarget", () => {
 
   it("matches when delivery has accountId and target omits it (tool fills accountId at exec)", () => {
     expect(
-      matchesMessagingToolDeliveryTarget(
+      sourceDeliveryTargetsMatch(
         { provider: "message", to: "123456" },
         { channel: "telegram", to: "123456", accountId: "bot-a" },
       ),
     ).toBe(true);
   });
 
-  it("skips target normalization when stripped raw recipients already match", () => {
+  it("matches when delivery and target carry the same accountId", () => {
     expect(
-      matchesMessagingToolDeliveryTarget(
-        { provider: "telegram", to: " -1003597428309:topic:462 " },
-        { channel: "telegram", to: " -1003597428309 " },
+      sourceDeliveryTargetsMatch(
+        { provider: "telegram", to: "123456", accountId: "bot-a" },
+        { channel: "telegram", to: "123456", accountId: "bot-a" },
       ),
     ).toBe(true);
-    expect(normalizeTargetForProviderMock).not.toHaveBeenCalled();
-  });
-
-  it("falls back to target normalization when raw recipients differ", () => {
-    normalizeTargetForProviderMock.mockImplementation((_provider: string, raw?: string) =>
-      raw?.trim().replace(/^chat:/, ""),
-    );
-
-    expect(
-      matchesMessagingToolDeliveryTarget(
-        { provider: "telegram", to: "chat:-1003597428309" },
-        { channel: "telegram", to: "-1003597428309" },
-      ),
-    ).toBe(true);
-    expect(normalizeTargetForProviderMock).toHaveBeenCalledTimes(2);
   });
 });
 

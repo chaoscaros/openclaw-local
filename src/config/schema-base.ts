@@ -32,10 +32,10 @@ type JsonSchemaObject = Record<string, unknown> & {
   allOf?: JsonSchemaObject[];
 };
 
-const LEGACY_HIDDEN_PUBLIC_PATHS = ["hooks.internal.handlers"] as const;
+const LEGACY_HIDDEN_PUBLIC_PATHS = ["canvasHost", "hooks.internal.handlers"] as const;
 
 const asJsonSchemaObject = (value: unknown): JsonSchemaObject | null =>
-  asSchemaObject<JsonSchemaObject>(value);
+  asSchemaObject(value) as JsonSchemaObject | null;
 
 function buildFieldDocumentation(): FieldDocumentation {
   const titles: Record<string, string> = {};
@@ -230,6 +230,7 @@ function computeBaseConfigSchemaStablePayload(): BaseConfigSchemaStablePayload {
     };
   }
   const schema = OpenClawSchema.toJSONSchema({
+    io: "input",
     target: "draft-07",
     unrepresentable: "any",
   });

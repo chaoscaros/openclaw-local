@@ -23,6 +23,8 @@ function anyLogMatches(log: LogSpy, fragment: string): boolean {
 }
 
 async function flushMicrotasks() {
+  // The dirty-rebuild path fires close() without awaiting it so the polling
+  // cycle is not blocked; tests must flush microtasks before asserting on it.
   await Promise.resolve();
   await Promise.resolve();
 }
@@ -68,6 +70,7 @@ describe("TelegramPollingTransportState", () => {
 
   it("does not close when dirty rebuild keeps the same transport instance", async () => {
     const initial = makeMockTransport("initial");
+    // createTelegramTransport returns the same instance — e.g., factory returned null → fallback to previous
     const createTelegramTransport = vi.fn(() => initial);
     const state = new TelegramPollingTransportState({
       log,
@@ -88,6 +91,7 @@ describe("TelegramPollingTransportState", () => {
       log,
       initialTransport: initial,
     });
+    // Force the state to promote the initial transport into the held slot.
     state.acquireForNextCycle();
 
     let closeResolved = false;
@@ -148,6 +152,7 @@ describe("TelegramPollingTransportState", () => {
     const acquired = state.acquireForNextCycle();
 
     expect(acquired).toBe(initial);
+    // Next cycle without markDirty should not trigger another rebuild log.
     state.acquireForNextCycle();
     const rebuildLogs = log.mock.calls.filter((call) => {
       const line = call[0];

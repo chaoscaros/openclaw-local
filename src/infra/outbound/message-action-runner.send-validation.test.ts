@@ -1,29 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChannelOutboundAdapter } from "../../channels/plugins/types.public.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
 import { createTestRegistry } from "../../test-utils/channel-plugins.js";
 import { runMessageAction } from "./message-action-runner.js";
 import {
+  forumTestPlugin,
   runDrySend,
-  slackConfig,
-  slackTestPlugin,
-  telegramTestPlugin,
+  workspaceConfig,
+  workspaceTestPlugin,
 } from "./message-action-runner.test-helpers.js";
+
+const emptyConfig = {} as OpenClawConfig;
 
 describe("runMessageAction send validation", () => {
   beforeEach(() => {
     setActivePluginRegistry(
       createTestRegistry([
         {
-          pluginId: "slack",
+          pluginId: "workspace",
           source: "test",
-          plugin: slackTestPlugin,
+          plugin: workspaceTestPlugin,
         },
         {
-          pluginId: "telegram",
+          pluginId: "forum",
           source: "test",
-          plugin: telegramTestPlugin,
+          plugin: forumTestPlugin,
         },
       ]),
     );
@@ -31,15 +32,14 @@ describe("runMessageAction send validation", () => {
 
   afterEach(() => {
     setActivePluginRegistry(createTestRegistry([]));
-    vi.restoreAllMocks();
   });
 
   it("requires message when no media hint is provided", async () => {
     await expect(
       runDrySend({
-        cfg: slackConfig,
+        cfg: workspaceConfig,
         actionParams: {
-          channel: "slack",
+          channel: "workspace",
           target: "#C12345678",
         },
         toolContext: { currentChannelId: "C12345678" },
@@ -47,19 +47,19 @@ describe("runMessageAction send validation", () => {
     ).rejects.toThrow(/message required/i);
   });
 
-  it("allows send when only shared interactive payloads are provided", async () => {
+  it("allows send when only presentation payloads are provided", async () => {
     const result = await runDrySend({
       cfg: {
         channels: {
-          telegram: {
-            botToken: "telegram-test",
+          forum: {
+            botToken: "forum-test",
           },
         },
       } as OpenClawConfig,
       actionParams: {
-        channel: "telegram",
+        channel: "forum",
         target: "123456",
-        interactive: {
+        presentation: {
           blocks: [
             {
               type: "buttons",
@@ -73,13 +73,13 @@ describe("runMessageAction send validation", () => {
     expect(result.kind).toBe("send");
   });
 
-  it("allows send when only Slack blocks are provided", async () => {
+  it("allows send when only generic presentation blocks are provided", async () => {
     const result = await runDrySend({
-      cfg: slackConfig,
+      cfg: workspaceConfig,
       actionParams: {
-        channel: "slack",
+        channel: "workspace",
         target: "#C12345678",
-        blocks: [{ type: "divider" }],
+        presentation: { blocks: [{ type: "divider" }] },
       },
       toolContext: { currentChannelId: "C12345678" },
     });
@@ -87,11 +87,188 @@ describe("runMessageAction send validation", () => {
     expect(result.kind).toBe("send");
   });
 
+  it("uses the current internal UI source as the message-tool-only send sink", async () => {
+    const result = await runMessageAction({
+      cfg: emptyConfig,
+      action: "send",
+      params: {
+        message: "hello from codex",
+      },
+      toolContext: {
+        currentChannelProvider: "webchat",
+      },
+      sessionKey: "agent:main",
+      sourceReplyDeliveryMode: "message_tool_only",
+    });
+
+    expect(result).toMatchObject({
+      kind: "send",
+      channel: "webchat",
+      to: "current-run",
+      handledBy: "internal-source",
+      dryRun: false,
+      payload: {
+        status: "ok",
+        deliveryStatus: "sent",
+        sourceReplySink: "internal-ui",
+        sourceReply: {
+          text: "hello from codex",
+        },
+      },
+    });
+    if (result.kind !== "send") {
+      throw new Error(`expected send result, got ${result.kind}`);
+    }
+    expect(result.toolResult?.content).toEqual([
+      {
+        type: "text",
+        text: "Sent visible reply to the current webchat conversation via internal-ui.",
+      },
+    ]);
+    expect(result.toolResult?.details).toEqual({
+      status: "ok",
+      deliveryStatus: "sent",
+      channel: "webchat",
+      target: "current-run",
+      sourceReplyDeliveryMode: "message_tool_only",
+      sourceReplySink: "internal-ui",
+      sourceReply: {
+        text: "hello from codex",
+      },
+      message: "hello from codex",
+      dryRun: false,
+    });
+    expect(JSON.stringify(result.toolResult?.content)).not.toContain("hello from codex");
+  });
+
+  it("strips unsupported citation control markers from internal UI source replies", async () => {
+    const result = await runMessageAction({
+      cfg: emptyConfig,
+      action: "send",
+      params: {
+        message: "v2026.5.20 release note citeturn2view0",
+      },
+      toolContext: {
+        currentChannelProvider: "webchat",
+      },
+      sessionKey: "agent:main",
+      sourceReplyDeliveryMode: "message_tool_only",
+    });
+
+    expect(result).toMatchObject({
+      kind: "send",
+      payload: {
+        sourceReply: {
+          text: "v2026.5.20 release note",
+        },
+      },
+    });
+    expect(JSON.stringify(result.payload)).not.toContain("turn2view0");
+  });
+
+  it("does not infer an internal UI sink outside message-tool-only source delivery", async () => {
+    await expect(
+      runMessageAction({
+        cfg: emptyConfig,
+        action: "send",
+        params: {
+          message: "hello from codex",
+        },
+        toolContext: {
+          currentChannelProvider: "webchat",
+        },
+        sessionKey: "agent:main",
+        sourceReplyDeliveryMode: "automatic",
+      }),
+    ).rejects.toThrow(/requires a target/i);
+  });
+
+  it("keeps explicit message routes on the normal outbound path", async () => {
+    const result = await runMessageAction({
+      cfg: workspaceConfig,
+      action: "send",
+      params: {
+        channel: "workspace",
+        target: "#C12345678",
+        message: "hello from codex",
+      },
+      toolContext: {
+        currentChannelProvider: "webchat",
+      },
+      sessionKey: "agent:main",
+      sourceReplyDeliveryMode: "message_tool_only",
+      dryRun: true,
+    });
+
+    expect(result).toMatchObject({
+      kind: "send",
+      channel: "workspace",
+      handledBy: "core",
+      dryRun: true,
+    });
+  });
+
+  it("strips unsupported citation control markers from normal channel sends", async () => {
+    const sentText: string[] = [];
+    const sendText: NonNullable<
+      NonNullable<typeof workspaceTestPlugin.outbound>["sendText"]
+    > = async (ctx) => {
+      sentText.push(ctx.text);
+      return { channel: "workspace", messageId: "workspace-test-message" };
+    };
+    setActivePluginRegistry(
+      createTestRegistry([
+        {
+          pluginId: "workspace",
+          source: "test",
+          plugin: {
+            ...workspaceTestPlugin,
+            outbound: {
+              ...workspaceTestPlugin.outbound,
+              sendText,
+            },
+          },
+        },
+      ]),
+    );
+
+    const result = await runMessageAction({
+      cfg: workspaceConfig,
+      action: "send",
+      params: {
+        channel: "workspace",
+        target: "#C12345678",
+        message: "v2026.5.20 release note citeturn2view0",
+      },
+    });
+
+    expect(result).toMatchObject({
+      kind: "send",
+      channel: "workspace",
+    });
+    expect(sentText).toEqual(["v2026.5.20 release note"]);
+    expect(JSON.stringify(result.payload)).not.toContain("turn2view0");
+  });
+
+  it("rejects message sends whose body is only leaked plain-text tool calls", async () => {
+    await expect(
+      runDrySend({
+        cfg: workspaceConfig,
+        actionParams: {
+          channel: "workspace",
+          target: "#C12345678",
+          message: '[tool:read] {"path":"/app/skills/meme-maker/SKILL.md"}',
+        },
+        toolContext: { currentChannelId: "C12345678" },
+      }),
+    ).rejects.toThrow(/send requires text or media/i);
+  });
+
   it.each([
     {
       name: "structured poll params",
       actionParams: {
-        channel: "slack",
+        channel: "workspace",
         target: "#C12345678",
         message: "hi",
         pollQuestion: "Ready?",
@@ -101,7 +278,7 @@ describe("runMessageAction send validation", () => {
     {
       name: "string-encoded poll params",
       actionParams: {
-        channel: "slack",
+        channel: "workspace",
         target: "#C12345678",
         message: "hi",
         pollDurationSeconds: "60",
@@ -111,7 +288,7 @@ describe("runMessageAction send validation", () => {
     {
       name: "snake_case poll params",
       actionParams: {
-        channel: "slack",
+        channel: "workspace",
         target: "#C12345678",
         message: "hi",
         poll_question: "Ready?",
@@ -122,7 +299,7 @@ describe("runMessageAction send validation", () => {
     {
       name: "negative poll duration params",
       actionParams: {
-        channel: "slack",
+        channel: "workspace",
         target: "#C12345678",
         message: "hi",
         pollDurationSeconds: -5,
@@ -131,11 +308,30 @@ describe("runMessageAction send validation", () => {
   ])("rejects send actions that include $name", async ({ actionParams }) => {
     await expect(
       runDrySend({
-        cfg: slackConfig,
+        cfg: workspaceConfig,
         actionParams,
         toolContext: { currentChannelId: "C12345678" },
       }),
     ).rejects.toThrow(/use action "poll" instead of "send"/i);
+  });
+});
+
+describe("message body alias normalization", () => {
+  beforeEach(() => {
+    setActivePluginRegistry(
+      createTestRegistry([
+        {
+          pluginId: "workspace",
+          source: "test",
+          plugin: workspaceTestPlugin,
+        },
+      ]),
+    );
+  });
+
+  afterEach(() => {
+    setActivePluginRegistry(createTestRegistry([]));
+    vi.restoreAllMocks();
   });
 
   it.each([
@@ -144,9 +340,9 @@ describe("runMessageAction send validation", () => {
     { alias: "text", value: "hello from text" },
   ])("normalizes $alias alias to message for send", async ({ alias, value }) => {
     const result = await runDrySend({
-      cfg: slackConfig,
+      cfg: workspaceConfig,
       actionParams: {
-        channel: "slack",
+        channel: "workspace",
         target: "#C12345678",
         [alias]: value,
       },
@@ -157,11 +353,10 @@ describe("runMessageAction send validation", () => {
   });
 
   it("does not overwrite an explicit message with an alias", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = await runDrySend({
-      cfg: slackConfig,
+      cfg: workspaceConfig,
       actionParams: {
-        channel: "slack",
+        channel: "workspace",
         target: "#C12345678",
         message: "explicit",
         SendMessage: "alias value",
@@ -170,16 +365,15 @@ describe("runMessageAction send validation", () => {
     });
 
     expect(result.kind).toBe("send");
-    expect(warnSpy).not.toHaveBeenCalled();
   });
 
   it("emits a diagnostic warning when normalizing an alias", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await runDrySend({
-      cfg: slackConfig,
+      cfg: workspaceConfig,
       actionParams: {
-        channel: "slack",
+        channel: "workspace",
         target: "#C12345678",
         SendMessage: "alias body",
       },
@@ -191,54 +385,49 @@ describe("runMessageAction send validation", () => {
     );
   });
 
-  it("sanitizes formatted reasoning aliases before delivery", async () => {
-    const result = await runDrySend({
-      cfg: slackConfig,
-      actionParams: {
-        channel: "slack",
-        target: "#C12345678",
-        SendMessage: "Reasoning:\n_internal plan_\n\nVisible answer",
-      },
-      toolContext: { currentChannelId: "C12345678" },
-    });
-
-    expect(result.kind).toBe("send");
-  });
-
-  it("strips unsupported citation control markers before send delivery", async () => {
-    const sentTexts: string[] = [];
-    const outbound = {
-      deliveryMode: "direct",
-      sendText: async ({ text }) => {
-        sentTexts.push(text);
-        return { messageId: "sent-test" };
-      },
-    } satisfies ChannelOutboundAdapter;
-    setActivePluginRegistry(
-      createTestRegistry([
-        {
-          pluginId: "slack",
-          source: "test",
-          plugin: {
-            ...slackTestPlugin,
-            outbound,
-          },
-        },
-      ]),
-    );
-
+  it.each([
+    {
+      name: "reasoning tag",
+      SendMessage: "<think>internal reasoning</think>Visible answer",
+    },
+    {
+      name: "formatted reasoning prefix",
+      SendMessage: "Reasoning:\n_internal plan_\n\nVisible answer",
+    },
+  ])("sanitizes SendMessage alias $name before delivery", async ({ SendMessage }) => {
     const result = await runMessageAction({
-      cfg: slackConfig,
+      cfg: emptyConfig,
       action: "send",
       params: {
-        channel: "slack",
-        target: "#C12345678",
-        message: "Answer citeturn1search0\nNext line citeturn2search1",
+        SendMessage,
       },
-      toolContext: { currentChannelId: "C12345678" },
+      toolContext: {
+        currentChannelProvider: "webchat",
+      },
+      sessionKey: "agent:main",
+      sourceReplyDeliveryMode: "message_tool_only",
     });
 
-    expect(result.kind).toBe("send");
-    expect(sentTexts).toEqual(["Answer\nNext line"]);
+    expect(result).toMatchObject({
+      kind: "send",
+      payload: {
+        sourceReply: {
+          text: "Visible answer",
+        },
+      },
+    });
+  });
+
+  it("still rejects send with no message and no alias", async () => {
+    await expect(
+      runDrySend({
+        cfg: workspaceConfig,
+        actionParams: {
+          channel: "workspace",
+          target: "#C12345678",
+        },
+        toolContext: { currentChannelId: "C12345678" },
+      }),
+    ).rejects.toThrow(/message required/i);
   });
 });

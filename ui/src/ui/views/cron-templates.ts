@@ -2,11 +2,7 @@ import type { TemplateResult } from "lit";
 import { icons } from "../icons.ts";
 import type { CronFormState } from "../ui-types.ts";
 
-export type CronTemplateCategory =
-  | "statusReports"
-  | "releasePrep"
-  | "incidents"
-  | "maintenance";
+export type CronTemplateCategory = "statusReports" | "releasePrep" | "incidents" | "maintenance";
 
 export type CronTemplateRiskLevel = "safe" | "review";
 
@@ -266,10 +262,11 @@ const TEMPLATE_DEFINITIONS: CronTemplateDefinition[] = [
 ];
 
 export function getCronTemplateGroups(): CronTemplateGroup[] {
-  return TEMPLATE_GROUPS.map((group) => ({
-    ...group,
-    templates: TEMPLATE_DEFINITIONS.filter((template) => template.category === group.id),
-  }));
+  return TEMPLATE_GROUPS.map((group) =>
+    Object.assign({}, group, {
+      templates: TEMPLATE_DEFINITIONS.filter((template) => template.category === group.id),
+    }),
+  );
 }
 
 export function findCronTemplateById(id: string | null | undefined): CronTemplateDefinition | null {
@@ -286,27 +283,28 @@ export function filterCronTemplateGroups(options?: {
   const query = options?.query?.trim().toLowerCase() ?? "";
   const risk = options?.risk ?? "all";
   return getCronTemplateGroups()
-    .map((group) => ({
-      ...group,
-      templates: group.templates.filter((template) => {
-        if (risk !== "all" && template.riskLevel !== risk) {
-          return false;
-        }
-        if (!query) {
-          return true;
-        }
-        const haystack = [
-          template.title,
-          template.description,
-          template.scheduleSummary,
-          template.deliverySummary,
-          template.outputSummary,
-          ...(template.tags ?? []),
-        ]
-          .join(" ")
-          .toLowerCase();
-        return haystack.includes(query);
+    .map((group) =>
+      Object.assign({}, group, {
+        templates: group.templates.filter((template) => {
+          if (risk !== "all" && template.riskLevel !== risk) {
+            return false;
+          }
+          if (!query) {
+            return true;
+          }
+          const haystack = [
+            template.title,
+            template.description,
+            template.scheduleSummary,
+            template.deliverySummary,
+            template.outputSummary,
+            ...(template.tags ?? []),
+          ]
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(query);
+        }),
       }),
-    }))
+    )
     .filter((group) => group.templates.length > 0);
 }

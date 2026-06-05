@@ -2,9 +2,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runCommandWithTimeout } from "../process/exec.js";
+import { normalizeStringEntries } from "../shared/string-normalization.js";
 import { resolveUserPath } from "../utils.js";
-import { fileExists, resolveArchiveKind } from "./archive.js";
+import { resolveArchiveKind } from "./archive.js";
+import { pathExists } from "./fs-safe.js";
 import { applyNpmFreshnessBypassEnv, type NpmProjectInstallEnvOptions } from "./npm-install-env.js";
+import { withTempWorkspace } from "./private-temp-workspace.js";
 
 export type NpmSpecResolution = {
   name?: string;
@@ -46,6 +49,65 @@ export function createNpmMetadataEnv(
   return env;
 }
 
+function normalizeNpmViewMetadata(value: unknown): NpmSpecResolution | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const rec = value as Record<string, unknown>;
+  const name = toOptionalString(rec.name);
+  const version = toOptionalString(rec.version);
+  const resolvedSpec = name && version ? `${name}@${version}` : undefined;
+  const dist =
+    rec.dist && typeof rec.dist === "object" ? (rec.dist as Record<string, unknown>) : {};
+  return {
+    name,
+    version,
+    resolvedSpec,
+    integrity: toOptionalString(rec["dist.integrity"]) ?? toOptionalString(dist.integrity),
+    shasum: toOptionalString(rec["dist.shasum"]) ?? toOptionalString(dist.shasum),
+  };
+}
+
+export async function resolveNpmSpecMetadata(params: { spec: string; timeoutMs?: number }): Promise<
+  | {
+      ok: true;
+      metadata: NpmSpecResolution;
+    }
+  | {
+      ok: false;
+      error: string;
+    }
+> {
+  const res = await runCommandWithTimeout(
+    ["npm", "view", params.spec, "name", "version", "dist.integrity", "dist.shasum", "--json"],
+    {
+      timeoutMs: Math.max(params.timeoutMs ?? 60_000, 60_000),
+      env: createNpmMetadataEnv(),
+    },
+  );
+  if (res.code !== 0) {
+    const raw = res.stderr.trim() || res.stdout.trim();
+    if (/E404|is not in this registry/i.test(raw)) {
+      return {
+        ok: false,
+        error: `Package not found on npm: ${params.spec}. See https://docs.openclaw.ai/tools/plugin for installable plugins.`,
+      };
+    }
+    return { ok: false, error: `npm view failed: ${raw}` };
+  }
+
+  try {
+    const parsed = JSON.parse(res.stdout.trim()) as unknown;
+    const metadata = normalizeNpmViewMetadata(parsed);
+    if (!metadata?.name || !metadata.version) {
+      return { ok: false, error: "npm view produced incomplete package metadata" };
+    }
+    return { ok: true, metadata };
+  } catch (err) {
+    return { ok: false, error: `npm view produced invalid JSON: ${String(err)}` };
+  }
+}
+
 export type NpmIntegrityDrift = {
   expectedIntegrity: string;
   actualIntegrity: string;
@@ -55,12 +117,7 @@ export async function withTempDir<T>(
   prefix: string,
   fn: (tmpDir: string) => Promise<T>,
 ): Promise<T> {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  try {
-    return await fn(tmpDir);
-  } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
-  }
+  return await withTempWorkspace({ rootDir: os.tmpdir(), prefix }, async (tmp) => fn(tmp.dir));
 }
 
 export async function resolveArchiveSourcePath(archivePath: string): Promise<
@@ -74,7 +131,7 @@ export async function resolveArchiveSourcePath(archivePath: string): Promise<
     }
 > {
   const resolved = resolveUserPath(archivePath);
-  if (!(await fileExists(resolved))) {
+  if (!(await pathExists(resolved))) {
     return { ok: false, error: `archive not found: ${resolved}` };
   }
 
@@ -177,10 +234,7 @@ function parseNpmPackJsonOutput(
 }
 
 function parsePackedArchiveFromStdout(stdout: string): string | undefined {
-  const lines = stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const lines = normalizeStringEntries(stdout.split(/\r?\n/));
 
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index];
@@ -257,7 +311,7 @@ export async function packNpmSpecToArchive(params: {
   }
 
   let archivePath = path.isAbsolute(packed) ? packed : path.join(params.cwd, packed);
-  if (!(await fileExists(archivePath))) {
+  if (!(await pathExists(archivePath))) {
     const fallbackPacked = await findPackedArchiveInDir(params.cwd);
     if (!fallbackPacked) {
       return { ok: false, error: "npm pack produced no archive" };
@@ -269,5 +323,54 @@ export async function packNpmSpecToArchive(params: {
     ok: true,
     archivePath,
     metadata: parsedJson?.metadata ?? {},
+  };
+}
+
+export async function resolveNpmPackArchiveMetadata(params: {
+  archivePath: string;
+  timeoutMs?: number;
+}): Promise<
+  | {
+      ok: true;
+      archivePath: string;
+      tarballName: string;
+      metadata: NpmSpecResolution;
+    }
+  | {
+      ok: false;
+      error: string;
+    }
+> {
+  const archivePathResult = await resolveArchiveSourcePath(params.archivePath);
+  if (!archivePathResult.ok) {
+    return archivePathResult;
+  }
+  const archivePath = archivePathResult.path;
+  const archiveStat = await fs.stat(archivePath).catch(() => null);
+  const archiveMetadataTimeoutMs =
+    archiveStat && archiveStat.size > 100 * 1024 * 1024 ? 300_000 : 60_000;
+  const res = await runCommandWithTimeout(
+    ["npm", "pack", archivePath, "--ignore-scripts", "--dry-run", "--json"],
+    {
+      timeoutMs: Math.max(params.timeoutMs ?? archiveMetadataTimeoutMs, archiveMetadataTimeoutMs),
+      env: createNpmMetadataEnv(),
+    },
+  );
+  if (res.code !== 0) {
+    return {
+      ok: false,
+      error: `npm pack metadata read failed: ${res.stderr.trim() || res.stdout.trim()}`,
+    };
+  }
+
+  const parsedJson = parseNpmPackJsonOutput(res.stdout || "");
+  if (!parsedJson?.metadata.name || !parsedJson.metadata.version) {
+    return { ok: false, error: "npm pack metadata read produced incomplete package metadata" };
+  }
+  return {
+    ok: true,
+    archivePath,
+    tarballName: parsedJson.filename ?? path.basename(archivePath),
+    metadata: parsedJson.metadata,
   };
 }

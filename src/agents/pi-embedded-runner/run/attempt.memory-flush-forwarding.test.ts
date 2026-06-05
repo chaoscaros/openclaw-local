@@ -1,10 +1,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { Api, Model } from "@mariozechner/pi-ai";
-import type { AuthStorage, ModelRegistry } from "@mariozechner/pi-coding-agent";
+import type { Api, Model } from "@earendil-works/pi-ai";
+import type { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
-import type { OpenClawConfig } from "../../../config/config.js";
 import type { AnyAgentTool } from "../../pi-tools.types.js";
 import { buildEmbeddedAttemptToolRunContext } from "./attempt.tool-run-context.js";
 
@@ -41,13 +40,21 @@ describe("runEmbeddedAttempt memory flush tool forwarding", () => {
     const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-attempt-memory-flush-"));
 
     try {
-      expect(buildEmbeddedAttemptToolRunContext(createAttemptParams(workspaceDir))).toMatchObject({
-        trigger: "memory",
-        memoryFlushWritePath: MEMORY_RELATIVE_PATH,
-      });
+      const context = buildEmbeddedAttemptToolRunContext(createAttemptParams(workspaceDir));
+      expect(context.trigger).toBe("memory");
+      expect(context.memoryFlushWritePath).toBe(MEMORY_RELATIVE_PATH);
     } finally {
       await fs.rm(workspaceDir, { recursive: true, force: true });
     }
+  });
+
+  it("forwards cron job id into tool creation so self-removal can be scoped", () => {
+    const context = buildEmbeddedAttemptToolRunContext({
+      trigger: "cron",
+      jobId: "job-current",
+    });
+    expect(context.trigger).toBe("cron");
+    expect(context.jobId).toBe("job-current");
   });
 
   it("activates the memory flush append-only write wrapper", async () => {
@@ -74,17 +81,16 @@ describe("runEmbeddedAttempt memory flush tool forwarding", () => {
         relativePath: MEMORY_RELATIVE_PATH,
       });
 
-      await expect(
-        wrapped.execute("call-memory-flush-append", {
-          path: MEMORY_RELATIVE_PATH,
-          content: "new durable note",
-        }),
-      ).resolves.toMatchObject({
-        content: [{ type: "text", text: `Appended content to ${MEMORY_RELATIVE_PATH}.` }],
-        details: {
-          path: MEMORY_RELATIVE_PATH,
-          appendOnly: true,
-        },
+      const result = await wrapped.execute("call-memory-flush-append", {
+        path: MEMORY_RELATIVE_PATH,
+        content: "new durable note",
+      });
+      expect(result.content).toEqual([
+        { type: "text", text: `Appended content to ${MEMORY_RELATIVE_PATH}.` },
+      ]);
+      expect(result.details).toEqual({
+        path: MEMORY_RELATIVE_PATH,
+        appendOnly: true,
       });
       await expect(fs.readFile(memoryFile, "utf-8")).resolves.toBe("seed\nnew durable note");
       await expect(
@@ -96,28 +102,6 @@ describe("runEmbeddedAttempt memory flush tool forwarding", () => {
         `Memory flush writes are restricted to ${MEMORY_RELATIVE_PATH}; use that path only.`,
       );
       expect(fallbackWrite).not.toHaveBeenCalled();
-    } finally {
-      await fs.rm(workspaceDir, { recursive: true, force: true });
-    }
-  });
-
-  it("does not expose read during memory flush turns", async () => {
-    const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-attempt-memory-flush-"));
-
-    try {
-      const { createOpenClawCodingTools } = await import("../../pi-tools.js");
-      const tools = createOpenClawCodingTools({
-        workspaceDir,
-        config: {} as OpenClawConfig,
-        trigger: "memory",
-        memoryFlushWritePath: MEMORY_RELATIVE_PATH,
-        modelProvider: "openai",
-        modelId: "gpt-5.4",
-      });
-      const toolNames = tools.map((tool) => tool.name);
-
-      expect(toolNames).toContain("write");
-      expect(toolNames).not.toContain("read");
     } finally {
       await fs.rm(workspaceDir, { recursive: true, force: true });
     }

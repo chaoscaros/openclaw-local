@@ -5,10 +5,13 @@ import { pluginSdkEntrypoints } from "./lib/plugin-sdk-entries.mjs";
 const RUNTIME_SHIMS: Partial<Record<string, string>> = {
   "secret-input-runtime": [
     "export {",
+    "  coerceSecretRef,",
     "  hasConfiguredSecretInput,",
+    "  isSecretRef,",
     "  normalizeResolvedSecretInputString,",
     "  normalizeSecretInputString,",
-    '} from "./config-runtime.js";',
+    "  resolveSecretInputString,",
+    '} from "./secret-input.js";',
     "",
   ].join("\n"),
   "webhook-path": [
@@ -48,10 +51,13 @@ const RUNTIME_SHIMS: Partial<Record<string, string>> = {
 const TYPE_SHIMS: Partial<Record<string, string>> = {
   "secret-input-runtime": [
     "export {",
+    "  coerceSecretRef,",
     "  hasConfiguredSecretInput,",
+    "  isSecretRef,",
     "  normalizeResolvedSecretInputString,",
     "  normalizeSecretInputString,",
-    '} from "./config-runtime.js";',
+    "  resolveSecretInputString,",
+    '} from "./secret-input.js";',
     "",
   ].join("\n"),
 };

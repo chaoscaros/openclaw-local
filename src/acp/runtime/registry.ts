@@ -27,6 +27,9 @@ function resolveAcpRuntimeRegistryGlobalState(): AcpRuntimeRegistryGlobalState {
       backendsById: new Map<string, AcpRuntimeBackend>(),
     }),
   );
+  // ACP runtime backends are registered from bundled plugin code and read from
+  // core/test code. In Vitest and Jiti, those can run in different globalThis
+  // contexts while still sharing one Node process.
   processStore[ACP_RUNTIME_REGISTRY_STATE_KEY] = created;
   return created;
 }
@@ -106,7 +109,7 @@ export function requireAcpRuntimeBackend(id?: string): AcpRuntimeBackend {
   return backend;
 }
 
-export const __testing = {
+export const testing = {
   resetAcpRuntimeBackendsForTests() {
     ACP_BACKENDS_BY_ID.clear();
   },
@@ -114,3 +117,4 @@ export const __testing = {
     return resolveAcpRuntimeRegistryGlobalState();
   },
 };
+export { testing as __testing };

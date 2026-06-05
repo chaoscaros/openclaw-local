@@ -34,6 +34,14 @@ describe("logs styles", () => {
     expect(css).toContain("min-height: 200px;");
     expect(css).not.toContain("max-height: 500px;");
   });
+
+  it("allows fill-height log cards to hand scrolling to the log stream", () => {
+    const css = readComponentsCss();
+
+    expect(css).toContain(".card--fill-height {");
+    expect(css).toContain(".card--fill-height .log-stream {");
+    expect(css).toMatch(/\.card--fill-height \.log-stream \{[\s\S]*max-height:\s*none;/);
+  });
 });
 
 describe("field input styles", () => {

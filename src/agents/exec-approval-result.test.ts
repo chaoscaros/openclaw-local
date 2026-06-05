@@ -30,6 +30,9 @@ describe("parseExecApprovalResultText", () => {
   });
 
   it("parses denied results with the canonical colon-separated deniedReason", () => {
+    // Producer (src/agents/bash-tools.exec-host-gateway.ts) emits a colon
+    // separator instead of nested parens to keep the (...)-delimited wire
+    // format unambiguous. This is the format real timeouts now produce.
     const input =
       "Exec denied (gateway id=req-1, approval-timeout: allowlist-miss): source ~/.zprofile && kubectl get pods";
 
@@ -85,12 +88,15 @@ describe("parseExecApprovalResultText", () => {
     "Exec denied (id=req-1, user-denied): cmd",
     "Exec finished (anything)\nbody",
     "Exec finished (status: ok)\nbody",
-  ])("returns other when metadata is not gateway/node sourced: %s", (input) => {
-    expect(parseExecApprovalResultText(input)).toEqual({
-      kind: "other",
-      raw: input,
-    });
-  });
+  ])(
+    "returns other when metadata is not gateway/node sourced (CWE-841 spoof guard): %s",
+    (input) => {
+      expect(parseExecApprovalResultText(input)).toEqual({
+        kind: "other",
+        raw: input,
+      });
+    },
+  );
 });
 
 describe("isExecDeniedResultText", () => {

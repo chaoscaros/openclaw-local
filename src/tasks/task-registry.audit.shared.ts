@@ -24,6 +24,12 @@ export type TaskAuditSummary = {
   byCode: Record<TaskAuditCode, number>;
 };
 
+type TaskAuditComparableFinding = {
+  severity: TaskAuditSeverity;
+  ageMs?: number;
+  createdAt: number;
+};
+
 export function createEmptyTaskAuditSummary(): TaskAuditSummary {
   return {
     total: 0,
@@ -41,16 +47,8 @@ export function createEmptyTaskAuditSummary(): TaskAuditSummary {
 }
 
 export function compareTaskAuditFindingSortKeys(
-  left: {
-    severity: TaskAuditSeverity;
-    ageMs?: number;
-    createdAt?: number;
-  },
-  right: {
-    severity: TaskAuditSeverity;
-    ageMs?: number;
-    createdAt?: number;
-  },
+  left: TaskAuditComparableFinding,
+  right: TaskAuditComparableFinding,
 ): number {
   const severityRank = (severity: TaskAuditSeverity) => (severity === "error" ? 0 : 1);
   const severityDiff = severityRank(left.severity) - severityRank(right.severity);
@@ -62,5 +60,5 @@ export function compareTaskAuditFindingSortKeys(
   if (leftAge !== rightAge) {
     return rightAge - leftAge;
   }
-  return (left.createdAt ?? 0) - (right.createdAt ?? 0);
+  return left.createdAt - right.createdAt;
 }

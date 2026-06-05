@@ -1,8 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveEmbeddedRunSkillEntries } from "../../agents/pi-embedded-runner/skills-runtime.js";
 import { createCanonicalFixtureSkill } from "../../agents/skills.test-helpers.js";
-import { hydrateResolvedSkills } from "../../auto-reply/reply/session-updates.js";
+import type { Skill } from "../../agents/skills/skill-contract.js";
+import {
+  hydrateResolvedSkills,
+  hydrateResolvedSkillsAsync,
+} from "../../agents/skills/snapshot-hydration.js";
+import { createSuiteTempRootTracker } from "../../test-helpers/temp-dir.js";
 import type { SessionEntry, SessionSkillSnapshot } from "./types.js";
 
 vi.mock("../config.js", async () => ({
@@ -10,11 +16,17 @@ vi.mock("../config.js", async () => ({
   getRuntimeConfig: vi.fn().mockReturnValue({}),
 }));
 
-import { clearSessionStoreCacheForTest, loadSessionStore, saveSessionStore, updateSessionStore } from "./store.js";
+import {
+  clearSessionStoreCacheForTest,
+  loadSessionStore,
+  saveSessionStore,
+  updateSessionStore,
+} from "./store.js";
 
-const tempDirs = new Set<string>();
+const suiteRootTracker = createSuiteTempRootTracker({ prefix: "openclaw-skills-strip-" });
 
-function makeFixtureSkill(name: string, bodySize = 256): NonNullable<SessionSkillSnapshot["resolvedSkills"]>[number] {
+function makeFixtureSkill(name: string, bodySize = 3000): Skill {
+  // 3KB body simulates a realistic SKILL.md.
   const source = `# ${name}\n\n${"x".repeat(bodySize)}`;
   return createCanonicalFixtureSkill({
     name,
@@ -30,6 +42,7 @@ function makeSnapshot(skillCount: number): SessionSkillSnapshot {
   return {
     prompt: "<available_skills>...</available_skills>",
     skills: resolved.map((s) => ({ name: s.name })),
+    skillFilter: undefined,
     resolvedSkills: resolved,
     version: 1,
   };
@@ -43,71 +56,187 @@ function makeEntry(sessionId: string, snapshot?: SessionSkillSnapshot): SessionE
   };
 }
 
-async function makeStorePath(testName: string): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(process.cwd(), `.tmp-sessions-${testName}-`));
-  tempDirs.add(dir);
-  return path.join(dir, "sessions.json");
-}
-
-afterEach(async () => {
-  clearSessionStoreCacheForTest();
-  delete process.env.OPENCLAW_SESSION_CACHE_TTL_MS;
-  await Promise.all([...tempDirs].map(async (dir) => await fs.rm(dir, { recursive: true, force: true })));
-  tempDirs.clear();
-});
-
 describe("session store strips resolvedSkills from persistence", () => {
-  it("does not write resolvedSkills to disk", async () => {
+  let testDir: string;
+  let storePath: string;
+  let savedCacheTtl: string | undefined;
+
+  beforeAll(async () => {
+    await suiteRootTracker.setup();
+  });
+
+  afterAll(async () => {
+    await suiteRootTracker.cleanup();
+  });
+
+  beforeEach(async () => {
+    testDir = await suiteRootTracker.make("case");
+    storePath = path.join(testDir, "sessions.json");
+    savedCacheTtl = process.env.OPENCLAW_SESSION_CACHE_TTL_MS;
     process.env.OPENCLAW_SESSION_CACHE_TTL_MS = "0";
-    const storePath = await makeStorePath("disk-strip");
+    clearSessionStoreCacheForTest();
+  });
+
+  afterEach(() => {
+    clearSessionStoreCacheForTest();
+    if (savedCacheTtl === undefined) {
+      delete process.env.OPENCLAW_SESSION_CACHE_TTL_MS;
+    } else {
+      process.env.OPENCLAW_SESSION_CACHE_TTL_MS = savedCacheTtl;
+    }
+  });
+
+  it("does not write resolvedSkills to disk", async () => {
     const store = {
-      "agent:main:test:1": makeEntry("session-1", makeSnapshot(3)),
+      "agent:main:test:1": makeEntry("session-1", makeSnapshot(5)),
     };
 
     await saveSessionStore(storePath, store, { skipMaintenance: true });
 
     const raw = await fs.readFile(storePath, "utf-8");
     expect(raw).not.toContain("resolvedSkills");
-    expect(raw).not.toContain("skill-0 skill description");
+    expect(raw).not.toContain("xxxxx"); // none of the skill source bodies leaked
     const parsed = JSON.parse(raw) as Record<string, SessionEntry>;
     expect(parsed["agent:main:test:1"]?.skillsSnapshot?.resolvedSkills).toBeUndefined();
   });
 
-  it("strips resolvedSkills from legacy files on load and mutator save", async () => {
-    process.env.OPENCLAW_SESSION_CACHE_TTL_MS = "0";
-    const storePath = await makeStorePath("legacy-strip");
+  it("preserves prompt, skills, skillFilter, and version on roundtrip", async () => {
+    const snapshot = makeSnapshot(3);
+    snapshot.skillFilter = ["skill-0"];
+    const store = {
+      "agent:main:test:1": makeEntry("session-1", snapshot),
+    };
+
+    await saveSessionStore(storePath, store, { skipMaintenance: true });
+    const loaded = loadSessionStore(storePath, { skipCache: true });
+
+    const persistedSnapshot = loaded["agent:main:test:1"]?.skillsSnapshot;
+    expect(persistedSnapshot?.prompt).toBe(snapshot.prompt);
+    expect(persistedSnapshot?.skills).toEqual(snapshot.skills);
+    expect(persistedSnapshot?.skillFilter).toEqual(["skill-0"]);
+    expect(persistedSnapshot?.version).toBe(1);
+    expect(persistedSnapshot?.resolvedSkills).toBeUndefined();
+  });
+
+  it("strips resolvedSkills from a legacy sessions.json on load", async () => {
+    // Hand-craft a pre-fix file with embedded resolvedSkills.
     const legacy = {
-      "agent:main:test:1": makeEntry("session-1", makeSnapshot(2)),
+      "agent:main:test:1": makeEntry("session-1", makeSnapshot(4)),
     };
     await fs.mkdir(path.dirname(storePath), { recursive: true });
-    await fs.writeFile(storePath, JSON.stringify(legacy, null, 2), "utf-8");
+    const rawLegacy = JSON.stringify(legacy, null, 2);
+    expect(rawLegacy).toContain("resolvedSkills");
+    await fs.writeFile(storePath, rawLegacy, "utf-8");
 
     const loaded = loadSessionStore(storePath, { skipCache: true });
     expect(loaded["agent:main:test:1"]?.skillsSnapshot?.resolvedSkills).toBeUndefined();
+    expect(loaded["agent:main:test:1"]?.skillsSnapshot?.prompt).toBe(
+      legacy["agent:main:test:1"].skillsSnapshot?.prompt,
+    );
 
+    // Saving the loaded record should rewrite the file in stripped form.
+    await saveSessionStore(storePath, loaded, { skipMaintenance: true });
+    const rawAfter = await fs.readFile(storePath, "utf-8");
+    expect(rawAfter).not.toContain("resolvedSkills");
+  });
+
+  it("strips resolvedSkills written via updateSessionStore mutator", async () => {
+    // Simulate the production hot path where ensureSkillSnapshot puts a
+    // freshly-built snapshot (with resolvedSkills) into the store via mutator.
     await updateSessionStore(
       storePath,
       (store) => {
-        store["agent:main:test:2"] = makeEntry("session-2", makeSnapshot(2));
+        store["agent:main:test:1"] = makeEntry("session-1", makeSnapshot(6));
       },
       { skipMaintenance: true },
     );
+
     const raw = await fs.readFile(storePath, "utf-8");
     expect(raw).not.toContain("resolvedSkills");
+    const reloaded = loadSessionStore(storePath, { skipCache: true });
+    expect(reloaded["agent:main:test:1"]?.skillsSnapshot?.resolvedSkills).toBeUndefined();
+    expect(reloaded["agent:main:test:1"]?.skillsSnapshot?.skills).toHaveLength(6);
+  });
+
+  it("keeps the on-disk file small with many sessions and skills", async () => {
+    const SESSION_COUNT = 100;
+    const SKILLS_PER_SESSION = 50;
+    const store: Record<string, SessionEntry> = {};
+    for (let i = 0; i < SESSION_COUNT; i += 1) {
+      store[`agent:main:scale:${i}`] = makeEntry(`session-${i}`, makeSnapshot(SKILLS_PER_SESSION));
+    }
+
+    await saveSessionStore(storePath, store, { skipMaintenance: true });
+
+    const stat = await fs.stat(storePath);
+    // Pre-fix: ~SESSION_COUNT * SKILLS_PER_SESSION * ~3KB ≈ 15MB.
+    // Post-fix: only the lightweight `skills` array + prompt per entry.
+    // Conservative budget that comfortably covers metadata growth.
+    expect(stat.size).toBeLessThan(2 * 1024 * 1024);
+  });
+});
+
+describe("embedded runner falls back to disk when resolvedSkills is absent", () => {
+  it("signals shouldLoadSkillEntries when the persisted snapshot has no resolvedSkills", () => {
+    const result = resolveEmbeddedRunSkillEntries({
+      workspaceDir: "/nonexistent-workspace-for-test",
+      skillsSnapshot: {
+        prompt: "",
+        skills: [{ name: "x" }],
+        version: 1,
+        // resolvedSkills intentionally omitted — this is the post-fix shape.
+      },
+    });
+
+    expect(result.shouldLoadSkillEntries).toBe(true);
+  });
+
+  it("skips loading when resolvedSkills is present (in-turn cache hot path)", () => {
+    const result = resolveEmbeddedRunSkillEntries({
+      workspaceDir: "/nonexistent-workspace-for-test",
+      skillsSnapshot: {
+        prompt: "",
+        skills: [{ name: "x" }],
+        resolvedSkills: [makeFixtureSkill("x", 100)],
+        version: 1,
+      },
+    });
+
+    expect(result.shouldLoadSkillEntries).toBe(false);
+    expect(result.skillEntries).toStrictEqual([]);
   });
 });
 
 describe("hydrateResolvedSkills", () => {
-  it("preserves persisted fields while restoring runtime-only resolvedSkills", () => {
+  it("returns the same snapshot when resolvedSkills is already populated", () => {
+    const snapshot: SessionSkillSnapshot = {
+      prompt: "p",
+      skills: [{ name: "x" }],
+      resolvedSkills: [makeFixtureSkill("x", 100)],
+      version: 1,
+    };
+    let buildCalls = 0;
+    const result = hydrateResolvedSkills(snapshot, () => {
+      buildCalls += 1;
+      return { prompt: "rebuilt", skills: [], resolvedSkills: [], version: 99 };
+    });
+    expect(result).toBe(snapshot);
+    expect(buildCalls).toBe(0);
+  });
+
+  it("rebuilds resolvedSkills only when missing and preserves persisted fields", () => {
+    // Simulates a cold session resume: the on-disk snapshot has no
+    // resolvedSkills, but consumers like prepareClaudeCliSkillsPlugin still
+    // need them. Hydration must not change prompt/skills/version, so the
+    // model's prompt-cache key stays stable across resume.
     const stripped: SessionSkillSnapshot = {
       prompt: "original-prompt",
       skills: [{ name: "x" }],
       skillFilter: ["x"],
       version: 7,
     };
-    const rebuiltSkills = [makeFixtureSkill("x", 128)];
+    const rebuiltSkills = [makeFixtureSkill("x", 200)];
     let buildCalls = 0;
-
     const result = hydrateResolvedSkills(stripped, () => {
       buildCalls += 1;
       return {
@@ -117,7 +246,6 @@ describe("hydrateResolvedSkills", () => {
         version: 99,
       };
     });
-
     expect(buildCalls).toBe(1);
     expect(result.prompt).toBe("original-prompt");
     expect(result.skills).toEqual([{ name: "x" }]);
@@ -126,7 +254,9 @@ describe("hydrateResolvedSkills", () => {
     expect(result.resolvedSkills).toBe(rebuiltSkills);
   });
 
-  it("treats an empty resolvedSkills cache as already populated", () => {
+  it("hydrates an empty resolvedSkills array as if it were absent is NOT done — empty is treated as populated", () => {
+    // A resolvedSkills set explicitly to [] means the workspace genuinely had
+    // no skills, not that the field was stripped. Don't trigger a rebuild.
     const snapshot: SessionSkillSnapshot = {
       prompt: "",
       skills: [],
@@ -134,14 +264,30 @@ describe("hydrateResolvedSkills", () => {
       version: 1,
     };
     let buildCalls = 0;
-
     const result = hydrateResolvedSkills(snapshot, () => {
       buildCalls += 1;
       return { prompt: "", skills: [], resolvedSkills: [makeFixtureSkill("x")], version: 1 };
     });
-
     expect(result).toBe(snapshot);
     expect(buildCalls).toBe(0);
   });
-}
-);
+
+  it("supports async runtime hydration for CLI resume paths", async () => {
+    const stripped: SessionSkillSnapshot = {
+      prompt: "cached-prompt",
+      skills: [{ name: "x" }],
+      version: 2,
+    };
+    const rebuiltSkills = [makeFixtureSkill("x", 120)];
+    const result = await hydrateResolvedSkillsAsync(stripped, async () => ({
+      prompt: "fresh-prompt",
+      skills: [{ name: "y" }],
+      resolvedSkills: rebuiltSkills,
+      version: 3,
+    }));
+    expect(result.prompt).toBe("cached-prompt");
+    expect(result.skills).toEqual([{ name: "x" }]);
+    expect(result.version).toBe(2);
+    expect(result.resolvedSkills).toBe(rebuiltSkills);
+  });
+});

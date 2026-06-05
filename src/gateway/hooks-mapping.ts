@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { CONFIG_PATH, type HookMappingConfig, type HooksConfig } from "../config/config.js";
+import { resolveConfigPathCandidate } from "../config/paths.js";
+import type { HookMappingConfig, HooksConfig } from "../config/types.hooks.js";
 import { importFileModule, resolveFunctionModuleExport } from "../hooks/module-loader.js";
 import { normalizeOptionalString, readStringValue } from "../shared/string-coerce.js";
 import type { HookMessageChannel } from "./hooks.types.js";
@@ -26,19 +27,19 @@ export type HookMappingResolved = {
   transform?: HookMappingTransformResolved;
 };
 
-export type HookMappingTransformResolved = {
+type HookMappingTransformResolved = {
   modulePath: string;
   exportName?: string;
 };
 
-export type HookMappingContext = {
+type HookMappingContext = {
   payload: Record<string, unknown>;
   headers: Record<string, string>;
   url: URL;
   path: string;
 };
 
-export type HookAction =
+type HookAction =
   | {
       kind: "wake";
       text: string;
@@ -61,7 +62,9 @@ export type HookAction =
       timeoutSeconds?: number;
     };
 
-export type HookMappingResult =
+type HookSessionKeyTemplateSource = "static" | "templated";
+
+type HookMappingResult =
   | { ok: true; action: HookAction }
   | { ok: true; action: null; skipped: true }
   | { ok: false; error: string };
@@ -82,8 +85,6 @@ const hookPresetMappings: Record<string, HookMappingConfig[]> = {
 };
 
 const transformCache = new Map<string, HookTransformFn>();
-
-export type HookSessionKeyTemplateSource = "static" | "templated";
 
 type HookTransformResult = Partial<{
   kind: HookAction["kind"];
@@ -138,7 +139,7 @@ export function resolveHookMappings(
     return [];
   }
 
-  const configDir = path.resolve(opts?.configDir ?? path.dirname(CONFIG_PATH));
+  const configDir = path.resolve(opts?.configDir ?? path.dirname(resolveConfigPathCandidate()));
   const transformsRootDir = path.join(configDir, "hooks", "transforms");
   const transformsDir = resolveOptionalContainedPath(
     transformsRootDir,
@@ -349,6 +350,8 @@ function resolveMergedSessionKeySource(
   if (typeof override.sessionKey === "string") {
     const normalizedSessionKey = normalizeOptionalString(override.sessionKey);
     if (!normalizedSessionKey) {
+      // Empty transform overrides behave like an absent sessionKey and fall
+      // through to the default/generated key path later in hook dispatch.
       return undefined;
     }
     return override.sessionKeySource === "static" ? "static" : "templated";

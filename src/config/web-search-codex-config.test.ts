@@ -1,9 +1,14 @@
+import { importFreshModule } from "openclaw/plugin-sdk/test-fixtures";
 import { describe, expect, it } from "vitest";
+import { mergeScopedSearchConfig } from "../agents/tools/web-search-provider-config.js";
 import { validateConfigObjectRaw } from "./validation.js";
 
 describe("web search Codex native config validation", () => {
-  it("accepts tools.web.search.openaiCodex", () => {
-    const result = validateConfigObjectRaw({
+  it("accepts tools.web.search.openaiCodex", async () => {
+    const { OpenClawSchema: freshOpenClawSchema } = await importFreshModule<
+      typeof import("./zod-schema.js")
+    >(import.meta.url, "./zod-schema.js?scope=web-search-codex");
+    const result = freshOpenClawSchema.safeParse({
       tools: {
         web: {
           search: {
@@ -24,7 +29,7 @@ describe("web search Codex native config validation", () => {
       },
     });
 
-    expect(result.ok).toBe(true);
+    expect(result.success).toBe(true);
   });
 
   it("preserves extension-owned tools.web.search entries", () => {
@@ -48,6 +53,23 @@ describe("web search Codex native config validation", () => {
         mode: "strict",
       });
     }
+  });
+
+  it("accepts runtime-only legacy provider entries injected by web search merge", () => {
+    const search = mergeScopedSearchConfig({ enabled: true, provider: "gemini" }, "perplexity", {
+      apiKey: "perplexity-test-key",
+    });
+    const result = validateConfigObjectRaw({
+      tools: {
+        web: {
+          search,
+        },
+      },
+    });
+
+    expect(search?.perplexity).toEqual({ apiKey: "perplexity-test-key" });
+    expect(Object.keys(search ?? {})).toEqual(["enabled", "provider"]);
+    expect(result.ok).toBe(true);
   });
 
   it.each(["__proto__", "prototype", "constructor"])(

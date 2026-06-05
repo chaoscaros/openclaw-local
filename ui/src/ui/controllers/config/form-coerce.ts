@@ -115,6 +115,13 @@ export function coerceFormValues(value: unknown, schema: JsonSchema): unknown {
     return value;
   }
 
+  if (type === "string") {
+    if (typeof value === "string" && value.length === 0 && schema.minLength) {
+      return undefined;
+    }
+    return value;
+  }
+
   if (type === "object") {
     if (typeof value !== "object" || Array.isArray(value)) {
       return value;

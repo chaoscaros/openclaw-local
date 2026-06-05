@@ -95,7 +95,6 @@ describe("gateway agent prompt", () => {
 
     expect(buildAgentMessageFromConversationEntries([...entries])).toBe(expected);
   });
-
   it("omits internal stream-error placeholder text from replay history", () => {
     const entries = [
       { role: "user", entry: { sender: "User", body: "first" } },

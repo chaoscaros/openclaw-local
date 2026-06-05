@@ -1,6 +1,6 @@
 import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
 
-export type ExecApprovalResult =
+type ExecApprovalResult =
   | {
       kind: "denied";
       raw: string;
@@ -26,9 +26,11 @@ export type ExecApprovalResult =
 const EXEC_COMPLETED_RE = /^exec completed:\s*([\s\S]*)$/i;
 
 // Approval-system-generated wrappers always start with either `gateway id=` or
-// `node=` inside the parenthesized metadata. Untrusted command stdout that
-// happens to start with "Exec denied (...)" or "Exec finished (...)" must not be
-// allowed to spoof a resolved approval event.
+// `node=` inside the parenthesized metadata (see bash-tools.exec-host-gateway.ts,
+// bash-tools.exec-host-node.ts, and gateway/server-node-events.ts). Untrusted
+// command stdout that happens to start with "Exec denied (...)" or
+// "Exec finished (...)" should be rejected by the parser to prevent CWE-841
+// spoofed approval events from arbitrary tool output.
 const APPROVAL_METADATA_SOURCE_RE = /^(?:gateway\s+id=|node=)/i;
 
 function parseExecApprovalResultWithMetadata(
@@ -59,6 +61,7 @@ function parseExecApprovalResultWithMetadata(
       }
     }
   }
+
   if (metadataEnd < 0) {
     return null;
   }
@@ -82,6 +85,7 @@ function parseExecApprovalResultWithMetadata(
   if (remainder && !remainder.startsWith("\n")) {
     return null;
   }
+
   return {
     metadata,
     body: remainder.startsWith("\n") ? remainder.slice(1).trim() : "",

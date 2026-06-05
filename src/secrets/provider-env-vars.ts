@@ -1,13 +1,24 @@
 import { resolveProviderAuthAliasMap } from "../agents/provider-auth-aliases.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { loadPluginManifestRegistry } from "../plugins/manifest-registry.js";
+import { normalizePluginsConfig } from "../plugins/config-state.js";
+import { getCurrentPluginMetadataSnapshot } from "../plugins/current-plugin-metadata-snapshot.js";
+import { isInstalledPluginEnabled } from "../plugins/installed-plugin-index.js";
 import type { PluginManifestRecord } from "../plugins/manifest-registry.js";
+import {
+  isWorkspacePluginAllowedByConfig,
+  normalizePluginConfigId,
+} from "../plugins/plugin-config-trust.js";
+import {
+  loadPluginMetadataSnapshot,
+  type PluginMetadataSnapshot,
+} from "../plugins/plugin-metadata-snapshot.js";
 import { hasKind } from "../plugins/slots.js";
-import { normalizeOptionalLowercaseString } from "../shared/string-coerce.js";
+import { uniqueStrings } from "../shared/string-normalization.js";
 
 const CORE_PROVIDER_AUTH_ENV_VAR_CANDIDATES = {
   anthropic: ["ANTHROPIC_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
   openai: ["OPENAI_API_KEY"],
+  "openai-codex": ["CODEX_API_KEY", "OPENAI_API_KEY"],
   voyage: ["VOYAGE_API_KEY"],
   cerebras: ["CEREBRAS_API_KEY"],
   "anthropic-openai": ["ANTHROPIC_API_KEY"],
@@ -15,6 +26,7 @@ const CORE_PROVIDER_AUTH_ENV_VAR_CANDIDATES = {
 } as const;
 
 const CORE_PROVIDER_SETUP_ENV_VAR_OVERRIDES = {
+  minimax: ["MINIMAX_API_KEY"],
   "minimax-cn": ["MINIMAX_API_KEY"],
 } as const;
 
@@ -23,61 +35,30 @@ export type ProviderEnvVarLookupParams = {
   workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
   includeUntrustedWorkspacePlugins?: boolean;
+  metadataSnapshot?: PluginMetadataSnapshot;
 };
 
-type PluginEntriesConfig = NonNullable<NonNullable<OpenClawConfig["plugins"]>["entries"]>;
-
-function normalizePluginConfigId(id: unknown): string {
-  return normalizeOptionalLowercaseString(id) ?? "";
-}
-
-function hasPluginId(list: unknown, pluginId: string): boolean {
-  return Array.isArray(list) && list.some((entry) => normalizePluginConfigId(entry) === pluginId);
-}
-
-function findPluginEntry(
-  entries: PluginEntriesConfig | undefined,
-  pluginId: string,
-): { enabled?: boolean } | undefined {
-  if (!entries || typeof entries !== "object" || Array.isArray(entries)) {
-    return undefined;
-  }
-  for (const [key, value] of Object.entries(entries)) {
-    if (normalizePluginConfigId(key) !== pluginId) {
-      continue;
-    }
-    return value && typeof value === "object" && !Array.isArray(value)
-      ? (value as { enabled?: boolean })
-      : {};
-  }
-  return undefined;
-}
+export type ProviderAuthEvidence = {
+  type: "local-file-with-env";
+  fileEnvVar?: string;
+  fallbackPaths?: readonly string[];
+  requiresAnyEnv?: readonly string[];
+  requiresAllEnv?: readonly string[];
+  credentialMarker: string;
+  source?: string;
+};
 
 function isWorkspacePluginTrustedForProviderEnvVars(
   plugin: PluginManifestRecord,
   config: OpenClawConfig | undefined,
 ): boolean {
-  const pluginsConfig = config?.plugins;
-  if (pluginsConfig?.enabled === false) {
-    return false;
-  }
-
-  const pluginId = normalizePluginConfigId(plugin.id);
-  if (!pluginId || hasPluginId(pluginsConfig?.deny, pluginId)) {
-    return false;
-  }
-
-  const entry = findPluginEntry(pluginsConfig?.entries, pluginId);
-  if (entry?.enabled === false) {
-    return false;
-  }
-  if (entry?.enabled === true || hasPluginId(pluginsConfig?.allow, pluginId)) {
-    return true;
-  }
-  return (
-    hasKind(plugin.kind, "context-engine") &&
-    normalizePluginConfigId(pluginsConfig?.slots?.contextEngine) === pluginId
-  );
+  return isWorkspacePluginAllowedByConfig({
+    config,
+    isImplicitlyAllowed: (pluginId) =>
+      hasKind(plugin.kind, "context-engine") &&
+      normalizePluginConfigId(config?.plugins?.slots?.contextEngine) === pluginId,
+    plugin,
+  });
 }
 
 function shouldUsePluginProviderEnvVars(
@@ -85,6 +66,16 @@ function shouldUsePluginProviderEnvVars(
   params: ProviderEnvVarLookupParams | undefined,
 ): boolean {
   if (plugin.origin !== "workspace" || params?.includeUntrustedWorkspacePlugins !== false) {
+    return true;
+  }
+  return isWorkspacePluginTrustedForProviderEnvVars(plugin, params?.config);
+}
+
+function shouldUsePluginProviderAuthEvidence(
+  plugin: PluginManifestRecord,
+  params: ProviderEnvVarLookupParams | undefined,
+): boolean {
+  if (plugin.origin !== "workspace") {
     return true;
   }
   return isWorkspacePluginTrustedForProviderEnvVars(plugin, params?.config);
@@ -111,26 +102,81 @@ function appendUniqueEnvVarCandidates(
   }
 }
 
+function appendUniqueAuthEvidence(
+  target: Record<string, ProviderAuthEvidence[]>,
+  providerId: string,
+  evidence: readonly ProviderAuthEvidence[],
+) {
+  const normalizedProviderId = providerId.trim();
+  if (!normalizedProviderId || evidence.length === 0) {
+    return;
+  }
+  const bucket = (target[normalizedProviderId] ??= []);
+  const seen = new Set(bucket.map((entry) => JSON.stringify(entry)));
+  for (const entry of evidence) {
+    const key = JSON.stringify(entry);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    bucket.push(entry);
+  }
+}
+
+function resolveProviderMetadataSnapshot(
+  params?: ProviderEnvVarLookupParams,
+): PluginMetadataSnapshot {
+  if (params?.metadataSnapshot) {
+    return params.metadataSnapshot;
+  }
+  const config = params?.config ?? {};
+  const env = params?.env ?? process.env;
+  const current = getCurrentPluginMetadataSnapshot({
+    config,
+    env,
+    ...(params?.workspaceDir !== undefined ? { workspaceDir: params.workspaceDir } : {}),
+    allowWorkspaceScopedSnapshot: true,
+  });
+  if (current) {
+    return current;
+  }
+  if (normalizePluginsConfig(config.plugins).loadPaths.length === 0) {
+    const unscopedCurrent = getCurrentPluginMetadataSnapshot({
+      env,
+      ...(params?.workspaceDir !== undefined ? { workspaceDir: params.workspaceDir } : {}),
+      allowWorkspaceScopedSnapshot: true,
+      requireDefaultDiscoveryContext: true,
+    });
+    if (unscopedCurrent) {
+      return unscopedCurrent;
+    }
+  }
+  return loadPluginMetadataSnapshot({
+    config,
+    workspaceDir: params?.workspaceDir,
+    env,
+    preferPersisted: false,
+  });
+}
+
 function resolveManifestProviderAuthEnvVarCandidates(
   params?: ProviderEnvVarLookupParams,
 ): Record<string, string[]> {
-  const registry = loadPluginManifestRegistry({
-    config: params?.config,
-    workspaceDir: params?.workspaceDir,
-    env: params?.env,
-  });
+  const snapshot = resolveProviderMetadataSnapshot(params);
   const candidates: Record<string, string[]> = {};
-  for (const plugin of registry.plugins) {
+  for (const plugin of snapshot.plugins) {
     if (!shouldUsePluginProviderEnvVars(plugin, params)) {
       continue;
     }
-    if (!plugin.providerAuthEnvVars) {
-      continue;
+    if (plugin.providerAuthEnvVars) {
+      for (const [providerId, keys] of Object.entries(plugin.providerAuthEnvVars).toSorted(
+        ([left], [right]) => left.localeCompare(right),
+      )) {
+        appendUniqueEnvVarCandidates(candidates, providerId, keys);
+      }
     }
-    for (const [providerId, keys] of Object.entries(plugin.providerAuthEnvVars).toSorted(
-      ([left], [right]) => left.localeCompare(right),
-    )) {
-      appendUniqueEnvVarCandidates(candidates, providerId, keys);
+    for (const provider of plugin.setup?.providers ?? []) {
+      appendUniqueEnvVarCandidates(candidates, provider.id, provider.envVars ?? []);
     }
   }
   const aliases = resolveProviderAuthAliasMap(params);
@@ -145,6 +191,37 @@ function resolveManifestProviderAuthEnvVarCandidates(
   return candidates;
 }
 
+function resolveManifestProviderAuthEvidence(
+  params?: ProviderEnvVarLookupParams,
+): Record<string, ProviderAuthEvidence[]> {
+  const snapshot = resolveProviderMetadataSnapshot(params);
+  const evidenceByProvider: Record<string, ProviderAuthEvidence[]> = {};
+  for (const plugin of snapshot.plugins) {
+    if (
+      snapshot.index.plugins.length > 0 &&
+      !isInstalledPluginEnabled(snapshot.index, plugin.id, params?.config)
+    ) {
+      continue;
+    }
+    if (!shouldUsePluginProviderAuthEvidence(plugin, params)) {
+      continue;
+    }
+    for (const provider of plugin.setup?.providers ?? []) {
+      appendUniqueAuthEvidence(evidenceByProvider, provider.id, provider.authEvidence ?? []);
+    }
+  }
+  const aliases = resolveProviderAuthAliasMap(params);
+  for (const [alias, target] of Object.entries(aliases).toSorted(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
+    const evidence = evidenceByProvider[target];
+    if (evidence) {
+      appendUniqueAuthEvidence(evidenceByProvider, alias, evidence);
+    }
+  }
+  return evidenceByProvider;
+}
+
 export function resolveProviderAuthEnvVarCandidates(
   params?: ProviderEnvVarLookupParams,
 ): Record<string, readonly string[]> {
@@ -152,6 +229,12 @@ export function resolveProviderAuthEnvVarCandidates(
     ...resolveManifestProviderAuthEnvVarCandidates(params),
     ...CORE_PROVIDER_AUTH_ENV_VAR_CANDIDATES,
   };
+}
+
+export function resolveProviderAuthEvidence(
+  params?: ProviderEnvVarLookupParams,
+): Record<string, readonly ProviderAuthEvidence[]> {
+  return resolveManifestProviderAuthEvidence(params);
 }
 
 export function resolveProviderEnvVars(
@@ -163,10 +246,15 @@ export function resolveProviderEnvVars(
   };
 }
 
+const lazyRecordCacheResetters = new Set<() => void>();
+
 function createLazyReadonlyRecord(
   resolve: () => Record<string, readonly string[]>,
 ): Record<string, readonly string[]> {
   let cached: Record<string, readonly string[]> | undefined;
+  lazyRecordCacheResetters.add(() => {
+    cached = undefined;
+  });
   const getResolved = (): Record<string, readonly string[]> => {
     cached ??= resolve();
     return cached;
@@ -225,33 +313,36 @@ export const PROVIDER_AUTH_ENV_VAR_CANDIDATES = createLazyReadonlyRecord(() =>
  */
 export const PROVIDER_ENV_VARS = createLazyReadonlyRecord(() => resolveProviderEnvVars());
 
+export const testing = {
+  resetProviderEnvVarCachesForTests(): void {
+    for (const reset of lazyRecordCacheResetters) {
+      reset();
+    }
+  },
+};
+
 export function getProviderEnvVars(
   providerId: string,
   params?: ProviderEnvVarLookupParams,
 ): string[] {
-  const providerEnvVars = resolveProviderEnvVars(params);
+  const providerEnvVars = params ? resolveProviderEnvVars(params) : PROVIDER_ENV_VARS;
   const envVars = Object.hasOwn(providerEnvVars, providerId)
     ? providerEnvVars[providerId]
     : undefined;
   return Array.isArray(envVars) ? [...envVars] : [];
 }
 
-const EXTRA_PROVIDER_AUTH_ENV_VARS = ["MINIMAX_CODE_PLAN_KEY", "MINIMAX_CODING_API_KEY"] as const;
-
 // OPENCLAW_API_KEY authenticates the local OpenClaw bridge itself and must
 // remain available to child bridge/runtime processes.
 export function listKnownProviderAuthEnvVarNames(params?: ProviderEnvVarLookupParams): string[] {
-  return [
-    ...new Set([
-      ...Object.values(resolveProviderAuthEnvVarCandidates(params)).flatMap((keys) => keys),
-      ...Object.values(resolveProviderEnvVars(params)).flatMap((keys) => keys),
-      ...EXTRA_PROVIDER_AUTH_ENV_VARS,
-    ]),
-  ];
+  return uniqueStrings([
+    ...Object.values(resolveProviderAuthEnvVarCandidates(params)).flatMap((keys) => keys),
+    ...Object.values(resolveProviderEnvVars(params)).flatMap((keys) => keys),
+  ]);
 }
 
 export function listKnownSecretEnvVarNames(params?: ProviderEnvVarLookupParams): string[] {
-  return [...new Set(Object.values(resolveProviderEnvVars(params)).flatMap((keys) => keys))];
+  return uniqueStrings(Object.values(resolveProviderEnvVars(params)).flatMap((keys) => keys));
 }
 
 export function omitEnvKeysCaseInsensitive(
@@ -276,3 +367,4 @@ export function omitEnvKeysCaseInsensitive(
   }
   return env;
 }
+export { testing as __testing };

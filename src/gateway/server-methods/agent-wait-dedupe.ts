@@ -1,9 +1,14 @@
+import { AGENT_RUN_ABORTED_ERROR, isAbortedAgentStopReason } from "../../agents/run-termination.js";
 import {
   normalizeAgentRunTimeoutPhase,
   normalizeProviderStarted,
   type AgentRunTimeoutPhase,
 } from "../../agents/run-timeout-attribution.js";
 import { normalizeBlockedLivenessWaitStatus } from "../../shared/agent-liveness.js";
+import { isNonTerminalAgentRunStatus } from "../../shared/agent-run-status.js";
+import { asFiniteNumber } from "../../shared/number-coercion.js";
+import { asOptionalRecord } from "../../shared/record-coerce.js";
+import { setSafeTimeout } from "../../utils/timer-delay.js";
 import type { DedupeEntry } from "../server-shared.js";
 
 export type AgentWaitTerminalSnapshot = {
@@ -11,7 +16,9 @@ export type AgentWaitTerminalSnapshot = {
   startedAt?: number;
   endedAt?: number;
   error?: string;
+  stopReason?: string;
   livenessState?: string;
+  yielded?: boolean;
   timeoutPhase?: AgentRunTimeoutPhase;
   providerStarted?: boolean;
 };
@@ -28,8 +35,8 @@ function parseRunIdFromDedupeKey(key: string): string | null {
   return null;
 }
 
-function asFiniteNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 function removeWaiter(runId: string, waiter: () => void): void {
@@ -71,69 +78,54 @@ function notifyWaiters(runId: string): void {
   }
 }
 
-export function readTerminalSnapshotFromDedupeEntry(
-  entry: DedupeEntry,
-): AgentWaitTerminalSnapshot | null {
+function readTerminalSnapshotFromDedupeEntry(entry: DedupeEntry): AgentWaitTerminalSnapshot | null {
   const payload = entry.payload as
     | {
         status?: unknown;
         startedAt?: unknown;
         endedAt?: unknown;
         error?: unknown;
+        summary?: unknown;
+        stopReason?: unknown;
         livenessState?: unknown;
+        yielded?: unknown;
         timeoutPhase?: unknown;
         providerStarted?: unknown;
         result?: unknown;
-        summary?: unknown;
       }
     | undefined;
   const status = typeof payload?.status === "string" ? payload.status : undefined;
-  if (status === "accepted" || status === "started" || status === "in_flight") {
+  if (isNonTerminalAgentRunStatus(status)) {
     return null;
   }
 
   const startedAt = asFiniteNumber(payload?.startedAt);
   const endedAt = asFiniteNumber(payload?.endedAt) ?? entry.ts;
+  const resultMeta = asOptionalRecord(asOptionalRecord(payload?.result)?.meta);
+  const stopReason = asString(payload?.stopReason) ?? asString(resultMeta?.stopReason);
+  const livenessState = asString(payload?.livenessState) ?? asString(resultMeta?.livenessState);
+  const yielded = payload?.yielded === true || resultMeta?.yielded === true;
+  const timeoutPhase =
+    normalizeAgentRunTimeoutPhase(payload?.timeoutPhase) ??
+    normalizeAgentRunTimeoutPhase(resultMeta?.timeoutPhase);
+  const providerStarted =
+    normalizeProviderStarted(payload?.providerStarted) ??
+    normalizeProviderStarted(resultMeta?.providerStarted);
   const errorMessage =
     typeof payload?.error === "string"
       ? payload.error
       : typeof payload?.summary === "string"
         ? payload.summary
         : entry.error?.message;
-  const resultMeta =
-    payload?.result && typeof payload.result === "object" && !Array.isArray(payload.result)
-      ? (payload.result as { meta?: unknown }).meta
-      : undefined;
-  const resultLivenessState =
-    resultMeta && typeof resultMeta === "object" && !Array.isArray(resultMeta)
-      ? (resultMeta as { livenessState?: unknown }).livenessState
-      : undefined;
-  const resultTimeoutPhase =
-    resultMeta && typeof resultMeta === "object" && !Array.isArray(resultMeta)
-      ? (resultMeta as { timeoutPhase?: unknown }).timeoutPhase
-      : undefined;
-  const resultProviderStarted =
-    resultMeta && typeof resultMeta === "object" && !Array.isArray(resultMeta)
-      ? (resultMeta as { providerStarted?: unknown }).providerStarted
-      : undefined;
-  const livenessState =
-    typeof payload?.livenessState === "string"
-      ? payload.livenessState
-      : typeof resultLivenessState === "string"
-        ? resultLivenessState
-        : undefined;
-  const timeoutPhase =
-    normalizeAgentRunTimeoutPhase(payload?.timeoutPhase) ??
-    normalizeAgentRunTimeoutPhase(resultTimeoutPhase);
-  const providerStarted =
-    normalizeProviderStarted(payload?.providerStarted) ??
-    normalizeProviderStarted(resultProviderStarted);
+  const abortedStopReason = isAbortedAgentStopReason(stopReason);
+  const normalizedError =
+    abortedStopReason && !errorMessage ? AGENT_RUN_ABORTED_ERROR : errorMessage;
 
   if (status === "ok" || status === "timeout") {
     const normalized = normalizeBlockedLivenessWaitStatus({
-      status,
+      status: abortedStopReason ? "error" : status,
       livenessState,
-      error: errorMessage,
+      error: normalizedError,
     });
     return {
       status: normalized.status,
@@ -143,9 +135,11 @@ export function readTerminalSnapshotFromDedupeEntry(
         normalized.status === "error"
           ? normalized.error
           : normalized.status === "timeout"
-            ? errorMessage
+            ? normalizedError
             : undefined,
+      stopReason,
       livenessState,
+      ...(yielded ? { yielded } : {}),
       ...(timeoutPhase ? { timeoutPhase } : {}),
       ...(providerStarted !== undefined ? { providerStarted } : {}),
     };
@@ -156,7 +150,9 @@ export function readTerminalSnapshotFromDedupeEntry(
       startedAt,
       endedAt,
       error: errorMessage,
+      stopReason,
       livenessState,
+      ...(yielded ? { yielded } : {}),
       ...(timeoutPhase ? { timeoutPhase } : {}),
       ...(providerStarted !== undefined ? { providerStarted } : {}),
     };
@@ -251,8 +247,7 @@ export async function waitForTerminalGatewayDedupe(params: {
       return;
     }
 
-    const timeoutDelayMs = Math.max(1, Math.min(Math.floor(params.timeoutMs), 2_147_483_647));
-    timeoutHandle = setTimeout(() => finish(null), timeoutDelayMs);
+    timeoutHandle = setSafeTimeout(() => finish(null), params.timeoutMs);
     timeoutHandle.unref?.();
 
     onAbort = () => finish(null);
@@ -265,19 +260,24 @@ export function setGatewayDedupeEntry(params: {
   key: string;
   entry: DedupeEntry;
 }) {
+  const existing = params.dedupe.get(params.key);
+  const existingSnapshot = existing ? readTerminalSnapshotFromDedupeEntry(existing) : null;
+  const incomingSnapshot = readTerminalSnapshotFromDedupeEntry(params.entry);
+  if (existingSnapshot?.status === "timeout" && existingSnapshot.stopReason === "rpc") {
+    return;
+  }
   params.dedupe.set(params.key, params.entry);
   const runId = parseRunIdFromDedupeKey(params.key);
   if (!runId) {
     return;
   }
-  const snapshot = readTerminalSnapshotFromDedupeEntry(params.entry);
-  if (!snapshot) {
+  if (!incomingSnapshot) {
     return;
   }
   notifyWaiters(runId);
 }
 
-export const __testing = {
+export const testing = {
   getWaiterCount(runId?: string): number {
     if (runId) {
       return AGENT_WAITERS_BY_RUN_ID.get(runId)?.size ?? 0;
@@ -292,3 +292,4 @@ export const __testing = {
     AGENT_WAITERS_BY_RUN_ID.clear();
   },
 };
+export { testing as __testing };

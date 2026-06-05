@@ -1,16 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mockProcessPlatform } from "../test-utils/vitest-spies.js";
 import { visibleWidth } from "./ansi.js";
-import { wrapNoteMessage } from "./note.js";
+import { resolveNoteColumns, wrapNoteMessage } from "./note.js";
 import { renderTable } from "./table.js";
 
 describe("renderTable", () => {
-  const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
-
   afterEach(() => {
     vi.unstubAllEnvs();
-    if (originalPlatformDescriptor) {
-      Object.defineProperty(process, "platform", originalPlatformDescriptor);
-    }
+    vi.restoreAllMocks();
   });
 
   it("prefers shrinking flex columns to avoid wrapping non-flex labels", () => {
@@ -24,7 +21,7 @@ describe("renderTable", () => {
     });
 
     expect(out).toContain("Dashboard");
-    expect(out).toMatch(/│ Dashboard\s+│/);
+    expect(out).toMatch(/[│|] Dashboard\s+[│|]/);
   });
 
   it("expands flex columns to fill available width", () => {
@@ -86,7 +83,7 @@ describe("renderTable", () => {
     const lines = out.split("\n").filter((line) => line.includes("a"));
     for (const line of lines) {
       const resetIndex = line.lastIndexOf(reset);
-      const lastSep = line.lastIndexOf("│");
+      const lastSep = Math.max(line.lastIndexOf("│"), line.lastIndexOf("|"));
       expect(resetIndex).toBeGreaterThan(-1);
       expect(lastSep).toBeGreaterThan(resetIndex);
     }
@@ -215,7 +212,7 @@ describe("renderTable", () => {
   });
 
   it("falls back to ASCII borders on legacy Windows consoles", () => {
-    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    mockProcessPlatform("win32");
     vi.stubEnv("WT_SESSION", "");
     vi.stubEnv("TERM_PROGRAM", "");
     vi.stubEnv("TERM", "vt100");
@@ -233,7 +230,7 @@ describe("renderTable", () => {
   });
 
   it("keeps unicode borders on modern Windows terminals", () => {
-    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    mockProcessPlatform("win32");
     vi.stubEnv("WT_SESSION", "1");
     vi.stubEnv("TERM", "");
     vi.stubEnv("TERM_PROGRAM", "");
@@ -289,7 +286,8 @@ describe("wrapNoteMessage", () => {
     const lines = wrapped.split("\n");
     expect(lines.length).toBeGreaterThan(1);
     expect(lines[0]?.startsWith("- ")).toBe(true);
-    expect(lines.slice(1).every((line) => line.startsWith("  "))).toBe(true);
+    const unindentedContinuationLines = lines.slice(1).filter((line) => !line.startsWith("  "));
+    expect(unindentedContinuationLines).toStrictEqual([]);
   });
 
   it("preserves long Windows paths without inserting spaces/newlines", () => {
@@ -303,5 +301,21 @@ describe("wrapNoteMessage", () => {
     const input = "\\\\\\\\server\\\\share\\\\some\\\\really\\\\long\\\\path\\\\file.txt";
     const wrapped = wrapNoteMessage(input, { maxWidth: 12, columns: 80 });
     expect(wrapped).toBe(input);
+  });
+
+  it("clamps bogus TTY columns before clack wraps note text", () => {
+    expect(resolveNoteColumns(undefined)).toBe(80);
+    expect(resolveNoteColumns(0)).toBe(80);
+    expect(resolveNoteColumns(1)).toBe(80);
+    expect(resolveNoteColumns(79)).toBe(80);
+    expect(resolveNoteColumns(120)).toBe(120);
+  });
+
+  it("coerces nullish and non-string note messages before wrapping", () => {
+    expect(wrapNoteMessage(undefined, { maxWidth: 20, columns: 80 })).toBe("");
+    expect(wrapNoteMessage(null, { maxWidth: 20, columns: 80 })).toBe("");
+    expect(wrapNoteMessage(12345, { maxWidth: 20, columns: 80 })).toBe("12345");
+    expect(wrapNoteMessage(new Error("boom"), { maxWidth: 20, columns: 80 })).toBe("Error: boom");
+    expect(wrapNoteMessage({ message: "boom" }, { maxWidth: 20, columns: 80 })).toBe("");
   });
 });

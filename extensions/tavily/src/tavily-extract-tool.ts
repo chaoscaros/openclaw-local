@@ -1,34 +1,25 @@
-import { Type } from "@sinclair/typebox";
-import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
-import type { OpenClawPluginToolContext } from "openclaw/plugin-sdk/core";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
+import type { OpenClawPluginToolContext } from "openclaw/plugin-sdk/plugin-entry";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-runtime";
 import {
   jsonResult,
   readNumberParam,
   readStringParam,
 } from "openclaw/plugin-sdk/provider-web-search";
+import { Type } from "typebox";
 import { runTavilyExtract } from "./tavily-client.js";
+import { optionalStringEnum } from "./tavily-tool-schema.js";
 
-function optionalStringEnum<const T extends readonly string[]>(
-  values: T,
-  options: { description?: string } = {},
-) {
-  return Type.Optional(
-    Type.Unsafe<T[number]>({
-      type: "string",
-      enum: [...values],
-      ...options,
-    }),
-  );
-}
-
-type TavilyToolConfigContext = Pick<OpenClawPluginToolContext, "config" | "runtimeConfig">;
+type TavilyToolConfigContext = Pick<
+  OpenClawPluginToolContext,
+  "config" | "runtimeConfig" | "getRuntimeConfig"
+>;
 
 function resolveTavilyToolConfig(
   api: OpenClawPluginApi,
   ctx?: TavilyToolConfigContext,
 ): OpenClawConfig {
-  return ctx?.runtimeConfig ?? ctx?.config ?? api.config;
+  return ctx?.getRuntimeConfig?.() ?? ctx?.runtimeConfig ?? ctx?.config ?? api.config;
 }
 
 const TavilyExtractToolSchema = Type.Object(

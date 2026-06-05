@@ -139,7 +139,7 @@ function normalizeTaskTodoItems(raw: unknown): TaskTodoItem[] | undefined {
     })
     .filter((entry): entry is TaskTodoItem => Boolean(entry))
     .toSorted((left, right) => left.order - right.order || left.createdAt - right.createdAt)
-    .map((entry, index) => ({ ...entry, order: index }));
+    .map((entry, index) => Object.assign({}, entry, { order: index }));
   return items.length ? items : undefined;
 }
 
@@ -498,6 +498,7 @@ function applyOptimisticSessionTaskBinding(
   if (!result) {
     return;
   }
+  const hasTaskIdPatch = patch.taskId !== undefined;
   state.sessionsResult = {
     ...result,
     sessions: result.sessions.map((row) => {
@@ -505,17 +506,17 @@ function applyOptimisticSessionTaskBinding(
         return row;
       }
       const nextMode = patch.mode ?? row.mode ?? "normal";
-      const nextTaskId =
-        patch.taskId !== undefined
-          ? patch.taskId
-          : nextMode === "normal"
-            ? null
-            : (row.taskId ?? null);
-      return {
-        ...row,
-        mode: nextMode,
-        ...(nextTaskId ? { taskId: nextTaskId } : {}),
-      };
+      const nextTaskId = hasTaskIdPatch ? patch.taskId : (row.taskId ?? null);
+      const nextRow = Object.assign({}, row, { mode: nextMode });
+      if (nextTaskId) {
+        return Object.assign({}, nextRow, { taskId: nextTaskId });
+      }
+      if (hasTaskIdPatch) {
+        const withoutTaskId = Object.assign({}, nextRow);
+        delete withoutTaskId.taskId;
+        return withoutTaskId;
+      }
+      return nextRow;
     }),
   };
 }
@@ -532,13 +533,10 @@ export async function setCurrentTaskForSession(state: TasksState, taskId: string
 }
 
 export async function setCurrentSessionMode(state: TasksState, mode: "normal" | "task") {
-  const currentSession = findSessionRowByKey(state.sessionsResult?.sessions, state.sessionKey);
   state.tasksBusy = true;
   try {
-    await patchSession(state, state.sessionKey, {
-      mode,
-      taskId: mode === "normal" ? null : (currentSession?.taskId ?? null),
-    });
+    applyOptimisticSessionTaskBinding(state, { mode });
+    await patchSession(state, state.sessionKey, { mode });
     if (mode === "task") {
       await loadTaskModeData(state);
     }

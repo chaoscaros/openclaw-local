@@ -589,6 +589,17 @@
     max-height: 380px;
   }
 
+  .card--fill-height.card--fill-height .log-stream {
+    flex: none;
+    min-height: 200px;
+    max-height: 380px;
+  }
+
+  .content.content--logs {
+    display: block;
+    overflow-y: auto;
+  }
+
   .log-row {
     grid-template-columns: 1fr;
     gap: 4px;

@@ -1,24 +1,26 @@
 import crypto from "node:crypto";
-import { resolveAgentConfig } from "../agents/agent-scope.js";
-import { loadConfig } from "../config/config.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GatewayClient } from "../gateway/client.js";
+import {
+  describeInterpreterInlineEval,
+  type InterpreterInlineEvalHit,
+} from "../infra/command-analysis/inline-eval.js";
+import { detectPolicyInlineEval } from "../infra/command-analysis/policy.js";
 import {
   addDurableCommandApproval,
   hasDurableExecApproval,
   persistAllowAlwaysPatterns,
   recordAllowlistMatchesUse,
-  resolveApprovalAuditCandidatePath,
+  resolveApprovalAuditTrustPath,
   resolveExecApprovals,
   type ExecAllowlistEntry,
   type ExecAsk,
   type ExecCommandSegment,
+  type ExecSegmentSatisfiedBy,
   type ExecSecurity,
+  type SkillBinTrustEntry,
 } from "../infra/exec-approvals.js";
 import type { ExecHostRequest, ExecHostResponse, ExecHostRunResult } from "../infra/exec-host.js";
-import {
-  describeInterpreterInlineEval,
-  detectInterpreterInlineEvalArgv,
-} from "../infra/exec-inline-eval.js";
 import { resolveExecSafeBinRuntimePolicy } from "../infra/exec-safe-bin-runtime-policy.js";
 import {
   extractEnvAssignmentKeysFromDispatchWrappers,
@@ -30,8 +32,9 @@ import {
   sanitizeSystemRunEnvOverrides,
 } from "../infra/host-env-security.js";
 import { normalizeSystemRunApprovalPlan } from "../infra/system-run-approval-binding.js";
-import { resolveSystemRunCommandRequest } from "../infra/system-run-command.js";
+import { formatExecCommand, resolveSystemRunCommandRequest } from "../infra/system-run-command.js";
 import { logWarn } from "../logger.js";
+import { normalizeAgentId } from "../routing/session-key.js";
 import { normalizeOptionalString } from "../shared/string-coerce.js";
 import { evaluateSystemRunPolicy, resolveExecApprovalDecision } from "./exec-policy.js";
 import {
@@ -106,11 +109,17 @@ type SystemRunPolicyPhase = SystemRunParsePhase & {
   policy: ReturnType<typeof evaluateSystemRunPolicy>;
   durableApprovalSatisfied: boolean;
   strictInlineEval: boolean;
-  inlineEvalHit: ReturnType<typeof detectInterpreterInlineEvalArgv>;
+  inlineEvalHit: InterpreterInlineEvalHit | null;
   allowlistMatches: ExecAllowlistEntry[];
   analysisOk: boolean;
   allowlistSatisfied: boolean;
+  safeBins: ReturnType<typeof resolveExecSafeBinRuntimePolicy>["safeBins"];
+  safeBinProfiles: ReturnType<typeof resolveExecSafeBinRuntimePolicy>["safeBinProfiles"];
+  trustedSafeBinDirs: ReturnType<typeof resolveExecSafeBinRuntimePolicy>["trustedSafeBinDirs"];
+  skillBins: SkillBinTrustEntry[];
+  autoAllowSkills: boolean;
   segments: ExecCommandSegment[];
+  segmentSatisfiedBy: ExecSegmentSatisfiedBy[];
   plannedAllowlistArgv: string[] | undefined;
   isWindows: boolean;
   approvedCwdSnapshot: ApprovedCwdSnapshot | undefined;
@@ -123,6 +132,7 @@ const APPROVAL_SCRIPT_OPERAND_BINDING_DENIED_MESSAGE =
   "SYSTEM_RUN_DENIED: approval missing script operand binding";
 const APPROVAL_SCRIPT_OPERAND_DRIFT_DENIED_MESSAGE =
   "SYSTEM_RUN_DENIED: approval script operand changed before execution";
+type ExecToolConfig = NonNullable<NonNullable<OpenClawConfig["tools"]>["exec"]>;
 
 function warnWritableTrustedDirOnce(message: string): void {
   if (safeBinTrustedDirWarningCache.has(message)) {
@@ -144,6 +154,23 @@ function normalizeDeniedReason(reason: string | null | undefined): SystemRunDeni
     default:
       return "approval-required";
   }
+}
+
+function resolveAgentExecConfig(
+  cfg: OpenClawConfig,
+  agentId: string | undefined,
+): ExecToolConfig | undefined {
+  if (!agentId) {
+    return undefined;
+  }
+  const normalizedAgentId = normalizeAgentId(agentId);
+  const entry = cfg.agents?.list?.find(
+    (candidate) =>
+      candidate !== null &&
+      typeof candidate === "object" &&
+      normalizeAgentId(candidate.id) === normalizedAgentId,
+  );
+  return entry?.tools?.exec;
 }
 
 export type HandleSystemRunInvokeOptions = {
@@ -171,7 +198,16 @@ export type HandleSystemRunInvokeOptions = {
   sendInvokeResult: (result: SystemRunInvokeResult) => Promise<void>;
   sendExecFinishedEvent: (params: ExecFinishedEventParams) => Promise<void>;
   preferMacAppExecHost: boolean;
+  getRuntimeConfig?: () => OpenClawConfig;
 };
+
+async function loadSystemRunConfig(opts: HandleSystemRunInvokeOptions): Promise<OpenClawConfig> {
+  if (opts.getRuntimeConfig) {
+    return opts.getRuntimeConfig();
+  }
+  const { getRuntimeConfig } = await import("../config/config.js");
+  return getRuntimeConfig();
+}
 
 async function sendSystemRunDenied(
   opts: Pick<
@@ -221,7 +257,6 @@ async function sendSystemRunCompleted(
   });
 }
 
-export { formatSystemRunAllowlistMissMessage } from "./exec-policy.js";
 export { buildSystemRunApprovalPlan } from "./invoke-system-run-plan.js";
 
 async function parseSystemRunPhase(
@@ -343,10 +378,8 @@ async function evaluateSystemRunPolicyPhase(
   opts: HandleSystemRunInvokeOptions,
   parsed: SystemRunParsePhase,
 ): Promise<SystemRunPolicyPhase | null> {
-  const cfg = loadConfig();
-  const agentExec = parsed.agentId
-    ? resolveAgentConfig(cfg, parsed.agentId)?.tools?.exec
-    : undefined;
+  const cfg = await loadSystemRunConfig(opts);
+  const agentExec = resolveAgentExecConfig(cfg, parsed.agentId);
   const configuredSecurity = opts.resolveExecSecurity(
     agentExec?.security ?? cfg.tools?.exec?.security,
   );
@@ -354,6 +387,7 @@ async function evaluateSystemRunPolicyPhase(
   const approvals = resolveExecApprovals(parsed.agentId, {
     security: configuredSecurity,
     ask: configuredAsk,
+    requireSocket: opts.preferMacAppExecHost,
   });
   const security = approvals.agent.security;
   const ask = approvals.agent.ask;
@@ -364,29 +398,29 @@ async function evaluateSystemRunPolicyPhase(
     onWarning: warnWritableTrustedDirOnce,
   });
   const bins = autoAllowSkills ? await opts.skillBins.current() : [];
-  let { analysisOk, allowlistMatches, allowlistSatisfied, segments, segmentAllowlistEntries } =
-    evaluateSystemRunAllowlist({
-      shellCommand: parsed.shellPayload,
-      argv: parsed.argv,
-      approvals,
-      security,
-      safeBins,
-      safeBinProfiles,
-      trustedSafeBinDirs,
-      cwd: parsed.cwd,
-      env: parsed.env,
-      skillBins: bins,
-      autoAllowSkills,
-    });
+  let {
+    analysisOk,
+    allowlistMatches,
+    allowlistSatisfied,
+    segments,
+    segmentAllowlistEntries,
+    segmentSatisfiedBy,
+  } = evaluateSystemRunAllowlist({
+    shellCommand: parsed.shellPayload,
+    argv: parsed.argv,
+    approvals,
+    security,
+    safeBins,
+    safeBinProfiles,
+    trustedSafeBinDirs,
+    cwd: parsed.cwd,
+    env: parsed.env,
+    skillBins: bins,
+    autoAllowSkills,
+  });
   const strictInlineEval =
     agentExec?.strictInlineEval === true || cfg.tools?.exec?.strictInlineEval === true;
-  const inlineEvalHit = strictInlineEval
-    ? (segments
-        .map((segment) =>
-          detectInterpreterInlineEvalArgv(segment.resolution?.effectiveArgv ?? segment.argv),
-        )
-        .find((entry) => entry !== null) ?? null)
-    : null;
+  const inlineEvalHit = strictInlineEval ? detectPolicyInlineEval(segments) : null;
   const isWindows = process.platform === "win32";
   // Detect Windows wrapper transport from the same shell-wrapper view used to
   // derive the inner payload. That keeps `cmd.exe /c` approval-gated even when
@@ -497,7 +531,13 @@ async function evaluateSystemRunPolicyPhase(
     allowlistMatches,
     analysisOk,
     allowlistSatisfied,
+    safeBins,
+    safeBinProfiles,
+    trustedSafeBinDirs,
+    skillBins: bins,
+    autoAllowSkills,
     segments,
+    segmentSatisfiedBy,
     plannedAllowlistArgv: plannedAllowlistArgv ?? undefined,
     isWindows,
     approvedCwdSnapshot,
@@ -558,13 +598,39 @@ async function executeSystemRunPhase(
     return;
   }
 
+  const execArgv = resolveSystemRunExecArgv({
+    plannedAllowlistArgv: phase.plannedAllowlistArgv,
+    argv: phase.argv,
+    security: phase.security,
+    approvals: phase.approvals,
+    safeBins: phase.safeBins,
+    safeBinProfiles: phase.safeBinProfiles,
+    trustedSafeBinDirs: phase.trustedSafeBinDirs,
+    skillBins: phase.skillBins,
+    autoAllowSkills: phase.autoAllowSkills,
+    isWindows: phase.isWindows,
+    policy: phase.policy,
+    shellCommand: phase.shellPayload,
+    segments: phase.segments,
+    segmentSatisfiedBy: phase.segmentSatisfiedBy,
+    cwd: phase.cwd,
+    env: phase.env,
+  });
+  if (!execArgv) {
+    await sendSystemRunDenied(opts, phase.execution, {
+      reason: "execution-plan-miss",
+      message: "SYSTEM_RUN_DENIED: execution plan mismatch",
+    });
+    return;
+  }
+
   const useMacAppExec = opts.preferMacAppExecHost;
   if (useMacAppExec) {
     const execRequest: ExecHostRequest = {
-      command: phase.plannedAllowlistArgv ?? phase.argv,
+      command: execArgv,
       // Forward canonical display text so companion approval/prompt surfaces bind to
       // the exact command context already validated on the node-host.
-      rawCommand: phase.commandText || null,
+      rawCommand: execArgv === phase.argv ? phase.commandText || null : formatExecCommand(execArgv),
       cwd: phase.cwd ?? null,
       env: phase.envOverrides ?? null,
       timeoutMs: phase.timeoutMs ?? null,
@@ -620,10 +686,7 @@ async function executeSystemRunPhase(
     agentId: phase.agentId,
     matches: phase.allowlistMatches,
     command: phase.commandText,
-    resolvedPath: resolveApprovalAuditCandidatePath(
-      phase.segments[0]?.resolution ?? null,
-      phase.cwd,
-    ),
+    resolvedPath: resolveApprovalAuditTrustPath(phase.segments[0]?.resolution ?? null, phase.cwd),
   });
 
   if (phase.needsScreenRecording) {
@@ -633,16 +696,6 @@ async function executeSystemRunPhase(
     });
     return;
   }
-
-  const execArgv = resolveSystemRunExecArgv({
-    plannedAllowlistArgv: phase.plannedAllowlistArgv,
-    argv: phase.argv,
-    security: phase.security,
-    isWindows: phase.isWindows,
-    policy: phase.policy,
-    shellCommand: phase.shellPayload,
-    segments: phase.segments,
-  });
 
   const result = await opts.runCommand(execArgv, phase.cwd, phase.env, phase.timeoutMs);
   applyOutputTruncation(result);

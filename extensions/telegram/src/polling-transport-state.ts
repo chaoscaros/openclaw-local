@@ -28,6 +28,11 @@ export class TelegramPollingTransportState {
     const nextTransport = shouldCreateTransport
       ? (this.opts.createTelegramTransport?.() ?? previous)
       : previous;
+    // When the dirty flag triggered a rebuild, release the old transport's
+    // dispatchers. Without this, each network stall / recoverable error
+    // leaves a full pool of keep-alive sockets to api.telegram.org dangling
+    // forever — which over long-running sessions accumulates into the
+    // hundreds of ESTABLISHED connections that choke per-IP upstream quotas.
     if (this.#transportDirty && previous && nextTransport !== previous) {
       this.opts.log("[telegram][diag] closing stale transport before rebuild");
       this.#closeTransportAsync(previous, "stale-transport rebuild");
@@ -47,7 +52,7 @@ export class TelegramPollingTransportState {
     this.#disposed = true;
     const transport = this.#telegramTransport;
     this.#telegramTransport = undefined;
-    if (!transport?.close) {
+    if (!transport) {
       return;
     }
     try {
@@ -59,8 +64,10 @@ export class TelegramPollingTransportState {
     }
   }
 
+  // Fire-and-forget close used on the rebuild path so the polling cycle is not
+  // blocked by a slow destroy. The error path is logged but never rethrown.
   #closeTransportAsync(transport: TelegramTransport, context: string) {
-    void transport.close?.().catch((err) => {
+    void transport.close().catch((err) => {
       this.opts.log(
         `[telegram][diag] failed to close transport (${context}): ${formatCloseError(err)}`,
       );

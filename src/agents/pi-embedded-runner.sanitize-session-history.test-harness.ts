@@ -1,9 +1,9 @@
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { SessionManager } from "@mariozechner/pi-coding-agent";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import { expect, vi } from "vitest";
 import type { TranscriptPolicy } from "./transcript-policy.js";
 
-export type SessionEntry = { type: string; customType: string; data: unknown };
+type SessionEntry = { type: string; customType: string; data: unknown };
 export type SanitizeSessionHistoryFn = (params: {
   messages: AgentMessage[];
   modelApi: string;
@@ -13,8 +13,9 @@ export type SanitizeSessionHistoryFn = (params: {
   sessionId: string;
   modelId?: string;
   policy?: TranscriptPolicy;
+  preserveLatestAssistantThinking?: boolean;
 }) => Promise<AgentMessage[]>;
-export type SanitizeSessionHistoryMockedHelpers = typeof import("./pi-embedded-helpers.js");
+type SanitizeSessionHistoryMockedHelpers = typeof import("./pi-embedded-helpers.js");
 export type SanitizeSessionHistoryHarness = {
   sanitizeSessionHistory: SanitizeSessionHistoryFn;
   mockedHelpers: SanitizeSessionHistoryMockedHelpers;
@@ -83,6 +84,26 @@ export async function createSanitizeSessionHistoryProviderRuntimeMock(
   };
 }
 
+export async function createSanitizeSessionHistoryProviderHookRuntimeMock(
+  extra: Record<string, unknown> = {},
+) {
+  const clearProviderRuntimePluginCacheForTest = vi.fn();
+  const actual = await vi.importActual<typeof import("../plugins/provider-hook-runtime.js")>(
+    "../plugins/provider-hook-runtime.js",
+  );
+  return {
+    ...actual,
+    clearProviderRuntimePluginCacheForTest,
+    resolveProviderRuntimePlugin: vi.fn(() => undefined),
+    resolveProviderHookPlugin: vi.fn(() => undefined),
+    resolveProviderPluginsForHooks: vi.fn(() => []),
+    prepareProviderExtraParams: vi.fn(() => undefined),
+    wrapProviderStreamFn: vi.fn(() => undefined),
+    testing: { clearProviderRuntimePluginCacheForTest },
+    ...extra,
+  };
+}
+
 export async function loadSanitizeSessionHistoryWithCleanMocks(): Promise<SanitizeSessionHistoryHarness> {
   vi.resetModules();
   vi.resetAllMocks();
@@ -97,24 +118,29 @@ export async function loadSanitizeSessionHistoryWithCleanMocks(): Promise<Saniti
 
 export function makeReasoningAssistantMessages(opts?: {
   thinkingSignature?: "object" | "json";
+  includeText?: boolean;
 }): AgentMessage[] {
   const thinkingSignature: unknown =
     opts?.thinkingSignature === "json"
       ? JSON.stringify({ id: "rs_test", type: "reasoning" })
       : { id: "rs_test", type: "reasoning" };
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: "thinking",
+      thinking: "reasoning",
+      thinkingSignature,
+    },
+  ];
+  if (opts?.includeText) {
+    content.push({ type: "text", text: "answer" });
+  }
 
   // Intentional: we want to build message payloads that can carry non-string
   // signatures, but core typing currently expects a string.
   const messages = [
     {
       role: "assistant",
-      content: [
-        {
-          type: "thinking",
-          thinking: "reasoning",
-          thinkingSignature,
-        },
-      ],
+      content,
     },
   ];
 
@@ -141,18 +167,18 @@ export function expectOpenAIResponsesStrictSanitizeCall(
   sanitizeSessionMessagesImagesMock: unknown,
   messages: AgentMessage[],
 ) {
-  expect(sanitizeSessionMessagesImagesMock).toHaveBeenCalledWith(
-    messages,
-    "session:history",
-    expect.objectContaining({
-      sanitizeMode: "images-only",
-      sanitizeToolCallIds: false,
-      toolCallIdMode: "strict",
-    }),
-  );
+  const mock = sanitizeSessionMessagesImagesMock as {
+    mock?: { calls: Array<[AgentMessage[], string, Record<string, unknown>]> };
+  };
+  const call = mock.mock?.calls[0];
+  expect(call?.[0]).toBe(messages);
+  expect(call?.[1]).toBe("session:history");
+  expect(call?.[2]?.sanitizeMode).toBe("images-only");
+  expect(call?.[2]?.sanitizeToolCallIds).toBe(false);
+  expect(call?.[2]?.toolCallIdMode).toBe("strict");
 }
 
-export function makeSnapshotChangedOpenAIReasoningScenario() {
+function makeSnapshotChangedOpenAIReasoningScenario() {
   const sessionEntries = [
     makeModelSnapshotEntry({
       provider: "anthropic",
@@ -162,7 +188,7 @@ export function makeSnapshotChangedOpenAIReasoningScenario() {
   ];
   return {
     sessionManager: makeInMemorySessionManager(sessionEntries),
-    messages: makeReasoningAssistantMessages({ thinkingSignature: "object" }),
+    messages: makeReasoningAssistantMessages({ thinkingSignature: "object", includeText: true }),
     modelId: "gpt-5.4",
   };
 }

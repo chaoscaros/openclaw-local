@@ -1,14 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyConfigSnapshot,
   applyConfig,
   ensureAgentConfigEntry,
   findAgentConfigEntryIndex,
+  openConfigFile,
   runUpdate,
   saveConfig,
   updateConfigFormValue,
   type ConfigState,
 } from "./config.ts";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function createState(): ConfigState {
   return {
@@ -243,6 +248,52 @@ describe("agent config helpers", () => {
         list: [{ id: "main" }],
       },
     });
+  });
+});
+
+describe("openConfigFile", () => {
+  it("surfaces failed open responses and copies the returned config path", async () => {
+    const request = vi.fn().mockResolvedValue({
+      ok: false,
+      path: "/tmp/openclaw.json",
+      error: "Cannot open file in headless environment.",
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+
+    const state = createState();
+    state.connected = true;
+    state.client = { request } as unknown as ConfigState["client"];
+    state.lastError = "stale error";
+
+    await openConfigFile(state);
+
+    expect(request).toHaveBeenCalledWith("config.openFile", {});
+    expect(writeText).toHaveBeenCalledWith("/tmp/openclaw.json");
+    expect(state.lastError).toBe(
+      "Cannot open file in headless environment.\n\nFile path copied to clipboard: /tmp/openclaw.json",
+    );
+  });
+
+  it("shows the snapshot path when opening throws and clipboard fallback fails", async () => {
+    const request = vi.fn().mockRejectedValue(new Error("open failed"));
+    const writeText = vi.fn().mockRejectedValue(new Error("clipboard denied"));
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+
+    const state = createState();
+    state.connected = true;
+    state.client = { request } as unknown as ConfigState["client"];
+    state.configSnapshot = {
+      config: {},
+      path: "/tmp/from-snapshot.json",
+      valid: true,
+      issues: [],
+    };
+
+    await openConfigFile(state);
+
+    expect(writeText).toHaveBeenCalledWith("/tmp/from-snapshot.json");
+    expect(state.lastError).toBe("Error: open failed\n\nFile path: /tmp/from-snapshot.json");
   });
 });
 

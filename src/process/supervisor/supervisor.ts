@@ -13,10 +13,21 @@ import type {
   TerminationReason,
 } from "./types.js";
 
+type SupervisorLogRuntime = typeof import("./supervisor-log.runtime.js");
+
 type ActiveRun = {
   run: ManagedRun;
   scopeKey?: string;
 };
+
+const GRACEFUL_CANCEL_TIMEOUT_MS = 5000;
+
+let supervisorLogRuntimePromise: Promise<SupervisorLogRuntime> | undefined;
+
+function loadSupervisorLogRuntime(): Promise<SupervisorLogRuntime> {
+  supervisorLogRuntimePromise ??= import("./supervisor-log.runtime.js");
+  return supervisorLogRuntimePromise;
+}
 
 function clampTimeout(value?: number): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
@@ -82,6 +93,7 @@ export function createProcessSupervisor(): ProcessSupervisor {
     let stderr = "";
     let timeoutTimer: NodeJS.Timeout | null = null;
     let noOutputTimer: NodeJS.Timeout | null = null;
+    let forceKillTimer: NodeJS.Timeout | null = null;
     const captureOutput = input.captureOutput !== false;
 
     const overallTimeoutMs = clampTimeout(input.timeoutMs);
@@ -154,13 +166,23 @@ export function createProcessSupervisor(): ProcessSupervisor {
           clearTimeout(noOutputTimer);
           noOutputTimer = null;
         }
+        if (forceKillTimer) {
+          clearTimeout(forceKillTimer);
+          forceKillTimer = null;
+        }
       };
 
       cancelAdapter = (_reason: TerminationReason) => {
-        if (settled) {
+        if (settled || forceKillTimer) {
           return;
         }
-        adapter.kill("SIGKILL");
+        adapter.kill("SIGTERM");
+        forceKillTimer = setTimeout(() => {
+          if (!settled) {
+            adapter.kill("SIGKILL");
+          }
+        }, GRACEFUL_CANCEL_TIMEOUT_MS);
+        forceKillTimer.unref?.();
       };
 
       if (overallTimeoutMs) {
@@ -263,7 +285,7 @@ export function createProcessSupervisor(): ProcessSupervisor {
         exitCode: null,
         exitSignal: null,
       });
-      const { warnProcessSupervisorSpawnFailure } = await import("./supervisor-log.runtime.js");
+      const { warnProcessSupervisorSpawnFailure } = await loadSupervisorLogRuntime();
       warnProcessSupervisorSpawnFailure(`spawn failed: runId=${runId} reason=${String(err)}`);
       throw err;
     }

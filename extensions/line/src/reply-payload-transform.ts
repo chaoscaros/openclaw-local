@@ -1,5 +1,8 @@
 import type { ReplyPayload } from "openclaw/plugin-sdk/reply-runtime";
-import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/text-runtime";
+import {
+  normalizeLowercaseStringOrEmpty,
+  normalizeStringEntries,
+} from "openclaw/plugin-sdk/string-coerce-runtime";
 import {
   createAgendaCard,
   createAppleTvRemoteCard,
@@ -49,10 +52,7 @@ export function parseLineDirectives(payload: ReplyPayload): ReplyPayload {
 
   const quickRepliesMatch = text.match(/\[\[quick_replies:\s*([^\]]+)\]\]/i);
   if (quickRepliesMatch) {
-    const options = quickRepliesMatch[1]
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const options = normalizeStringEntries(quickRepliesMatch[1].split(","));
     if (options.length > 0) {
       lineData.quickReplies = [...(lineData.quickReplies || []), ...options];
     }
@@ -64,9 +64,9 @@ export function parseLineDirectives(payload: ReplyPayload): ReplyPayload {
     const parts = locationMatch[1].split("|").map((s) => s.trim());
     if (parts.length >= 4) {
       const [title, address, latStr, lonStr] = parts;
-      const latitude = parseFloat(latStr);
-      const longitude = parseFloat(lonStr);
-      if (!isNaN(latitude) && !isNaN(longitude)) {
+      const latitude = Number.parseFloat(latStr);
+      const longitude = Number.parseFloat(lonStr);
+      if (!Number.isNaN(latitude) && !Number.isNaN(longitude)) {
         lineData.location = {
           title: title || "Location",
           address: address || "",

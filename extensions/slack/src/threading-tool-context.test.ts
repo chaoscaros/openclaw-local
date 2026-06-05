@@ -1,4 +1,4 @@
-import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { describe, expect, it } from "vitest";
 import { buildSlackThreadingToolContext } from "./threading-tool-context.js";
 
@@ -89,47 +89,19 @@ describe("buildSlackThreadingToolContext", () => {
   });
 
   it("uses all mode when MessageThreadId is present", () => {
-    const cfg = {
-      channels: {
-        slack: {
+    expect(
+      resolveReplyToModeWithConfig({
+        slackConfig: {
           replyToMode: "all",
           replyToModeByChatType: { direct: "off" },
         },
-      },
-    } as OpenClawConfig;
-    const result = buildSlackThreadingToolContext({
-      cfg,
-      accountId: null,
-      context: {
-        ChatType: "direct",
-        ThreadLabel: "thread-label",
-        MessageThreadId: "1771999998.834199",
-      },
-    });
-
-    expect(result.replyToMode).toBe("all");
-    expect(result.currentThreadTs).toBe("1771999998.834199");
-    expect(result.sameChannelThreadRequired).toBe(true);
-  });
-
-  it("does not require thread context when MessageThreadId is absent", () => {
-    expect(
-      buildSlackThreadingToolContext({
-        cfg: {
-          channels: {
-            slack: {
-              replyToMode: "all",
-              replyToModeByChatType: { direct: "off" },
-            },
-          },
-        } as OpenClawConfig,
-        accountId: null,
         context: {
           ChatType: "direct",
-          ThreadLabel: "label-without-real-thread",
+          ThreadLabel: "thread-label",
+          MessageThreadId: "1771999998.834199",
         },
-      }).sameChannelThreadRequired,
-    ).toBe(false);
+      }),
+    ).toBe("all");
   });
 
   it("does not force all mode from ThreadLabel alone", () => {
@@ -145,6 +117,99 @@ describe("buildSlackThreadingToolContext", () => {
         },
       }),
     ).toBe("off");
+  });
+
+  it("uses ReplyToId as the current thread when MessageThreadId is omitted", () => {
+    const result = buildSlackThreadingToolContext({
+      cfg: {
+        channels: {
+          slack: {
+            replyToMode: "all",
+            replyToModeByChatType: { direct: "off" },
+          },
+        },
+      } as OpenClawConfig,
+      accountId: null,
+      context: {
+        ChatType: "direct",
+        To: "user:U8SUVSVGS",
+        NativeChannelId: "D8SRXRDNF",
+        CurrentMessageId: "1772000000.111111",
+        ReplyToId: "1771999998.834199",
+      },
+    });
+
+    expect(result.currentThreadTs).toBe("1771999998.834199");
+    expect(result.replyToMode).toBe("all");
+    expect(result.sameChannelThreadRequired).toBe(true);
+  });
+
+  it("uses TransportThreadId when ReplyToId matches the current message", () => {
+    const result = buildSlackThreadingToolContext({
+      cfg: {
+        channels: {
+          slack: {
+            replyToMode: "all",
+            replyToModeByChatType: { direct: "off" },
+          },
+        },
+      } as OpenClawConfig,
+      accountId: null,
+      context: {
+        ChatType: "direct",
+        CurrentMessageId: "1771999998.834199",
+        ReplyToId: "1771999998.834199",
+        TransportThreadId: "1771999998.834199",
+      },
+    });
+
+    expect(result.currentThreadTs).toBe("1771999998.834199");
+    expect(result.replyToMode).toBe("all");
+    expect(result.sameChannelThreadRequired).toBe(true);
+  });
+
+  it("keeps top-level ReplyToId as an anchor without forcing configured off mode", () => {
+    const result = buildSlackThreadingToolContext({
+      cfg: {
+        channels: {
+          slack: {
+            replyToMode: "all",
+            replyToModeByChatType: { direct: "off" },
+          },
+        },
+      } as OpenClawConfig,
+      accountId: null,
+      context: {
+        ChatType: "direct",
+        CurrentMessageId: "1771999998.834199",
+        ReplyToId: "1771999998.834199",
+      },
+    });
+
+    expect(result.currentThreadTs).toBe("1771999998.834199");
+    expect(result.replyToMode).toBe("off");
+    expect(result.sameChannelThreadRequired).toBe(false);
+  });
+
+  it("keeps top-level ReplyToId as the first-reply anchor for single-use modes", () => {
+    const result = buildSlackThreadingToolContext({
+      cfg: {
+        channels: {
+          slack: {
+            replyToMode: "first",
+          },
+        },
+      } as OpenClawConfig,
+      accountId: null,
+      context: {
+        ChatType: "direct",
+        CurrentMessageId: "1771999998.834199",
+        ReplyToId: "1771999998.834199",
+      },
+    });
+
+    expect(result.currentThreadTs).toBe("1771999998.834199");
+    expect(result.replyToMode).toBe("first");
   });
 
   it("keeps configured channel behavior when not in a thread", () => {

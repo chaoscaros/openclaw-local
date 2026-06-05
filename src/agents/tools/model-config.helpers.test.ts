@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { OpenClawConfig } from "../../config/config.js";
 import { hasProviderAuthForTool } from "./model-config.helpers.js";
 
 describe("hasProviderAuthForTool", () => {
@@ -23,7 +23,25 @@ describe("hasProviderAuthForTool", () => {
     expect(hasProviderAuthForTool({ provider: "hatchery", cfg })).toBe(true);
   });
 
-  it("rejects providers without config or environment auth", () => {
+  it("keeps auth-store profiles as valid tool auth", () => {
+    expect(
+      hasProviderAuthForTool({
+        provider: "hatchery",
+        authStore: {
+          version: 1,
+          profiles: {
+            "hatchery:default": {
+              provider: "hatchery",
+              type: "api_key",
+              key: "sk-profile", // pragma: allowlist secret
+            },
+          },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects providers without config, env, or profile auth", () => {
     expect(hasProviderAuthForTool({ provider: "unconfigured-provider" })).toBe(false);
   });
 });

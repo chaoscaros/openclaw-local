@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../../../config/config.js";
-import { findLegacyConfigIssues } from "../../../config/legacy.js";
-import { migrateLegacyConfig } from "./legacy-config-migrate.js";
 import {
   listLegacyWebSearchConfigPaths,
   migrateLegacyWebSearchConfig,
@@ -62,6 +60,32 @@ describe("legacy web search config", () => {
       "Moved tools.web.search.grok → plugins.entries.xai.config.webSearch.",
       "Moved tools.web.search.kimi → plugins.entries.moonshot.config.webSearch.",
     ]);
+  });
+
+  it("does not mutate the caller's original config", () => {
+    const input = {
+      tools: {
+        web: {
+          search: {
+            provider: "grok",
+            apiKey: "brave-key",
+            grok: {
+              apiKey: "xai-key",
+              model: "grok-4-search",
+            },
+          },
+        },
+      },
+    } satisfies OpenClawConfig;
+    const original = structuredClone(input);
+
+    const res = migrateLegacyWebSearchConfig<OpenClawConfig>(input);
+
+    expect(res.config.plugins?.entries?.xai?.config?.webSearch).toEqual({
+      apiKey: "xai-key",
+      model: "grok-4-search",
+    });
+    expect(input).toEqual(original);
   });
 
   it("preserves unrelated record-valued web search config", () => {
@@ -154,46 +178,6 @@ describe("legacy web search config", () => {
       "tools.web.search.grok.apiKey",
       "tools.web.search.grok.model",
       "tools.web.search.kimi.model",
-    ]);
-  });
-
-  it("participates in shared legacy detection and migration", () => {
-    const rawConfig = {
-      tools: {
-        web: {
-          search: {
-            provider: "brave",
-            brave: {
-              apiKey: "brave-key",
-            },
-          },
-        },
-      },
-    } satisfies OpenClawConfig;
-
-    expect(findLegacyConfigIssues(rawConfig)).toEqual([
-      {
-        path: "tools.web.search",
-        message:
-          'tools.web.search provider-owned config moved to plugins.entries.<plugin>.config.webSearch. Run "openclaw doctor --fix".',
-      },
-    ]);
-
-    const migrated = migrateLegacyConfig(rawConfig);
-    expect(migrated.config).not.toBeNull();
-    expect(migrated.config?.tools?.web?.search).toEqual({
-      provider: "brave",
-    });
-    expect(migrated.config?.plugins?.entries?.brave).toEqual({
-      enabled: true,
-      config: {
-        webSearch: {
-          apiKey: "brave-key",
-        },
-      },
-    });
-    expect(migrated.changes).toEqual([
-      "Moved tools.web.search.brave → plugins.entries.brave.config.webSearch.",
     ]);
   });
 });

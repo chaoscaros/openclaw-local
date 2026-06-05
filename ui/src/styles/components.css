@@ -239,6 +239,13 @@
   box-shadow: var(--shadow-sm);
 }
 
+.card--fill-height {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .card-title {
   font-size: 15px;
   font-weight: 600;
@@ -3233,6 +3240,12 @@ td.data-table-key-col {
   container-type: inline-size;
 }
 
+.card--fill-height .log-stream {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
 .log-row {
   display: grid;
   grid-template-columns: 90px 70px minmax(140px, 200px) minmax(0, 1fr);
@@ -4006,6 +4019,12 @@ td.data-table-key-col {
   margin-top: 10px;
   font-size: 13px;
   color: var(--danger);
+}
+
+.exec-approval-warning {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--warning, #b7791f);
 }
 
 .exec-approval-actions {

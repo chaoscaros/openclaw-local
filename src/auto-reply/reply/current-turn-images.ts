@@ -1,20 +1,44 @@
-import fs from "node:fs/promises";
-import type { ImageContent } from "@mariozechner/pi-ai";
+import type { ImageContent } from "@earendil-works/pi-ai";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { logVerbose } from "../../globals.js";
 import { formatErrorMessage } from "../../infra/errors.js";
-import { mimeTypeFromFilePath, normalizeMimeType } from "../../media/mime.js";
+import { mimeTypeFromFilePath } from "../../media/mime.js";
 import type { PromptImageOrderEntry } from "../../media/prompt-image-order.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
 import type { MsgContext } from "../templating.js";
+import { resolveAgentTurnAttachments } from "./agent-turn-attachments.js";
 
-const MAX_CURRENT_TURN_IMAGE_BYTES = 20 * 1024 * 1024;
-
-type CurrentImageCandidate = {
+type CurrentImageAttachment = {
+  index: number;
   path: string;
-  mimeType: string;
+  mediaType: string;
 };
 
-function collectCurrentImageCandidates(ctx: MsgContext): CurrentImageCandidate[] {
+function isGenericMediaType(mediaType: string | undefined): boolean {
+  if (!mediaType) {
+    return true;
+  }
+  const normalized = mediaType.split(";")[0]?.trim().toLowerCase();
+  return normalized === "application/octet-stream" || normalized === "binary/octet-stream";
+}
+
+function resolveCurrentImageMediaType(pathValue: unknown, mediaType?: unknown): string | undefined {
+  const mediaPath = normalizeOptionalString(pathValue);
+  if (!mediaPath) {
+    return undefined;
+  }
+  const normalizedMediaType = normalizeOptionalString(mediaType);
+  if (normalizedMediaType?.startsWith("image/")) {
+    return normalizedMediaType;
+  }
+  if (!isGenericMediaType(normalizedMediaType)) {
+    return undefined;
+  }
+  const inferredType = mimeTypeFromFilePath(mediaPath);
+  return inferredType?.startsWith("image/") ? inferredType : undefined;
+}
+
+function collectCurrentImageAttachments(ctx: MsgContext): CurrentImageAttachment[] {
   const pathsFromArray = Array.isArray(ctx.MediaPaths) ? ctx.MediaPaths : undefined;
   const paths =
     pathsFromArray && pathsFromArray.length > 0
@@ -29,44 +53,42 @@ function collectCurrentImageCandidates(ctx: MsgContext): CurrentImageCandidate[]
     Array.isArray(ctx.MediaTypes) && ctx.MediaTypes.length === paths.length
       ? ctx.MediaTypes
       : undefined;
-  const candidates: CurrentImageCandidate[] = [];
+  const attachments: CurrentImageAttachment[] = [];
   for (const [index, pathValue] of paths.entries()) {
     const mediaPath = normalizeOptionalString(pathValue);
-    if (!mediaPath) {
-      continue;
-    }
-    const declaredType = normalizeMimeType(types?.[index] ?? ctx.MediaType);
-    const inferredType = mimeTypeFromFilePath(mediaPath);
-    const mediaType =
-      declaredType?.startsWith("image/") === true
-        ? declaredType
-        : inferredType?.startsWith("image/") === true
-          ? inferredType
-          : undefined;
-    if (mediaType) {
-      candidates.push({ path: mediaPath, mimeType: mediaType });
+    const mediaType = resolveCurrentImageMediaType(pathValue, types?.[index] ?? ctx.MediaType);
+    if (mediaPath && mediaType) {
+      attachments.push({ index, path: mediaPath, mediaType });
     }
   }
-  return candidates;
+  return attachments;
 }
 
-async function readCurrentImage(candidate: CurrentImageCandidate): Promise<ImageContent> {
-  const stat = await fs.stat(candidate.path);
-  if (stat.size > MAX_CURRENT_TURN_IMAGE_BYTES) {
-    throw new Error(
-      `current turn image exceeds ${MAX_CURRENT_TURN_IMAGE_BYTES} byte limit: ${candidate.path}`,
-    );
-  }
-  const data = await fs.readFile(candidate.path);
+function collectDescribedImageAttachmentIndexes(ctx: MsgContext): Set<number> {
+  return new Set(
+    ctx.MediaUnderstanding?.filter((output) => output.kind === "image.description").map(
+      (output) => output.attachmentIndex,
+    ) ?? [],
+  );
+}
+
+function createUndescribedImageContext(
+  ctx: MsgContext,
+  undescribedAttachments: CurrentImageAttachment[],
+): MsgContext {
+  const first = undescribedAttachments[0];
   return {
-    type: "image",
-    data: data.toString("base64"),
-    mimeType: candidate.mimeType,
+    ...ctx,
+    MediaPath: first?.path,
+    MediaType: first?.mediaType,
+    MediaPaths: undescribedAttachments.map((attachment) => attachment.path),
+    MediaTypes: undescribedAttachments.map((attachment) => attachment.mediaType),
   };
 }
 
 export async function resolveCurrentTurnImages(params: {
   ctx: MsgContext;
+  cfg: OpenClawConfig;
   images?: ImageContent[];
   imageOrder?: PromptImageOrderEntry[];
 }): Promise<{
@@ -77,19 +99,43 @@ export async function resolveCurrentTurnImages(params: {
     return { images: params.images, imageOrder: params.imageOrder };
   }
 
-  const candidates = collectCurrentImageCandidates(params.ctx);
-  if (candidates.length === 0) {
+  const currentImageAttachments = collectCurrentImageAttachments(params.ctx);
+  if (currentImageAttachments.length === 0) {
+    return { images: params.images, imageOrder: params.imageOrder };
+  }
+  const describedImageIndexes = collectDescribedImageAttachmentIndexes(params.ctx);
+  const undescribedImageAttachments = currentImageAttachments.filter(
+    (attachment) => !describedImageIndexes.has(attachment.index),
+  );
+  if (undescribedImageAttachments.length === 0) {
     return { images: params.images, imageOrder: params.imageOrder };
   }
 
   try {
-    const images = await Promise.all(candidates.map((candidate) => readCurrentImage(candidate)));
+    const resolved = await resolveAgentTurnAttachments({
+      ctx: createUndescribedImageContext(params.ctx, undescribedImageAttachments),
+      cfg: params.cfg,
+      includeRecentHistoryImages: false,
+    });
+    const images = resolved.attachments.map(
+      (attachment): ImageContent => ({
+        type: "image",
+        data: attachment.data,
+        mimeType: attachment.mediaType,
+      }),
+    );
+    if (images.length < undescribedImageAttachments.length) {
+      logVerbose(
+        `agent-runner: native PI media resolution produced ${images.length}/${undescribedImageAttachments.length} current image attachment(s); falling back to prompt image refs`,
+      );
+      return { images: params.images, imageOrder: params.imageOrder };
+    }
     return images.length > 0
       ? { images, imageOrder: images.map(() => "inline" as const) }
       : { images: params.images, imageOrder: params.imageOrder };
   } catch (error) {
     logVerbose(
-      `agent-runner: current turn image resolution failed, falling back to prompt image refs: ${formatErrorMessage(error)}`,
+      `agent-runner: media attachment image resolution failed, proceeding without native images: ${formatErrorMessage(error)}`,
     );
     return { images: params.images, imageOrder: params.imageOrder };
   }

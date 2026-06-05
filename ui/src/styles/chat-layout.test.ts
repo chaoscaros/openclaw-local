@@ -65,6 +65,19 @@ describe("chat layout styles", () => {
     expect(css).toContain("height: 44px;");
   });
 
+  it("scopes logs fill-height scrolling to the logs route and restores mobile page scroll", () => {
+    const layoutCss = readCss("src/styles/layout.css");
+    const mobileCss = readCss("src/styles/layout.mobile.css");
+
+    expect(layoutCss).toContain(".content--logs {");
+    expect(layoutCss).toMatch(/\.content--logs \{[\s\S]*overflow:\s*hidden;/);
+    expect(mobileCss).toContain(".content.content--logs {");
+    expect(mobileCss).toMatch(/\.content\.content--logs \{[\s\S]*overflow-y:\s*auto;/);
+    expect(mobileCss).toMatch(
+      /\.card--fill-height\.card--fill-height \.log-stream \{[\s\S]*max-height:\s*380px;/,
+    );
+  });
+
   it("wires browser-local text scale variables into chat surfaces", () => {
     const baseCss = readCss("src/styles/base.css");
     const layoutCss = readChatLayoutCss();

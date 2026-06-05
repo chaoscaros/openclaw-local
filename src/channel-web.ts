@@ -17,8 +17,6 @@ export {
   monitorWebChannel,
   monitorWebInbox,
   pickWebChannel,
-  resolveHeartbeatRecipients,
-  runWebHeartbeatOnce,
   sendWebChannelMessage as sendMessageWhatsApp,
   sendWebChannelReaction as sendReactionWhatsApp,
   waitForWebChannelConnection as waitForWaConnection,

@@ -1,5 +1,4 @@
 import {
-  buildExecRemoteCommand,
   createSshSandboxSessionFromConfigText,
   runPluginCommandWithTimeout,
   shellEscape,
@@ -7,7 +6,11 @@ import {
 } from "openclaw/plugin-sdk/sandbox";
 import type { ResolvedOpenShellPluginConfig } from "./config.js";
 
-export { buildExecRemoteCommand, shellEscape } from "openclaw/plugin-sdk/sandbox";
+export {
+  buildExecRemoteCommand,
+  buildValidatedExecRemoteCommand,
+  shellEscape,
+} from "openclaw/plugin-sdk/sandbox";
 
 export type OpenShellExecContext = {
   config: ResolvedOpenShellPluginConfig;

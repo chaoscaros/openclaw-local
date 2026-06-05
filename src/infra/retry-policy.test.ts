@@ -166,7 +166,7 @@ describe("createChannelApiRetryRunner", () => {
         runnerOptions: { retry: ZERO_DELAY_RETRY },
         fnSteps: [
           {
-            type: "reject",
+            type: "reject" as const,
             value: Object.assign(new Error("421 Misdirected Request"), {
               status: 421,
             }),

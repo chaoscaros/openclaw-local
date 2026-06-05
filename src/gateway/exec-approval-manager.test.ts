@@ -1,66 +1,61 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExecApprovalManager } from "./exec-approval-manager.js";
 
-describe("ExecApprovalManager resolved-entry cleanup", () => {
+type TimeoutCallback = Parameters<typeof setTimeout>[0];
+type MockTimerHandle = ReturnType<typeof setTimeout> & {
+  unref: ReturnType<typeof vi.fn>;
+};
+
+describe("ExecApprovalManager", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("unrefs the resolved-entry cleanup timer after resolve", async () => {
-    const manager = new ExecApprovalManager<{ title: string; description: string }>();
-    const record = manager.create(
-      { title: "Approve", description: "desc" },
-      30_000,
-      "approval-resolve",
+  function installTimerMocks() {
+    const timers: Array<{
+      delay: number | undefined;
+      handle: MockTimerHandle;
+    }> = [];
+
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+      callback: TimeoutCallback,
+      delay?: number,
+    ) => {
+      void callback;
+      const handle = { unref: vi.fn() } as unknown as MockTimerHandle;
+      timers.push({ delay, handle });
+      return handle;
+    }) as unknown as typeof setTimeout);
+    vi.spyOn(globalThis, "clearTimeout").mockImplementation(
+      (() => undefined) as typeof clearTimeout,
     );
 
-    const expiryTimer = { unref: vi.fn() } as unknown as ReturnType<typeof setTimeout>;
-    const cleanupTimer = { unref: vi.fn() } as unknown as ReturnType<typeof setTimeout>;
-    let callCount = 0;
-    vi.spyOn(globalThis, "setTimeout").mockImplementation(((
-      handler: TimerHandler,
-      timeout?: number,
-    ) => {
-      void handler;
-      void timeout;
-      callCount += 1;
-      return callCount === 1 ? expiryTimer : cleanupTimer;
-    }) as unknown as typeof setTimeout);
+    return timers;
+  }
 
-    const decisionPromise = manager.register(record, 30_000);
-    expect(manager.resolve(record.id, "allow-once")).toBe(true);
+  it("does not keep resolved approval cleanup timers ref'd", async () => {
+    const timers = installTimerMocks();
+    const manager = new ExecApprovalManager();
+    const record = manager.create({ command: "echo ok" }, 60_000, "approval-resolve");
+    const decisionPromise = manager.register(record, 60_000);
+
+    expect(manager.resolve("approval-resolve", "allow-once")).toBe(true);
     await expect(decisionPromise).resolves.toBe("allow-once");
-    expect(
-      (cleanupTimer as unknown as { unref: ReturnType<typeof vi.fn> }).unref,
-    ).toHaveBeenCalledTimes(1);
+
+    const cleanupTimer = timers.find((timer) => timer.delay === 15_000);
+    expect(cleanupTimer?.handle.unref).toHaveBeenCalledTimes(1);
   });
 
-  it("unrefs the resolved-entry cleanup timer after expire", async () => {
-    const manager = new ExecApprovalManager<{ title: string; description: string }>();
-    const record = manager.create(
-      { title: "Approve", description: "desc" },
-      30_000,
-      "approval-expire",
-    );
+  it("does not keep expired approval cleanup timers ref'd", async () => {
+    const timers = installTimerMocks();
+    const manager = new ExecApprovalManager();
+    const record = manager.create({ command: "echo ok" }, 60_000, "approval-expire");
+    const decisionPromise = manager.register(record, 60_000);
 
-    const expiryTimer = { unref: vi.fn() } as unknown as ReturnType<typeof setTimeout>;
-    const cleanupTimer = { unref: vi.fn() } as unknown as ReturnType<typeof setTimeout>;
-    let callCount = 0;
-    vi.spyOn(globalThis, "setTimeout").mockImplementation(((
-      handler: TimerHandler,
-      timeout?: number,
-    ) => {
-      void handler;
-      void timeout;
-      callCount += 1;
-      return callCount === 1 ? expiryTimer : cleanupTimer;
-    }) as unknown as typeof setTimeout);
-
-    const decisionPromise = manager.register(record, 30_000);
-    expect(manager.expire(record.id, "timeout")).toBe(true);
+    expect(manager.expire("approval-expire")).toBe(true);
     await expect(decisionPromise).resolves.toBeNull();
-    expect(
-      (cleanupTimer as unknown as { unref: ReturnType<typeof vi.fn> }).unref,
-    ).toHaveBeenCalledTimes(1);
+
+    const cleanupTimer = timers.find((timer) => timer.delay === 15_000);
+    expect(cleanupTimer?.handle.unref).toHaveBeenCalledTimes(1);
   });
 });

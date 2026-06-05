@@ -9,14 +9,15 @@ import type { OpenClawConfig } from "../config/types.js";
 import { safeFileURLToPath } from "../infra/local-file-access.js";
 import { resolvePreferredOpenClawTmpDir } from "../infra/tmp-openclaw-dir.js";
 import { normalizeOptionalString } from "../shared/string-coerce.js";
+import { uniqueStrings } from "../shared/string-normalization.js";
 import { resolveConfigDir, resolveUserPath } from "../utils.js";
+import { isPassThroughRemoteMediaSource } from "./media-source-url.js";
 
 type BuildMediaLocalRootsOptions = {
   preferredTmpDir?: string;
 };
 
 let cachedPreferredTmpDir: string | undefined;
-const HTTP_URL_RE = /^https?:\/\//i;
 const DATA_URL_RE = /^data:/i;
 const WINDOWS_DRIVE_RE = /^[A-Za-z]:[\\/]/;
 
@@ -73,7 +74,7 @@ export function getAgentScopedMediaLocalRoots(
 
 function resolveLocalMediaPath(source: string): string | undefined {
   const trimmed = source.trim();
-  if (!trimmed || HTTP_URL_RE.test(trimmed) || DATA_URL_RE.test(trimmed)) {
+  if (!trimmed || isPassThroughRemoteMediaSource(trimmed) || DATA_URL_RE.test(trimmed)) {
     return undefined;
   }
   if (trimmed.startsWith("file://")) {
@@ -96,7 +97,7 @@ export function appendLocalMediaParentRoots(
   roots: readonly string[],
   mediaSources?: readonly string[],
 ): string[] {
-  const appended = Array.from(new Set(roots.map((root) => path.resolve(root))));
+  const appended = uniqueStrings(roots.map((root) => path.resolve(root)));
   for (const source of mediaSources ?? []) {
     const localPath = resolveLocalMediaPath(source);
     if (!localPath) {

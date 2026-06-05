@@ -1,39 +1,29 @@
 import { normalizeProviderId } from "../agents/model-selection.js";
 import type { ModelProviderConfig } from "../config/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { createLazyImportLoader } from "../shared/lazy-promise.js";
+import { sortUniqueStrings } from "../shared/string-normalization.js";
+import { listManifestProviderContributionIds } from "./manifest-contribution-ids.js";
+import type { PluginMetadataRegistryView } from "./plugin-metadata-snapshot.types.js";
+import { type LoadPluginRegistryParams, type PluginRegistrySnapshot } from "./plugin-registry.js";
 import type { ProviderDiscoveryOrder, ProviderPlugin } from "./types.js";
 
 const DISCOVERY_ORDER: readonly ProviderDiscoveryOrder[] = ["simple", "profile", "paired", "late"];
 const DANGEROUS_PROVIDER_KEYS = new Set(["__proto__", "prototype", "constructor"]);
-let providerRuntimePromise: Promise<typeof import("./provider-discovery.runtime.js")> | undefined;
+const providerRuntimeLoader = createLazyImportLoader(
+  () => import("./provider-discovery.runtime.js"),
+);
 
 function loadProviderRuntime() {
-  providerRuntimePromise ??= import("./provider-discovery.runtime.js");
-  return providerRuntimePromise;
+  return providerRuntimeLoader.load();
 }
 
 function resolveProviderCatalogHook(provider: ProviderPlugin) {
   return provider.catalog ?? provider.discovery;
 }
 
-function resolveProviderCatalogOrderHook(provider: ProviderPlugin):
-  | {
-      order?: ProviderDiscoveryOrder;
-      run?: unknown;
-    }
-  | null
-  | undefined {
-  return (
-    resolveProviderCatalogHook(provider) ??
-    (
-      provider as ProviderPlugin & {
-        staticCatalog?: {
-          order?: ProviderDiscoveryOrder;
-          run?: unknown;
-        };
-      }
-    ).staticCatalog
-  );
+function resolveProviderCatalogOrderHook(provider: ProviderPlugin) {
+  return resolveProviderCatalogHook(provider) ?? provider.staticCatalog;
 }
 
 function createProviderConfigRecord(): Record<string, ModelProviderConfig> {
@@ -52,7 +42,29 @@ export type ResolveRuntimePluginDiscoveryProvidersParams = {
   includeUntrustedWorkspacePlugins?: boolean;
   requireCompleteDiscoveryEntryCoverage?: boolean;
   discoveryEntriesOnly?: boolean;
+  pluginMetadataSnapshot?: PluginMetadataRegistryView;
 };
+
+export type ResolveInstalledPluginProviderContributionIdsParams = LoadPluginRegistryParams & {
+  index?: PluginRegistrySnapshot;
+  includeDisabled?: boolean;
+};
+
+export function resolveInstalledPluginProviderContributionIds(
+  params: ResolveInstalledPluginProviderContributionIdsParams = {},
+): string[] {
+  const registryParams =
+    params.candidates && params.preferPersisted === undefined
+      ? { ...params, preferPersisted: false }
+      : params;
+  return sortUniqueStrings(
+    listManifestProviderContributionIds({
+      ...registryParams,
+      index: params.index,
+      includeDisabled: params.includeDisabled,
+    }),
+  );
+}
 
 export async function resolveRuntimePluginDiscoveryProviders(
   params: ResolveRuntimePluginDiscoveryProvidersParams,
@@ -60,12 +72,6 @@ export async function resolveRuntimePluginDiscoveryProviders(
   return (await loadProviderRuntime())
     .resolvePluginDiscoveryProvidersRuntime(params)
     .filter((provider) => resolveProviderCatalogOrderHook(provider));
-}
-
-export async function resolvePluginDiscoveryProviders(
-  params: ResolveRuntimePluginDiscoveryProvidersParams,
-): Promise<ProviderPlugin[]> {
-  return resolveRuntimePluginDiscoveryProviders(params);
 }
 
 export function groupPluginDiscoveryProvidersByOrder(
@@ -146,7 +152,7 @@ export function runProviderCatalog(params: {
   ) => {
     apiKey: string | undefined;
     discoveryApiKey?: string;
-    mode: "api_key" | "oauth" | "token" | "none";
+    mode: "api_key" | "aws-sdk" | "oauth" | "token" | "none";
     source: "env" | "profile" | "none";
     profileId?: string;
   };
@@ -168,22 +174,7 @@ export function runProviderStaticCatalog(params: {
   workspaceDir?: string;
   env: NodeJS.ProcessEnv;
 }) {
-  return (
-    params.provider as ProviderPlugin & {
-      staticCatalog?: {
-        run?: (ctx: {
-          config: Record<string, never>;
-          env: Record<string, never>;
-          resolveProviderApiKey: () => { apiKey: undefined };
-          resolveProviderAuth: () => {
-            apiKey: undefined;
-            mode: "none";
-            source: "none";
-          };
-        }) => unknown;
-      };
-    }
-  ).staticCatalog?.run?.({
+  return params.provider.staticCatalog?.run({
     config: {},
     env: {},
     resolveProviderApiKey: () => ({

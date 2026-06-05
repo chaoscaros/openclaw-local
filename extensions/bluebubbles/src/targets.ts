@@ -9,7 +9,7 @@ import {
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
-} from "openclaw/plugin-sdk/text-runtime";
+} from "openclaw/plugin-sdk/string-coerce-runtime";
 
 export type BlueBubblesService = "imessage" | "sms" | "auto";
 
@@ -403,6 +403,7 @@ export function isAllowedBlueBubblesSender(params: {
     chatId: params.chatId,
     chatGuid: params.chatGuid,
     chatIdentifier: params.chatIdentifier,
+    allowConversationTargets: true,
     normalizeSender: normalizeBlueBubblesHandle,
     parseAllowTarget: parseBlueBubblesAllowTarget,
   });

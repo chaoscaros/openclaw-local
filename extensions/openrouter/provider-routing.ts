@@ -1,8 +1,19 @@
 type OpenRouterExtraParamsContext = {
-  config?: unknown;
-  extraParams?: Record<string, unknown>;
+  config?: {
+    models?: {
+      providers?: Record<
+        string,
+        {
+          params?: Record<string, unknown>;
+        }
+      >;
+    };
+  };
+  extraParams: Record<string, unknown>;
   provider: string;
-  model?: unknown;
+  model?: {
+    params?: Record<string, unknown>;
+  };
 };
 
 const BLOCKED_RECORD_KEYS = new Set(["__proto__", "prototype", "constructor"]);
@@ -39,11 +50,11 @@ function readRecord(value: unknown): Record<string, unknown> | undefined {
 function mergeOpenRouterProviderRouting(params: {
   providerParams?: Record<string, unknown>;
   modelParams?: Record<string, unknown>;
-  extraParams?: Record<string, unknown>;
+  extraParams: Record<string, unknown>;
 }): Record<string, unknown> | undefined {
   const providerRouting = readRecord(params.providerParams?.provider);
   const modelRouting = readRecord(params.modelParams?.provider);
-  const extraRouting = readRecord(params.extraParams?.provider);
+  const extraRouting = readRecord(params.extraParams.provider);
   const merged = {
     ...providerRouting,
     ...modelRouting,
@@ -54,13 +65,9 @@ function mergeOpenRouterProviderRouting(params: {
 
 export function resolveOpenRouterExtraParamsForTransport(
   ctx: OpenRouterExtraParamsContext,
-): Record<string, unknown> | undefined {
-  const config = readRecord(ctx.config);
-  const models = readRecord(config?.models);
-  const providers = readRecord(models?.providers);
-  const providerConfig = readRecord(providers?.[ctx.provider]);
-  const providerConfigParams = readRecord(providerConfig?.params);
-  const modelParams = readRecord(readRecord(ctx.model)?.params);
+): { patch?: Record<string, unknown> } | undefined {
+  const providerConfigParams = readRecord(ctx.config?.models?.providers?.[ctx.provider]?.params);
+  const modelParams = readRecord(ctx.model?.params);
   const providerRouting = mergeOpenRouterProviderRouting({
     providerParams: providerConfigParams,
     modelParams,
@@ -70,9 +77,11 @@ export function resolveOpenRouterExtraParamsForTransport(
     return undefined;
   }
   return {
-    ...providerConfigParams,
-    ...modelParams,
-    ...ctx.extraParams,
-    ...(providerRouting ? { provider: providerRouting } : {}),
+    patch: {
+      ...providerConfigParams,
+      ...modelParams,
+      ...ctx.extraParams,
+      ...(providerRouting ? { provider: providerRouting } : {}),
+    },
   };
 }

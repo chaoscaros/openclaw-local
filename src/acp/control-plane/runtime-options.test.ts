@@ -1,44 +1,42 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildRuntimeConfigOptionPairs,
-  buildRuntimeControlSignature,
-  inferRuntimeOptionPatchFromConfigOption,
-  mergeRuntimeOptions,
-  normalizeRuntimeOptions,
-  validateRuntimeOptionPatch,
-} from "./runtime-options.js";
+import { buildRuntimeConfigOptionPairs } from "./runtime-options.js";
 
-describe("acp/control-plane/runtime-options", () => {
-  it("accepts thinking in runtime option patches", () => {
-    expect(validateRuntimeOptionPatch({ thinking: "high" })).toEqual({ thinking: "high" });
+describe("buildRuntimeConfigOptionPairs timeout advertisement", () => {
+  it("omits the timeout pair when advertised keys exclude every timeout alias", () => {
+    const pairs = buildRuntimeConfigOptionPairs({ timeoutSeconds: 60 }, [
+      "model",
+      "thinking",
+      "approval_policy",
+    ]);
+    expect(pairs).toEqual([]);
   });
 
-  it("normalizes and merges thinking like other kernel runtime options", () => {
-    expect(
-      mergeRuntimeOptions({
-        current: { model: "gpt-5", thinking: "low" },
-        patch: { thinking: "high" },
-      }),
-    ).toEqual({ model: "gpt-5", thinking: "high" });
-
-    expect(normalizeRuntimeOptions({ thinking: "  medium  " })).toEqual({ thinking: "medium" });
+  it("keeps the timeout pair when advertised keys include `timeout`", () => {
+    const pairs = buildRuntimeConfigOptionPairs({ timeoutSeconds: 60 }, ["model", "timeout"]);
+    expect(pairs).toEqual([["timeout", "60"]]);
   });
 
-  it("includes thinking in runtime control signatures and config option pairs", () => {
-    expect(
-      buildRuntimeControlSignature({ model: "gpt-5", thinking: "high", timeoutSeconds: 30 }),
-    ).toContain('"thinking":"high"');
-
-    expect(buildRuntimeConfigOptionPairs({ thinking: "high" })).toEqual([["thinking", "high"]]);
+  it("keeps the timeout pair using the advertised `timeout_seconds` alias", () => {
+    const pairs = buildRuntimeConfigOptionPairs({ timeoutSeconds: 60 }, [
+      "model",
+      "timeout_seconds",
+    ]);
+    expect(pairs).toEqual([["timeout_seconds", "60"]]);
   });
 
-  it("maps thinking aliases from config options into runtime option patches", () => {
-    expect(inferRuntimeOptionPatchFromConfigOption("thinking", "high")).toEqual({ thinking: "high" });
-    expect(inferRuntimeOptionPatchFromConfigOption("thought_level", "adaptive")).toEqual({
-      thinking: "adaptive",
-    });
-    expect(inferRuntimeOptionPatchFromConfigOption("reasoning_effort", "medium")).toEqual({
-      thinking: "medium",
-    });
+  it("keeps the timeout pair when advertised keys are unknown (empty or undefined)", () => {
+    expect(buildRuntimeConfigOptionPairs({ timeoutSeconds: 60 })).toEqual([["timeout", "60"]]);
+    expect(buildRuntimeConfigOptionPairs({ timeoutSeconds: 60 }, [])).toEqual([["timeout", "60"]]);
+  });
+
+  it("does not affect model or thinking emission when only timeout is unadvertised", () => {
+    const pairs = buildRuntimeConfigOptionPairs(
+      { model: "claude-sonnet-4.6", thinking: "high", timeoutSeconds: 60 },
+      ["model", "thinking"],
+    );
+    expect(pairs).toEqual([
+      ["model", "claude-sonnet-4.6"],
+      ["thinking", "high"],
+    ]);
   });
 });

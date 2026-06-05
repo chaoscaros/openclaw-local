@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { filterCronTemplateGroups, findCronTemplateById, getCronTemplateGroups } from "./cron-templates.ts";
+import {
+  filterCronTemplateGroups,
+  findCronTemplateById,
+  getCronTemplateGroups,
+} from "./cron-templates.ts";
 
 describe("cron templates", () => {
   it("returns grouped templates for the cron automation picker", () => {

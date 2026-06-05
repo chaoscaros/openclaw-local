@@ -2,8 +2,8 @@ import type { PluginCommandContext } from "openclaw/plugin-sdk/plugin-entry";
 import { describe, expect, it } from "vitest";
 import {
   handleCodexPluginsSubcommand,
-  type CodexPluginConfigEntry,
   type CodexPluginsConfigBlock,
+  type CodexPluginConfigEntry,
   type CodexPluginsManagementIO,
 } from "./command-plugins-management.js";
 
@@ -33,6 +33,7 @@ const fakeCtx: PluginCommandContext = {
   config: {},
   channel: "test",
   isAuthorizedSender: true,
+  senderIsOwner: true,
   commandBody: "/codex plugins",
   requestConversationBinding: async () => ({ status: "error", message: "unused" }),
   detachConversationBinding: async () => ({ removed: false }),
@@ -102,7 +103,7 @@ describe("Codex /codex plugins subcommand", () => {
         pluginName: "google-calendar",
       },
     });
-    const ctx = { ...fakeCtx, gatewayClientScopes: ["operator.write"] };
+    const ctx = { ...fakeCtx, senderIsOwner: false, gatewayClientScopes: ["operator.write"] };
 
     const result = await handleCodexPluginsSubcommand(ctx, ["disable", "google-calendar"], io);
     expect(result.text).toContain("Only an owner or operator.admin");
@@ -117,7 +118,7 @@ describe("Codex /codex plugins subcommand", () => {
         pluginName: "google-calendar",
       },
     });
-    const ctx = { ...fakeCtx, gatewayClientScopes: ["operator.admin"] };
+    const ctx = { ...fakeCtx, senderIsOwner: false, gatewayClientScopes: ["operator.admin"] };
 
     const result = await handleCodexPluginsSubcommand(ctx, ["disable", "google-calendar"], io);
     expect(result.text).toContain("disabled");

@@ -11,11 +11,12 @@ import {
   readConnectErrorRecoveryAdvice,
   readConnectErrorDetailCode,
 } from "../../../src/gateway/protocol/connect-error-details.js";
+import { PROTOCOL_VERSION } from "../../../src/gateway/protocol/version.js";
 import { clearDeviceAuthToken, loadDeviceAuthToken, storeDeviceAuthToken } from "./device-auth.ts";
 import { loadOrCreateDeviceIdentity, signDevicePayload } from "./device-identity.ts";
 import { generateUUID } from "./uuid.ts";
 
-const CONTROL_UI_PROTOCOL_VERSION = 3;
+const CONTROL_UI_PROTOCOL_VERSION = PROTOCOL_VERSION;
 
 export type GatewayEventFrame = {
   type: "event";
@@ -101,6 +102,14 @@ export function isNonRecoverableAuthError(error: GatewayErrorInfo | undefined): 
   if (!error) {
     return false;
   }
+  if (
+    error.details &&
+    typeof error.details === "object" &&
+    !Array.isArray(error.details) &&
+    (error.details as { pauseReconnect?: unknown }).pauseReconnect === false
+  ) {
+    return false;
+  }
   const code = resolveGatewayErrorDetailCode(error);
   return (
     code === ConnectErrorDetailCodes.AUTH_TOKEN_MISSING ||
@@ -108,6 +117,8 @@ export function isNonRecoverableAuthError(error: GatewayErrorInfo | undefined): 
     code === ConnectErrorDetailCodes.AUTH_PASSWORD_MISSING ||
     code === ConnectErrorDetailCodes.AUTH_PASSWORD_MISMATCH ||
     code === ConnectErrorDetailCodes.AUTH_RATE_LIMITED ||
+    code === ConnectErrorDetailCodes.AUTH_DEVICE_TOKEN_MISMATCH ||
+    code === ConnectErrorDetailCodes.AUTH_SCOPE_MISMATCH ||
     code === ConnectErrorDetailCodes.PAIRING_REQUIRED ||
     code === ConnectErrorDetailCodes.CONTROL_UI_DEVICE_IDENTITY_REQUIRED ||
     code === ConnectErrorDetailCodes.DEVICE_IDENTITY_REQUIRED
@@ -258,6 +269,8 @@ export type GatewayBrowserClientOptions = {
   onGap?: (info: { expected: number; received: number }) => void;
 };
 
+export type GatewayBrowserClientEventListener = (evt: GatewayEventFrame) => void;
+
 // 4008 = application-defined code (browser rejects 1008 "Policy Violation")
 const CONNECT_FAILED_CLOSE_CODE = 4008;
 
@@ -333,6 +346,7 @@ export class GatewayBrowserClient {
   private pendingConnectError: GatewayErrorInfo | undefined;
   private pendingDeviceTokenRetry = false;
   private deviceTokenRetryBudgetUsed = false;
+  private eventListeners = new Set<GatewayBrowserClientEventListener>();
 
   constructor(private opts: GatewayBrowserClientOptions) {}
 
@@ -354,6 +368,13 @@ export class GatewayBrowserClient {
 
   get connected() {
     return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  addEventListener(listener: GatewayBrowserClientEventListener): () => void {
+    this.eventListeners.add(listener);
+    return () => {
+      this.eventListeners.delete(listener);
+    };
   }
 
   private connect() {
@@ -585,6 +606,13 @@ export class GatewayBrowserClient {
         this.opts.onEvent?.(evt);
       } catch (err) {
         console.error("[gateway] event handler error:", err);
+      }
+      for (const listener of this.eventListeners) {
+        try {
+          listener(evt);
+        } catch (err) {
+          console.error("[gateway] event listener error:", err);
+        }
       }
       return;
     }

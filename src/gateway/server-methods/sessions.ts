@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
+import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
+import { resolveModelAgentRuntimeMetadata } from "../../agents/agent-runtime-metadata.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import {
   abortEmbeddedPiRun,
@@ -11,23 +12,31 @@ import {
 import { compactEmbeddedPiSession } from "../../agents/pi-embedded.js";
 import { clearSessionQueues } from "../../auto-reply/reply/queue/cleanup.js";
 import { normalizeReasoningLevel, normalizeThinkLevel } from "../../auto-reply/thinking.js";
-import { loadConfig } from "../../config/config.js";
 import {
   loadSessionStore,
+  runSessionsCleanup,
+  serializeSessionCleanupResult,
   resolveMainSessionKey,
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
+  listConfiguredSessionStoreAgentIds,
   type SessionEntry,
   updateSessionStore,
 } from "../../config/sessions.js";
+import { resolveAgentMainSessionKey } from "../../config/sessions/main-session.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
   createInternalHookEvent,
   hasInternalHookListeners,
   triggerInternalHook,
-  type SessionPatchHookContext,
-  type SessionPatchHookEvent,
 } from "../../hooks/internal-hooks.js";
+import {
+  measureDiagnosticsTimelineSpan,
+  measureDiagnosticsTimelineSpanSync,
+} from "../../infra/diagnostics-timeline.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { patchPluginSessionExtension } from "../../plugins/host-hook-state.js";
+import { isPluginJsonValue } from "../../plugins/host-hooks.js";
 import {
   normalizeAgentId,
   parseAgentSessionKey,
@@ -39,12 +48,14 @@ import {
   normalizeOptionalString,
   readStringValue,
 } from "../../shared/string-coerce.js";
+import { ADMIN_SCOPE } from "../operator-scopes.js";
 import { GATEWAY_CLIENT_IDS } from "../protocol/client-info.js";
 import {
   ErrorCodes,
   errorShape,
   type SessionOperationEvent,
   validateSessionsAbortParams,
+  validateSessionsCleanupParams,
   validateSessionsCompactParams,
   validateSessionsCompactionBranchParams,
   validateSessionsCompactionGetParams,
@@ -52,40 +63,56 @@ import {
   validateSessionsCompactionRestoreParams,
   validateSessionsCreateParams,
   validateSessionsDeleteParams,
+  validateSessionsDescribeParams,
   validateSessionsListParams,
   validateSessionsMessagesSubscribeParams,
   validateSessionsMessagesUnsubscribeParams,
   validateSessionsPatchParams,
+  validateSessionsPluginPatchParams,
   validateSessionsPreviewParams,
   validateSessionsResetParams,
   validateSessionsResolveParams,
   validateSessionsSendParams,
 } from "../protocol/index.js";
+import { resolveSessionKeyForRun } from "../server-session-key.js";
 import {
+  forkCompactionCheckpointTranscriptAsync,
   getSessionCompactionCheckpoint,
   listSessionCompactionCheckpoints,
 } from "../session-compaction-checkpoints.js";
-import { derivePersistedSessionLifecyclePatch } from "../session-lifecycle-state.js";
+import { triggerSessionPatchHook } from "../session-patch-hooks.js";
+import {
+  resolveSessionStoreAgentId,
+  resolveSessionStoreKey,
+  resolveStoredSessionKeyForAgentStore,
+  resolveStoredSessionOwnerAgentId,
+} from "../session-store-key.js";
 import { reactivateCompletedSubagentSession } from "../session-subagent-reactivation.js";
 import {
   archiveFileOnDisk,
-  listSessionsFromStore,
+  buildGatewaySessionRow,
+  listSessionsFromStoreAsync,
   loadCombinedSessionStoreForGateway,
   loadGatewaySessionRow,
   loadSessionEntry,
   migrateAndPruneGatewaySessionStoreKey,
+  readRecentSessionMessagesWithStatsAsync,
+  readRecentSessionTranscriptLines,
+  readSessionMessageCountAsync,
   readSessionPreviewItemsFromTranscript,
+  resolveDeletedAgentIdFromSessionKey,
   resolveFreshestSessionEntryFromStoreKeys,
   resolveGatewaySessionStoreTarget,
+  resolveSessionDisplayModelIdentityRef,
   resolveSessionModelRef,
   resolveSessionTranscriptCandidates,
   type SessionsPatchResult,
   type SessionsPreviewEntry,
   type SessionsPreviewResult,
-  readSessionMessages,
 } from "../session-utils.js";
 import { applySessionsPatchToStore } from "../sessions-patch.js";
 import { resolveSessionKeyFromResolveParams } from "../sessions-resolve.js";
+import { setGatewayDedupeEntry } from "./agent-wait-dedupe.js";
 import { chatHandlers } from "./chat.js";
 import type {
   GatewayClient,
@@ -95,6 +122,78 @@ import type {
   RespondFn,
 } from "./types.js";
 import { assertValidParams } from "./validation.js";
+
+function filterSessionStoreToConfiguredAgents(
+  cfg: OpenClawConfig,
+  store: Record<string, SessionEntry>,
+): Record<string, SessionEntry> {
+  const configuredAgentIds = new Set(listConfiguredSessionStoreAgentIds(cfg));
+  const isConfiguredSessionKey = (key: string | undefined) => {
+    const normalizedKey = normalizeOptionalString(key);
+    if (!normalizedKey) {
+      return false;
+    }
+    const canonicalKey = resolveSessionStoreKey({ cfg, sessionKey: normalizedKey });
+    const agentId = resolveSessionStoreAgentId(cfg, canonicalKey);
+    return configuredAgentIds.has(normalizeAgentId(agentId));
+  };
+  return Object.fromEntries(
+    Object.entries(store).filter(([key, entry]) => {
+      if (key === "global" || key === "unknown") {
+        return true;
+      }
+      if (isConfiguredSessionKey(key)) {
+        return true;
+      }
+      return (
+        isConfiguredSessionKey(entry?.spawnedBy) || isConfiguredSessionKey(entry?.parentSessionKey)
+      );
+    }),
+  );
+}
+
+type SessionsRuntimeModule = typeof import("./sessions.runtime.js");
+
+let sessionsRuntimeModulePromise: Promise<SessionsRuntimeModule> | undefined;
+let loggedSlowSessionsListCatalog = false;
+
+const SESSIONS_LIST_MODEL_CATALOG_TIMEOUT_MS = 750;
+
+function loadSessionsRuntimeModule(): Promise<SessionsRuntimeModule> {
+  sessionsRuntimeModulePromise ??= import("./sessions.runtime.js");
+  return sessionsRuntimeModulePromise;
+}
+
+async function loadOptionalSessionsListModelCatalog(
+  context: GatewayRequestContext,
+): Promise<Awaited<ReturnType<GatewayRequestContext["loadGatewayModelCatalog"]>> | undefined> {
+  let timeout: NodeJS.Timeout | undefined;
+  const timedOut = Symbol("sessions-list-model-catalog-timeout");
+  const timeoutPromise = new Promise<typeof timedOut>((resolve) => {
+    timeout = setTimeout(() => resolve(timedOut), SESSIONS_LIST_MODEL_CATALOG_TIMEOUT_MS);
+    timeout.unref?.();
+  });
+  try {
+    const result = await Promise.race([
+      context.loadGatewayModelCatalog().catch(() => undefined),
+      timeoutPromise,
+    ]);
+    if (result === timedOut) {
+      if (!loggedSlowSessionsListCatalog) {
+        loggedSlowSessionsListCatalog = true;
+        context.logGateway.debug(
+          `sessions.list continuing without model catalog after ${SESSIONS_LIST_MODEL_CATALOG_TIMEOUT_MS}ms`,
+        );
+      }
+      return undefined;
+    }
+    return Array.isArray(result) ? result : undefined;
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
 
 function requireSessionKey(key: unknown, respond: RespondFn): string | null {
   const raw =
@@ -113,8 +212,31 @@ function requireSessionKey(key: unknown, respond: RespondFn): string | null {
   return normalized;
 }
 
-function resolveGatewaySessionTargetFromKey(key: string) {
-  const cfg = loadConfig();
+function rejectPluginRuntimeDeleteMismatch(params: {
+  client: GatewayClient | null;
+  key: string;
+  entry: SessionEntry | undefined;
+  respond: RespondFn;
+}): boolean {
+  const pluginOwnerId = normalizeOptionalString(params.client?.internal?.pluginRuntimeOwnerId);
+  if (!pluginOwnerId || !params.entry) {
+    return false;
+  }
+  if (normalizeOptionalString(params.entry.pluginOwnerId) === pluginOwnerId) {
+    return false;
+  }
+  params.respond(
+    false,
+    undefined,
+    errorShape(
+      ErrorCodes.INVALID_REQUEST,
+      `Plugin "${pluginOwnerId}" cannot delete session "${params.key}" because it did not create it.`,
+    ),
+  );
+  return true;
+}
+
+function resolveGatewaySessionTargetFromKey(key: string, cfg: OpenClawConfig) {
   const target = resolveGatewaySessionStoreTarget({ cfg, key });
   return { cfg, target, storePath: target.storePath };
 }
@@ -144,7 +266,10 @@ function shouldAttachPendingMessageSeq(params: { payload: unknown; cached?: bool
 }
 
 function emitSessionsChanged(
-  context: Pick<GatewayRequestContext, "broadcastToConnIds" | "getSessionEventSubscriberConnIds">,
+  context: Pick<
+    GatewayRequestContext,
+    "broadcastToConnIds" | "chatAbortControllers" | "getSessionEventSubscriberConnIds"
+  >,
   payload: { sessionKey?: string; reason: string; compacted?: boolean },
 ) {
   const connIds = context.getSessionEventSubscriberConnIds();
@@ -176,8 +301,6 @@ function emitSessionsChanged(
             subagentControlScope: sessionRow.subagentControlScope,
             label: sessionRow.label,
             displayName: sessionRow.displayName,
-            mode: sessionRow.mode,
-            taskId: sessionRow.taskId,
             deliveryContext: sessionRow.deliveryContext,
             parentSessionKey: sessionRow.parentSessionKey,
             childSessions: sessionRow.childSessions,
@@ -204,11 +327,17 @@ function emitSessionsChanged(
             modelProvider: sessionRow.modelProvider,
             model: sessionRow.model,
             status: sessionRow.status,
+            hasActiveRun: hasTrackedActiveSessionRun({
+              context,
+              requestedKey: payload.sessionKey ?? sessionRow.key,
+              canonicalKey: sessionRow.key,
+            }),
             startedAt: sessionRow.startedAt,
             endedAt: sessionRow.endedAt,
             runtimeMs: sessionRow.runtimeMs,
             compactionCheckpointCount: sessionRow.compactionCheckpointCount,
             latestCompactionCheckpoint: sessionRow.latestCompactionCheckpoint,
+            pluginExtensions: sessionRow.pluginExtensions,
           }
         : {}),
     },
@@ -236,112 +365,8 @@ function emitSessionOperation(
   );
 }
 
-const TERMINAL_TRANSCRIPT_STOP_REASONS = new Set([
-  "aborted",
-  "end_turn",
-  "error",
-  "max_tokens",
-  "sensitive",
-  "stop",
-]);
-
-function readTerminalAssistantLifecycleFromTranscript(params: {
-  sessionId: string;
-  storePath: string;
-  sessionFile?: string;
-}): { stopReason: string; endedAt?: number } | null {
-  const transcriptPath = resolveSessionTranscriptCandidates(
-    params.sessionId,
-    params.storePath,
-    params.sessionFile,
-  ).find((candidate) => fs.existsSync(candidate));
-  if (!transcriptPath || fs.existsSync(`${transcriptPath}.lock`)) {
-    return null;
-  }
-
-  try {
-    const lines = fs.readFileSync(transcriptPath, "utf-8").split(/\r?\n/);
-    let latestAssistant: { stopReason?: string; timestamp?: string } | null = null;
-    for (const line of lines) {
-      if (!line.trim()) {
-        continue;
-      }
-      const parsed = JSON.parse(line) as {
-        timestamp?: unknown;
-        message?: { role?: unknown; stopReason?: unknown };
-      };
-      const message = parsed.message;
-      if (!message || message.role !== "assistant") {
-        continue;
-      }
-      latestAssistant = {
-        stopReason: typeof message.stopReason === "string" ? message.stopReason : undefined,
-        timestamp: typeof parsed.timestamp === "string" ? parsed.timestamp : undefined,
-      };
-    }
-    const stopReason = latestAssistant?.stopReason;
-    if (!stopReason || !TERMINAL_TRANSCRIPT_STOP_REASONS.has(stopReason)) {
-      return null;
-    }
-    const endedAt = latestAssistant?.timestamp ? Date.parse(latestAssistant.timestamp) : NaN;
-    return {
-      stopReason,
-      endedAt: Number.isFinite(endedAt) ? endedAt : undefined,
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function reconcileStaleTerminalSessionState(params: {
-  store: Record<string, SessionEntry>;
-}): Promise<boolean> {
-  let changed = false;
-  for (const [sessionKey, entry] of Object.entries(params.store)) {
-    if (entry?.status !== "running" || !entry.sessionId || isEmbeddedPiRunActive(entry.sessionId)) {
-      continue;
-    }
-    const loaded = loadSessionEntry(sessionKey);
-    if (!loaded.entry?.sessionId) {
-      continue;
-    }
-    const terminal = readTerminalAssistantLifecycleFromTranscript({
-      sessionId: loaded.entry.sessionId,
-      storePath: loaded.storePath,
-      sessionFile: loaded.entry.sessionFile,
-    });
-    if (!terminal) {
-      continue;
-    }
-    await updateSessionStore(loaded.storePath, (store) => {
-      const current = store[loaded.canonicalKey];
-      if (!current || current.status !== "running") {
-        return false;
-      }
-      store[loaded.canonicalKey] = {
-        ...current,
-        ...derivePersistedSessionLifecyclePatch({
-          entry: current,
-          event: {
-            ts: terminal.endedAt ?? Date.now(),
-            data: {
-              phase: terminal.stopReason === "error" ? "error" : "end",
-              endedAt: terminal.endedAt,
-              stopReason: terminal.stopReason,
-              aborted: terminal.stopReason === "aborted",
-            },
-          },
-        }),
-      };
-      return true;
-    });
-    changed = true;
-  }
-  return changed;
-}
-
 function rejectWebchatSessionMutation(params: {
-  action: "patch" | "delete";
+  action: "patch" | "delete" | "compact" | "restore";
   client: GatewayClient | null;
   isWebchatConnect: (params: GatewayClient["connect"] | null | undefined) => boolean;
   respond: RespondFn;
@@ -408,6 +433,114 @@ function cloneCheckpointSessionEntry(params: {
   };
 }
 
+function resolveCheckpointForkSource(
+  checkpoint: NonNullable<ReturnType<typeof getSessionCompactionCheckpoint>>,
+): { sourceFile: string; sourceLeafId?: string; totalTokens?: number } | null {
+  const preCompactionFile = checkpoint.preCompaction.sessionFile?.trim();
+  if (preCompactionFile) {
+    return {
+      sourceFile: preCompactionFile,
+      sourceLeafId: checkpoint.preCompaction.leafId,
+      totalTokens: checkpoint.tokensBefore,
+    };
+  }
+  const postCompactionFile = checkpoint.postCompaction.sessionFile?.trim();
+  if (!postCompactionFile) {
+    return null;
+  }
+  const postCompactionLeafId =
+    checkpoint.postCompaction.leafId ?? checkpoint.postCompaction.entryId;
+  if (!postCompactionLeafId) {
+    return null;
+  }
+  return {
+    sourceFile: postCompactionFile,
+    sourceLeafId: postCompactionLeafId,
+    totalTokens: checkpoint.tokensAfter,
+  };
+}
+
+function isAgentMainSessionKey(cfg: OpenClawConfig, sessionKey: string): boolean {
+  const parsed = parseAgentSessionKey(sessionKey);
+  if (!parsed) {
+    return false;
+  }
+  return sessionKey === resolveAgentMainSessionKey({ cfg, agentId: parsed.agentId });
+}
+
+async function createAgentMainSessionForSend(params: {
+  req: GatewayRequestHandlerOptions["req"];
+  canonicalKey: string;
+  context: GatewayRequestContext;
+  client: GatewayClient | null;
+  isWebchatConnect: GatewayRequestHandlerOptions["isWebchatConnect"];
+}): Promise<
+  | {
+      ok: true;
+      entry: SessionEntry;
+      canonicalKey: string;
+      storePath: string;
+    }
+  | { ok: false; error: ReturnType<typeof errorShape> }
+> {
+  const agentId = parseAgentSessionKey(params.canonicalKey)?.agentId;
+  if (!agentId) {
+    return {
+      ok: false,
+      error: errorShape(ErrorCodes.INVALID_REQUEST, `session not found: ${params.canonicalKey}`),
+    };
+  }
+
+  let createResult:
+    | { ok: boolean; payload?: { key?: string }; error?: ReturnType<typeof errorShape> }
+    | undefined;
+  await sessionsHandlers["sessions.create"]({
+    req: params.req,
+    params: {
+      key: params.canonicalKey,
+      agentId,
+    },
+    respond: (ok, payload, error) => {
+      createResult = {
+        ok,
+        payload: payload && typeof payload === "object" ? (payload as { key?: string }) : undefined,
+        error,
+      };
+    },
+    context: params.context,
+    client: params.client,
+    isWebchatConnect: params.isWebchatConnect,
+  });
+
+  if (!createResult) {
+    return {
+      ok: false,
+      error: errorShape(ErrorCodes.UNAVAILABLE, "sessions.create did not respond"),
+    };
+  }
+  if (!createResult.ok) {
+    return {
+      ok: false,
+      error: createResult.error ?? errorShape(ErrorCodes.UNAVAILABLE, "failed to create session"),
+    };
+  }
+
+  const createdKey = normalizeOptionalString(createResult.payload?.key) ?? params.canonicalKey;
+  const loaded = loadSessionEntry(createdKey);
+  if (!loaded.entry?.sessionId) {
+    return {
+      ok: false,
+      error: errorShape(ErrorCodes.UNAVAILABLE, `session not created: ${createdKey}`),
+    };
+  }
+  return {
+    ok: true,
+    entry: loaded.entry,
+    canonicalKey: loaded.canonicalKey,
+    storePath: loaded.storePath,
+  };
+}
+
 function ensureSessionTranscriptFile(params: {
   sessionId: string;
   storePath: string;
@@ -450,37 +583,102 @@ function resolveAbortSessionKey(params: {
   context: Pick<GatewayRequestContext, "chatAbortControllers">;
   requestedKey: string;
   canonicalKey: string;
-  runId?: string;
+  activeRunSessionKey?: string;
+  aliasKeys?: string[];
 }): string {
-  const activeRunKey =
-    typeof params.runId === "string"
-      ? params.context.chatAbortControllers.get(params.runId)?.sessionKey
-      : undefined;
-  if (activeRunKey) {
-    return activeRunKey;
+  if (params.activeRunSessionKey) {
+    return params.activeRunSessionKey;
   }
+  const candidates = [params.canonicalKey, params.requestedKey, ...(params.aliasKeys ?? [])];
   for (const active of params.context.chatAbortControllers.values()) {
-    if (active.sessionKey === params.canonicalKey) {
-      return params.canonicalKey;
-    }
-    if (active.sessionKey === params.requestedKey) {
-      return params.requestedKey;
+    for (const candidate of candidates) {
+      if (active.sessionKey === candidate) {
+        return candidate;
+      }
     }
   }
   return params.requestedKey;
 }
 
+function resolveSessionKeyAgentId(
+  sessionKey: string | undefined,
+  cfg: OpenClawConfig,
+): string | undefined {
+  const key = normalizeOptionalString(sessionKey);
+  if (!key) {
+    return undefined;
+  }
+  if (!parseAgentSessionKey(key) && key.toLowerCase().startsWith("agent:")) {
+    return undefined;
+  }
+  const canonicalKey = resolveSessionStoreKey({ cfg, sessionKey: key });
+  return resolveSessionStoreAgentId(cfg, canonicalKey);
+}
+
+function sessionKeyBelongsToAgent(
+  sessionKey: string | undefined,
+  agentId: string,
+  cfg: OpenClawConfig,
+): boolean {
+  const key = normalizeOptionalString(sessionKey);
+  if (cfg.session?.scope === "global" && key?.toLowerCase() === "global") {
+    return true;
+  }
+  const sessionAgentId = resolveSessionKeyAgentId(sessionKey, cfg);
+  return Boolean(sessionAgentId && sessionAgentId === normalizeAgentId(agentId));
+}
+
+function resolveScopedAbortKey(params: {
+  cfg: OpenClawConfig;
+  key: string | undefined;
+  agentId: string | undefined;
+}): string | undefined {
+  const key = normalizeOptionalString(params.key);
+  if (!key) {
+    return undefined;
+  }
+  const requestedAgentId = normalizeOptionalString(params.agentId);
+  if (!requestedAgentId) {
+    return key;
+  }
+  const scopedAgentId = normalizeAgentId(requestedAgentId);
+  const ownerAgentId = resolveStoredSessionOwnerAgentId({
+    cfg: params.cfg,
+    agentId: scopedAgentId,
+    sessionKey: key,
+  });
+  if (ownerAgentId && ownerAgentId !== scopedAgentId) {
+    return undefined;
+  }
+  return resolveStoredSessionKeyForAgentStore({
+    cfg: params.cfg,
+    agentId: scopedAgentId,
+    sessionKey: key,
+  });
+}
+
+function collectTrackedActiveSessionRunKeys(
+  context: Partial<Pick<GatewayRequestContext, "chatAbortControllers">>,
+): Set<string> {
+  const keys = new Set<string>();
+  if (!(context.chatAbortControllers instanceof Map)) {
+    return keys;
+  }
+  for (const active of context.chatAbortControllers.values()) {
+    if (typeof active.sessionKey === "string" && active.sessionKey.trim()) {
+      keys.add(active.sessionKey);
+    }
+  }
+  return keys;
+}
+
 function hasTrackedActiveSessionRun(params: {
-  context: Pick<GatewayRequestContext, "chatAbortControllers">;
+  context: Partial<Pick<GatewayRequestContext, "chatAbortControllers">>;
   requestedKey: string;
   canonicalKey: string;
 }): boolean {
-  for (const active of params.context.chatAbortControllers.values()) {
-    if (active.sessionKey === params.canonicalKey || active.sessionKey === params.requestedKey) {
-      return true;
-    }
-  }
-  return false;
+  const activeSessionKeys = collectTrackedActiveSessionRunKeys(params.context);
+  return activeSessionKeys.has(params.canonicalKey) || activeSessionKeys.has(params.requestedKey);
 }
 
 async function interruptSessionRunIfActive(params: {
@@ -580,7 +778,38 @@ async function handleSessionSend(params: {
   if (!key) {
     return;
   }
-  const { entry, canonicalKey, storePath } = loadSessionEntry(key);
+  const loaded = loadSessionEntry(key);
+  const { cfg } = loaded;
+  let { entry, canonicalKey, storePath } = loaded;
+  // Reject sends/steers targeting sessions whose owning agent was deleted (#65524).
+  const deletedAgentId = resolveDeletedAgentIdFromSessionKey(cfg, canonicalKey);
+  if (deletedAgentId !== null) {
+    params.respond(
+      false,
+      undefined,
+      errorShape(
+        ErrorCodes.INVALID_REQUEST,
+        `Agent "${deletedAgentId}" no longer exists in configuration`,
+      ),
+    );
+    return;
+  }
+  if (!entry?.sessionId && !params.interruptIfActive && isAgentMainSessionKey(cfg, canonicalKey)) {
+    const created = await createAgentMainSessionForSend({
+      req: params.req,
+      canonicalKey,
+      context: params.context,
+      client: params.client,
+      isWebchatConnect: params.isWebchatConnect,
+    });
+    if (!created.ok) {
+      params.respond(false, undefined, created.error);
+      return;
+    }
+    entry = created.entry;
+    canonicalKey = created.canonicalKey;
+    storePath = created.storePath;
+  }
   if (!entry?.sessionId) {
     params.respond(
       false,
@@ -608,7 +837,8 @@ async function handleSessionSend(params: {
     interruptedActiveRun = interruptResult.interrupted;
   }
 
-  const messageSeq = readSessionMessages(entry.sessionId, storePath, entry.sessionFile).length + 1;
+  const messageSeq =
+    (await readSessionMessageCountAsync(entry.sessionId, storePath, entry.sessionFile)) + 1;
   let sendAcked = false;
   let sendPayload: unknown;
   let sendCached = false;
@@ -681,23 +911,130 @@ async function handleSessionSend(params: {
   }
 }
 export const sessionsHandlers: GatewayRequestHandlers = {
-  "sessions.list": async ({ params, respond }) => {
+  "sessions.list": async ({ params, respond, context }) => {
     if (!assertValidParams(params, validateSessionsListParams, "sessions.list", respond)) {
       return;
     }
     const p = params;
-    const cfg = loadConfig();
-    let { storePath, store } = loadCombinedSessionStoreForGateway(cfg);
-    if (await reconcileStaleTerminalSessionState({ store })) {
-      ({ storePath, store } = loadCombinedSessionStoreForGateway(cfg));
+    const cfg = context.getRuntimeConfig();
+    const configuredAgentsOnly = p.configuredAgentsOnly === true;
+    const payload = await measureDiagnosticsTimelineSpan(
+      "gateway.sessions.list",
+      async () => {
+        const { storePath, store } = measureDiagnosticsTimelineSpanSync(
+          "gateway.sessions.list.store_load",
+          () =>
+            loadCombinedSessionStoreForGateway(cfg, {
+              agentId: p.agentId,
+            }),
+          {
+            config: cfg,
+            phase: "sessions.list",
+            attributes: {
+              agentId: p.agentId ?? null,
+              configuredAgentsOnly,
+            },
+          },
+        );
+        const listStore = configuredAgentsOnly
+          ? filterSessionStoreToConfiguredAgents(cfg, store)
+          : store;
+        const modelCatalog = await measureDiagnosticsTimelineSpan(
+          "gateway.sessions.list.model_catalog",
+          () => loadOptionalSessionsListModelCatalog(context),
+          {
+            config: cfg,
+            phase: "sessions.list",
+          },
+        );
+        const result = await measureDiagnosticsTimelineSpan(
+          "gateway.sessions.list.rows",
+          () =>
+            listSessionsFromStoreAsync({
+              cfg,
+              storePath,
+              store: listStore,
+              modelCatalog,
+              opts: p,
+            }),
+          {
+            config: cfg,
+            phase: "sessions.list",
+            attributes: {
+              storeEntries: Object.keys(listStore).length,
+            },
+          },
+        );
+        const sessions = measureDiagnosticsTimelineSpanSync(
+          "gateway.sessions.list.active_run_flags",
+          () => {
+            const activeSessionKeys = collectTrackedActiveSessionRunKeys(context);
+            return result.sessions.map((session) =>
+              Object.assign({}, session, {
+                hasActiveRun: activeSessionKeys.has(session.key),
+              }),
+            );
+          },
+          {
+            config: cfg,
+            phase: "sessions.list",
+            attributes: {
+              sessions: result.sessions.length,
+            },
+          },
+        );
+        return {
+          ...result,
+          sessions,
+        };
+      },
+      {
+        config: cfg,
+        phase: "sessions.list",
+        attributes: {
+          agentId: p.agentId ?? null,
+          configuredAgentsOnly,
+        },
+      },
+    );
+    respond(true, payload, undefined);
+  },
+  "sessions.cleanup": async ({ params, respond, context }) => {
+    if (!assertValidParams(params, validateSessionsCleanupParams, "sessions.cleanup", respond)) {
+      return;
     }
-    const result = listSessionsFromStore({
-      cfg,
-      storePath,
-      store,
-      opts: p,
-    });
-    respond(true, result, undefined);
+    try {
+      const { mode, appliedSummaries } = await runSessionsCleanup({
+        cfg: context.getRuntimeConfig(),
+        opts: {
+          agent: params.agent,
+          allAgents: params.allAgents,
+          enforce: params.enforce,
+          activeKey: params.activeKey,
+          fixMissing: params.fixMissing,
+          fixDmScope: params.fixDmScope,
+        },
+      });
+      const result = serializeSessionCleanupResult({
+        mode,
+        dryRun: false,
+        summaries: appliedSummaries,
+      });
+      respond(true, result, undefined);
+      for (const summary of appliedSummaries) {
+        emitSessionsChanged(context, {
+          reason: "cleanup",
+          sessionKey: undefined,
+        });
+        if (summary.wouldMutate) {
+          context.logGateway.debug(
+            `sessions.cleanup applied ${summary.storePath}: ${summary.beforeCount} -> ${summary.afterCount}`,
+          );
+        }
+      }
+    } catch (error) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, formatErrorMessage(error)));
+    }
   },
   "sessions.subscribe": ({ client, context, respond }) => {
     const connId = client?.connId?.trim();
@@ -759,7 +1096,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     }
     respond(true, { subscribed: false, key: canonicalKey }, undefined);
   },
-  "sessions.preview": ({ params, respond }) => {
+  "sessions.preview": ({ params, respond, context }) => {
     if (!assertValidParams(params, validateSessionsPreviewParams, "sessions.preview", respond)) {
       return;
     }
@@ -781,7 +1118,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
 
-    const cfg = loadConfig();
+    const cfg = context.getRuntimeConfig();
     const storeCache = new Map<string, Record<string, SessionEntry>>();
     const previews: SessionsPreviewEntry[] = [];
 
@@ -821,12 +1158,40 @@ export const sessionsHandlers: GatewayRequestHandlers = {
 
     respond(true, { ts: Date.now(), previews } satisfies SessionsPreviewResult, undefined);
   },
-  "sessions.resolve": async ({ params, respond }) => {
+  "sessions.describe": ({ params, respond, context }) => {
+    if (!assertValidParams(params, validateSessionsDescribeParams, "sessions.describe", respond)) {
+      return;
+    }
+    const key = requireSessionKey(params.key, respond);
+    if (!key) {
+      return;
+    }
+    const cfg = context.getRuntimeConfig();
+    const { target, storePath } = resolveGatewaySessionTargetFromKey(key, cfg);
+    const store = loadSessionStore(storePath);
+    const entry = resolveFreshestSessionEntryFromStoreKeys(store, target.storeKeys);
+    if (!entry) {
+      respond(true, { session: null }, undefined);
+      return;
+    }
+    const row = buildGatewaySessionRow({
+      cfg,
+      storePath,
+      store,
+      key: target.canonicalKey,
+      entry,
+      includeDerivedTitles: params.includeDerivedTitles,
+      includeLastMessage: params.includeLastMessage,
+      transcriptUsageMaxBytes: 64 * 1024,
+    });
+    respond(true, { session: row }, undefined);
+  },
+  "sessions.resolve": async ({ params, respond, context }) => {
     if (!assertValidParams(params, validateSessionsResolveParams, "sessions.resolve", respond)) {
       return;
     }
     const p = params;
-    const cfg = loadConfig();
+    const cfg = context.getRuntimeConfig();
 
     const resolved = await resolveSessionKeyFromResolveParams({ cfg, p });
     if (!resolved.ok) {
@@ -907,7 +1272,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
     const p = params;
-    const cfg = loadConfig();
+    const cfg = context.getRuntimeConfig();
     const requestedKey = normalizeOptionalString(p.key);
     const agentId = normalizeAgentId(
       normalizeOptionalString(p.agentId) ?? resolveDefaultAgentId(cfg),
@@ -940,6 +1305,46 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       }
       canonicalParentSessionKey = parent.canonicalKey;
     }
+    if (
+      canonicalParentSessionKey &&
+      p.emitCommandHooks === true &&
+      !requestedKey &&
+      !resolveOptionalInitialSessionMessage(p) &&
+      cfg.session?.dmScope === "main"
+    ) {
+      const parentAgentId = normalizeAgentId(
+        resolveAgentIdFromSessionKey(canonicalParentSessionKey) ?? resolveDefaultAgentId(cfg),
+      );
+      const parentMainKey = resolveAgentMainSessionKey({ cfg, agentId: parentAgentId });
+      if (canonicalParentSessionKey === parentMainKey) {
+        const { performGatewaySessionReset } = await loadSessionsRuntimeModule();
+        const resetResult = await performGatewaySessionReset({
+          key: canonicalParentSessionKey,
+          reason: "new",
+          commandSource: "webchat",
+        });
+        if (!resetResult.ok) {
+          respond(false, undefined, resetResult.error);
+          return;
+        }
+        respond(
+          true,
+          {
+            ok: true,
+            key: resetResult.key,
+            sessionId: resetResult.entry.sessionId,
+            entry: resetResult.entry,
+            runStarted: false,
+          },
+          undefined,
+        );
+        emitSessionsChanged(context, {
+          sessionKey: resetResult.key,
+          reason: "new",
+        });
+        return;
+      }
+    }
     if (canonicalParentSessionKey && p.emitCommandHooks === true) {
       const { entry: parentEntry } = loadSessionEntry(canonicalParentSessionKey);
       const parentAgentId = normalizeAgentId(
@@ -960,8 +1365,8 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         cfg,
         key: canonicalParentSessionKey,
       });
-      const { emitGatewayBeforeResetPluginHook } = await import("./sessions.runtime.js");
-      emitGatewayBeforeResetPluginHook({
+      const { emitGatewayBeforeResetPluginHook } = await loadSessionsRuntimeModule();
+      await emitGatewayBeforeResetPluginHook({
         cfg,
         key: canonicalParentSessionKey,
         target: parentTarget,
@@ -1053,8 +1458,11 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     let runError: unknown;
     let runMeta: Record<string, unknown> | undefined;
     const messageSeq = initialMessage
-      ? readSessionMessages(createdEntry.sessionId, target.storePath, createdEntry.sessionFile)
-          .length + 1
+      ? (await readSessionMessageCountAsync(
+          createdEntry.sessionId,
+          target.storePath,
+          createdEntry.sessionFile,
+        )) + 1
       : undefined;
 
     if (initialMessage) {
@@ -1117,7 +1525,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         key: canonicalParentSessionKey,
       });
       const { emitGatewaySessionEndPluginHook, emitGatewaySessionStartPluginHook } =
-        await import("./sessions.runtime.js");
+        await loadSessionsRuntimeModule();
       emitGatewaySessionEndPluginHook({
         cfg,
         sessionKey: canonicalParentSessionKey,
@@ -1134,6 +1542,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         sessionKey: target.canonicalKey,
         sessionId: createdEntry.sessionId,
         resumedFrom: parentEntry?.sessionId,
+        storePath: target.storePath,
+        sessionFile: createdEntry.sessionFile,
+        agentId: target.agentId,
       });
     }
   },
@@ -1171,7 +1582,8 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
     const checkpoint = getSessionCompactionCheckpoint({ entry, checkpointId });
-    if (!checkpoint?.preCompaction.sessionFile) {
+    const forkSource = checkpoint ? resolveCheckpointForkSource(checkpoint) : null;
+    if (!checkpoint || !forkSource) {
       respond(
         false,
         undefined,
@@ -1179,26 +1591,12 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    if (!fs.existsSync(checkpoint.preCompaction.sessionFile)) {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.UNAVAILABLE, "checkpoint snapshot transcript is missing"),
-      );
-      return;
-    }
-
-    const snapshotSession = SessionManager.open(
-      checkpoint.preCompaction.sessionFile,
-      path.dirname(checkpoint.preCompaction.sessionFile),
-    );
-    const branchedSession = SessionManager.forkFrom(
-      checkpoint.preCompaction.sessionFile,
-      snapshotSession.getCwd(),
-      path.dirname(checkpoint.preCompaction.sessionFile),
-    );
-    const branchedSessionFile = branchedSession.getSessionFile();
-    if (!branchedSessionFile) {
+    const branchedSession = await forkCompactionCheckpointTranscriptAsync({
+      sourceFile: forkSource.sourceFile,
+      sourceLeafId: forkSource.sourceLeafId,
+      sessionDir: path.dirname(forkSource.sourceFile),
+    });
+    if (!branchedSession?.sessionFile) {
       respond(
         false,
         undefined,
@@ -1210,11 +1608,11 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const label = entry.label?.trim() ? `${entry.label.trim()} (checkpoint)` : "Checkpoint branch";
     const nextEntry = cloneCheckpointSessionEntry({
       currentEntry: entry,
-      nextSessionId: branchedSession.getSessionId(),
-      nextSessionFile: branchedSessionFile,
+      nextSessionId: branchedSession.sessionId,
+      nextSessionFile: branchedSession.sessionFile,
       label,
       parentSessionKey: canonicalKey,
-      totalTokens: checkpoint.tokensBefore,
+      totalTokens: forkSource.totalTokens,
     });
 
     await updateSessionStore(target.storePath, (store) => {
@@ -1265,6 +1663,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     if (!key) {
       return;
     }
+    if (rejectWebchatSessionMutation({ action: "restore", client, isWebchatConnect, respond })) {
+      return;
+    }
     const checkpointId =
       typeof p.checkpointId === "string" && p.checkpointId.trim() ? p.checkpointId.trim() : "";
     if (!checkpointId) {
@@ -1282,7 +1683,8 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
     const checkpoint = getSessionCompactionCheckpoint({ entry, checkpointId });
-    if (!checkpoint?.preCompaction.sessionFile) {
+    const forkSource = checkpoint ? resolveCheckpointForkSource(checkpoint) : null;
+    if (!checkpoint || !forkSource) {
       respond(
         false,
         undefined,
@@ -1290,15 +1692,6 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    if (!fs.existsSync(checkpoint.preCompaction.sessionFile)) {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.UNAVAILABLE, "checkpoint snapshot transcript is missing"),
-      );
-      return;
-    }
-
     const interruptResult = await interruptSessionRunIfActive({
       req,
       context,
@@ -1313,17 +1706,12 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
 
-    const snapshotSession = SessionManager.open(
-      checkpoint.preCompaction.sessionFile,
-      path.dirname(checkpoint.preCompaction.sessionFile),
-    );
-    const restoredSession = SessionManager.forkFrom(
-      checkpoint.preCompaction.sessionFile,
-      snapshotSession.getCwd(),
-      path.dirname(checkpoint.preCompaction.sessionFile),
-    );
-    const restoredSessionFile = restoredSession.getSessionFile();
-    if (!restoredSessionFile) {
+    const restoredSession = await forkCompactionCheckpointTranscriptAsync({
+      sourceFile: forkSource.sourceFile,
+      sourceLeafId: forkSource.sourceLeafId,
+      sessionDir: path.dirname(forkSource.sourceFile),
+    });
+    if (!restoredSession?.sessionFile) {
       respond(
         false,
         undefined,
@@ -1333,9 +1721,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     }
     const nextEntry = cloneCheckpointSessionEntry({
       currentEntry: entry,
-      nextSessionId: restoredSession.getSessionId(),
-      nextSessionFile: restoredSessionFile,
-      totalTokens: checkpoint.tokensBefore,
+      nextSessionId: restoredSession.sessionId,
+      nextSessionFile: restoredSession.sessionFile,
+      totalTokens: forkSource.totalTokens,
       preserveCompactionCheckpoints: true,
     });
 
@@ -1388,33 +1776,98 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
     const p = params;
-    const key = requireSessionKey(p.key, respond);
+    const cfg = context.getRuntimeConfig();
+    const requestedRunId = readStringValue(p.runId);
+    const requestedKey = normalizeOptionalString(p.key);
+    const requestedParamAgentId = normalizeOptionalString(p.agentId);
+    const scopedRequestedKey = resolveScopedAbortKey({
+      cfg,
+      key: requestedKey,
+      agentId: requestedParamAgentId,
+    });
+    if (requestedKey && requestedParamAgentId && !scopedRequestedKey) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "session key agent does not match agentId"),
+      );
+      return;
+    }
+    const requestedKeyAgentId = scopedRequestedKey
+      ? resolveSessionKeyAgentId(scopedRequestedKey, cfg)
+      : undefined;
+    const activeRunSessionKey = requestedRunId
+      ? context.chatAbortControllers.get(requestedRunId)?.sessionKey
+      : undefined;
+    const inferredRunAgentId =
+      requestedParamAgentId ??
+      requestedKeyAgentId ??
+      (requestedRunId && !activeRunSessionKey ? resolveDefaultAgentId(cfg) : undefined);
+    const requestedRunAgentId = requestedRunId
+      ? inferredRunAgentId
+        ? normalizeAgentId(inferredRunAgentId)
+        : undefined
+      : undefined;
+    const scopedActiveRunSessionKey = activeRunSessionKey
+      ? requestedRunAgentId
+        ? sessionKeyBelongsToAgent(activeRunSessionKey, requestedRunAgentId, cfg)
+          ? activeRunSessionKey
+          : undefined
+        : activeRunSessionKey
+      : undefined;
+    const keyCandidate =
+      scopedRequestedKey ??
+      scopedActiveRunSessionKey ??
+      (requestedRunId
+        ? resolveSessionKeyForRun(requestedRunId, {
+            agentId: requestedRunAgentId ?? resolveDefaultAgentId(cfg),
+          })
+        : undefined);
+    if (!keyCandidate && requestedRunId) {
+      respond(true, { ok: true, abortedRunId: null, status: "no-active-run" });
+      return;
+    }
+    const key = requireSessionKey(keyCandidate, respond);
     if (!key) {
       return;
     }
-    const loadedSession = loadSessionEntry(key);
-    const { canonicalKey } = loadedSession;
+    const { canonicalKey } = loadSessionEntry(key);
+    const requestedKeyAliases =
+      requestedKey &&
+      requestedKey !== key &&
+      (!requestedParamAgentId || sessionKeyBelongsToAgent(requestedKey, requestedParamAgentId, cfg))
+        ? [requestedKey]
+        : undefined;
     const abortSessionKey = resolveAbortSessionKey({
       context,
       requestedKey: key,
       canonicalKey,
-      runId: readStringValue(p.runId),
+      activeRunSessionKey: scopedActiveRunSessionKey,
+      aliasKeys: requestedKeyAliases,
     });
+    // Capture run kinds before the abort because abortChatRunById deletes entries
+    // from chatAbortControllers synchronously. We use this snapshot to choose the
+    // correct dedupe namespace: agent-kind runs use "agent:" (their runId equals
+    // their idempotency key), while chat-send runs use "chat:" so the abort
+    // snapshot does not collide with the agent RPC dedupe cache.
+    const preAbortRunKinds = new Map<string, "chat-send" | "agent" | undefined>();
+    if (requestedRunId) {
+      preAbortRunKinds.set(requestedRunId, context.chatAbortControllers.get(requestedRunId)?.kind);
+    } else {
+      for (const [rid, entry] of context.chatAbortControllers) {
+        preAbortRunKinds.set(rid, entry.kind);
+      }
+    }
     let abortedRunId: string | null = null;
-    let abortOk = true;
-    let abortError: ReturnType<typeof errorShape> | undefined;
-    let abortMeta: Record<string, unknown> | undefined;
     await chatHandlers["chat.abort"]({
       req,
       params: {
         sessionKey: abortSessionKey,
-        runId: readStringValue(p.runId),
+        runId: requestedRunId,
       },
       respond: (ok, payload, error, meta) => {
         if (!ok) {
-          abortOk = false;
-          abortError = error;
-          abortMeta = meta;
+          respond(ok, payload, error, meta);
           return;
         }
         const runIds =
@@ -1425,78 +1878,48 @@ export const sessionsHandlers: GatewayRequestHandlers = {
                 Boolean(normalizeOptionalString(value)),
               )
             : [];
-        abortedRunId = runIds[0] ?? null;
-        abortMeta = meta;
+        const firstAbortedRunId = runIds[0] ?? null;
+        abortedRunId = firstAbortedRunId;
+        if (firstAbortedRunId) {
+          const endedAt = Date.now();
+          const runKind = preAbortRunKinds.get(firstAbortedRunId);
+          const dedupePrefix = runKind === "agent" ? "agent" : "chat";
+          setGatewayDedupeEntry({
+            dedupe: context.dedupe,
+            key: `${dedupePrefix}:${firstAbortedRunId}`,
+            entry: {
+              ts: endedAt,
+              ok: true,
+              payload: {
+                status: "timeout",
+                runId: firstAbortedRunId,
+                stopReason: "rpc",
+                endedAt,
+              },
+            },
+          });
+        }
+        respond(
+          true,
+          {
+            ok: true,
+            abortedRunId,
+            status: abortedRunId ? "aborted" : "no-active-run",
+          },
+          undefined,
+          meta,
+        );
       },
       context,
       client,
       isWebchatConnect,
     });
-    if (!abortOk) {
-      respond(false, undefined, abortError, abortMeta);
-      return;
-    }
-    const sessionId =
-      typeof loadedSession.entry?.sessionId === "string" ? loadedSession.entry.sessionId : "";
-    const persistedWasRunning =
-      loadedSession.entry?.status === "running" && loadedSession.entry.endedAt == null;
-    const embeddedWasActive = sessionId ? isEmbeddedPiRunActive(sessionId) : false;
-    if (embeddedWasActive || persistedWasRunning) {
-      if (embeddedWasActive) {
-        abortEmbeddedPiRun(sessionId);
-      }
-      clearSessionQueues([key, canonicalKey, sessionId].filter(Boolean));
-      if (embeddedWasActive) {
-        await waitForEmbeddedPiRunEnd(sessionId, 15_000);
-      }
-    }
-    const aborted = abortedRunId !== null || embeddedWasActive || persistedWasRunning;
-    if (aborted) {
-      const endedAt = Date.now();
-      await updateSessionStore(loadedSession.storePath, (store) => {
-        const { primaryKey } = migrateAndPruneGatewaySessionStoreKey({
-          cfg: loadedSession.cfg,
-          key,
-          store,
-        });
-        const existingKey = [primaryKey, canonicalKey, key].find((candidate) => store[candidate]);
-        if (!existingKey) {
-          return;
-        }
-        const entry = store[existingKey];
-        if (!entry) {
-          return;
-        }
-        store[existingKey] = {
-          ...entry,
-          ...derivePersistedSessionLifecyclePatch({
-            entry,
-            event: {
-              ts: endedAt,
-              data: {
-                phase: "end",
-                endedAt,
-                stopReason: "aborted",
-              },
-            },
-          }),
-        };
-      });
+    if (abortedRunId) {
       emitSessionsChanged(context, {
         sessionKey: canonicalKey,
         reason: "abort",
       });
     }
-    respond(
-      true,
-      {
-        ok: true,
-        abortedRunId,
-        status: aborted ? "aborted" : "no-active-run",
-      },
-      undefined,
-      abortMeta,
-    );
   },
   "sessions.patch": async ({ params, respond, context, client, isWebchatConnect }) => {
     if (!assertValidParams(params, validateSessionsPatchParams, "sessions.patch", respond)) {
@@ -1511,7 +1934,10 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
 
-    const { cfg, target, storePath } = resolveGatewaySessionTargetFromKey(key);
+    const { cfg, target, storePath } = resolveGatewaySessionTargetFromKey(
+      key,
+      context.getRuntimeConfig(),
+    );
     const applied = await updateSessionStore(storePath, async (store) => {
       const { primaryKey } = migrateAndPruneGatewaySessionStoreKey({ cfg, key, store });
       return await applySessionsPatchToStore({
@@ -1527,40 +1953,121 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
 
-    if (hasInternalHookListeners("session", "patch")) {
-      const hookContext: SessionPatchHookContext = structuredClone({
-        sessionEntry: applied.entry,
-        patch: p,
-        cfg,
-      });
-      const hookEvent: SessionPatchHookEvent = {
-        type: "session",
-        action: "patch",
-        sessionKey: target.canonicalKey ?? key,
-        context: hookContext,
-        timestamp: new Date(),
-        messages: [],
-      };
-      void triggerInternalHook(hookEvent);
-    }
+    triggerSessionPatchHook({
+      cfg,
+      sessionEntry: applied.entry,
+      sessionKey: target.canonicalKey ?? key,
+      patch: p,
+    });
 
     const parsed = parseAgentSessionKey(target.canonicalKey ?? key);
     const agentId = normalizeAgentId(parsed?.agentId ?? resolveDefaultAgentId(cfg));
     const resolved = resolveSessionModelRef(cfg, applied.entry, agentId);
+    const resolvedDisplayModel = resolveSessionDisplayModelIdentityRef({
+      cfg,
+      agentId,
+      provider: resolved.provider,
+      model: resolved.model,
+    });
+    const agentRuntime = resolveModelAgentRuntimeMetadata({
+      cfg,
+      agentId,
+      provider: resolvedDisplayModel.provider,
+      model: resolvedDisplayModel.model,
+      sessionKey: target.canonicalKey ?? key,
+      acpRuntime: applied.entry?.acp != null,
+      acpBackend: applied.entry?.acp?.backend,
+    });
     const result: SessionsPatchResult = {
       ok: true,
       path: storePath,
       key: target.canonicalKey,
       entry: applied.entry,
       resolved: {
-        modelProvider: resolved.provider,
-        model: resolved.model,
+        modelProvider: resolvedDisplayModel.provider,
+        model: resolvedDisplayModel.model,
+        agentRuntime,
       },
     };
     respond(true, result, undefined);
     emitSessionsChanged(context, {
       sessionKey: target.canonicalKey,
       reason: "patch",
+    });
+  },
+  "sessions.pluginPatch": async ({ params, respond, context, client, isWebchatConnect }) => {
+    if (
+      !assertValidParams(params, validateSessionsPluginPatchParams, "sessions.pluginPatch", respond)
+    ) {
+      return;
+    }
+    const key = requireSessionKey(params.key, respond);
+    if (!key) {
+      return;
+    }
+    if (rejectWebchatSessionMutation({ action: "patch", client, isWebchatConnect, respond })) {
+      return;
+    }
+    const scopes = Array.isArray(client?.connect.scopes) ? client.connect.scopes : [];
+    if (!scopes.includes(ADMIN_SCOPE)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `sessions.pluginPatch requires gateway scope: ${ADMIN_SCOPE}`,
+        ),
+      );
+      return;
+    }
+    const pluginId = normalizeOptionalString(params.pluginId);
+    const namespace = normalizeOptionalString(params.namespace);
+    if (!pluginId || !namespace) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "pluginId and namespace are required"),
+      );
+      return;
+    }
+    if (params.unset === true && params.value !== undefined) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "sessions.pluginPatch cannot specify both unset and value",
+        ),
+      );
+      return;
+    }
+    if (params.value !== undefined && !isPluginJsonValue(params.value)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "sessions.pluginPatch value must be JSON-compatible",
+        ),
+      );
+      return;
+    }
+    const patched = await patchPluginSessionExtension({
+      cfg: context.getRuntimeConfig(),
+      sessionKey: key,
+      pluginId,
+      namespace,
+      value: params.value,
+      unset: params.unset === true,
+    });
+    if (!patched.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, patched.error));
+      return;
+    }
+    respond(true, { ok: true, key: patched.key, value: patched.value }, undefined);
+    emitSessionsChanged(context, {
+      sessionKey: patched.key,
+      reason: "plugin-patch",
     });
   },
   "sessions.reset": async ({ params, respond, context }) => {
@@ -1574,7 +2081,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     }
 
     const reason = p.reason === "new" ? "new" : "reset";
-    const { performGatewaySessionReset } = await import("./sessions.runtime.js");
+    const { performGatewaySessionReset } = await loadSessionsRuntimeModule();
     const result = await performGatewaySessionReset({
       key,
       reason,
@@ -1603,7 +2110,10 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
 
-    const { cfg, target, storePath } = resolveGatewaySessionTargetFromKey(key);
+    const { cfg, target, storePath } = resolveGatewaySessionTargetFromKey(
+      key,
+      context.getRuntimeConfig(),
+    );
     const mainKey = resolveMainSessionKey(cfg);
     if (target.canonicalKey === mainKey) {
       respond(
@@ -1620,9 +2130,12 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       cleanupSessionBeforeMutation,
       emitGatewaySessionEndPluginHook,
       emitSessionUnboundLifecycleEvent,
-    } = await import("./sessions.runtime.js");
+    } = await loadSessionsRuntimeModule();
 
     const { entry, legacyKey, canonicalKey } = loadSessionEntry(key);
+    if (rejectPluginRuntimeDeleteMismatch({ client, key: canonicalKey ?? key, entry, respond })) {
+      return;
+    }
     const mutationCleanupError = await cleanupSessionBeforeMutation({
       cfg,
       key,
@@ -1684,7 +2197,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       });
     }
   },
-  "sessions.get": ({ params, respond }) => {
+  "sessions.get": async ({ params, respond, context }) => {
     const p = params;
     const key = requireSessionKey(p.key ?? p.sessionKey, respond);
     if (!key) {
@@ -1695,15 +2208,25 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         ? Math.max(1, Math.floor(p.limit))
         : 200;
 
-    const { target, storePath } = resolveGatewaySessionTargetFromKey(key);
+    const { target, storePath } = resolveGatewaySessionTargetFromKey(
+      key,
+      context.getRuntimeConfig(),
+    );
     const store = loadSessionStore(storePath);
     const entry = resolveFreshestSessionEntryFromStoreKeys(store, target.storeKeys);
     if (!entry?.sessionId) {
       respond(true, { messages: [] }, undefined);
       return;
     }
-    const allMessages = readSessionMessages(entry.sessionId, storePath, entry.sessionFile);
-    const messages = limit < allMessages.length ? allMessages.slice(-limit) : allMessages;
+    const { messages } = await readRecentSessionMessagesWithStatsAsync(
+      entry.sessionId,
+      storePath,
+      entry.sessionFile,
+      {
+        maxMessages: limit,
+        maxLines: limit * 20 + 20,
+      },
+    );
     respond(true, { messages }, undefined);
   },
   "sessions.compact": async ({ req, params, respond, context, client, isWebchatConnect }) => {
@@ -1715,13 +2238,19 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     if (!key) {
       return;
     }
+    if (rejectWebchatSessionMutation({ action: "compact", client, isWebchatConnect, respond })) {
+      return;
+    }
 
     const maxLines =
       typeof p.maxLines === "number" && Number.isFinite(p.maxLines)
         ? Math.max(1, Math.floor(p.maxLines))
         : undefined;
 
-    const { cfg, target, storePath } = resolveGatewaySessionTargetFromKey(key);
+    const { cfg, target, storePath } = resolveGatewaySessionTargetFromKey(
+      key,
+      context.getRuntimeConfig(),
+    );
     // Lock + read in a short critical section; transcript work happens outside.
     const compactTarget = await updateSessionStore(storePath, (store) => {
       const { entry, primaryKey } = migrateAndPruneGatewaySessionStoreKey({ cfg, key, store });
@@ -1800,6 +2329,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
           config: cfg,
           provider: resolvedModel.provider,
           model: resolvedModel.model,
+          agentHarnessId: entry?.sessionId === sessionId ? entry.agentHarnessId : undefined,
           thinkLevel: normalizeThinkLevel(entry?.thinkingLevel),
           reasoningLevel: normalizeReasoningLevel(entry?.reasoningLevel),
           bashElevated: {
@@ -1838,8 +2368,15 @@ export const sessionsHandlers: GatewayRequestHandlers = {
           }
           entryToUpdate.updatedAt = Date.now();
           entryToUpdate.compactionCount = Math.max(0, entryToUpdate.compactionCount ?? 0) + 1;
+          if (result.result?.sessionId && result.result.sessionId !== entryToUpdate.sessionId) {
+            entryToUpdate.sessionId = result.result.sessionId;
+          }
+          if (result.result?.sessionFile) {
+            entryToUpdate.sessionFile = result.result.sessionFile;
+          }
           delete entryToUpdate.inputTokens;
           delete entryToUpdate.outputTokens;
+          delete entryToUpdate.contextBudgetStatus;
           if (
             typeof result.result?.tokensAfter === "number" &&
             Number.isFinite(result.result.tokensAfter)
@@ -1874,16 +2411,23 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
 
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const lines = raw.split(/\r?\n/).filter((l) => Boolean(normalizeOptionalString(l)));
-    if (lines.length <= maxLines) {
+    const tail = readRecentSessionTranscriptLines({
+      sessionId,
+      storePath,
+      sessionFile: entry?.sessionFile,
+      agentId: target.agentId,
+      maxLines,
+    });
+    const lines = tail?.lines ?? [];
+    const totalLines = tail?.totalLines ?? 0;
+    if (totalLines <= maxLines) {
       respond(
         true,
         {
           ok: true,
           key: target.canonicalKey,
           compacted: false,
-          kept: lines.length,
+          kept: totalLines,
         },
         undefined,
       );
@@ -1891,8 +2435,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     }
 
     const archived = archiveFileOnDisk(filePath, "bak");
-    const keptLines = lines.slice(-maxLines);
-    fs.writeFileSync(filePath, `${keptLines.join("\n")}\n`, "utf-8");
+    fs.writeFileSync(filePath, `${lines.join("\n")}\n`, "utf-8");
 
     await updateSessionStore(storePath, (store) => {
       const entryKey = compactTarget.primaryKey;
@@ -1904,6 +2447,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       delete entryToUpdate.outputTokens;
       delete entryToUpdate.totalTokens;
       delete entryToUpdate.totalTokensFresh;
+      delete entryToUpdate.contextBudgetStatus;
       entryToUpdate.updatedAt = Date.now();
     });
 
@@ -1914,7 +2458,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         key: target.canonicalKey,
         compacted: true,
         archived,
-        kept: keptLines.length,
+        kept: lines.length,
       },
       undefined,
     );

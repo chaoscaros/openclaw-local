@@ -1,4 +1,4 @@
-import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/channel-core";
 import {
   createAccountScopedConversationBindingManager,
   resetAccountScopedConversationBindingsForTests,
@@ -37,7 +37,7 @@ export function createBlueBubblesConversationBindingManager(params: {
   });
 }
 
-export const __testing = {
+export const blueBubblesConversationBindingsTesting = {
   resetBlueBubblesConversationBindingsForTests() {
     resetAccountScopedConversationBindingsForTests({
       stateKey: BLUEBUBBLES_CONVERSATION_BINDINGS_STATE_KEY,

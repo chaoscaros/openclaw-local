@@ -2,7 +2,15 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { captureEnv } from "../test-utils/env.js";
 
 vi.mock("../plugins/provider-runtime.js", () => ({
+  normalizeProviderConfigWithPlugin: vi.fn(
+    (params: { context?: { providerConfig?: unknown } }) => params.context?.providerConfig,
+  ),
   resolveProviderSyntheticAuthWithPlugin: vi.fn(),
+}));
+
+vi.mock("./provider-auth-aliases.js", () => ({
+  resolveProviderAuthAliasMap: () => ({}),
+  resolveProviderIdForAuth: (provider: string) => provider.trim().toLowerCase(),
 }));
 
 type ProviderRuntimeModule = typeof import("../plugins/provider-runtime.js");
@@ -167,6 +175,143 @@ describe("models-config provider auth provenance", () => {
     });
   });
 
+  it("uses literal configured provider api keys for catalog discovery", () => {
+    const auth = createProviderApiKeyResolver(
+      {} as NodeJS.ProcessEnv,
+      {
+        version: 1,
+        profiles: {},
+      },
+      {
+        models: {
+          providers: {
+            vllm: {
+              baseUrl: "http://127.0.0.1:8000/v1",
+              apiKey: "proof-key",
+              api: "openai-completions",
+              models: [],
+            },
+          },
+        },
+      },
+    );
+
+    expect(auth("vllm")).toEqual({
+      apiKey: "proof-key",
+      discoveryApiKey: "proof-key",
+    });
+  });
+
+  it("resolves custom configured env markers for catalog discovery", () => {
+    const auth = createProviderApiKeyResolver(
+      {
+        MY_VLLM_KEY: "resolved-vllm-key",
+      } as NodeJS.ProcessEnv,
+      {
+        version: 1,
+        profiles: {},
+      },
+      {
+        models: {
+          providers: {
+            vllm: {
+              baseUrl: "http://127.0.0.1:8000/v1",
+              apiKey: "${MY_VLLM_KEY}",
+              api: "openai-completions",
+              models: [],
+            },
+          },
+        },
+      },
+    );
+
+    expect(auth("vllm")).toEqual({
+      apiKey: "MY_VLLM_KEY",
+      discoveryApiKey: "resolved-vllm-key",
+    });
+  });
+
+  it("does not send missing custom env markers as catalog discovery keys", () => {
+    const auth = createProviderApiKeyResolver(
+      {} as NodeJS.ProcessEnv,
+      {
+        version: 1,
+        profiles: {},
+      },
+      {
+        models: {
+          providers: {
+            vllm: {
+              baseUrl: "http://127.0.0.1:8000/v1",
+              apiKey: "${MY_VLLM_KEY}",
+              api: "openai-completions",
+              models: [],
+            },
+          },
+        },
+      },
+    );
+
+    expect(auth("vllm")).toEqual({
+      apiKey: undefined,
+      discoveryApiKey: undefined,
+    });
+  });
+
+  it("does not send missing known provider env markers as catalog discovery keys", () => {
+    const auth = createProviderApiKeyResolver(
+      {} as NodeJS.ProcessEnv,
+      {
+        version: 1,
+        profiles: {},
+      },
+      {
+        models: {
+          providers: {
+            vllm: {
+              baseUrl: "http://127.0.0.1:8000/v1",
+              apiKey: "VLLM_API_KEY",
+              api: "openai-completions",
+              models: [],
+            },
+          },
+        },
+      },
+    );
+
+    expect(auth("vllm")).toEqual({
+      apiKey: undefined,
+      discoveryApiKey: undefined,
+    });
+  });
+
+  it("preserves bare all-caps configured api keys as literal catalog discovery keys", () => {
+    const auth = createProviderApiKeyResolver(
+      {} as NodeJS.ProcessEnv,
+      {
+        version: 1,
+        profiles: {},
+      },
+      {
+        models: {
+          providers: {
+            vllm: {
+              baseUrl: "http://127.0.0.1:8000/v1",
+              apiKey: "ALLCAPS_SAMPLE",
+              api: "openai-completions",
+              models: [],
+            },
+          },
+        },
+      },
+    );
+
+    expect(auth("vllm")).toEqual({
+      apiKey: "ALLCAPS_SAMPLE",
+      discoveryApiKey: "ALLCAPS_SAMPLE",
+    });
+  });
+
   it("preserves shared non-secret synthetic auth markers from provider hooks", () => {
     mockedResolveProviderSyntheticAuthWithPlugin.mockReturnValue({
       apiKey: CUSTOM_LOCAL_AUTH_MARKER,
@@ -195,100 +340,6 @@ describe("models-config provider auth provenance", () => {
     expect(auth("lmstudio")).toEqual({
       apiKey: CUSTOM_LOCAL_AUTH_MARKER,
       discoveryApiKey: undefined,
-      mode: "api_key",
-      source: "none",
-    });
-  });
-
-  it("resolves configured env SecretRef api keys for catalog discovery", () => {
-    const auth = createProviderApiKeyResolver(
-      {
-        MY_VLLM_KEY: "resolved-vllm-key",
-      } as NodeJS.ProcessEnv,
-      {
-        version: 1,
-        profiles: {},
-      },
-      {
-        models: {
-          providers: {
-            vllm: {
-              baseUrl: "http://127.0.0.1:8000/v1",
-              apiKey: { source: "env", provider: "default", id: "MY_VLLM_KEY" },
-              api: "openai-completions",
-              models: [],
-            },
-          },
-        },
-      },
-    );
-
-    expect(auth("vllm")).toEqual({
-      apiKey: "MY_VLLM_KEY",
-      discoveryApiKey: "resolved-vllm-key",
-    });
-  });
-
-  it("does not resolve configured env SecretRef api keys outside provider allowlists", () => {
-    const auth = createProviderApiKeyResolver(
-      {
-        AWS_SECRET_ACCESS_KEY: "not-allowed",
-      } as NodeJS.ProcessEnv,
-      {
-        version: 1,
-        profiles: {},
-      },
-      {
-        secrets: {
-          providers: {
-            default: { source: "env", allowlist: ["MY_VLLM_KEY"] },
-          },
-        },
-        models: {
-          providers: {
-            vllm: {
-              baseUrl: "http://127.0.0.1:8000/v1",
-              apiKey: { source: "env", provider: "default", id: "AWS_SECRET_ACCESS_KEY" },
-              api: "openai-completions",
-              models: [],
-            },
-          },
-        },
-      },
-    );
-
-    expect(auth("vllm")).toEqual({
-      apiKey: undefined,
-      discoveryApiKey: undefined,
-    });
-  });
-
-  it("uses configured env SecretRef api keys in config-backed auth summaries", () => {
-    const auth = createProviderAuthResolver(
-      {
-        MY_VLLM_KEY: "resolved-vllm-key",
-      } as NodeJS.ProcessEnv,
-      {
-        version: 1,
-        profiles: {},
-      },
-      {
-        models: {
-          providers: {
-            vllm: {
-              baseUrl: "http://127.0.0.1:8000/v1",
-              apiKey: { source: "env", provider: "default", id: "MY_VLLM_KEY" },
-              api: "openai-completions",
-              models: [],
-            },
-          },
-        },
-      },
-    );
-
-    expect(auth("vllm")).toEqual({
-      apiKey: "MY_VLLM_KEY",
-      discoveryApiKey: "resolved-vllm-key",
       mode: "api_key",
       source: "none",
     });

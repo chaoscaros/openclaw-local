@@ -225,7 +225,7 @@ export async function loadUsage(
   }
 }
 
-export const __test = {
+export const usageTestApi = {
   formatUtcOffset,
   buildDateInterpretationParams,
   toErrorMessage,

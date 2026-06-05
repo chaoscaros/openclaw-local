@@ -1,3 +1,4 @@
+import { expectExplicitMusicGenerationCapabilities } from "openclaw/plugin-sdk/provider-test-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildOpenRouterMusicGenerationProvider } from "./music-generation-provider.js";
 
@@ -70,19 +71,6 @@ function postRequest(): Record<string, unknown> {
     throw new Error("expected OpenRouter music request");
   }
   return request as Record<string, unknown>;
-}
-
-function expectExplicitMusicGenerationCapabilities(
-  provider: ReturnType<typeof buildOpenRouterMusicGenerationProvider>,
-): void {
-  expect(provider.id).toBeTruthy();
-  expect(provider.defaultModel).toBeTruthy();
-  expect(
-    provider.capabilities.supportsFormat ?? provider.capabilities.generate?.supportsFormat,
-  ).toBe(true);
-  expect(
-    provider.capabilities.supportedFormats ?? provider.capabilities.generate?.supportedFormats,
-  ).toContain("wav");
 }
 
 describe("openrouter music generation provider", () => {

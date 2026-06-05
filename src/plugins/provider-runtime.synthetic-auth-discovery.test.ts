@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
 const resolveProviderRuntimePlugin = vi.hoisted(() => vi.fn(() => undefined));
-const resolveProviderPluginsForHooks = vi.hoisted(() => vi.fn(() => []));
 const resolvePluginDiscoveryProvidersRuntime = vi.hoisted(() =>
   vi.fn(() => [
     {
@@ -36,13 +35,18 @@ const resolvePluginDiscoveryProvidersRuntime = vi.hoisted(() =>
   ]),
 );
 
-vi.mock("./provider-hook-runtime.js", () => ({
-  __testing: {},
-  clearProviderRuntimeHookCache: vi.fn(),
-  resolveProviderHookPlugin: vi.fn(),
-  resolveProviderPluginsForHooks,
-  resolveProviderRuntimePlugin,
-}));
+vi.mock("./provider-hook-runtime.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./provider-hook-runtime.js")>();
+  return {
+    ...actual,
+    testing: {},
+    prepareProviderExtraParams: vi.fn(),
+    resolveProviderHookPlugin: vi.fn(),
+    resolveProviderPluginsForHooks: vi.fn(() => []),
+    resolveProviderRuntimePlugin,
+    wrapProviderStreamFn: vi.fn(),
+  };
+});
 
 vi.mock("./provider-discovery.runtime.js", () => ({
   resolvePluginDiscoveryProvidersRuntime,
@@ -52,6 +56,13 @@ vi.mock("./providers.js", () => ({
   resolveCatalogHookProviderPluginIds: vi.fn(() => []),
   resolveExternalAuthProfileCompatFallbackPluginIds: vi.fn(() => []),
   resolveExternalAuthProfileProviderPluginIds: vi.fn(() => []),
+  resolveOwningPluginIdsForProvider: vi.fn(({ provider }: { provider: string }) =>
+    provider === "ollama"
+      ? ["ollama"]
+      : provider === "anthropic-vertex"
+        ? ["anthropic-vertex"]
+        : [],
+  ),
 }));
 
 import { resolveProviderSyntheticAuthWithPlugin } from "./provider-runtime.js";
@@ -72,11 +83,7 @@ describe("resolveProviderSyntheticAuthWithPlugin", () => {
       source: "gcp-vertex-credentials (ADC)",
       mode: "api-key",
     });
-    expect(resolveProviderRuntimePlugin).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: "anthropic-vertex",
-      }),
-    );
+    expect(resolveProviderRuntimePlugin).not.toHaveBeenCalled();
     expect(resolvePluginDiscoveryProvidersRuntime).toHaveBeenCalled();
   });
 

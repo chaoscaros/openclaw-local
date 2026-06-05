@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { loadConfig } from "../config/config.js";
+import { getRuntimeConfig } from "../config/io.js";
 import { resolveStateDir } from "../config/paths.js";
 import {
   loadSessionStore,
@@ -165,7 +165,7 @@ function normalizeTaskTodoItems(
     .map((item, index) => normalizeTaskTodoItem(item, taskId, index))
     .filter((item): item is TaskModeTodoItem => Boolean(item))
     .toSorted((left, right) => left.order - right.order || left.createdAt - right.createdAt)
-    .map((item, index) => ({ ...item, order: index }));
+    .map((item, index) => Object.assign({}, item, { order: index }));
   if (normalized.length === 0) {
     return undefined;
   }
@@ -363,26 +363,31 @@ function reconcileDynamicTodoItems(params: {
     shouldAdvanceCurrent && currentInProgress
       ? [
           ...completedManaged,
-          { ...currentInProgress, status: "completed" as const, updatedAt: now },
+          Object.assign({}, currentInProgress, { status: "completed" as const, updatedAt: now }),
         ]
       : completedManaged;
   const nextOpenManaged = inferredOpenContent.map((content, index) => {
     const existing = openManaged.find(
       (item) => normalizeBootstrapTodoSegment(item.content) === content,
     );
-    return {
+    const item: TaskModeTodoItem = {
       id: existing?.id ?? `${params.task.id}:auto-dynamic:${index}`,
       taskId: params.task.id,
       content,
       status: index === 0 ? "in_progress" : "pending",
       priority: existing?.priority ?? "normal",
       source: existing?.source ?? "system",
-      ...(existing?.note ? { note: existing.note } : {}),
-      ...(existing?.verification ? { verification: existing.verification } : {}),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
       order: index,
-    } satisfies TaskModeTodoItem;
+    };
+    if (existing?.note) {
+      item.note = existing.note;
+    }
+    if (existing?.verification) {
+      item.verification = existing.verification;
+    }
+    return item;
   });
   const normalizedTodos = normalizeTaskTodoItems(
     [...nextOpenManaged, ...advancedCompleted],
@@ -852,16 +857,29 @@ function syncTaskModeRuntimeLinks(task: TaskModeRecord): TaskModeRecord {
     linkedRuntimeTaskIds: runtimeTasks.map((item) => item.taskId),
     latestRuntimeTaskId: latestRuntimeTask?.taskId,
     latestRunId: latestRuntimeTask?.runId,
-    runtimeTaskSummaries: runtimeTasks.slice(0, 8).map((item) => ({
-      taskId: item.taskId,
-      runtime: item.runtime,
-      status: item.status,
-      ...(item.runId ? { runId: item.runId } : {}),
-      ...(typeof item.lastEventAt === "number" ? { lastEventAt: item.lastEventAt } : {}),
-      ...(item.error ? { error: item.error } : {}),
-      ...(item.progressSummary ? { progressSummary: item.progressSummary } : {}),
-      ...(item.terminalSummary ? { terminalSummary: item.terminalSummary } : {}),
-    })),
+    runtimeTaskSummaries: runtimeTasks.slice(0, 8).map((item) => {
+      const summary: TaskModeRuntimeTaskSummary = {
+        taskId: item.taskId,
+        runtime: item.runtime,
+        status: item.status,
+      };
+      if (item.runId) {
+        summary.runId = item.runId;
+      }
+      if (typeof item.lastEventAt === "number") {
+        summary.lastEventAt = item.lastEventAt;
+      }
+      if (item.error) {
+        summary.error = item.error;
+      }
+      if (item.progressSummary) {
+        summary.progressSummary = item.progressSummary;
+      }
+      if (item.terminalSummary) {
+        summary.terminalSummary = item.terminalSummary;
+      }
+      return summary;
+    }),
   });
 }
 
@@ -899,7 +917,7 @@ function toTaskModeView(task: TaskModeRecord): TaskModeView {
     ...(latestRuntimeTask?.runId ? { latestRunId: latestRuntimeTask.runId } : {}),
     ...(task.runtimeTaskSummaries?.length
       ? {
-          runtimeTaskSummaries: task.runtimeTaskSummaries.map((entry) => ({ ...entry })),
+          runtimeTaskSummaries: task.runtimeTaskSummaries.map((entry) => Object.assign({}, entry)),
         }
       : {}),
     ...(resolveTaskModeRuntimeHealth(runtimeTasks)
@@ -983,7 +1001,7 @@ function collectLinkedTaskSessions(
   entry: SessionEntry;
   storePath: string;
 }> {
-  const cfg = loadConfig();
+  const cfg = getRuntimeConfig();
   const targets = resolveAllAgentSessionStoreTargetsSync(cfg);
   const matches = new Map<string, { sessionKey: string; entry: SessionEntry; storePath: string }>();
   const preferred = new Set((preferredSessionKeys ?? []).map((key) => key.trim()).filter(Boolean));
@@ -1157,7 +1175,7 @@ function buildTaskProgressSyncSnapshot(messages: unknown[], task: TaskModeRecord
           },
         ]
       : []),
-    ...(task.timeline ?? []).map((entry) => ({ ...entry })),
+    ...(task.timeline ?? []).map((entry) => Object.assign({}, entry)),
   ]
     .filter(
       (entry, index, array) =>
@@ -1356,7 +1374,7 @@ export async function createTaskModeTask(input: {
 }
 
 async function clearSessionTaskBindings(taskId: string): Promise<string[]> {
-  const cfg = loadConfig();
+  const cfg = getRuntimeConfig();
   const touched: string[] = [];
   const targets = resolveAllAgentSessionStoreTargetsSync(cfg);
   await Promise.all(
@@ -1638,12 +1656,12 @@ export async function setTaskModeTodoStatus(params: {
         item.status === "in_progress" &&
         item.id !== targetId
       ) {
-        return { ...item, status: "pending" as const, updatedAt: now };
+        return Object.assign({}, item, { status: "pending" as const, updatedAt: now });
       }
       if (item.id !== targetId) {
         return item;
       }
-      return { ...item, status: params.status, updatedAt: now };
+      return Object.assign({}, item, { status: params.status, updatedAt: now });
     });
     const normalizedTodos = normalizeTaskTodoItems(todoItems, current.id);
     const next = normalizeTaskRecord({

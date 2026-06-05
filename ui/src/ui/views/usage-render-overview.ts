@@ -2,14 +2,9 @@ import { html, nothing } from "lit";
 import { formatDurationCompact } from "../../../../src/infra/format-time/format-duration.ts";
 import { t } from "../../i18n/index.ts";
 import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
-import {
-  formatCost,
-  formatDayLabel,
-  formatFullDate,
-  formatTokens,
-  UsageInsightStats,
-} from "./usage-metrics.ts";
-import {
+import { formatCost, formatDayLabel, formatFullDate, formatTokens } from "./usage-metrics.ts";
+import type { UsageInsightStats } from "./usage-metrics.ts";
+import type {
   UsageAggregates,
   UsageColumnId,
   UsageSessionEntry,
@@ -431,7 +426,8 @@ function renderDailyChartCompact(
             const isSelected = selectedDays.includes(d.date);
             const label = formatDayLabel(d.date);
             // Shorter label for many days (just day number)
-            const shortLabel = daily.length > 20 ? String(parseInt(d.date.slice(8), 10)) : label;
+            const shortLabel =
+              daily.length > 20 ? String(Number.parseInt(d.date.slice(8), 10)) : label;
             const labelClass =
               daily.length > 20 ? "daily-bar-label daily-bar-label--compact" : "daily-bar-label";
             const segments =

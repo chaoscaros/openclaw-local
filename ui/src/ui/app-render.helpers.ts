@@ -11,7 +11,8 @@ import {
 } from "./chat-model-select-state.ts";
 import { refreshSlashCommands } from "./chat/slash-commands.ts";
 import { refreshVisibleToolsEffectiveForCurrentSession } from "./controllers/agents.ts";
-import { ChatState, loadChatHistory } from "./controllers/chat.ts";
+import { loadChatHistory } from "./controllers/chat.ts";
+import type { ChatState } from "./controllers/chat.ts";
 import { createSessionAndRefresh, loadSessions } from "./controllers/sessions.ts";
 import { resolveSessionTask } from "./controllers/tasks.ts";
 import { formatRelativeTimestamp } from "./format.ts";
@@ -1501,7 +1502,7 @@ function resolveThinkingTargetModel(state: AppViewState): {
 
 function buildThinkingOptions(
   provider: string | null,
-  model: string | null,
+  _model: string | null,
   currentOverride: string,
 ): ChatThinkingSelectOption[] {
   const seen = new Set<string>();
@@ -1561,10 +1562,9 @@ function resolveChatThinkingSelectState(state: AppViewState): ChatThinkingSelect
   return {
     currentOverride,
     defaultLabel: t("chatUi.defaultWithValue", { value: localizeThinkingLevelLabel(defaultLevel) }),
-    options: buildThinkingOptions(provider, model, currentOverride).map((entry) => ({
-      ...entry,
-      label: localizeThinkingLevelLabel(entry.value),
-    })),
+    options: buildThinkingOptions(provider, model, currentOverride).map((entry) =>
+      Object.assign({}, entry, { label: localizeThinkingLevelLabel(entry.value) }),
+    ),
   };
 }
 
@@ -1645,12 +1645,7 @@ function patchSessionThinkingLevel(
   state.sessionsResult = {
     ...current,
     sessions: current.sessions.map((row) =>
-      doSessionKeysMatch(row.key, sessionKey)
-        ? {
-            ...row,
-            thinkingLevel,
-          }
-        : row,
+      doSessionKeysMatch(row.key, sessionKey) ? Object.assign({}, row, { thinkingLevel }) : row,
     ),
   };
 }

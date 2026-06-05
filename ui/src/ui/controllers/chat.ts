@@ -25,6 +25,7 @@ const STARTUP_CHAT_HISTORY_DEFAULT_RETRY_MS = 500;
 const STARTUP_CHAT_HISTORY_MAX_RETRY_MS = 5_000;
 const DUPLICATE_USER_ECHO_WINDOW_MS = 10 * 60 * 1000;
 const LEADING_TIMESTAMP_PREFIX_RE = /^\[[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}[^\]]*\] */;
+const TASK_BINDING_PROMPT_PREFIX = "[Current task binding for this turn]";
 const chatHistoryRequestVersions = new WeakMap<object, number>();
 
 function beginChatHistoryRequest(state: ChatState): number {
@@ -84,6 +85,50 @@ function shouldHideHistoryMessage(message: unknown): boolean {
   return isAssistantSilentReply(message) || isSyntheticTranscriptRepairToolResult(message);
 }
 
+function stripTaskBindingPromptPrefix(text: string): string {
+  if (!text.startsWith(TASK_BINDING_PROMPT_PREFIX)) {
+    return text;
+  }
+  const timestampMatch = /\[[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}[^\]]*\] */.exec(text);
+  if (!timestampMatch || timestampMatch.index == null) {
+    return text;
+  }
+  return text.slice(timestampMatch.index).replace(LEADING_TIMESTAMP_PREFIX_RE, "").trimStart();
+}
+
+function normalizeHistoryUserMessageText(message: unknown): void {
+  if (!isRoleMessage(message, "user") || !message || typeof message !== "object") {
+    return;
+  }
+  const record = message as Record<string, unknown>;
+  if (typeof record.text === "string") {
+    record.text = stripTaskBindingPromptPrefix(record.text);
+  }
+  if (typeof record.content === "string") {
+    record.content = stripTaskBindingPromptPrefix(record.content);
+    return;
+  }
+  if (!Array.isArray(record.content)) {
+    return;
+  }
+  for (const part of record.content) {
+    if (!part || typeof part !== "object") {
+      continue;
+    }
+    const item = part as Record<string, unknown>;
+    if (item.type === "text" && typeof item.text === "string") {
+      item.text = stripTaskBindingPromptPrefix(item.text);
+    }
+  }
+}
+
+function normalizeHistoryUserMessageTexts(messages: unknown[]): unknown[] {
+  for (const message of messages) {
+    normalizeHistoryUserMessageText(message);
+  }
+  return messages;
+}
+
 function extractComparableMessageText(message: unknown): string {
   const text = extractText(message);
   if (typeof text !== "string") {
@@ -118,8 +163,8 @@ function findPendingOptimisticUserMessage(state: ChatState): unknown {
     }
     const record = message as Record<string, unknown>;
     if (
-      record.__openclawOptimistic === true &&
-      record.__openclawRunId === state.chatRunId &&
+      record["__openclawOptimistic"] === true &&
+      record["__openclawRunId"] === state.chatRunId &&
       isRoleMessage(message, "user")
     ) {
       return message;
@@ -219,7 +264,7 @@ function mergeOptimisticMessages(
       continue;
     }
     const record = message as Record<string, unknown>;
-    if (record.__openclawOptimistic !== true) {
+    if (record["__openclawOptimistic"] !== true) {
       continue;
     }
     const optimisticRole = normalizeLowercaseStringOrEmpty(record.role);
@@ -363,6 +408,18 @@ export type ChatEventPayload = {
   errorMessage?: string;
 };
 
+function isToolExecutionFailureErrorMessage(message: string | undefined): boolean {
+  const trimmed = message?.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return (
+    /^⚠️?\s*🛠/u.test(trimmed) ||
+    /^`[^`]+`\s+failed$/iu.test(trimmed) ||
+    /^run\s+.+\s+\(repo\)\s+failed$/iu.test(trimmed)
+  );
+}
+
 function maybeResetToolStream(state: ChatState) {
   const toolHost = state as ChatState & Partial<Parameters<typeof resetToolStream>[0]>;
   if (
@@ -420,7 +477,9 @@ export async function loadChatHistory(state: ChatState) {
       return;
     }
     const messages = Array.isArray(res.messages) ? res.messages : [];
-    const filteredMessages = messages.filter((message) => !shouldHideHistoryMessage(message));
+    const filteredMessages = normalizeHistoryUserMessageTexts(
+      messages.filter((message) => !shouldHideHistoryMessage(message)),
+    );
     const visibleMessages = dedupeRepeatedUserEchoMessages(filteredMessages);
     const completedFromHistory = historyContainsAssistantReplyForPendingRun(state, visibleMessages);
     state.chatMessages =
@@ -773,6 +832,7 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
     state.chatStreamStartedAt = null;
     state.dreamingAssistApplied = null;
     state.dreamingAssistReason = null;
+    state.lastError = null;
   } else if (payload.state === "aborted") {
     const normalizedMessage = normalizeAbortedAssistantMessage(payload.message);
     if (normalizedMessage && !isAssistantSilentReply(normalizedMessage)) {
@@ -796,13 +856,15 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
     state.chatStreamStartedAt = null;
     state.dreamingAssistApplied = null;
     state.dreamingAssistReason = null;
+    state.lastError = null;
   } else if (payload.state === "error") {
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
     state.dreamingAssistApplied = null;
     state.dreamingAssistReason = null;
-    state.lastError = payload.errorMessage ?? "chat error";
+    const errorMessage = payload.errorMessage ?? "chat error";
+    state.lastError = isToolExecutionFailureErrorMessage(errorMessage) ? null : errorMessage;
   }
   return payload.state;
 }

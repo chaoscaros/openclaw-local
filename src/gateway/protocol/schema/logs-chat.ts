@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { ChatSendSessionKeyString, InputProvenanceSchema, NonEmptyString } from "./primitives.js";
 
 export const LogsTailParamsSchema = Type.Object(
@@ -35,8 +35,10 @@ export const ChatHistoryParamsSchema = Type.Object(
 export const ChatSendParamsSchema = Type.Object(
   {
     sessionKey: ChatSendSessionKeyString,
+    sessionId: Type.Optional(NonEmptyString),
     message: Type.String(),
     thinking: Type.Optional(Type.String()),
+    fastMode: Type.Optional(Type.Boolean()),
     deliver: Type.Optional(Type.Boolean()),
     applyDreamingAssist: Type.Optional(Type.Boolean()),
     planModeEnabled: Type.Optional(Type.Boolean()),
@@ -74,136 +76,70 @@ export const ChatInjectParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const ChatEventSchema = Type.Object(
+const ChatEventBaseSchema = {
+  runId: NonEmptyString,
+  sessionKey: NonEmptyString,
+  spawnedBy: Type.Optional(NonEmptyString),
+  seq: Type.Integer({ minimum: 0 }),
+};
+
+const ChatEventErrorKindSchema = Type.Union([
+  Type.Literal("refusal"),
+  Type.Literal("timeout"),
+  Type.Literal("rate_limit"),
+  Type.Literal("context_length"),
+  Type.Literal("unknown"),
+]);
+
+export const ChatDeltaEventSchema = Type.Object(
   {
-    runId: NonEmptyString,
-    sessionKey: NonEmptyString,
-    seq: Type.Integer({ minimum: 0 }),
-    state: Type.Union([
-      Type.Literal("delta"),
-      Type.Literal("final"),
-      Type.Literal("aborted"),
-      Type.Literal("error"),
-    ]),
+    ...ChatEventBaseSchema,
+    state: Type.Literal("delta"),
     message: Type.Optional(Type.Unknown()),
-    errorMessage: Type.Optional(Type.String()),
-    errorKind: Type.Optional(
-      Type.Union([
-        Type.Literal("refusal"),
-        Type.Literal("timeout"),
-        Type.Literal("rate_limit"),
-        Type.Literal("context_length"),
-        Type.Literal("unknown"),
-      ]),
-    ),
+    deltaText: Type.String(),
+    replace: Type.Optional(Type.Boolean()),
+    usage: Type.Optional(Type.Unknown()),
+  },
+  { additionalProperties: false },
+);
+
+export const ChatFinalEventSchema = Type.Object(
+  {
+    ...ChatEventBaseSchema,
+    state: Type.Literal("final"),
+    message: Type.Optional(Type.Unknown()),
     usage: Type.Optional(Type.Unknown()),
     stopReason: Type.Optional(Type.String()),
   },
   { additionalProperties: false },
 );
 
-const NullableString = Type.Union([Type.String(), Type.Null()]);
-
-const ChangeReviewHunkSchema = Type.Object(
+export const ChatAbortedEventSchema = Type.Object(
   {
-    hunkId: NonEmptyString,
-    changeType: NonEmptyString,
-    beforeStartLine: Type.Integer({ minimum: 0 }),
-    beforeEndLine: Type.Integer({ minimum: 0 }),
-    afterStartLine: Type.Integer({ minimum: 0 }),
-    afterEndLine: Type.Integer({ minimum: 0 }),
-    beforeLines: Type.Array(Type.String()),
-    afterLines: Type.Array(Type.String()),
+    ...ChatEventBaseSchema,
+    state: Type.Literal("aborted"),
+    message: Type.Optional(Type.Unknown()),
+    stopReason: Type.Optional(Type.String()),
   },
   { additionalProperties: false },
 );
 
-const ChangeReviewGroupSchema = Type.Object(
+export const ChatErrorEventSchema = Type.Object(
   {
-    groupId: NonEmptyString,
-    title: NonEmptyString,
-    summary: NonEmptyString,
-    changeType: NonEmptyString,
-    filePath: NonEmptyString,
-    hunkIds: Type.Array(NonEmptyString),
-    beforeStartLine: Type.Integer({ minimum: 0 }),
-    beforeEndLine: Type.Integer({ minimum: 0 }),
-    afterStartLine: Type.Integer({ minimum: 0 }),
-    afterEndLine: Type.Integer({ minimum: 0 }),
-    beforePreview: Type.Array(Type.String()),
-    afterPreview: Type.Array(Type.String()),
-    hunkCount: Type.Integer({ minimum: 0 }),
+    ...ChatEventBaseSchema,
+    state: Type.Literal("error"),
+    message: Type.Optional(Type.Unknown()),
+    errorMessage: Type.Optional(Type.String()),
+    errorKind: Type.Optional(ChatEventErrorKindSchema),
+    usage: Type.Optional(Type.Unknown()),
+    stopReason: Type.Optional(Type.String()),
   },
   { additionalProperties: false },
 );
 
-const ChangeReviewFileSchema = Type.Object(
-  {
-    path: NonEmptyString,
-    status: NonEmptyString,
-    changeType: Type.Optional(NonEmptyString),
-    beforeContent: Type.Optional(NullableString),
-    afterContent: Type.Optional(NullableString),
-    hunks: Type.Optional(Type.Array(ChangeReviewHunkSchema)),
-    groups: Type.Optional(Type.Array(ChangeReviewGroupSchema)),
-  },
-  { additionalProperties: false },
-);
-
-export const ChangeReviewSessionParamsSchema = Type.Object(
-  {
-    sessionKey: NonEmptyString,
-    runId: Type.Optional(NonEmptyString),
-  },
-  { additionalProperties: false },
-);
-
-export const ChangeReviewIdParamsSchema = Type.Object(
-  {
-    id: NonEmptyString,
-    path: Type.Optional(NonEmptyString),
-  },
-  { additionalProperties: false },
-);
-
-export const ChangeReviewHunkParamsSchema = Type.Object(
-  {
-    id: NonEmptyString,
-    path: NonEmptyString,
-    hunkId: NonEmptyString,
-  },
-  { additionalProperties: false },
-);
-
-export const ChangeReviewGroupParamsSchema = Type.Object(
-  {
-    id: NonEmptyString,
-    path: NonEmptyString,
-    groupId: NonEmptyString,
-  },
-  { additionalProperties: false },
-);
-
-export const ChangeReviewResultSchema = Type.Object(
-  {
-    pending: Type.Boolean(),
-    id: Type.Optional(NonEmptyString),
-    sessionKey: Type.Optional(NonEmptyString),
-    sourceRunId: Type.Optional(NonEmptyString),
-    stagedOnly: Type.Optional(Type.Boolean()),
-    createdAt: Type.Optional(Type.Integer({ minimum: 0 })),
-    updatedAt: Type.Optional(Type.Integer({ minimum: 0 })),
-    files: Type.Optional(Type.Array(ChangeReviewFileSchema)),
-    diffText: Type.Optional(Type.String()),
-  },
-  { additionalProperties: false },
-);
-
-export const ChangeReviewActionResultSchema = Type.Object(
-  {
-    ok: Type.Boolean(),
-    applied: Type.Optional(Type.Boolean()),
-    reverted: Type.Optional(Type.Boolean()),
-  },
-  { additionalProperties: false },
-);
+export const ChatEventSchema = Type.Union([
+  ChatDeltaEventSchema,
+  ChatFinalEventSchema,
+  ChatAbortedEventSchema,
+  ChatErrorEventSchema,
+]);

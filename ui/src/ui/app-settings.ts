@@ -302,6 +302,10 @@ async function refreshAgentsTab(host: SettingsHost, app: SettingsAppHost) {
     case "cron":
       void loadCron(host);
       return;
+    case "overview":
+    case "tools":
+    case undefined:
+      return;
   }
 }
 
@@ -386,6 +390,8 @@ export async function refreshActiveTab(host: SettingsHost) {
       await loadLogs(app, { reset: true });
       scheduleLogsScroll(host as unknown as Parameters<typeof scheduleLogsScroll>[0], true);
       return;
+    case "activity":
+      return;
   }
 }
 
@@ -393,7 +399,7 @@ export function inferBasePath() {
   if (typeof window === "undefined") {
     return "";
   }
-  const configured = window.__OPENCLAW_CONTROL_UI_BASE_PATH__;
+  const configured = window["__OPENCLAW_CONTROL_UI_BASE_PATH__"];
   const normalizedConfigured = normalizeOptionalString(configured);
   if (normalizedConfigured) {
     return normalizeBasePath(normalizedConfigured);
@@ -577,7 +583,7 @@ export function syncUrlWithTab(host: SettingsHost, tab: Tab, replace: boolean) {
   updateBrowserHistory(url, replace);
 }
 
-export function syncUrlWithSessionKey(host: SettingsHost, sessionKey: string, replace: boolean) {
+export function syncUrlWithSessionKey(_host: SettingsHost, sessionKey: string, replace: boolean) {
   if (typeof window === "undefined") {
     return;
   }

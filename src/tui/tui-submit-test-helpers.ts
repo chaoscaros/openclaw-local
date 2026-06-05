@@ -3,7 +3,7 @@ import { createEditorSubmitHandler } from "./tui-submit.js";
 
 type MockFn = ReturnType<typeof vi.fn>;
 
-export type SubmitHarness = {
+type SubmitHarness = {
   editor: {
     setText: MockFn;
     addToHistory: MockFn;
@@ -16,7 +16,9 @@ export type SubmitHarness = {
   onSubmit: (text: string) => void;
 };
 
-export function createSubmitHarness(params?: { canSubmitMessage?: () => boolean }): SubmitHarness {
+export function createSubmitHarness(params?: {
+  canSubmitMessage?: (value: string) => boolean;
+}): SubmitHarness {
   const editor = {
     setText: vi.fn(),
     addToHistory: vi.fn(),

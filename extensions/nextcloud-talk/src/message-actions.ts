@@ -1,4 +1,3 @@
-import { readBooleanParam } from "openclaw/plugin-sdk/boolean-param";
 import {
   jsonResult,
   readStringParam,
@@ -16,15 +15,16 @@ const providerId = "nextcloud-talk";
 
 function isAccountConfigured(account: {
   enabled: boolean;
-  secret: string;
-  baseUrl: string;
+  secret: string | null;
+  baseUrl?: string | null;
 }): boolean {
-  return Boolean(account.enabled && account.secret.trim() && account.baseUrl.trim());
+  return Boolean(account.enabled && account.secret?.trim() && account.baseUrl?.trim());
 }
 
 function hasConfiguredAccount(cfg: CoreConfig, accountId: string | null | undefined): boolean {
   if (accountId) {
-    return isAccountConfigured(resolveNextcloudTalkAccount({ cfg, accountId }));
+    const account = resolveNextcloudTalkAccount({ cfg, accountId });
+    return isAccountConfigured(account);
   }
   return listNextcloudTalkAccountIds(cfg)
     .map((id) => resolveNextcloudTalkAccount({ cfg, accountId: id }))
@@ -40,7 +40,7 @@ export const nextcloudTalkMessageActions: ChannelMessageActionAdapter = {
     return { actions };
   },
 
-  supportsAction: ({ action }) => action === "react",
+  supportsAction: ({ action }) => action !== "send",
 
   handleAction: async ({ action, params, cfg, accountId, toolContext }) => {
     if (action === "send") {
@@ -52,14 +52,19 @@ export const nextcloudTalkMessageActions: ChannelMessageActionAdapter = {
         required: true,
         label: "to (room token)",
       });
+
       const messageIdRaw = resolveReactionMessageId({ args: params, toolContext });
       if (messageIdRaw == null) {
         throw new Error("messageId required");
       }
       const messageId = String(messageIdRaw);
+
       const emoji = readStringParam(params, "emoji", { required: true });
 
-      if (readBooleanParam(params, "remove") === true) {
+      // Reaction removal is part of the shared `react` tool contract but is not
+      // yet wired through to a Nextcloud Talk DELETE sender. Reject explicitly
+      // so callers do not get the opposite of what they requested.
+      if (params.remove === true) {
         throw new Error(
           "Nextcloud Talk reaction removal is not supported yet; only adding reactions is implemented.",
         );

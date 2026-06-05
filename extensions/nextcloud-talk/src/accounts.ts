@@ -1,18 +1,16 @@
 import {
+  createAccountListHelpers,
+  DEFAULT_ACCOUNT_ID,
   hasConfiguredAccountValue,
+  normalizeAccountId,
+  resolveAccountWithDefaultFallback,
   resolveMergedAccountConfig,
-} from "openclaw/plugin-sdk/account-resolution";
-import { tryReadSecretFileSync } from "openclaw/plugin-sdk/channel-core";
+} from "openclaw/plugin-sdk/account-core";
+import { tryReadSecretFileSync } from "openclaw/plugin-sdk/secret-file-runtime";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
-} from "openclaw/plugin-sdk/text-runtime";
-import {
-  createAccountListHelpers,
-  DEFAULT_ACCOUNT_ID,
-  normalizeAccountId,
-  resolveAccountWithDefaultFallback,
-} from "../runtime-api.js";
+} from "openclaw/plugin-sdk/string-coerce-runtime";
 import { normalizeResolvedSecretInputString } from "./secret-input.js";
 import type { CoreConfig, NextcloudTalkAccountConfig } from "./types.js";
 
@@ -148,10 +146,4 @@ export function resolveNextcloudTalkAccount(params: {
     hasCredential: (account) => account.secretSource !== "none",
     resolveDefaultAccountId: () => resolveDefaultNextcloudTalkAccountId(params.cfg),
   });
-}
-
-export function listEnabledNextcloudTalkAccounts(cfg: CoreConfig): ResolvedNextcloudTalkAccount[] {
-  return listNextcloudTalkAccountIds(cfg)
-    .map((accountId) => resolveNextcloudTalkAccount({ cfg, accountId }))
-    .filter((account) => account.enabled);
 }

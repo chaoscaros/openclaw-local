@@ -1,26 +1,25 @@
-export function isBlockedLivenessState(value: unknown): boolean {
-  return typeof value === "string" && value.trim().toLowerCase() === "blocked";
+export function isBlockedLivenessState(livenessState: unknown): boolean {
+  return typeof livenessState === "string" && livenessState.trim().toLowerCase() === "blocked";
 }
 
 export function formatBlockedLivenessError(error: unknown): string {
-  return typeof error === "string" && error.trim()
-    ? error
-    : "Agent run became blocked before producing a successful completion.";
+  const message = typeof error === "string" ? error.trim() : "";
+  return message || "Agent run blocked before producing a usable result.";
 }
 
-export function normalizeBlockedLivenessWaitStatus<TStatus extends string>(params: {
+export function normalizeBlockedLivenessWaitStatus<
+  TStatus extends "ok" | "error" | "timeout" | "pending",
+>(params: {
   status: TStatus;
   livenessState?: unknown;
   error?: unknown;
 }): { status: TStatus | "error"; error?: string } {
+  const error = typeof params.error === "string" ? params.error : undefined;
   if (!isBlockedLivenessState(params.livenessState)) {
-    return {
-      status: params.status,
-      error: typeof params.error === "string" ? params.error : undefined,
-    };
+    return { status: params.status, error };
   }
   return {
     status: "error",
-    error: formatBlockedLivenessError(params.error),
+    error: formatBlockedLivenessError(error),
   };
 }

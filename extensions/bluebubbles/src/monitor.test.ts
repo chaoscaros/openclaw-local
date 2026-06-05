@@ -801,7 +801,7 @@ describe("BlueBubbles webhook monitor", () => {
         const core = createMockRuntime();
         installTimingAwareInboundDebouncer(core);
 
-        const _registration = trackWebhookRegistrationForTest(
+        const registration = trackWebhookRegistrationForTest(
           setupWebhookTargetForTest({
             createCore: createMockRuntime,
             core,
@@ -810,6 +810,7 @@ describe("BlueBubbles webhook monitor", () => {
             unregister = nextUnregister;
           },
         );
+        void registration;
 
         const messageId = "race-msg-1";
         const chatGuid = "iMessage;-;+15551234567";

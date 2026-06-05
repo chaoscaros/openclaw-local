@@ -1,9 +1,14 @@
 import crypto from "node:crypto";
-import { isRecord, readNestedString } from "./attachments/shared.js";
+import {
+  isRecord,
+  normalizeOptionalString,
+  normalizeStringEntries,
+  uniqueStrings,
+} from "openclaw/plugin-sdk/string-coerce-runtime";
 import { resolveMSTeamsStorePath } from "./storage.js";
 import { readJsonFile, withFileLock, writeJsonFile } from "./store-fs.js";
 
-export type MSTeamsPollVote = {
+type MSTeamsPollVote = {
   pollId: string;
   selections: string[];
 };
@@ -30,7 +35,7 @@ export type MSTeamsPollStore = {
   }) => Promise<MSTeamsPoll | null>;
 };
 
-export type MSTeamsPollCard = {
+type MSTeamsPollCard = {
   pollId: string;
   question: string;
   options: string[];
@@ -68,10 +73,7 @@ function extractSelections(value: unknown): string[] {
     return [];
   }
   if (normalized.includes(",")) {
-    return normalized
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean);
+    return normalizeStringEntries(normalized.split(","));
   }
   return [normalized];
 }
@@ -85,6 +87,10 @@ function readNestedValue(value: unknown, keys: Array<string | number>): unknown 
     current = current[key as keyof typeof current];
   }
   return current;
+}
+
+function readNestedString(value: unknown, keys: Array<string | number>): string | undefined {
+  return normalizeOptionalString(readNestedValue(value, keys));
 }
 
 export function extractMSTeamsPollVote(
@@ -206,7 +212,7 @@ export function buildMSTeamsPollCard(params: {
   };
 }
 
-export type MSTeamsPollStoreFsOptions = {
+type MSTeamsPollStoreFsOptions = {
   env?: NodeJS.ProcessEnv;
   homedir?: () => string;
   stateDir?: string;
@@ -252,7 +258,7 @@ export function normalizeMSTeamsPollSelections(poll: MSTeamsPoll, selections: st
     .filter((value) => value >= 0 && value < poll.options.length)
     .map((value) => String(value));
   const limited = maxSelections > 1 ? mapped.slice(0, maxSelections) : mapped.slice(0, 1);
-  return Array.from(new Set(limited));
+  return uniqueStrings(limited);
 }
 
 export function createMSTeamsPollStoreFs(params?: MSTeamsPollStoreFsOptions): MSTeamsPollStore {

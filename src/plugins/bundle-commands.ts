@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { openBoundaryFileSync } from "../infra/boundary-file-read.js";
+import { readRootJsonObjectSync } from "../infra/json-files.js";
 import { parseFrontmatterBlock } from "../markdown/frontmatter.js";
 import { isPathInsideWithRealpath } from "../security/scan-paths.js";
 import {
@@ -13,9 +13,12 @@ import {
   mergeBundlePathLists,
   normalizeBundlePathList,
 } from "./bundle-manifest.js";
-import { normalizePluginsConfig, resolveEffectivePluginActivationState } from "./config-state.js";
-import { loadPluginManifestRegistry } from "./manifest-registry.js";
-import type { PluginManifestRegistry } from "./manifest-registry.js";
+import {
+  hasExplicitPluginConfig,
+  normalizePluginsConfig,
+  resolveEffectivePluginActivationState,
+} from "./config-state.js";
+import { loadPluginManifestRegistryForPluginRegistry } from "./plugin-registry-contributions.js";
 
 export type ClaudeBundleCommandSpec = {
   pluginId: string;
@@ -52,26 +55,13 @@ function stripFrontmatter(content: string): string {
 }
 
 function readClaudeBundleManifest(rootDir: string): Record<string, unknown> {
-  const manifestPath = path.join(rootDir, CLAUDE_BUNDLE_MANIFEST_RELATIVE_PATH);
-  const opened = openBoundaryFileSync({
-    absolutePath: manifestPath,
-    rootPath: rootDir,
+  const result = readRootJsonObjectSync({
+    rootDir,
+    relativePath: CLAUDE_BUNDLE_MANIFEST_RELATIVE_PATH,
     boundaryLabel: "plugin root",
     rejectHardlinks: true,
   });
-  if (!opened.ok) {
-    return {};
-  }
-  try {
-    const raw = JSON.parse(fs.readFileSync(opened.fd, "utf-8")) as unknown;
-    return raw && typeof raw === "object" && !Array.isArray(raw)
-      ? (raw as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  } finally {
-    fs.closeSync(opened.fd);
-  }
+  return result.ok ? result.value : {};
 }
 
 function resolveClaudeCommandRootDirs(rootDir: string): string[] {
@@ -169,17 +159,14 @@ function loadBundleCommandsFromRoot(params: {
 export function loadEnabledClaudeBundleCommands(params: {
   workspaceDir: string;
   cfg?: OpenClawConfig;
-  env?: NodeJS.ProcessEnv;
-  deps?: {
-    loadPluginManifestRegistry?: typeof loadPluginManifestRegistry;
-  };
 }): ClaudeBundleCommandSpec[] {
-  const loadRegistry = params.deps?.loadPluginManifestRegistry ?? loadPluginManifestRegistry;
-  const registry: PluginManifestRegistry = loadRegistry({
+  if (!hasExplicitPluginConfig(params.cfg?.plugins)) {
+    return [];
+  }
+  const registry = loadPluginManifestRegistryForPluginRegistry({
     workspaceDir: params.workspaceDir,
     config: params.cfg,
-    cache: false,
-    env: params.env,
+    includeDisabled: true,
   });
   const normalizedPlugins = normalizePluginsConfig(params.cfg?.plugins);
   const commands: ClaudeBundleCommandSpec[] = [];

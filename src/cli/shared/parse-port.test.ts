@@ -26,6 +26,7 @@ describe("parsePort (#83899, #83900)", () => {
     expect(parsePort(99999)).toBeNull();
     expect(parsePort("100000")).toBeNull();
     expect(parsePort(Number.MAX_SAFE_INTEGER + 1)).toBeNull();
+    // Largest 16-bit value is the inclusive boundary.
     expect(parsePort(65_535)).toBe(65_535);
   });
 

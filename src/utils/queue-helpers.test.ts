@@ -110,7 +110,7 @@ describe("queue summary helpers", () => {
     };
     clearQueueSummaryState(state);
     expect(state.droppedCount).toBe(0);
-    expect(state.summaryLines).toEqual([]);
+    expect(state.summaryLines).toStrictEqual([]);
   });
 });
 
@@ -129,7 +129,7 @@ describe("drainCollectItemIfNeeded", () => {
     });
 
     expect(result).toBe("skipped");
-    expect(seen).toEqual([]);
+    expect(seen).toStrictEqual([]);
     expect(items).toEqual([1]);
   });
 
@@ -170,23 +170,24 @@ describe("drainCollectItemIfNeeded", () => {
 });
 
 describe("hasCrossChannelItems", () => {
-  const resolveKey = (item: { key?: string; cross?: boolean }) => item;
+  it("lets unresolved items join an otherwise single keyed route", () => {
+    const items = [
+      { id: "unresolved" },
+      { id: "first", key: "slack:channel:A" },
+      { id: "second", key: "slack:channel:A" },
+    ];
 
-  it("does not treat unresolved items as cross-channel when keyed items agree", () => {
-    expect(hasCrossChannelItems([{ key: undefined }, { key: "slack|channel:A" }], resolveKey)).toBe(
-      false,
-    );
+    expect(hasCrossChannelItems(items, (item) => ({ key: item.key }))).toBe(false);
   });
 
-  it("detects multiple resolved destination keys", () => {
+  it("still treats distinct keyed routes and explicit cross items as cross-channel", () => {
     expect(
-      hasCrossChannelItems([{ key: "slack|channel:A" }, { key: "slack|channel:B" }], resolveKey),
+      hasCrossChannelItems([{ key: "slack:channel:A" }, { key: "slack:channel:B" }], (item) => ({
+        key: item.key,
+      })),
     ).toBe(true);
-  });
-
-  it("honors explicit cross markers", () => {
-    expect(hasCrossChannelItems([{ cross: true }, { key: "slack|channel:A" }], resolveKey)).toBe(
-      true,
-    );
+    expect(
+      hasCrossChannelItems([{ key: "slack:channel:A" }, { cross: true }], (item) => item),
+    ).toBe(true);
   });
 });

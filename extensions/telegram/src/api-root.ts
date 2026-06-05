@@ -28,7 +28,22 @@ export function normalizeTelegramApiRoot(apiRoot?: string): string {
       normalized = url.toString().replace(/\/+$/u, "");
     }
   } catch {
-    // Config validation catches invalid URLs. Keep legacy runtime behavior if unchecked input arrives.
+    // Config validation catches invalid URLs; keep legacy runtime behavior for
+    // callers that reached this helper with unchecked input.
   }
   return normalized;
+}
+
+export function hasTelegramBotEndpointApiRoot(apiRoot: unknown): boolean {
+  if (typeof apiRoot !== "string" || !apiRoot.trim()) {
+    return false;
+  }
+  try {
+    const url = new URL(apiRoot.trim());
+    const segments = url.pathname.split("/").filter(Boolean);
+    const last = segments[segments.length - 1];
+    return Boolean(last && isTelegramBotEndpointSegment(last));
+  } catch {
+    return false;
+  }
 }

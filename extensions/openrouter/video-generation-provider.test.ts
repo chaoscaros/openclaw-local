@@ -1,4 +1,8 @@
 import { clearLiveCatalogCacheForTests } from "openclaw/plugin-sdk/provider-catalog-shared";
+import {
+  expectExplicitVideoGenerationCapabilities,
+  expectUnifiedModelCatalogEntries,
+} from "openclaw/plugin-sdk/provider-test-contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildOpenRouterVideoGenerationProvider,
@@ -116,28 +120,6 @@ function expectOpenRouterFetchCall(index: number, url: string, auditContext: str
   expect(requireRecord(guardOptions, "OpenRouter fetch guard options").auditContext).toBe(
     auditContext,
   );
-}
-
-function expectExplicitVideoGenerationCapabilities(provider: OpenRouterVideoProvider): void {
-  expect(provider.id).toBeTruthy();
-  expect(provider.defaultModel).toBeTruthy();
-  expect(provider.capabilities.generate).toBeTruthy();
-  expect(provider.capabilities.generate?.supportsAspectRatio).toBe(true);
-}
-
-function expectUnifiedModelCatalogEntries(
-  rows: readonly unknown[],
-  expected: { provider: string; kind: string },
-): void {
-  for (const row of rows) {
-    expect(row).toEqual(
-      expect.objectContaining({
-        provider: expected.provider,
-        kind: expected.kind,
-        model: expect.any(String),
-      }),
-    );
-  }
 }
 
 function requirePostJsonParams(index = 0): Record<string, unknown> {
@@ -271,9 +253,6 @@ describe("openrouter video generation provider", () => {
       "openrouter-video-models",
     );
     expect(requireFetchCallHeaders(0).get("authorization")).toBe("Bearer resolved-openrouter-key");
-    if (!rows) {
-      throw new Error("expected OpenRouter video catalog rows");
-    }
     expectUnifiedModelCatalogEntries(rows, {
       provider: "openrouter",
       kind: "video_generation",
@@ -422,22 +401,16 @@ describe("openrouter video generation provider", () => {
     );
 
     const provider = buildOpenRouterVideoGenerationProvider();
-    const request = {
+    await provider.generateVideo({
       provider: "openrouter",
       model: "google/veo-3.1",
       prompt: "A brushed steel logo rotates against a clean white backdrop",
       durationSeconds: 5,
       cfg: {} as never,
       [SUPPORTED_DURATIONS_HINT]: [5],
-    } satisfies {
-      provider: string;
-      model: string;
-      prompt: string;
-      durationSeconds: number;
-      cfg: unknown;
+    } as Parameters<typeof provider.generateVideo>[0] & {
       [SUPPORTED_DURATIONS_HINT]: readonly number[];
-    };
-    await provider.generateVideo(request as never);
+    });
 
     expect(requireRecord(requirePostJsonParams().body, "OpenRouter request body").duration).toBe(5);
   });

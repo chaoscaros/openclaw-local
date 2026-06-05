@@ -1,9 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { note } from "../../terminal/note.js";
-import { ensureConfigReady, __test__ } from "./config-guard.js";
+import { formatCliCommand } from "../command-format.js";
+import { ensureConfigReady, testApi } from "./config-guard.js";
+
+const pluginPackagingRecoveryHint = [
+  "This is a plugin packaging issue, not a local config problem.",
+  "Update or reinstall the plugin after the publisher ships compiled JavaScript, or disable/uninstall the plugin until then.",
+].join("\n");
 
 const loadAndMaybeMigrateDoctorConfigMock = vi.hoisted(() => vi.fn());
 const readConfigFileSnapshotMock = vi.hoisted(() => vi.fn());
+const setRuntimeConfigSnapshotMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../commands/doctor-config-preflight.js", () => ({
   runDoctorConfigPreflight: loadAndMaybeMigrateDoctorConfigMock,
@@ -11,14 +18,18 @@ vi.mock("../../commands/doctor-config-preflight.js", () => ({
 
 vi.mock("../../config/config.js", () => ({
   readConfigFileSnapshot: readConfigFileSnapshotMock,
+  setRuntimeConfigSnapshot: setRuntimeConfigSnapshotMock,
 }));
+
+type ConfigIssue = { path: string; message: string };
 
 function makeSnapshot() {
   return {
     exists: false,
     valid: true,
-    issues: [],
-    legacyIssues: [],
+    issues: [] as ConfigIssue[],
+    warnings: [] as ConfigIssue[],
+    legacyIssues: [] as ConfigIssue[],
     path: "/tmp/openclaw.json",
   };
 }
@@ -28,6 +39,11 @@ function makeRuntime() {
     error: vi.fn(),
     exit: vi.fn(),
   };
+}
+
+function plainErrorCalls(runtime: ReturnType<typeof makeRuntime>): string[] {
+  const ansiPattern = new RegExp(String.raw`\u001b\[[0-9;]*m`, "g");
+  return runtime.error.mock.calls.map((call) => String(call[0]).replace(ansiPattern, ""));
 }
 
 async function withCapturedStdout(run: () => Promise<void>): Promise<string> {
@@ -51,7 +67,7 @@ async function withCapturedStdout(run: () => Promise<void>): Promise<string> {
 }
 
 describe("ensureConfigReady", () => {
-  const resetConfigGuardStateForTests = __test__.resetConfigGuardStateForTests;
+  const resetConfigGuardStateForTests = testApi.resetConfigGuardStateForTests;
 
   async function runEnsureConfigReady(commandPath: string[], suppressDoctorStdout = false) {
     const runtime = makeRuntime();
@@ -64,7 +80,7 @@ describe("ensureConfigReady", () => {
       ...makeSnapshot(),
       exists: true,
       valid: false,
-      issues: [{ path: "channels.whatsapp", message: "invalid" }],
+      issues: [{ path: "channels.quietchat", message: "invalid" }],
       ...overrides,
     };
     readConfigFileSnapshotMock.mockResolvedValue(snapshot);
@@ -112,22 +128,108 @@ describe("ensureConfigReady", () => {
     }
   });
 
+  it("pins a valid preflight snapshot for command code reuse", async () => {
+    const snapshot = {
+      ...makeSnapshot(),
+      config: { runtime: true },
+      runtimeConfig: { runtime: true, materialized: true },
+      sourceConfig: { source: true },
+    };
+    readConfigFileSnapshotMock.mockResolvedValue(snapshot);
+
+    await runEnsureConfigReady(["status"]);
+
+    expect(setRuntimeConfigSnapshotMock).toHaveBeenCalledWith(
+      snapshot.runtimeConfig,
+      snapshot.sourceConfig,
+    );
+  });
+
+  it("retries the cached config snapshot after a read rejection", async () => {
+    const originalVitest = process.env.VITEST;
+    process.env.VITEST = "false";
+    const transientError = new Error("temporary config read failure");
+    const recoveredSnapshot = makeSnapshot();
+    readConfigFileSnapshotMock
+      .mockRejectedValueOnce(transientError)
+      .mockResolvedValueOnce(recoveredSnapshot);
+
+    try {
+      await expect(runEnsureConfigReady(["status"])).rejects.toThrow(transientError);
+      await expect(runEnsureConfigReady(["status"])).resolves.toBeDefined();
+      await expect(runEnsureConfigReady(["status"])).resolves.toBeDefined();
+    } finally {
+      if (originalVitest === undefined) {
+        delete process.env.VITEST;
+      } else {
+        process.env.VITEST = originalVitest;
+      }
+    }
+
+    expect(readConfigFileSnapshotMock).toHaveBeenCalledTimes(2);
+    expect(setRuntimeConfigSnapshotMock).toHaveBeenCalledWith(undefined, undefined);
+  });
+
   it("exits for invalid config on non-allowlisted commands", async () => {
     setInvalidSnapshot();
     const runtime = await runEnsureConfigReady(["message"]);
 
-    expect(runtime.error).toHaveBeenCalledWith(expect.stringContaining("Config invalid"));
-    expect(runtime.error).toHaveBeenCalledWith(expect.stringContaining("doctor --fix"));
+    expect(plainErrorCalls(runtime)).toEqual([
+      "OpenClaw config is invalid",
+      "File: /tmp/openclaw.json",
+      "Problem:",
+      "  - channels.quietchat: invalid",
+      "",
+      `Fix: ${formatCliCommand("openclaw doctor --fix")}`,
+      `Inspect: ${formatCliCommand("openclaw config validate")}`,
+      "Status, health, logs, and doctor commands still run with invalid config.",
+    ]);
+    expect(runtime.exit).toHaveBeenCalledWith(1);
+  });
+
+  it("replaces doctor fix advice for plugin packaging-only invalid config", async () => {
+    setInvalidSnapshot({
+      issues: [
+        {
+          path: "plugins.slots.memory",
+          message: "plugin not found: source-only-pack",
+        },
+      ],
+      warnings: [
+        {
+          path: "plugins",
+          message:
+            "plugin source-only-pack: installed plugin package requires compiled runtime output for TypeScript entry index.ts: expected ./dist/index.js. This is a plugin packaging issue, not a local config problem.",
+        },
+      ],
+    });
+    const runtime = await runEnsureConfigReady(["message"]);
+    const calls = plainErrorCalls(runtime);
+
+    expect(calls).toContain(`Fix: ${pluginPackagingRecoveryHint}`);
+    expect(calls).not.toContain(`Fix: ${formatCliCommand("openclaw doctor --fix")}`);
     expect(runtime.exit).toHaveBeenCalledWith(1);
   });
 
   it("does not exit for invalid config on allowlisted commands", async () => {
-    setInvalidSnapshot();
+    setInvalidSnapshot({
+      issues: [{ path: "agents.defaults", message: 'Unrecognized key: "agentRuntime"' }],
+    });
     const statusRuntime = await runEnsureConfigReady(["status"]);
     expect(statusRuntime.exit).not.toHaveBeenCalled();
 
+    const bareGatewayRuntime = await runEnsureConfigReady(["gateway"]);
+    expect(bareGatewayRuntime.exit).not.toHaveBeenCalled();
+
+    const gatewayRunRuntime = await runEnsureConfigReady(["gateway", "run"]);
+    expect(gatewayRunRuntime.exit).not.toHaveBeenCalled();
+
     const gatewayRuntime = await runEnsureConfigReady(["gateway", "health"]);
     expect(gatewayRuntime.exit).not.toHaveBeenCalled();
+
+    const doctorRuntime = await runEnsureConfigReady(["doctor", "fix"]);
+    expect(doctorRuntime.exit).not.toHaveBeenCalled();
+    expect(doctorRuntime.error).toHaveBeenCalledWith(expect.stringContaining("agentRuntime"));
   });
 
   it("allows an explicit invalid-config override", async () => {

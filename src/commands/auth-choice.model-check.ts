@@ -1,64 +1,35 @@
 import { ensureAuthProfileStore, listProfilesForProvider } from "../agents/auth-profiles.js";
+import { resolveAgentHarnessPolicy } from "../agents/harness/policy.js";
 import { hasUsableCustomProviderApiKey, resolveEnvApiKey } from "../agents/model-auth.js";
 import { loadModelCatalog } from "../agents/model-catalog.js";
 import { resolveDefaultModelForAgent } from "../agents/model-selection.js";
-import { findNormalizedProviderValue, normalizeProviderId } from "../agents/provider-id.js";
+import { listOpenAIAuthProfileProvidersForAgentRuntime } from "../agents/openai-codex-routing.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { WizardPrompter } from "../wizard/prompts.js";
 import { buildProviderAuthRecoveryHint } from "./provider-auth-guidance.js";
 
-const OPENAI_PROVIDER_ID = "openai";
-const OPENAI_CODEX_PROVIDER_ID = "openai-codex";
-
-function uniqueProviders(providers: readonly string[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const provider of providers) {
-    const trimmed = provider.trim();
-    if (!trimmed || seen.has(trimmed)) {
-      continue;
-    }
-    seen.add(trimmed);
-    result.push(trimmed);
-  }
-  return result;
-}
-
-function isOfficialOpenAIBaseUrl(baseUrl: unknown): boolean {
-  if (typeof baseUrl !== "string" || !baseUrl.trim()) {
-    return true;
-  }
-  try {
-    const url = new URL(baseUrl.trim());
-    return (
-      url.protocol === "https:" &&
-      url.hostname.toLowerCase() === "api.openai.com" &&
-      (url.pathname === "" ||
-        url.pathname === "/" ||
-        url.pathname === "/v1" ||
-        url.pathname === "/v1/")
-    );
-  } catch {
-    return false;
-  }
-}
-
-function openAIProviderUsesCustomBaseUrl(config: OpenClawConfig | undefined): boolean {
-  const providerConfig = findNormalizedProviderValue(config?.models?.providers, OPENAI_PROVIDER_ID);
-  return !isOfficialOpenAIBaseUrl(providerConfig?.baseUrl);
-}
-
 function resolveAuthProviderCandidates(params: {
   config: OpenClawConfig;
   provider: string;
+  modelId: string;
+  agentId?: string;
 }): string[] {
-  if (normalizeProviderId(params.provider) !== OPENAI_PROVIDER_ID) {
-    return [params.provider];
-  }
-  if (openAIProviderUsesCustomBaseUrl(params.config)) {
-    return [params.provider];
-  }
-  return uniqueProviders([params.provider, OPENAI_CODEX_PROVIDER_ID]);
+  const harnessPolicy = resolveAgentHarnessPolicy({
+    provider: params.provider,
+    modelId: params.modelId,
+    config: params.config,
+    agentId: params.agentId,
+  });
+  return [
+    ...new Set([
+      params.provider,
+      ...listOpenAIAuthProfileProvidersForAgentRuntime({
+        provider: params.provider,
+        harnessRuntime: harnessPolicy.runtime,
+        config: params.config,
+      }),
+    ]),
+  ];
 }
 
 export async function warnIfModelConfigLooksOff(
@@ -92,6 +63,8 @@ export async function warnIfModelConfigLooksOff(
   const authProviders = resolveAuthProviderCandidates({
     config,
     provider: ref.provider,
+    modelId: ref.model,
+    agentId: options?.agentId,
   });
   const hasAuth =
     authProviders.some((provider) => listProfilesForProvider(store, provider).length > 0) ||

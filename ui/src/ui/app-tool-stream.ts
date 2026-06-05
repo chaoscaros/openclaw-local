@@ -1,3 +1,6 @@
+import { updateActivityFromToolEvent, type ActivityEntry } from "./activity-model.ts";
+import { createChatModelOverride } from "./chat-model-ref.ts";
+import type { ChatModelOverride } from "./chat-model-ref.types.ts";
 import { formatUnknownText, truncateText } from "./format.ts";
 import { buildAgentMainSessionKey, DEFAULT_AGENT_ID, DEFAULT_MAIN_KEY } from "./session-key.ts";
 import { normalizeLowercaseStringOrEmpty } from "./string-coerce.ts";
@@ -51,7 +54,9 @@ type ToolStreamHost = {
   toolStreamById: Map<string, ToolStreamEntry>;
   toolStreamOrder: string[];
   chatToolMessages: Record<string, unknown>[];
+  activityEntries?: ActivityEntry[];
   toolStreamSyncTimer: number | null;
+  chatModelOverrides?: Record<string, ChatModelOverride | null>;
 };
 
 type SessionDefaultsSnapshot = {
@@ -240,6 +245,47 @@ function formatToolOutput(value: unknown): string | null {
   return `${truncated.text}\n\n… truncated (${truncated.total} chars, showing first ${truncated.text.length}).`;
 }
 
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function resolveSessionStatusModelOverride(result: unknown): ChatModelOverride | null | undefined {
+  const details = readRecord(readRecord(result)?.details);
+  if (!details || details.changedModel !== true) {
+    return undefined;
+  }
+  if (Object.hasOwn(details, "modelOverride")) {
+    const override = toTrimmedString(details.modelOverride);
+    return override ? createChatModelOverride(override) : null;
+  }
+  const model = toTrimmedString(details.model);
+  if (!model) {
+    return undefined;
+  }
+  const provider = toTrimmedString(details.modelProvider);
+  return createChatModelOverride(provider ? `${provider}/${model}` : model);
+}
+
+function syncSessionStatusModelOverride(host: ToolStreamHost, data: Record<string, unknown>) {
+  if (!host.chatModelOverrides) {
+    return;
+  }
+  const result = data.result;
+  const details = readRecord(readRecord(result)?.details);
+  const targetSessionKey = toTrimmedString(details?.sessionKey) ?? host.sessionKey;
+  if (targetSessionKey !== host.sessionKey) {
+    return;
+  }
+  const override = resolveSessionStatusModelOverride(result);
+  if (override === undefined) {
+    return;
+  }
+  host.chatModelOverrides = {
+    ...host.chatModelOverrides,
+    [targetSessionKey]: override,
+  };
+}
+
 function buildToolStreamMessage(entry: ToolStreamEntry): Record<string, unknown> {
   const content: Array<Record<string, unknown>> = [];
   content.push({
@@ -335,6 +381,7 @@ type CompactionHost = ToolStreamHost & {
   compactionClearTimer?: number | null;
   fallbackStatus?: FallbackStatus | null;
   fallbackClearTimer?: number | null;
+  requestUpdate?: () => void;
 };
 
 const COMPACTION_TOAST_DURATION_MS = 5000;
@@ -351,18 +398,19 @@ function clearCompactionTimer(host: CompactionHost) {
 function scheduleCompactionClear(
   host: CompactionHost,
   delayMs = COMPACTION_TOAST_DURATION_MS,
-  expected?: { phase: CompactionStatus["phase"]; runId: string | null },
+  expected?: { phase?: CompactionStatus["phase"]; runId?: string | null },
 ) {
   host.compactionClearTimer = window.setTimeout(() => {
-    if (expected) {
-      const current = host.compactionStatus;
-      if (!current || current.phase !== expected.phase || current.runId !== expected.runId) {
-        host.compactionClearTimer = null;
-        return;
-      }
+    const current = host.compactionStatus;
+    if (expected?.phase && current?.phase !== expected.phase) {
+      return;
+    }
+    if (expected?.runId && current?.runId !== expected.runId) {
+      return;
     }
     host.compactionStatus = null;
     host.compactionClearTimer = null;
+    host.requestUpdate?.();
   }, delayMs);
 }
 
@@ -441,6 +489,10 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
       startedAt: Date.now(),
       completedAt: null,
     };
+    scheduleCompactionClear(host, COMPACTION_ACTIVE_STALE_TIMEOUT_MS, {
+      phase: "active",
+      runId: payload.runId,
+    });
     return;
   }
   if (phase === "end") {
@@ -453,6 +505,10 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
         startedAt: host.compactionStatus?.startedAt ?? Date.now(),
         completedAt: null,
       };
+      scheduleCompactionClear(host, COMPACTION_ACTIVE_STALE_TIMEOUT_MS, {
+        phase: "retrying",
+        runId: payload.runId,
+      });
       return;
     }
     if (completed) {
@@ -618,6 +674,7 @@ export function handleAgentEvent(host: ToolStreamHost, payload?: AgentEventPaylo
   if (!toolCallId) {
     return;
   }
+  updateActivityFromToolEvent(host, { ...payload, data });
   const name = typeof data.name === "string" ? data.name : "tool";
   const phase = typeof data.phase === "string" ? data.phase : "";
   const args = phase === "start" ? data.args : undefined;
@@ -627,13 +684,21 @@ export function handleAgentEvent(host: ToolStreamHost, payload?: AgentEventPaylo
       : phase === "result"
         ? formatToolOutput(data.result)
         : undefined;
+  if (name === "session_status" && phase === "result") {
+    syncSessionStatusModelOverride(host, data);
+  }
 
   const now = Date.now();
   let entry = host.toolStreamById.get(toolCallId);
   if (!entry) {
     // Commit any in-progress streaming text as a segment so it renders
     // above the tool card instead of below it.
-    if (host.chatStream && host.chatStream.trim().length > 0) {
+    if (
+      host.chatRunId &&
+      payload.runId === host.chatRunId &&
+      host.chatStream &&
+      host.chatStream.trim().length > 0
+    ) {
       host.chatStreamSegments = [...host.chatStreamSegments, { text: host.chatStream, ts: now }];
       host.chatStream = null;
       host.chatStreamStartedAt = null;

@@ -13,18 +13,6 @@
       "openclaw/plugin-sdk/browser-maintenance": [
         "../../dist/plugin-sdk/src/plugin-sdk/browser-maintenance.d.ts"
       ],
-      "openclaw/plugin-sdk/browser-config-runtime": [
-        "../../dist/plugin-sdk/src/plugin-sdk/browser-config-runtime.d.ts"
-      ],
-      "openclaw/plugin-sdk/browser-node-runtime": [
-        "../../dist/plugin-sdk/src/plugin-sdk/browser-node-runtime.d.ts"
-      ],
-      "openclaw/plugin-sdk/browser-setup-tools": [
-        "../../dist/plugin-sdk/src/plugin-sdk/browser-setup-tools.d.ts"
-      ],
-      "openclaw/plugin-sdk/browser-security-runtime": [
-        "../../dist/plugin-sdk/src/plugin-sdk/browser-security-runtime.d.ts"
-      ],
       "openclaw/plugin-sdk/channel-secret-runtime": [
         "../../dist/plugin-sdk/src/plugin-sdk/channel-secret-runtime.d.ts"
       ],
@@ -34,9 +22,6 @@
       "openclaw/plugin-sdk/cli-runtime": ["../../dist/plugin-sdk/src/plugin-sdk/cli-runtime.d.ts"],
       "openclaw/plugin-sdk/error-runtime": [
         "../../dist/plugin-sdk/src/plugin-sdk/error-runtime.d.ts"
-      ],
-      "openclaw/plugin-sdk/memory-core-host-engine-embedding-providers": [
-        "../../dist/plugin-sdk/src/plugin-sdk/memory-core-host-engine-embedding-providers.d.ts"
       ],
       "openclaw/plugin-sdk/provider-catalog-shared": [
         "../../dist/plugin-sdk/src/plugin-sdk/provider-catalog-shared.d.ts"

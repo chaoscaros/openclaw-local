@@ -1,7 +1,17 @@
 import type { Command } from "commander";
 import { collectString } from "./cli-options.js";
-import { LIVE_TRANSPORT_QA_CLI_REGISTRATIONS } from "./live-transports/cli.js";
-import type { QaProviderModeInput } from "./run-config.js";
+import { listLiveTransportQaCliRegistrations } from "./live-transports/cli.js";
+import { registerMantisCli } from "./mantis/cli.js";
+import {
+  DEFAULT_QA_LIVE_PROVIDER_MODE,
+  formatQaProviderModeHelp,
+  listQaStandaloneProviderCommands,
+} from "./providers/index.js";
+import {
+  QA_FRONTIER_PARITY_BASELINE_LABEL,
+  QA_FRONTIER_PARITY_CANDIDATE_LABEL,
+} from "./providers/live-frontier/parity.js";
+import type { QaProviderMode, QaProviderModeInput } from "./run-config.js";
 import { hasQaScenarioPack } from "./scenario-catalog.js";
 
 type QaLabCliRuntime = typeof import("./cli.runtime.js");
@@ -26,8 +36,12 @@ async function runQaSuite(opts: {
   primaryModel?: string;
   alternateModel?: string;
   fastMode?: boolean;
+  thinking?: string;
+  allowFailures?: boolean;
+  enabledPluginIds?: string[];
   cliAuthMode?: string;
   parityPack?: string;
+  pack?: string;
   scenarioIds?: string[];
   concurrency?: number;
   runner?: string;
@@ -35,6 +49,9 @@ async function runQaSuite(opts: {
   cpus?: number;
   memory?: string;
   disk?: string;
+  preflight?: boolean;
+  runtimePair?: string;
+  runtimeParityTier?: string[];
 }) {
   const runtime = await loadQaLabCliRuntime();
   await runtime.runQaSuiteCommand(opts);
@@ -42,15 +59,59 @@ async function runQaSuite(opts: {
 
 async function runQaParityReport(opts: {
   repoRoot?: string;
-  candidateSummary: string;
-  baselineSummary: string;
+  candidateSummary?: string;
+  baselineSummary?: string;
   candidateLabel?: string;
   baselineLabel?: string;
   outputDir?: string;
+  runtimeAxis?: boolean;
+  summary?: string;
+  tokenEfficiency?: boolean;
 }) {
   const runtime = await loadQaLabCliRuntime();
   await runtime.runQaParityReportCommand(opts);
 }
+
+async function runQaConfidenceReport(opts: {
+  repoRoot?: string;
+  manifest: string;
+  artifactRoot?: string;
+  outputDir?: string;
+  strictZeroUnknowns?: boolean;
+  strictGlobalPass?: boolean;
+}) {
+  const runtime = await loadQaLabCliRuntime();
+  await runtime.runQaConfidenceReportCommand(opts);
+}
+
+async function runQaConfidenceSelfTest(opts: { repoRoot?: string; outputDir?: string }) {
+  const runtime = await loadQaLabCliRuntime();
+  await runtime.runQaConfidenceSelfTestCommand(opts);
+}
+
+async function runQaCoverageReport(opts: {
+  repoRoot?: string;
+  output?: string;
+  json?: boolean;
+  tools?: boolean;
+  summary?: string;
+  match?: string[];
+}) {
+  const runtime = await loadQaLabCliRuntime();
+  await runtime.runQaCoverageReportCommand(opts);
+}
+
+async function runQaJsonlReplay(opts: {
+  repoRoot?: string;
+  transcripts?: string;
+  outputDir?: string;
+  runtimePair?: string;
+  providerMode?: QaProviderModeInput;
+}) {
+  const runtime = await loadQaLabCliRuntime();
+  await runtime.runQaJsonlReplayCommand(opts);
+}
+
 async function runQaCharacterEval(opts: {
   repoRoot?: string;
   outputDir?: string;
@@ -122,6 +183,16 @@ async function runQaCredentialsList(opts: {
   await runtime.runQaCredentialsListCommand(opts);
 }
 
+async function runQaCredentialsDoctor(opts: {
+  actorId?: string;
+  endpointPrefix?: string;
+  json?: boolean;
+  siteUrl?: string;
+}) {
+  const runtime = await loadQaLabCliRuntime();
+  await runtime.runQaCredentialsDoctorCommand(opts);
+}
+
 async function runQaUi(opts: {
   repoRoot?: string;
   host?: string;
@@ -129,7 +200,6 @@ async function runQaUi(opts: {
   advertiseHost?: string;
   advertisePort?: number;
   controlUiUrl?: string;
-  controlUiToken?: string;
   controlUiProxyTarget?: string;
   uiDistDir?: string;
   autoKickoffTarget?: string;
@@ -174,19 +244,29 @@ async function runQaDockerUp(opts: {
   await runtime.runQaDockerUpCommand(opts);
 }
 
-async function runQaMockOpenAi(opts: { host?: string; port?: number }) {
+async function runQaProviderServer(
+  providerMode: QaProviderMode,
+  opts: { host?: string; port?: number },
+) {
   const runtime = await loadQaLabCliRuntime();
-  await runtime.runQaMockOpenAiCommand(opts);
+  await runtime.runQaProviderServerCommand(providerMode, opts);
 }
 
 export function isQaLabCliAvailable(): boolean {
   return hasQaScenarioPack();
 }
 
+function assertNoQaSubcommandCollision(qa: Command, commandName: string) {
+  if (qa.commands.some((command) => command.name() === commandName)) {
+    throw new Error(`QA runner command "${commandName}" conflicts with an existing qa subcommand`);
+  }
+}
+
 export function registerQaLabCli(program: Command) {
   const qa = program
     .command("qa")
     .description("Run private QA automation flows and launch the QA debugger");
+  registerMantisCli(qa);
 
   qa.command("run")
     .description("Run the bundled QA self-check and write a Markdown report")
@@ -202,11 +282,7 @@ export function registerQaLabCli(program: Command) {
     .option("--output-dir <path>", "Suite artifact directory")
     .option("--runner <kind>", "Execution runner: host or multipass", "host")
     .option("--transport <id>", "QA transport id", "qa-channel")
-    .option(
-      "--provider-mode <mode>",
-      "Provider mode: mock-openai or live-frontier (legacy live-openai still works)",
-      "live-frontier",
-    )
+    .option("--provider-mode <mode>", formatQaProviderModeHelp(), DEFAULT_QA_LIVE_PROVIDER_MODE)
     .option("--model <ref>", "Primary provider/model ref")
     .option("--alt-model <ref>", "Alternate provider/model ref")
     .option(
@@ -214,15 +290,42 @@ export function registerQaLabCli(program: Command) {
       "CLI backend auth mode for live Claude CLI runs: auto, api-key, or subscription",
     )
     .option("--parity-pack <name>", 'Preset scenario pack; currently only "agentic" is supported')
+    .option(
+      "--pack <id>",
+      'Scenario pack id; currently "personal-agent" and "observability" are supported',
+    )
     .option("--scenario <id>", "Run only the named QA scenario (repeatable)", collectString, [])
+    .option(
+      "--enable-plugin <id>",
+      "Enable an extra bundled plugin in the QA gateway config (repeatable)",
+      collectString,
+      [],
+    )
     .option("--concurrency <count>", "Scenario worker concurrency", (value: string) =>
       Number(value),
     )
+    .option("--preflight", "Run a single-scenario bootstrap preflight and stop", false)
+    .option(
+      "--allow-failures",
+      "Write artifacts without setting a failing exit code when scenarios fail",
+      false,
+    )
     .option("--fast", "Enable provider fast mode where supported", false)
+    .option(
+      "--thinking <level>",
+      "Suite thinking default: off|minimal|low|medium|high|xhigh|adaptive|max",
+    )
     .option("--image <alias>", "Multipass image alias")
     .option("--cpus <count>", "Multipass vCPU count", (value: string) => Number(value))
     .option("--memory <size>", "Multipass memory size")
     .option("--disk <size>", "Multipass disk size")
+    .option("--runtime-pair <pair>", "Run each scenario under both runtimes, e.g. pi,codex")
+    .option(
+      "--runtime-parity-tier <tier>",
+      "Add scenarios tagged with runtimeParityTier (standard, optional, live-only, soak; repeatable or comma-separated)",
+      collectString,
+      [],
+    )
     .action(
       async (opts: {
         repoRoot?: string;
@@ -234,13 +337,20 @@ export function registerQaLabCli(program: Command) {
         altModel?: string;
         cliAuthMode?: string;
         parityPack?: string;
+        pack?: string;
         scenario?: string[];
+        enablePlugin?: string[];
         concurrency?: number;
+        allowFailures?: boolean;
         fast?: boolean;
+        thinking?: string;
         image?: string;
         cpus?: number;
         memory?: string;
         disk?: string;
+        preflight?: boolean;
+        runtimePair?: string;
+        runtimeParityTier?: string[];
       }) => {
         await runQaSuite({
           repoRoot: opts.repoRoot,
@@ -251,42 +361,149 @@ export function registerQaLabCli(program: Command) {
           primaryModel: opts.model,
           alternateModel: opts.altModel,
           fastMode: opts.fast,
+          thinking: opts.thinking,
           cliAuthMode: opts.cliAuthMode,
           parityPack: opts.parityPack,
+          pack: opts.pack,
           scenarioIds: opts.scenario,
+          enabledPluginIds: opts.enablePlugin,
           concurrency: opts.concurrency,
+          allowFailures: opts.allowFailures,
           image: opts.image,
           cpus: opts.cpus,
           memory: opts.memory,
           disk: opts.disk,
+          preflight: opts.preflight,
+          runtimePair: opts.runtimePair,
+          runtimeParityTier: opts.runtimeParityTier,
         });
       },
     );
 
   qa.command("parity-report")
-    .description("Compare two QA suite summaries and write an agentic parity gate report")
-    .requiredOption("--candidate-summary <path>", "Candidate qa-suite-summary.json path")
-    .requiredOption("--baseline-summary <path>", "Baseline qa-suite-summary.json path")
+    .description("Write either a model-axis parity gate report or a runtime-axis parity report")
+    .option("--candidate-summary <path>", "Candidate qa-suite-summary.json path")
+    .option("--baseline-summary <path>", "Baseline qa-suite-summary.json path")
+    .option("--runtime-axis", "Interpret --summary as a runtime-pair qa-suite-summary.json", false)
+    .option("--summary <path>", "Runtime-axis qa-suite-summary.json path")
+    .option(
+      "--token-efficiency",
+      "Also write the runtime token-efficiency report for --runtime-axis summaries",
+      false,
+    )
     .option("--repo-root <path>", "Repository root to target when running from a neutral cwd")
-    .option("--candidate-label <label>", "Candidate display label", "openai/gpt-5.4")
-    .option("--baseline-label <label>", "Baseline display label", "anthropic/claude-opus-4-6")
+    .option(
+      "--candidate-label <label>",
+      "Candidate display label",
+      QA_FRONTIER_PARITY_CANDIDATE_LABEL,
+    )
+    .option("--baseline-label <label>", "Baseline display label", QA_FRONTIER_PARITY_BASELINE_LABEL)
     .option("--output-dir <path>", "Artifact directory for the parity report")
     .action(
       async (opts: {
         repoRoot?: string;
-        candidateSummary: string;
-        baselineSummary: string;
+        candidateSummary?: string;
+        baselineSummary?: string;
         candidateLabel?: string;
         baselineLabel?: string;
         outputDir?: string;
+        runtimeAxis?: boolean;
+        summary?: string;
+        tokenEfficiency?: boolean;
       }) => {
         await runQaParityReport(opts);
       },
     );
 
-  for (const lane of LIVE_TRANSPORT_QA_CLI_REGISTRATIONS) {
-    lane.register(qa);
-  }
+  qa.command("coverage")
+    .description("Print the markdown QA coverage inventory")
+    .option("--repo-root <path>", "Repository root to target when writing --output")
+    .option("--output <path>", "Write the coverage inventory to this path")
+    .option("--json", "Print JSON instead of Markdown", false)
+    .option("--tools", "Print runtime tool fixture coverage instead of scenario coverage", false)
+    .option("--summary <path>", "Runtime qa-suite-summary.json to overlay on --tools coverage")
+    .option(
+      "--match <query>",
+      "Search scenario metadata and print matching qa suite targets (repeatable)",
+      collectString,
+      [],
+    )
+    .action(
+      async (opts: {
+        repoRoot?: string;
+        output?: string;
+        json?: boolean;
+        tools?: boolean;
+        summary?: string;
+        match?: string[];
+      }) => {
+        await runQaCoverageReport(opts);
+      },
+    );
+
+  qa.command("confidence-report")
+    .description("Classify QA proof artifacts into a zero-unknown confidence report")
+    .requiredOption("--manifest <path>", "Confidence profile manifest JSON")
+    .option("--repo-root <path>", "Repository root to target when running from a neutral cwd")
+    .option("--artifact-root <path>", "Root directory for relative artifact paths", ".")
+    .option("--output-dir <path>", "Artifact directory for the confidence report")
+    .option(
+      "--strict-zero-unknowns",
+      "Fail unless every lane passes or has an explicit non-unknown verdict",
+      false,
+    )
+    .option(
+      "--strict-global-pass",
+      "Fail unless every lane passes with no blocked, missing, unknown, classified-fail, or unbackfilled skipped rows",
+      false,
+    )
+    .action(
+      async (opts: {
+        repoRoot?: string;
+        manifest: string;
+        artifactRoot?: string;
+        outputDir?: string;
+        strictZeroUnknowns?: boolean;
+        strictGlobalPass?: boolean;
+      }) => {
+        await runQaConfidenceReport(opts);
+      },
+    );
+
+  qa.command("confidence-self-test")
+    .description("Write seeded negative-control canaries proving the confidence gate detects drift")
+    .option("--repo-root <path>", "Repository root to target when running from a neutral cwd")
+    .option("--output-dir <path>", "Artifact directory for the confidence self-test")
+    .action(async (opts: { repoRoot?: string; outputDir?: string }) => {
+      await runQaConfidenceSelfTest(opts);
+    });
+
+  qa.command("jsonl-replay")
+    .description("Replay curated JSONL transcripts through the runtime parity replay harness")
+    .option("--repo-root <path>", "Repository root to target when running from a neutral cwd")
+    .option(
+      "--transcripts <path>",
+      "Directory of curated JSONL transcripts",
+      "qa/scenarios/jsonl-replay",
+    )
+    .option("--runtime-pair <pair>", "Runtime pair label, e.g. pi,codex", "pi,codex")
+    .option(
+      "--provider-mode <mode>",
+      `Provider mode (${formatQaProviderModeHelp()})`,
+      "mock-openai",
+    )
+    .option("--output-dir <path>", "Artifact directory for the JSONL replay report")
+    .action(
+      async (opts: {
+        repoRoot?: string;
+        transcripts?: string;
+        runtimePair?: string;
+        providerMode?: QaProviderModeInput;
+        outputDir?: string;
+      }) => {
+        await runQaJsonlReplay(opts);
+      },
+    );
 
   qa.command("character-eval")
     .description("Run the character QA scenario across live models and write a judged report")
@@ -302,7 +519,7 @@ export function registerQaLabCli(program: Command) {
     .option("--fast", "Enable provider fast mode for all candidate runs")
     .option(
       "--thinking <level>",
-      "Candidate thinking default: off|minimal|low|medium|high|xhigh|adaptive",
+      "Candidate thinking default: off|minimal|low|medium|high|xhigh|adaptive|max",
     )
     .option(
       "--model-thinking <ref=level>",
@@ -353,11 +570,7 @@ export function registerQaLabCli(program: Command) {
     .requiredOption("--message <text>", "Prompt to send to the QA agent")
     .option("--repo-root <path>", "Repository root to target when running from a neutral cwd")
     .option("--transport <id>", "QA transport id", "qa-channel")
-    .option(
-      "--provider-mode <mode>",
-      "Provider mode: mock-openai or live-frontier (legacy live-openai still works)",
-      "live-frontier",
-    )
+    .option("--provider-mode <mode>", formatQaProviderModeHelp(), DEFAULT_QA_LIVE_PROVIDER_MODE)
     .option("--model <ref>", "Primary provider/model ref (defaults by provider mode)")
     .option("--alt-model <ref>", "Alternate provider/model ref")
     .option("--fast", "Enable provider fast mode where supported", false)
@@ -389,6 +602,24 @@ export function registerQaLabCli(program: Command) {
   const credentials = qa
     .command("credentials")
     .description("Manage pooled Convex live credentials used by QA lanes");
+
+  credentials
+    .command("doctor")
+    .description("Check Convex credential broker env and admin reachability")
+    .option("--site-url <url>", "Override OPENCLAW_QA_CONVEX_SITE_URL")
+    .option("--endpoint-prefix <path>", "Override OPENCLAW_QA_CONVEX_ENDPOINT_PREFIX")
+    .option("--actor-id <id>", "Optional admin actor id to include in broker audit events")
+    .option("--json", "Emit machine-readable JSON output", false)
+    .action(
+      async (opts: {
+        siteUrl?: string;
+        endpointPrefix?: string;
+        actorId?: string;
+        json?: boolean;
+      }) => {
+        await runQaCredentialsDoctor(opts);
+      },
+    );
 
   credentials
     .command("add")
@@ -472,7 +703,6 @@ export function registerQaLabCli(program: Command) {
       Number(value),
     )
     .option("--control-ui-url <url>", "Optional Control UI URL to embed beside the QA panel")
-    .option("--control-ui-token <token>", "Optional Control UI token for embedded links")
     .option(
       "--control-ui-proxy-target <url>",
       "Optional upstream Control UI target for /control-ui proxying",
@@ -493,7 +723,6 @@ export function registerQaLabCli(program: Command) {
         advertiseHost?: string;
         advertisePort?: number;
         controlUiUrl?: string;
-        controlUiToken?: string;
         controlUiProxyTarget?: string;
         uiDistDir?: string;
         autoKickoffTarget?: string;
@@ -572,11 +801,18 @@ export function registerQaLabCli(program: Command) {
       },
     );
 
-  qa.command("mock-openai")
-    .description("Run the local mock OpenAI Responses API server for QA")
-    .option("--host <host>", "Bind host", "127.0.0.1")
-    .option("--port <port>", "Bind port", (value: string) => Number(value))
-    .action(async (opts: { host?: string; port?: number }) => {
-      await runQaMockOpenAi(opts);
-    });
+  for (const providerCommand of listQaStandaloneProviderCommands()) {
+    qa.command(providerCommand.name)
+      .description(providerCommand.description)
+      .option("--host <host>", "Bind host", "127.0.0.1")
+      .option("--port <port>", "Bind port", (value: string) => Number(value))
+      .action(async (opts: { host?: string; port?: number }) => {
+        await runQaProviderServer(providerCommand.providerMode, opts);
+      });
+  }
+
+  for (const lane of listLiveTransportQaCliRegistrations()) {
+    assertNoQaSubcommandCollision(qa, lane.commandName);
+    lane.register(qa);
+  }
 }

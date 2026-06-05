@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildToolCardSidebarContent,
   extractToolCards,
+  isToolErrorOutput,
   renderToolCard,
   renderToolPreview,
 } from "./tool-cards.ts";
@@ -148,6 +149,47 @@ describe("tool-cards", () => {
     expect(sidebar).toContain("with Example Deck");
     expect(sidebar).toContain("### Tool output");
     expect(sidebar).toContain("No output");
+  });
+
+  it("detects tool error outputs from explicit JSON and tool-not-found text", () => {
+    expect(isToolErrorOutput("Tool not found")).toBe(true);
+    expect(isToolErrorOutput("  tool not found.  ")).toBe(true);
+    expect(isToolErrorOutput(JSON.stringify({ isError: true, content: "failed" }))).toBe(true);
+    expect(isToolErrorOutput(JSON.stringify({ status: "timeout" }))).toBe(true);
+    expect(isToolErrorOutput(JSON.stringify({ error: "missing_brave_api_key" }))).toBe(true);
+    expect(isToolErrorOutput(JSON.stringify({ isError: false, error: "ignored" }))).toBe(false);
+    expect(isToolErrorOutput(JSON.stringify({ status: "ok" }))).toBe(false);
+    expect(isToolErrorOutput("Opened page")).toBe(false);
+  });
+
+  it("labels error tool output as Tool error in cards and sidebar content", () => {
+    const container = document.createElement("div");
+    const outputText = JSON.stringify({
+      error: "missing_brave_api_key",
+      message: "BRAVE_API_KEY is not configured",
+    });
+
+    render(
+      renderToolCard(
+        {
+          id: "msg:error:1",
+          name: "web_search",
+          outputText,
+        },
+        { expanded: true, onToggleExpanded: vi.fn() },
+      ),
+      container,
+    );
+
+    expect(container.textContent).toContain("Tool error");
+    expect(container.textContent).not.toMatch(/\bTool output\b/);
+    const sidebar = buildToolCardSidebarContent({
+      id: "msg:error:1",
+      name: "web_search",
+      outputText,
+    });
+    expect(sidebar).toContain("### Tool error");
+    expect(sidebar).not.toContain("### Tool output");
   });
 
   it("extracts canvas handle payloads into canvas previews", () => {

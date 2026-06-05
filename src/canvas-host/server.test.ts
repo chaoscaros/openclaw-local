@@ -376,7 +376,7 @@ describe("canvas host", () => {
         });
 
         await fs.writeFile(index, "<html><body>v2</body></html>", "utf8");
-        watcher.__emit("all", "change", index);
+        watcher["__emit"]("all", "change", index);
         expect(await msg).toBe("reload");
       } finally {
         await handler.close();

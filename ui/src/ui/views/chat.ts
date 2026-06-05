@@ -1452,20 +1452,20 @@ function syncToolCardExpansionState(
   const expanded = getExpandedToolCards(sessionKey);
   const initialized = getInitializedToolCards(sessionKey);
   const previousAutoExpand = lastAutoExpandPrefBySession.get(sessionKey) ?? false;
-  const currentToolCardIds = new Set<string>();
   for (const item of items) {
     if (item.kind !== "group") {
       continue;
     }
     for (const entry of item.messages) {
+      const shouldAutoExpandToolMessage =
+        autoExpandToolCalls && !isFailedToolOutputMessage(entry.message);
       const cards = extractToolCards(entry.message, entry.key);
       for (let cardIndex = 0; cardIndex < cards.length; cardIndex++) {
         const disclosureId = `${entry.key}:toolcard:${cardIndex}`;
-        currentToolCardIds.add(disclosureId);
         if (initialized.has(disclosureId)) {
           continue;
         }
-        expanded.set(disclosureId, autoExpandToolCalls);
+        expanded.set(disclosureId, shouldAutoExpandToolMessage);
         initialized.add(disclosureId);
       }
       const messageRecord = entry.message as Record<string, unknown>;
@@ -1477,25 +1477,83 @@ function syncToolCardExpansionState(
         role.toLowerCase() === "toolresult" ||
         role.toLowerCase() === "tool_result" ||
         typeof messageRecord.toolCallId === "string" ||
-        typeof messageRecord.tool_call_id === "string";
+        typeof messageRecord.tool_call_id === "string" ||
+        cards.length > 0;
       if (!isToolMessage) {
         continue;
       }
       const disclosureId = `toolmsg:${entry.key}`;
-      currentToolCardIds.add(disclosureId);
       if (initialized.has(disclosureId)) {
         continue;
       }
-      expanded.set(disclosureId, autoExpandToolCalls);
+      expanded.set(disclosureId, shouldAutoExpandToolMessage);
       initialized.add(disclosureId);
     }
   }
   if (autoExpandToolCalls && !previousAutoExpand) {
-    for (const toolCardId of currentToolCardIds) {
-      expanded.set(toolCardId, true);
+    for (const item of items) {
+      if (item.kind !== "group") {
+        continue;
+      }
+      for (const entry of item.messages) {
+        if (isFailedToolOutputMessage(entry.message)) {
+          continue;
+        }
+        const cards = extractToolCards(entry.message, entry.key);
+        for (let cardIndex = 0; cardIndex < cards.length; cardIndex++) {
+          expanded.set(`${entry.key}:toolcard:${cardIndex}`, true);
+        }
+        const messageRecord = entry.message as Record<string, unknown>;
+        const role = typeof messageRecord.role === "string" ? messageRecord.role : "unknown";
+        const normalizedRole = normalizeRoleForGrouping(role);
+        const isToolMessage =
+          isToolResultMessage(entry.message) ||
+          normalizedRole === "tool" ||
+          role.toLowerCase() === "toolresult" ||
+          role.toLowerCase() === "tool_result" ||
+          typeof messageRecord.toolCallId === "string" ||
+          typeof messageRecord.tool_call_id === "string" ||
+          cards.length > 0;
+        if (isToolMessage) {
+          expanded.set(`toolmsg:${entry.key}`, true);
+        }
+      }
     }
   }
   lastAutoExpandPrefBySession.set(sessionKey, autoExpandToolCalls);
+}
+
+function isFailedToolOutputMessage(message: unknown): boolean {
+  const m = message as Record<string, unknown>;
+  const role = typeof m?.role === "string" ? m.role : "";
+  const normalizedRole = normalizeRoleForGrouping(role);
+  const cards = extractToolCards(message, "failure-check");
+  const isToolMessage =
+    isToolResultMessage(message) ||
+    normalizedRole === "tool" ||
+    typeof m?.toolCallId === "string" ||
+    typeof m?.tool_call_id === "string" ||
+    cards.length > 0;
+  if (!isToolMessage) {
+    return false;
+  }
+  const text = [
+    extractTextCached(message),
+    ...cards.flatMap((card) => [card.inputText, card.outputText]),
+  ]
+    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+    .join("\n")
+    .trim();
+  if (!text) {
+    return false;
+  }
+  const commandTool = cards.some((card) => /exec|shell|bash|command/i.test(card.name ?? ""));
+  return (
+    /process exited with code\s+[1-9]\d*/i.test(text) ||
+    /\b(exit code|exitCode)\s*[:=]?\s*[1-9]\d*/i.test(text) ||
+    /^⚠️?\s*🛠/u.test(text) ||
+    (commandTool && /\b(command failed|build failed|lint failed|failed to compile)\b/i.test(text))
+  );
 }
 
 function renderCompactionIndicator(status: CompactionStatus | null | undefined) {
@@ -1689,7 +1747,11 @@ function parseHexRgb(hex: string): [number, number, number] | null {
   if (!/^[0-9a-fA-F]{6}$/.test(h)) {
     return null;
   }
-  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  return [
+    Number.parseInt(h.slice(0, 2), 16),
+    Number.parseInt(h.slice(2, 4), 16),
+    Number.parseInt(h.slice(4, 6), 16),
+  ];
 }
 
 let cachedThemeNoticeColors: {
@@ -2799,7 +2861,6 @@ export function renderChat(props: ChatProps) {
       @dragover=${(e: DragEvent) => e.preventDefault()}
     >
       ${props.disabledReason ? html`<div class="callout">${props.disabledReason}</div>` : nothing}
-      ${props.error ? html`<div class="callout danger">${props.error}</div>` : nothing}
       ${props.focusMode
         ? html`
             <button
@@ -3155,7 +3216,7 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
     const msg = history[i];
     const normalized = normalizeMessage(msg);
     const raw = msg as Record<string, unknown>;
-    const marker = raw.__openclaw as Record<string, unknown> | undefined;
+    const marker = raw["__openclaw"] as Record<string, unknown> | undefined;
     if (marker && marker.kind === "compaction") {
       items.push({
         kind: "divider",

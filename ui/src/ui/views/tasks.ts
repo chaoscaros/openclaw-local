@@ -391,7 +391,7 @@ function closeFullRecordDrawer(props: TasksViewProps) {
 
 function renderBlockTitle(
   title: string,
-  props: TasksViewProps,
+  _props: TasksViewProps,
   action?: { label: string; onClick: () => void },
 ) {
   return html`<div class="task-preview-pane__block-title">

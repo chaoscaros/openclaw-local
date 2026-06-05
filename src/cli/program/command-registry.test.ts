@@ -18,21 +18,6 @@ vi.mock("./register.backup.js", () => ({
   },
 }));
 
-vi.mock("../env-cli.js", () => ({
-  registerEnvCli: (program: Command) => {
-    const env = program.command("env");
-    env.command("init");
-    env.command("token");
-  },
-}));
-
-vi.mock("../codex-cli.js", () => ({
-  registerCodexCli: (program: Command) => {
-    const codex = program.command("codex");
-    codex.command("clean");
-  },
-}));
-
 vi.mock("./register.maintenance.js", () => ({
   registerMaintenanceCommands: (program: Command) => {
     program.command("doctor");
@@ -47,8 +32,15 @@ vi.mock("./register.status-health-sessions.js", () => ({
     program.command("status");
     program.command("health");
     program.command("sessions");
+    program.command("commitments");
     const tasks = program.command("tasks");
     tasks.command("show");
+  },
+}));
+
+vi.mock("./register.crestodian.js", () => ({
+  registerCrestodianCommand: (program: Command) => {
+    program.command("crestodian");
   },
 }));
 
@@ -82,9 +74,8 @@ describe("command-registry", () => {
 
   it("includes both agent and agents in core CLI command names", () => {
     const names = getCoreCliCommandNames();
+    expect(names).toContain("crestodian");
     expect(names).toContain("mcp");
-    expect(names).toContain("env");
-    expect(names).toContain("codex");
     expect(names).toContain("agent");
     expect(names).toContain("agents");
   });
@@ -94,12 +85,12 @@ describe("command-registry", () => {
     expect(names).toContain("config");
     expect(names).toContain("agents");
     expect(names).toContain("backup");
-    expect(names).toContain("codex");
-    expect(names).toContain("env");
     expect(names).toContain("mcp");
     expect(names).toContain("sessions");
+    expect(names).toContain("commitments");
     expect(names).toContain("tasks");
     expect(names).not.toContain("agent");
+    expect(names).not.toContain("crestodian");
     expect(names).not.toContain("status");
     expect(names).not.toContain("doctor");
   });
@@ -108,11 +99,11 @@ describe("command-registry", () => {
     const program = createProgram();
     const found = await registerCoreCliByName(program, testProgramContext, "agents");
     expect(found).toBe(true);
-    const agentsCmd = program.commands.find((c) => c.name() === "agents");
-    expect(agentsCmd).toBeDefined();
     // The registrar also installs the singular "agent" command from the same entry.
-    const agentCmd = program.commands.find((c) => c.name() === "agent");
-    expect(agentCmd).toBeDefined();
+    expect(program.commands.map((command) => command.name()).toSorted()).toEqual([
+      "agent",
+      "agents",
+    ]);
   });
 
   it("registerCoreCliByName returns false for unknown commands", async () => {
@@ -170,7 +161,22 @@ describe("command-registry", () => {
     expect(names).toContain("status");
     expect(names).toContain("health");
     expect(names).toContain("sessions");
+    expect(names).toContain("commitments");
     expect(names).toContain("tasks");
+  });
+
+  it("can eagerly register the status/session command group repeatedly for completion", async () => {
+    const program = createProgram();
+
+    for (const name of ["status", "health", "sessions", "commitments", "tasks"]) {
+      await expect(registerCoreCliByName(program, testProgramContext, name)).resolves.toBe(true);
+    }
+
+    const names = namesOf(program);
+    const countName = (target: string) =>
+      names.reduce((count, name) => count + (name === target ? 1 : 0), 0);
+    expect(countName("commitments")).toBe(1);
+    expect(countName("tasks")).toBe(1);
   });
 
   it("replaces placeholders when loading a grouped entry by secondary command name", async () => {

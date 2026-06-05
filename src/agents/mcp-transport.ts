@@ -2,7 +2,6 @@ import {
   SSEClientTransport,
   type SSEClientTransportOptions,
 } from "@modelcontextprotocol/sdk/client/sse.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { FetchLike, Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { normalizeHeadersInitForFetch } from "../infra/fetch-headers.js";
@@ -10,9 +9,10 @@ import { retainSafeHeadersForCrossOriginRedirect } from "../infra/net/redirect-h
 import { loadUndiciRuntimeDeps } from "../infra/net/undici-runtime.js";
 import { logDebug } from "../logger.js";
 import { normalizeOptionalString } from "../shared/string-coerce.js";
+import { OpenClawStdioClientTransport } from "./mcp-stdio-transport.js";
 import { resolveMcpTransportConfig } from "./mcp-transport-config.js";
 
-export type ResolvedMcpTransport = {
+type ResolvedMcpTransport = {
   transport: Transport;
   description: string;
   transportType: "stdio" | "sse" | "streamable-http";
@@ -20,7 +20,7 @@ export type ResolvedMcpTransport = {
   detachStderr?: () => void;
 };
 
-function attachStderrLogging(serverName: string, transport: StdioClientTransport) {
+function attachStderrLogging(serverName: string, transport: OpenClawStdioClientTransport) {
   const stderr = transport.stderr;
   if (!stderr || typeof stderr.on !== "function") {
     return undefined;
@@ -142,11 +142,13 @@ const fetchStreamableHttpWithRedirectScrub: FetchLike = async (url, init) => {
     const nextParsedUrl = new URL(location, parsedUrl);
     const nextUrl = nextParsedUrl.toString();
     let nextInit = rewriteRedirectInitForMethod(currentInit, response.status);
-    if (nextParsedUrl.origin !== parsedUrl.origin && nextInit?.headers) {
-      nextInit = {
-        ...nextInit,
-        headers: retainSafeHeadersForCrossOriginRedirect(nextInit.headers),
-      };
+    if (nextParsedUrl.origin !== parsedUrl.origin) {
+      if (nextInit?.headers) {
+        nextInit = {
+          ...nextInit,
+          headers: retainSafeHeadersForCrossOriginRedirect(nextInit.headers),
+        };
+      }
     }
 
     const nextVisitKey = getRedirectVisitKey(nextUrl, nextInit);
@@ -192,7 +194,7 @@ export function resolveMcpTransport(
     return null;
   }
   if (resolved.kind === "stdio") {
-    const transport = new StdioClientTransport({
+    const transport = new OpenClawStdioClientTransport({
       command: resolved.command,
       args: resolved.args,
       env: resolved.env,

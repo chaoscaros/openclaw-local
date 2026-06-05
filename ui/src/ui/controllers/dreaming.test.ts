@@ -770,9 +770,11 @@ describe("dreaming controller", () => {
             narrativeWritten: 1,
             narrativeSkipped: 0,
             learningSummary: {
-              summary: "当前聚焦：核对 Tasks 页 · 持续保留：用户偏好中文优先 · 主要来源：Recent chat",
+              summary:
+                "当前聚焦：核对 Tasks 页 · 持续保留：用户偏好中文优先 · 主要来源：Recent chat",
               recommendation: "下次协助时，保持“用户偏好中文优先”，同时优先推进“核对 Tasks 页”。",
-              assistanceStrategy: "先按“核对 Tasks 页”拆成清单执行，过程中持续遵守“用户偏好中文优先”。",
+              assistanceStrategy:
+                "先按“核对 Tasks 页”拆成清单执行，过程中持续遵守“用户偏好中文优先”。",
               durableSignals: ["用户偏好中文优先"],
               temporaryFocus: ["核对 Tasks 页", "验证自动生成 todo"],
               sources: [
@@ -809,9 +811,11 @@ describe("dreaming controller", () => {
               narrativeWritten: 1,
               narrativeSkipped: 0,
               learningSummary: {
-                summary: "当前聚焦：核对 Tasks 页 · 持续保留：用户偏好中文优先 · 主要来源：Recent chat",
+                summary:
+                  "当前聚焦：核对 Tasks 页 · 持续保留：用户偏好中文优先 · 主要来源：Recent chat",
                 recommendation: "下次协助时，保持“用户偏好中文优先”，同时优先推进“核对 Tasks 页”。",
-                assistanceStrategy: "先按“核对 Tasks 页”拆成清单执行，过程中持续遵守“用户偏好中文优先”。",
+                assistanceStrategy:
+                  "先按“核对 Tasks 页”拆成清单执行，过程中持续遵守“用户偏好中文优先”。",
                 durableSignals: ["用户偏好中文优先"],
                 temporaryFocus: ["核对 Tasks 页", "验证自动生成 todo"],
                 sources: [
@@ -821,7 +825,13 @@ describe("dreaming controller", () => {
               },
             },
             phases: {
-              light: { enabled: false, cron: "", managedCronPresent: false, lookbackDays: 0, limit: 0 },
+              light: {
+                enabled: false,
+                cron: "",
+                managedCronPresent: false,
+                lookbackDays: 0,
+                limit: 0,
+              },
               deep: {
                 enabled: false,
                 cron: "",
@@ -881,7 +891,8 @@ describe("dreaming controller", () => {
             failed: 0,
             narrativeWritten: 0,
             narrativeSkipped: 1,
-            zeroAppliedReason: "发现了候选记忆，但都没达到 promotion 阈值；由于证据偏弱，这次 diary narrative 也被跳过。",
+            zeroAppliedReason:
+              "发现了候选记忆，但都没达到 promotion 阈值；由于证据偏弱，这次 diary narrative 也被跳过。",
           },
         };
       }
@@ -910,10 +921,17 @@ describe("dreaming controller", () => {
               failed: 0,
               narrativeWritten: 0,
               narrativeSkipped: 1,
-              zeroAppliedReason: "发现了候选记忆，但都没达到 promotion 阈值；由于证据偏弱，这次 diary narrative 也被跳过。",
+              zeroAppliedReason:
+                "发现了候选记忆，但都没达到 promotion 阈值；由于证据偏弱，这次 diary narrative 也被跳过。",
             },
             phases: {
-              light: { enabled: false, cron: "", managedCronPresent: false, lookbackDays: 0, limit: 0 },
+              light: {
+                enabled: false,
+                cron: "",
+                managedCronPresent: false,
+                lookbackDays: 0,
+                limit: 0,
+              },
               deep: {
                 enabled: false,
                 cron: "",
@@ -944,7 +962,8 @@ describe("dreaming controller", () => {
     expect(ok).toBe(true);
     expect(state.dreamingStatus?.lastRun).toMatchObject({
       applied: 0,
-      zeroAppliedReason: "发现了候选记忆，但都没达到 promotion 阈值；由于证据偏弱，这次 diary narrative 也被跳过。",
+      zeroAppliedReason:
+        "发现了候选记忆，但都没达到 promotion 阈值；由于证据偏弱，这次 diary narrative 也被跳过。",
     });
     expect(state.dreamDiaryActionMessage?.text).toContain("未提升原因：");
     expect(state.dreamDiaryActionMessage?.text).toContain("没达到 promotion 阈值");

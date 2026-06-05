@@ -1,7 +1,8 @@
 import path from "node:path";
 import type { PluginInstallRecord } from "../config/types.plugins.js";
 import { resolveUserPath } from "../utils.js";
-import type { BundledPluginSource } from "./bundled-sources.js";
+import { normalizeBundledLookupPath } from "./bundled-load-path-aliases.js";
+import { resolveBundledPluginSources, type BundledPluginSource } from "./bundled-sources.js";
 
 export type StaleLocalBundledPluginInstallRecord = {
   pluginId: string;
@@ -12,7 +13,7 @@ export type StaleLocalBundledPluginInstallRecord = {
 };
 
 function normalizePathForCompare(rawPath: string, env?: NodeJS.ProcessEnv): string {
-  return path.resolve(resolveUserPath(rawPath, env));
+  return path.resolve(normalizeBundledLookupPath(resolveUserPath(rawPath, env)));
 }
 
 function primaryInstallRecordPath(record: PluginInstallRecord): {
@@ -29,13 +30,14 @@ function primaryInstallRecordPath(record: PluginInstallRecord): {
 }
 
 function looksLikeCompiledBundledPluginPath(targetPath: string, pluginId: string): boolean {
-  const segments = targetPath.split(/[\\/]+/u);
-  return segments.some(
-    (segment, index) =>
+  const segments = normalizeBundledLookupPath(targetPath).split(/[\\/]+/u);
+  return segments.some((segment, index) => {
+    return (
       (segment === "dist" || segment === "dist-runtime") &&
       segments[index + 1] === "extensions" &&
-      segments[index + 2] === pluginId,
-  );
+      segments[index + 2] === pluginId
+    );
+  });
 }
 
 function hasStaleBundledVersion(
@@ -49,9 +51,16 @@ function hasStaleBundledVersion(
 
 export function listStaleLocalBundledPluginInstallRecords(params: {
   installRecords: Record<string, PluginInstallRecord>;
-  bundled: ReadonlyMap<string, BundledPluginSource>;
+  workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
+  bundled?: ReadonlyMap<string, BundledPluginSource>;
 }): StaleLocalBundledPluginInstallRecord[] {
+  const bundled =
+    params.bundled ??
+    resolveBundledPluginSources({
+      workspaceDir: params.workspaceDir,
+      env: params.env,
+    });
   const stale: StaleLocalBundledPluginInstallRecord[] = [];
 
   for (const [pluginId, record] of Object.entries(params.installRecords).toSorted(
@@ -60,8 +69,11 @@ export function listStaleLocalBundledPluginInstallRecords(params: {
     if (record.source !== "path") {
       continue;
     }
-    const bundledSource = params.bundled.get(pluginId);
-    if (!bundledSource?.localPath || !hasStaleBundledVersion(record, bundledSource)) {
+    const bundledSource = bundled.get(pluginId);
+    if (!bundledSource?.localPath) {
+      continue;
+    }
+    if (!hasStaleBundledVersion(record, bundledSource)) {
       continue;
     }
     const recordPath = primaryInstallRecordPath(record);
@@ -70,7 +82,10 @@ export function listStaleLocalBundledPluginInstallRecords(params: {
     }
     const stalePath = normalizePathForCompare(recordPath.path, params.env);
     const bundledPath = normalizePathForCompare(bundledSource.localPath, params.env);
-    if (stalePath === bundledPath || !looksLikeCompiledBundledPluginPath(stalePath, pluginId)) {
+    if (stalePath === bundledPath) {
+      continue;
+    }
+    if (!looksLikeCompiledBundledPluginPath(stalePath, pluginId)) {
       continue;
     }
     stale.push({
@@ -83,4 +98,26 @@ export function listStaleLocalBundledPluginInstallRecords(params: {
   }
 
   return stale;
+}
+
+export function pruneStaleLocalBundledPluginInstallRecords(params: {
+  installRecords: Record<string, PluginInstallRecord>;
+  workspaceDir?: string;
+  env?: NodeJS.ProcessEnv;
+  bundled?: ReadonlyMap<string, BundledPluginSource>;
+}): {
+  records: Record<string, PluginInstallRecord>;
+  stale: StaleLocalBundledPluginInstallRecord[];
+} {
+  const stale = listStaleLocalBundledPluginInstallRecords(params);
+  if (stale.length === 0) {
+    return { records: params.installRecords, stale };
+  }
+  const staleIds = new Set(stale.map((record) => record.pluginId));
+  return {
+    records: Object.fromEntries(
+      Object.entries(params.installRecords).filter(([pluginId]) => !staleIds.has(pluginId)),
+    ),
+    stale,
+  };
 }

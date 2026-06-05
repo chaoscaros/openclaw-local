@@ -1034,6 +1034,16 @@
   margin-top: 0;
 }
 
+.content--logs {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.content--logs > * + * {
+  margin-top: 20px;
+}
+
 /* Content header */
 .content-header {
   display: flex;

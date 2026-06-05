@@ -21,14 +21,12 @@ function isOAuthRefreshFailureMessage(message: string): boolean {
   );
 }
 
-export function extractOAuthRefreshFailureProvider(message: string): string | null {
+function extractOAuthRefreshFailureProvider(message: string): string | null {
   const provider = message.match(OAUTH_REFRESH_FAILURE_PROVIDER_RE)?.[1]?.trim();
   return provider && provider.length > 0 ? provider : null;
 }
 
-export function sanitizeOAuthRefreshFailureProvider(
-  provider: string | null | undefined,
-): string | null {
+function sanitizeOAuthRefreshFailureProvider(provider: string | null | undefined): string | null {
   const sanitized = provider ? sanitizeForLog(provider).replaceAll("`", "").trim() : "";
   const normalized = normalizeProviderId(sanitized);
   return normalized && SAFE_PROVIDER_ID_RE.test(normalized) ? normalized : null;

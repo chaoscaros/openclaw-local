@@ -131,7 +131,8 @@ export async function filterMemorySearchHitsBySessionVisibility(params: {
     if (keys.length === 0) {
       continue;
     }
-    if (!keys.some((key) => guard.check(key).allowed)) {
+    const allowed = keys.some((key) => guard.check(key).allowed);
+    if (!allowed) {
       continue;
     }
     next.push(hit);

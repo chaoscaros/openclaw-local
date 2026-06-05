@@ -1,9 +1,5 @@
+import type { ProviderThinkingProfile } from "openclaw/plugin-sdk/plugin-entry";
 import { isOpenRouterDeepSeekV4ModelId } from "./models.js";
-
-type ProviderThinkingProfile = {
-  levels: Array<{ id: string }>;
-  defaultLevel: string;
-};
 
 const OPENROUTER_DEEPSEEK_V4_THINKING_LEVEL_IDS = [
   "off",
@@ -14,10 +10,16 @@ const OPENROUTER_DEEPSEEK_V4_THINKING_LEVEL_IDS = [
   "xhigh",
 ] as const;
 
-const OPENROUTER_DEEPSEEK_V4_THINKING_PROFILE: ProviderThinkingProfile = {
-  levels: OPENROUTER_DEEPSEEK_V4_THINKING_LEVEL_IDS.map((id) => ({ id })),
+function buildOpenRouterDeepSeekV4ThinkingLevel(
+  id: (typeof OPENROUTER_DEEPSEEK_V4_THINKING_LEVEL_IDS)[number],
+) {
+  return { id };
+}
+
+const OPENROUTER_DEEPSEEK_V4_THINKING_PROFILE = {
+  levels: OPENROUTER_DEEPSEEK_V4_THINKING_LEVEL_IDS.map(buildOpenRouterDeepSeekV4ThinkingLevel),
   defaultLevel: "high",
-};
+} satisfies ProviderThinkingProfile;
 
 export function supportsOpenRouterXHighThinking(modelId: string): boolean {
   return isOpenRouterDeepSeekV4ModelId(modelId);

@@ -134,6 +134,106 @@ describe("handleChatEvent", () => {
     ]);
   });
 
+  it("clears stale error state when the active run finishes successfully", () => {
+    const state = createState({
+      sessionKey: "main",
+      chatRunId: "run-1",
+      lastError: "run git rev-parse failed",
+    });
+    const payload: ChatEventPayload = {
+      runId: "run-1",
+      sessionKey: "main",
+      state: "final",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Done" }],
+      },
+    };
+
+    expect(handleChatEvent(state, payload)).toBe("final");
+    expect(state.lastError).toBeNull();
+  });
+
+  it("clears stale error state when the active run is aborted", () => {
+    const state = createState({
+      sessionKey: "main",
+      chatRunId: "run-1",
+      chatStream: "Working...",
+      lastError: "search command failed",
+    });
+    const payload: ChatEventPayload = {
+      runId: "run-1",
+      sessionKey: "main",
+      state: "aborted",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Stopped" }],
+      },
+    };
+
+    expect(handleChatEvent(state, payload)).toBe("aborted");
+    expect(state.lastError).toBeNull();
+  });
+
+  it("does not show tool execution failures as global chat errors", () => {
+    const state = createState({
+      sessionKey: "main",
+      chatRunId: "run-1",
+      lastError: null,
+    });
+    const payload: ChatEventPayload = {
+      runId: "run-1",
+      sessionKey: "main",
+      state: "error",
+      errorMessage: "⚠️ 🛠 `run build:stage (repo)` failed",
+    };
+
+    expect(handleChatEvent(state, payload)).toBe("error");
+    expect(state.chatRunId).toBeNull();
+    expect(state.lastError).toBeNull();
+  });
+
+  it("does not show command-shaped tool failures as global chat errors", () => {
+    for (const errorMessage of [
+      "`run build:stage (repo)` failed",
+      "`run python3 ~/AI/openclaw/tools/file_edit.py (repo)` failed",
+      "run build:stage (repo) failed",
+    ]) {
+      const state = createState({
+        sessionKey: "main",
+        chatRunId: "run-1",
+        lastError: null,
+      });
+      const payload: ChatEventPayload = {
+        runId: "run-1",
+        sessionKey: "main",
+        state: "error",
+        errorMessage,
+      };
+
+      expect(handleChatEvent(state, payload)).toBe("error");
+      expect(state.chatRunId).toBeNull();
+      expect(state.lastError).toBeNull();
+    }
+  });
+
+  it("keeps non-tool chat errors visible", () => {
+    const state = createState({
+      sessionKey: "main",
+      chatRunId: "run-1",
+      lastError: null,
+    });
+    const payload: ChatEventPayload = {
+      runId: "run-1",
+      sessionKey: "main",
+      state: "error",
+      errorMessage: "gateway unavailable",
+    };
+
+    expect(handleChatEvent(state, payload)).toBe("error");
+    expect(state.lastError).toBe("gateway unavailable");
+  });
+
   it("returns null for delta from another run", () => {
     const state = createState({
       sessionKey: "main",

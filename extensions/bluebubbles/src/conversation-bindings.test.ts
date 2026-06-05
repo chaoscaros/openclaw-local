@@ -1,10 +1,13 @@
-import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/channel-core";
 import {
   __testing as sessionBindingTesting,
   getSessionBindingService,
 } from "openclaw/plugin-sdk/conversation-runtime";
 import { beforeEach, describe, expect, it } from "vitest";
-import { __testing, createBlueBubblesConversationBindingManager } from "./conversation-bindings.js";
+import {
+  blueBubblesConversationBindingsTesting,
+  createBlueBubblesConversationBindingManager,
+} from "./conversation-bindings.js";
 
 const baseCfg = {
   session: { mainKey: "main", scope: "per-sender" },
@@ -13,7 +16,7 @@ const baseCfg = {
 describe("BlueBubbles conversation bindings", () => {
   beforeEach(() => {
     sessionBindingTesting.resetSessionBindingAdaptersForTests();
-    __testing.resetBlueBubblesConversationBindingsForTests();
+    blueBubblesConversationBindingsTesting.resetBlueBubblesConversationBindingsForTests();
   });
 
   it("preserves existing metadata when rebinding the same conversation", async () => {

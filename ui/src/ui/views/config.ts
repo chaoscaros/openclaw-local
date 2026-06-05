@@ -766,12 +766,13 @@ export function renderConfig(props: ConfigProps) {
 
   const VIRTUAL_SECTIONS = new Set(["__appearance__"]);
   const visibleCategories = sectionCategories
-    .map((cat) => ({
-      ...cat,
-      sections: cat.sections.filter(
-        (s) => (includeVirtualSections && VIRTUAL_SECTIONS.has(s.key)) || s.key in schemaProps,
-      ),
-    }))
+    .map((cat) =>
+      Object.assign({}, cat, {
+        sections: cat.sections.filter(
+          (s) => (includeVirtualSections && VIRTUAL_SECTIONS.has(s.key)) || s.key in schemaProps,
+        ),
+      }),
+    )
     .filter((cat) => cat.sections.length > 0);
 
   // Catch any schema keys not in our categories

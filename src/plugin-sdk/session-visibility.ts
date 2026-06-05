@@ -5,11 +5,13 @@ import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
 } from "../shared/string-coerce.js";
+import { normalizeTrimmedStringList } from "../shared/string-normalization.js";
 
 type GatewayCaller = typeof defaultCallGateway;
 
 let callGatewayForListSpawned: GatewayCaller = defaultCallGateway;
 
+/** Test hook: must stay aligned with `sessions-resolution` `testing.setDepsForTest`. */
 export const sessionVisibilityGatewayTesting = {
   setCallGatewayForListSpawned(overrides?: GatewayCaller) {
     callGatewayForListSpawned = overrides ?? defaultCallGateway;
@@ -57,7 +59,7 @@ export async function listSpawnedSessionKeys(params: {
       },
     });
     const sessions = Array.isArray(list?.sessions) ? list.sessions : [];
-    const keys = sessions.map((entry) => normalizeOptionalString(entry?.key) ?? "").filter(Boolean);
+    const keys = normalizeTrimmedStringList(sessions.map((entry) => entry?.key));
     return new Set(keys);
   } catch {
     return new Set();
@@ -89,28 +91,96 @@ export function resolveEffectiveSessionToolsVisibility(params: {
   return visibility;
 }
 
+export function resolveSandboxSessionToolsVisibility(cfg: OpenClawConfig): "spawned" | "all" {
+  return cfg.agents?.defaults?.sandbox?.sessionToolsVisibility ?? "spawned";
+}
+
+type CompiledAgentAllowPattern =
+  | { kind: "all" }
+  | { kind: "deny" }
+  | { kind: "exact"; value: string }
+  | {
+      kind: "wildcard";
+      first: string;
+      last: string;
+      interior: string[];
+    };
+
+function compileAgentAllowPattern(pattern: string): CompiledAgentAllowPattern {
+  const raw = normalizeOptionalString(pattern) ?? "";
+  if (!raw) {
+    return { kind: "deny" };
+  }
+  if (raw === "*") {
+    return { kind: "all" };
+  }
+  if (!raw.includes("*")) {
+    return { kind: "exact", value: raw };
+  }
+  const parts = raw.toLowerCase().split("*");
+  return {
+    kind: "wildcard",
+    first: parts[0] ?? "",
+    last: parts[parts.length - 1] ?? "",
+    interior: parts.slice(1, -1).filter(Boolean),
+  };
+}
+
+/**
+ * Linear-time case-insensitive glob matcher for precompiled `*` patterns.
+ * Checks prefix, suffix, then ordered interior segments without entering the
+ * regex engine, avoiding polynomial backtracking on repeated wildcards.
+ */
+function matchesCompiledWildcard(
+  pattern: Extract<CompiledAgentAllowPattern, { kind: "wildcard" }>,
+  lower: string,
+): boolean {
+  let pos = 0;
+  if (pattern.first) {
+    if (!lower.startsWith(pattern.first)) {
+      return false;
+    }
+    pos = pattern.first.length;
+  }
+
+  const endBound = pattern.last ? lower.length - pattern.last.length : lower.length;
+  if (pattern.last && (!lower.endsWith(pattern.last) || endBound < pos)) {
+    return false;
+  }
+
+  for (const part of pattern.interior) {
+    const idx = lower.indexOf(part, pos);
+    if (idx === -1 || idx + part.length > endBound) {
+      return false;
+    }
+    pos = idx + part.length;
+  }
+
+  return true;
+}
+
 export function createAgentToAgentPolicy(cfg: OpenClawConfig): AgentToAgentPolicy {
   const routingA2A = cfg.tools?.agentToAgent;
   const enabled = routingA2A?.enabled === true;
-  const allowPatterns = Array.isArray(routingA2A?.allow) ? routingA2A.allow : [];
+  const rawAllowPatterns = Array.isArray(routingA2A?.allow) ? routingA2A.allow : [];
+  const allowPatterns = rawAllowPatterns.map((pattern) => compileAgentAllowPattern(pattern));
+  const hasWildcardPatterns = allowPatterns.some((pattern) => pattern.kind === "wildcard");
   const matchesAllow = (agentId: string) => {
     if (allowPatterns.length === 0) {
       return true;
     }
+    const lowerAgentId = hasWildcardPatterns ? agentId.toLowerCase() : "";
     return allowPatterns.some((pattern) => {
-      const raw = normalizeOptionalString(pattern ?? "") ?? "";
-      if (!raw) {
-        return false;
-      }
-      if (raw === "*") {
+      if (pattern.kind === "all") {
         return true;
       }
-      if (!raw.includes("*")) {
-        return raw === agentId;
+      if (pattern.kind === "deny") {
+        return false;
       }
-      const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const re = new RegExp(`^${escaped.replaceAll("\\*", ".*")}$`, "i");
-      return re.test(agentId);
+      if (pattern.kind === "exact") {
+        return pattern.value === agentId;
+      }
+      return matchesCompiledWildcard(pattern, lowerAgentId);
     });
   };
   const isAllowed = (requesterAgentId: string, targetAgentId: string) => {
@@ -185,6 +255,32 @@ function treeVisibilityMessage(action: SessionAccessAction): string {
   return `${actionPrefix(action)} visibility is restricted to the current session tree (tools.sessions.visibility=tree).`;
 }
 
+export function createSessionVisibilityChecker(params: {
+  action: SessionAccessAction;
+  requesterSessionKey: string;
+  visibility: SessionToolsVisibility;
+  a2aPolicy: AgentToAgentPolicy;
+  spawnedKeys: Set<string> | null;
+}): { check: (targetSessionKey: string) => SessionAccessResult } {
+  const spawnedKeys = params.spawnedKeys;
+  const rowChecker = createSessionVisibilityRowChecker({
+    action: params.action,
+    requesterSessionKey: params.requesterSessionKey,
+    visibility: params.visibility,
+    a2aPolicy: params.a2aPolicy,
+  });
+
+  const check = (targetSessionKey: string): SessionAccessResult => {
+    const isSpawnedSession = spawnedKeys?.has(targetSessionKey) === true;
+    return rowChecker.check({
+      key: targetSessionKey,
+      spawnedBy: isSpawnedSession ? params.requesterSessionKey : undefined,
+    });
+  };
+
+  return { check };
+}
+
 function rowOwnedByRequester(row: SessionVisibilityRow, requesterSessionKey: string): boolean {
   return (
     row.ownerSessionKey === requesterSessionKey ||
@@ -207,6 +303,8 @@ export function createSessionVisibilityRowChecker(params: {
     const isRequesterSession =
       targetSessionKey === params.requesterSessionKey || targetSessionKey === "current";
     const isRequesterOwned = rowOwnedByRequester(row, params.requesterSessionKey);
+    // Row ownership is stronger than agent ids: ACP children may use a backend
+    // agent id while still belonging to the requester that spawned them.
     if (
       !isRequesterSession &&
       isRequesterOwned &&
@@ -224,49 +322,42 @@ export function createSessionVisibilityRowChecker(params: {
         };
       }
       if (!params.a2aPolicy.enabled) {
-        return { allowed: false, status: "forbidden", error: a2aDisabledMessage(params.action) };
+        return {
+          allowed: false,
+          status: "forbidden",
+          error: a2aDisabledMessage(params.action),
+        };
       }
       if (!params.a2aPolicy.isAllowed(requesterAgentId, targetAgentId)) {
-        return { allowed: false, status: "forbidden", error: a2aDeniedMessage(params.action) };
+        return {
+          allowed: false,
+          status: "forbidden",
+          error: a2aDeniedMessage(params.action),
+        };
       }
       return { allowed: true };
     }
 
     if (params.visibility === "self" && !isRequesterSession) {
-      return { allowed: false, status: "forbidden", error: selfVisibilityMessage(params.action) };
+      return {
+        allowed: false,
+        status: "forbidden",
+        error: selfVisibilityMessage(params.action),
+      };
     }
+
     if (params.visibility === "tree" && !isRequesterSession && !isRequesterOwned) {
-      return { allowed: false, status: "forbidden", error: treeVisibilityMessage(params.action) };
+      return {
+        allowed: false,
+        status: "forbidden",
+        error: treeVisibilityMessage(params.action),
+      };
     }
+
     return { allowed: true };
   };
 
   return { check };
-}
-
-export function createSessionVisibilityChecker(params: {
-  action: SessionAccessAction;
-  requesterSessionKey: string;
-  visibility: SessionToolsVisibility;
-  a2aPolicy: AgentToAgentPolicy;
-  spawnedKeys: Set<string> | null;
-}): { check: (targetSessionKey: string) => SessionAccessResult } {
-  const rowChecker = createSessionVisibilityRowChecker({
-    action: params.action,
-    requesterSessionKey: params.requesterSessionKey,
-    visibility: params.visibility,
-    a2aPolicy: params.a2aPolicy,
-  });
-
-  return {
-    check: (targetSessionKey) => {
-      const isSpawnedSession = params.spawnedKeys?.has(targetSessionKey) === true;
-      return rowChecker.check({
-        key: targetSessionKey,
-        spawnedBy: isSpawnedSession ? params.requesterSessionKey : undefined,
-      });
-    },
-  };
 }
 
 export async function createSessionVisibilityGuard(params: {
@@ -277,6 +368,8 @@ export async function createSessionVisibilityGuard(params: {
 }): Promise<{
   check: (targetSessionKey: string) => SessionAccessResult;
 }> {
+  // Listing already has row ownership metadata; direct key actions still need
+  // this lookup until every caller can pass a normalized session row.
   const spawnedKeys =
     params.action !== "list" && (params.visibility === "tree" || params.visibility === "all")
       ? await listSpawnedSessionKeys({ requesterSessionKey: params.requesterSessionKey })

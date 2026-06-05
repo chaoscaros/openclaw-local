@@ -8,8 +8,10 @@ import {
   resolveChannelStreamingBlockCoalesce,
   resolveChannelStreamingBlockEnabled,
   resolveChannelStreamingChunkMode,
+  resolveChannelPreviewStreamMode,
+  type StreamingMode,
 } from "openclaw/plugin-sdk/channel-streaming";
-import { normalizeOptionalString } from "openclaw/plugin-sdk/text-runtime";
+import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { normalizeResolvedSecretInputString, normalizeSecretInputString } from "../secret-input.js";
 import type {
   MattermostAccountConfig,
@@ -20,8 +22,8 @@ import type {
 import { normalizeMattermostBaseUrl } from "./client.js";
 import type { OpenClawConfig } from "./runtime-api.js";
 
-export type MattermostTokenSource = "env" | "config" | "none";
-export type MattermostBaseUrlSource = "env" | "config" | "none";
+type MattermostTokenSource = "env" | "config" | "none";
+type MattermostBaseUrlSource = "env" | "config" | "none";
 
 export type ResolvedMattermostAccount = {
   accountId: string;
@@ -37,6 +39,7 @@ export type ResolvedMattermostAccount = {
   requireMention?: boolean;
   textChunkLimit?: number;
   chunkMode?: MattermostAccountConfig["chunkMode"];
+  streamingMode: StreamingMode;
   blockStreaming?: boolean;
   blockStreamingCoalesce?: MattermostAccountConfig["blockStreamingCoalesce"];
 };
@@ -46,8 +49,7 @@ const mattermostAccountHelpers = createAccountListHelpers("mattermost", {
     const mattermost = cfg.channels?.mattermost;
     return Boolean(
       mattermost?.baseUrl?.trim() &&
-      (hasConfiguredAccountValue(mattermost.botToken) ||
-        hasConfiguredAccountValue(process.env.MATTERMOST_BOT_TOKEN)),
+      (hasConfiguredAccountValue(mattermost.botToken) || process.env.MATTERMOST_BOT_TOKEN?.trim()),
     );
   },
 });
@@ -132,6 +134,7 @@ export function resolveMattermostAccount(params: {
     requireMention,
     textChunkLimit: merged.textChunkLimit,
     chunkMode: resolveChannelStreamingChunkMode(merged) ?? merged.chunkMode,
+    streamingMode: resolveChannelPreviewStreamMode(merged, "partial"),
     blockStreaming: resolveChannelStreamingBlockEnabled(merged) ?? merged.blockStreaming,
     blockStreamingCoalesce:
       resolveChannelStreamingBlockCoalesce(merged) ?? merged.blockStreamingCoalesce,
@@ -150,10 +153,4 @@ export function resolveMattermostReplyToMode(
     return "off";
   }
   return account.config.replyToMode ?? "off";
-}
-
-export function listEnabledMattermostAccounts(cfg: OpenClawConfig): ResolvedMattermostAccount[] {
-  return listMattermostAccountIds(cfg)
-    .map((accountId) => resolveMattermostAccount({ cfg, accountId }))
-    .filter((account) => account.enabled);
 }

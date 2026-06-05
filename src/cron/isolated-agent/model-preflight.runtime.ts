@@ -1,4 +1,4 @@
-import { normalizeProviderId } from "../../agents/model-selection.js";
+import { normalizeProviderId } from "../../agents/provider-id.js";
 import type { ModelProviderConfig } from "../../config/types.models.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { fetchWithSsrFGuard } from "../../infra/net/fetch-guard.js";
@@ -165,6 +165,9 @@ async function probeLocalProviderEndpoint(params: {
     auditContext: "cron-model-provider-preflight",
   });
   try {
+    // Any HTTP response means the local endpoint is alive. Auth/model errors
+    // still belong to the normal model runner where fallback and diagnostics
+    // have the full provider context.
     void response.status;
   } finally {
     await release();

@@ -1,8 +1,8 @@
 import { buildBuiltinChatCommands } from "../../../../src/auto-reply/commands-registry.shared.js";
 import type { CommandEntry, CommandsListResult } from "../../../../src/gateway/protocol/index.js";
+import { t } from "../../i18n/index.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import type { IconName } from "../icons.ts";
-import { t } from "../../i18n/index.ts";
 import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
 
 export type SlashCommandCategory = "session" | "model" | "agents" | "tools";
@@ -315,7 +315,9 @@ function toSlashCommand(
     description:
       (COMMAND_DESCRIPTION_I18N_KEYS[command.key]
         ? t(COMMAND_DESCRIPTION_I18N_KEYS[command.key] as string)
-        : undefined) ?? COMMAND_DESCRIPTION_OVERRIDES[command.key] ?? command.description,
+        : undefined) ??
+      COMMAND_DESCRIPTION_OVERRIDES[command.key] ??
+      command.description,
     args: COMMAND_ARGS_OVERRIDES[command.key] ?? formatArgs(command),
     icon: mapIcon(command),
     category: mapCategory(command),
@@ -442,11 +444,16 @@ function normalizeCommandEntry(
       choices: getArgChoices(arg).slice(0, MAX_REMOTE_CHOICES),
     }))
     .filter((arg) => arg.name.length > 0)
-    .map((arg) => ({
-      name: arg.name,
-      ...(arg.required ? { required: true } : {}),
-      ...(arg.choices.length > 0 ? { choices: arg.choices } : {}),
-    }));
+    .map((arg) => {
+      const result: NonNullable<CommandLike["args"]>[number] = { name: arg.name };
+      if (arg.required) {
+        result.required = true;
+      }
+      if (arg.choices.length > 0) {
+        result.choices = arg.choices;
+      }
+      return result;
+    });
   const normalizedDescription = clampText(entry.description, MAX_REMOTE_DESCRIPTION_LENGTH);
   return {
     key: primaryName,
@@ -501,16 +508,16 @@ function buildFallbackSlashCommands(): SlashCommandDef[] {
 
 export const SLASH_COMMANDS: SlashCommandDef[] = buildFallbackSlashCommands();
 
-let _refreshSeq = 0;
+let refreshSeq = 0;
 
 export async function refreshSlashCommands(params: {
   client: GatewayBrowserClient | null;
   agentId?: string | null;
 }): Promise<void> {
-  const seq = ++_refreshSeq;
+  const seq = ++refreshSeq;
   const agentId = params.agentId?.trim();
   if (!params.client) {
-    if (seq !== _refreshSeq) {
+    if (seq !== refreshSeq) {
       return;
     }
     replaceSlashCommands(buildFallbackSlashCommands());
@@ -522,12 +529,12 @@ export async function refreshSlashCommands(params: {
       includeArgs: true,
       scope: "text",
     });
-    if (seq !== _refreshSeq) {
+    if (seq !== refreshSeq) {
       return;
     }
     replaceSlashCommands(buildSlashCommandsFromEntries(getRemoteCommandEntries(result)));
   } catch {
-    if (seq !== _refreshSeq) {
+    if (seq !== refreshSeq) {
       return;
     }
     replaceSlashCommands(buildFallbackSlashCommands());
@@ -535,7 +542,7 @@ export async function refreshSlashCommands(params: {
 }
 
 export function resetSlashCommandsForTest(): void {
-  _refreshSeq = 0;
+  refreshSeq = 0;
   replaceSlashCommands(buildFallbackSlashCommands());
 }
 

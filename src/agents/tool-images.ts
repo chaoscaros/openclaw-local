@@ -1,14 +1,14 @@
-import { createHash } from "node:crypto";
-import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { ImageContent } from "@mariozechner/pi-ai";
+import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import type { ImageContent } from "@earendil-works/pi-ai";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { canonicalizeBase64 } from "../media/base64.js";
 import {
   buildImageResizeSideGrid,
   getImageMetadata,
   IMAGE_REDUCE_QUALITY_STEPS,
+  isImageProcessorUnavailableError,
   resizeToJpeg,
-} from "../media/image-ops.js";
+} from "../media/media-services.js";
 import {
   DEFAULT_IMAGE_MAX_BYTES,
   DEFAULT_IMAGE_MAX_DIMENSION_PX,
@@ -28,21 +28,6 @@ type TextContentBlock = Extract<ToolContentBlock, { type: "text" }>;
 const MAX_IMAGE_DIMENSION_PX = DEFAULT_IMAGE_MAX_DIMENSION_PX;
 const MAX_IMAGE_BYTES = DEFAULT_IMAGE_MAX_BYTES;
 const log = createSubsystemLogger("agents/tool-images");
-const RESIZED_IMAGE_CACHE_MAX = 128;
-
-type ImageResizeCacheEntry = {
-  base64: string;
-  mimeType: string;
-  resized: boolean;
-  width?: number;
-  height?: number;
-};
-
-const resizedImageCache = new Map<string, ImageResizeCacheEntry>();
-
-export function resetImageResizeCacheForTest(): void {
-  resizedImageCache.clear();
-}
 
 function isImageBlock(block: unknown): block is ImageContentBlock {
   if (!block || typeof block !== "object") {
@@ -85,30 +70,6 @@ function formatBytesShort(bytes: number): string {
     return `${(bytes / 1024).toFixed(1)}KB`;
   }
   return `${(bytes / (1024 * 1024)).toFixed(2)}MB`;
-}
-
-function buildImageResizeCacheKey(params: {
-  base64: string;
-  mimeType: string;
-  maxDimensionPx: number;
-  maxBytes: number;
-}): string {
-  const hash = createHash("sha256").update(params.base64).digest("hex");
-  return [hash, params.mimeType, params.maxDimensionPx, params.maxBytes].join(":");
-}
-
-function rememberImageResizeResult(key: string, entry: ImageResizeCacheEntry): void {
-  if (resizedImageCache.has(key)) {
-    resizedImageCache.delete(key);
-  }
-  resizedImageCache.set(key, entry);
-  while (resizedImageCache.size > RESIZED_IMAGE_CACHE_MAX) {
-    const firstKey = resizedImageCache.keys().next().value;
-    if (typeof firstKey !== "string") {
-      break;
-    }
-    resizedImageCache.delete(firstKey);
-  }
 }
 
 function parseMediaPathFromText(text: string): string | undefined {
@@ -199,13 +160,6 @@ async function resizeImageBase64IfNeeded(params: {
   width?: number;
   height?: number;
 }> {
-  const cacheKey = buildImageResizeCacheKey(params);
-  const cached = resizedImageCache.get(cacheKey);
-  if (cached) {
-    resizedImageCache.delete(cacheKey);
-    resizedImageCache.set(cacheKey, cached);
-    return cached;
-  }
   const buf = Buffer.from(params.base64, "base64");
   const meta = await getImageMetadata(buf);
   const width = meta?.width;
@@ -220,15 +174,13 @@ async function resizeImageBase64IfNeeded(params: {
     width <= params.maxDimensionPx &&
     height <= params.maxDimensionPx
   ) {
-    const result = {
+    return {
       base64: params.base64,
       mimeType: params.mimeType,
       resized: false,
       width,
       height,
     };
-    rememberImageResizeResult(cacheKey, result);
-    return result;
   }
 
   const maxDim = hasDimensions ? Math.max(width ?? 0, height ?? 0) : params.maxDimensionPx;
@@ -236,14 +188,24 @@ async function resizeImageBase64IfNeeded(params: {
   const sideGrid = buildImageResizeSideGrid(params.maxDimensionPx, sideStart);
 
   let smallest: { buffer: Buffer; size: number } | null = null;
+  let processorUnavailableError: unknown;
   for (const side of sideGrid) {
     for (const quality of IMAGE_REDUCE_QUALITY_STEPS) {
-      const out = await resizeToJpeg({
-        buffer: buf,
-        maxSide: side,
-        quality,
-        withoutEnlargement: true,
-      });
+      let out: Buffer;
+      try {
+        out = await resizeToJpeg({
+          buffer: buf,
+          maxSide: side,
+          quality,
+          withoutEnlargement: true,
+        });
+      } catch (err) {
+        if (isImageProcessorUnavailableError(err)) {
+          processorUnavailableError = err;
+          break;
+        }
+        throw err;
+      }
       if (!smallest || out.byteLength < smallest.size) {
         smallest = { buffer: out, size: out.byteLength };
       }
@@ -279,17 +241,22 @@ async function resizeImageBase64IfNeeded(params: {
             byteReductionPct,
           },
         );
-        const result = {
+        return {
           base64: out.toString("base64"),
           mimeType: "image/jpeg",
           resized: true,
           width,
           height,
         };
-        rememberImageResizeResult(cacheKey, result);
-        return result;
       }
     }
+    if (processorUnavailableError) {
+      break;
+    }
+  }
+
+  if (processorUnavailableError) {
+    throw processorUnavailableError;
   }
 
   const best = smallest?.buffer ?? buf;

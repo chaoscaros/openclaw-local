@@ -1,6 +1,10 @@
 import { expect } from "vitest";
 
-export const openaiCodexCatalogEntries = [
+const openaiCodexCatalogEntries = [
+  { provider: "openai", id: "gpt-5.5", name: "gpt-5.5" },
+  { provider: "openai", id: "gpt-5.5-pro", name: "gpt-5.5-pro" },
+  { provider: "openai", id: "gpt-5.4", name: "gpt-5.4" },
+  { provider: "openai", id: "gpt-5.4-pro", name: "gpt-5.4-pro" },
   { provider: "openai", id: "gpt-5.2", name: "GPT-5.2" },
   { provider: "openai", id: "gpt-5.2-pro", name: "GPT-5.2 Pro" },
   { provider: "openai", id: "gpt-5-mini", name: "GPT-5 mini" },
@@ -9,21 +13,24 @@ export const openaiCodexCatalogEntries = [
 ];
 
 export const expectedAugmentedOpenaiCodexCatalogEntries = [
-  { provider: "openai", id: "gpt-5.5-pro", name: "gpt-5.5-pro" },
   { provider: "openai", id: "gpt-5.4", name: "gpt-5.4" },
   { provider: "openai", id: "gpt-5.4-pro", name: "gpt-5.4-pro" },
   { provider: "openai", id: "gpt-5.4-mini", name: "gpt-5.4-mini" },
   { provider: "openai", id: "gpt-5.4-nano", name: "gpt-5.4-nano" },
-  { provider: "openai-codex", id: "gpt-5.5-pro", name: "gpt-5.5-pro" },
   { provider: "openai-codex", id: "gpt-5.4", name: "gpt-5.4" },
   { provider: "openai-codex", id: "gpt-5.4-pro", name: "gpt-5.4-pro" },
   { provider: "openai-codex", id: "gpt-5.4-mini", name: "gpt-5.4-mini" },
 ];
 
-export const expectedRuntimeAugmentedOpenaiCodexCatalogEntries = [
-  { provider: "openai", id: "gpt-5.5", name: "gpt-5.5" },
-  ...expectedAugmentedOpenaiCodexCatalogEntries,
+export const expectedAugmentedOpenaiCodexCatalogEntriesWithGpt55 = [
+  { provider: "openai", id: "gpt-5.5-pro", name: "gpt-5.5-pro" },
+  ...expectedAugmentedOpenaiCodexCatalogEntries.slice(0, 4),
+  { provider: "openai-codex", id: "gpt-5.5-pro", name: "gpt-5.5-pro" },
+  ...expectedAugmentedOpenaiCodexCatalogEntries.slice(4),
 ];
+
+export const expectedOpenaiPluginCodexCatalogEntriesWithGpt55 =
+  expectedAugmentedOpenaiCodexCatalogEntriesWithGpt55;
 
 export function expectCodexMissingAuthHint(
   buildProviderMissingAuthMessageWithPlugin: (params: {
@@ -35,6 +42,7 @@ export function expectCodexMissingAuthHint(
       listProfileIds: (providerId: string) => string[];
     };
   }) => string | undefined,
+  expectedModel = "openai/gpt-5.5",
 ) {
   expect(
     buildProviderMissingAuthMessageWithPlugin({
@@ -46,32 +54,7 @@ export function expectCodexMissingAuthHint(
         listProfileIds: (providerId) => (providerId === "openai-codex" ? ["p1"] : []),
       },
     }),
-  ).toContain("openai/gpt-5.5 with the Codex OAuth profile");
-}
-
-export function expectCodexBuiltInSuppression(
-  resolveProviderBuiltInModelSuppression: (params: {
-    env: NodeJS.ProcessEnv;
-    context: {
-      env: NodeJS.ProcessEnv;
-      provider: string;
-      modelId: string;
-    };
-  }) => unknown,
-) {
-  expect(
-    resolveProviderBuiltInModelSuppression({
-      env: process.env,
-      context: {
-        env: process.env,
-        provider: "azure-openai-responses",
-        modelId: "gpt-5.3-codex-spark",
-      },
-    }),
-  ).toMatchObject({
-    suppress: true,
-    errorMessage: expect.stringContaining("gpt-5.3-codex-spark is no longer exposed"),
-  });
+  ).toContain(expectedModel);
 }
 
 export async function expectAugmentedCodexCatalog(
@@ -82,9 +65,7 @@ export async function expectAugmentedCodexCatalog(
       entries: typeof openaiCodexCatalogEntries;
     };
   }) => Promise<unknown>,
-  expectedEntries: ReadonlyArray<
-    Record<string, unknown>
-  > = expectedAugmentedOpenaiCodexCatalogEntries,
+  expectedEntries = expectedAugmentedOpenaiCodexCatalogEntries,
 ) {
   const result = (await augmentModelCatalogWithProviderPlugins({
     env: process.env,

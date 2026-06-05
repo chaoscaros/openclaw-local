@@ -1,6 +1,6 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk/provider-auth";
 import { CUSTOM_LOCAL_AUTH_MARKER } from "openclaw/plugin-sdk/provider-auth";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { LMSTUDIO_LOCAL_API_KEY_PLACEHOLDER } from "./defaults.js";
 import {
   buildLmstudioAuthHeaders,
@@ -17,6 +17,11 @@ vi.mock("openclaw/plugin-sdk/provider-auth-runtime", async (importOriginal) => {
     ...actual,
     resolveApiKeyForProvider: (...args: unknown[]) => resolveApiKeyForProviderMock(...args),
   };
+});
+
+afterAll(() => {
+  vi.doUnmock("openclaw/plugin-sdk/provider-auth-runtime");
+  vi.resetModules();
 });
 
 function buildLmstudioConfig(overrides?: {
@@ -143,7 +148,7 @@ describe("lmstudio-runtime", () => {
     await expect(
       resolveLmstudioRuntimeApiKey({
         config: buildLmstudioConfig({
-          apiKey: "${CUSTOM_LMSTUDIO_KEY}",
+          apiKey: "${LMSTUDIO_API_KEY}",
           headers: {
             Authorization: "Bearer proxy-token",
           },
@@ -278,10 +283,10 @@ describe("lmstudio-runtime", () => {
     await expect(
       resolveLmstudioConfiguredApiKey({
         config: buildLmstudioConfig({
-          apiKey: "${CUSTOM_LMSTUDIO_KEY}",
+          apiKey: "${LMSTUDIO_API_KEY}",
         }),
         env: {
-          CUSTOM_LMSTUDIO_KEY: "custom-template-lmstudio-key",
+          LMSTUDIO_API_KEY: "custom-template-lmstudio-key",
         },
       }),
     ).resolves.toBe("custom-template-lmstudio-key");
@@ -291,7 +296,7 @@ describe("lmstudio-runtime", () => {
     await expect(
       resolveLmstudioConfiguredApiKey({
         config: buildLmstudioConfig({
-          apiKey: "${CUSTOM_LMSTUDIO_KEY}",
+          apiKey: "${LMSTUDIO_API_KEY}",
         }),
         env: {},
       }),

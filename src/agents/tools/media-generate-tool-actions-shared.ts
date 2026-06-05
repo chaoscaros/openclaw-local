@@ -1,5 +1,11 @@
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import {
+  listMediaGenerationProviderModels,
+  synthesizeMediaGenerationCatalogEntries,
+  type MediaGenerationCatalogKind,
+} from "../../media-generation/catalog.js";
 import { getProviderEnvVars } from "../../secrets/provider-env-vars.js";
+import type { AuthProfileStore } from "../auth-profiles/types.js";
 import { isCapabilityProviderConfigured } from "./media-tool-shared.js";
 
 type MediaGenerateActionResult = {
@@ -10,9 +16,24 @@ type MediaGenerateActionResult = {
 type TaskStatusTextBuilder<Task> = (task: Task, params?: { duplicateGuard?: boolean }) => string;
 type MediaGenerateProvider = {
   id: string;
+  aliases?: string[];
+  label?: string;
   defaultModel?: string;
-  models?: string[];
+  models?: readonly string[];
   capabilities: unknown;
+  isConfigured?: (ctx: { cfg?: OpenClawConfig; agentDir?: string }) => boolean;
+};
+
+type MediaGenerateListProviderDetails<TProvider extends MediaGenerateProvider> = {
+  id: string;
+  label?: string;
+  defaultModel?: string;
+  models: string[];
+  modes: string[];
+  configured: boolean;
+  authEnvVars: string[];
+  capabilities: TProvider["capabilities"];
+  catalog: ReturnType<typeof synthesizeMediaGenerationCatalogEntries<TProvider["capabilities"]>>;
 };
 
 export type { MediaGenerateActionResult };
@@ -20,13 +41,16 @@ export type { MediaGenerateActionResult };
 export function createMediaGenerateProviderListActionResult<
   TProvider extends MediaGenerateProvider,
 >(params: {
+  kind: MediaGenerationCatalogKind;
   providers: TProvider[];
   emptyText: string;
   cfg?: OpenClawConfig;
   workspaceDir?: string;
   agentDir?: string;
+  authStore?: AuthProfileStore;
   listModes: (provider: TProvider) => string[];
   summarizeCapabilities: (provider: TProvider) => string;
+  formatAuthHint?: (provider: { id: string; authEnvVars: readonly string[] }) => string | undefined;
 }): MediaGenerateActionResult {
   if (params.providers.length === 0) {
     return {
@@ -35,45 +59,58 @@ export function createMediaGenerateProviderListActionResult<
     };
   }
 
-  const lines = params.providers.map((provider) => {
-    const authHints = getProviderEnvVars(provider.id);
-    const configured = isCapabilityProviderConfigured({
-      providers: params.providers,
-      provider,
-      cfg: params.cfg,
-      workspaceDir: params.workspaceDir,
-      agentDir: params.agentDir,
-    });
-    const capabilities = params.summarizeCapabilities(provider);
-    return [
-      `${provider.id}: default=${provider.defaultModel ?? "none"}`,
-      provider.models?.length ? `models=${provider.models.join(", ")}` : null,
-      capabilities ? `capabilities=${capabilities}` : null,
-      `configured=${configured ? "yes" : "no"}`,
-      authHints.length > 0 ? `auth=${authHints.join(" / ")}` : null,
-    ]
-      .filter((entry): entry is string => Boolean(entry))
-      .join(" | ");
-  });
-
-  return {
-    content: [{ type: "text", text: lines.join("\n") }],
-    details: {
-      providers: params.providers.map((provider) => ({
+  const providerDetails: Array<MediaGenerateListProviderDetails<TProvider>> = params.providers.map(
+    (provider) => {
+      const modes = params.listModes(provider);
+      const models = listMediaGenerationProviderModels(provider);
+      return {
         id: provider.id,
-        defaultModel: provider.defaultModel,
-        models: provider.models ?? [],
-        modes: params.listModes(provider),
+        ...(provider.label ? { label: provider.label } : {}),
+        ...(provider.defaultModel ? { defaultModel: provider.defaultModel } : {}),
+        models,
+        modes,
         configured: isCapabilityProviderConfigured({
           providers: params.providers,
           provider,
           cfg: params.cfg,
           workspaceDir: params.workspaceDir,
           agentDir: params.agentDir,
+          authStore: params.authStore,
         }),
         authEnvVars: getProviderEnvVars(provider.id),
         capabilities: provider.capabilities,
-      })),
+        catalog: synthesizeMediaGenerationCatalogEntries({
+          kind: params.kind,
+          provider,
+          modes,
+        }),
+      };
+    },
+  );
+
+  const lines = providerDetails.flatMap((details, index) => {
+    const provider = params.providers[index];
+    const authHints = getProviderEnvVars(provider.id);
+    const capabilities = params.summarizeCapabilities(provider);
+    const modelLine = details.models.length > 0 ? details.models.join(", ") : "unknown";
+    const authHint =
+      params.formatAuthHint?.({ id: details.id, authEnvVars: authHints }) ??
+      (authHints.length > 0 ? `set ${authHints.join(" / ")} to use ${details.id}/*` : undefined);
+    return [
+      `${details.id}${details.defaultModel ? ` (default ${details.defaultModel})` : ""}`,
+      `  models: ${modelLine}`,
+      `  configured: ${details.configured ? "yes" : "no"}`,
+      ...(authHint ? [`  auth: ${authHint}`] : []),
+      "  source: static",
+      ...(capabilities ? [`  capabilities: ${capabilities}`] : []),
+    ];
+  });
+
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    details: {
+      kind: params.kind,
+      providers: providerDetails,
     },
   };
 }
@@ -106,7 +143,7 @@ export function createMediaGenerateTaskStatusActions<Task>(params: {
   };
 }
 
-export function createMediaGenerateStatusActionResult<Task>(params: {
+function createMediaGenerateStatusActionResult<Task>(params: {
   sessionKey?: string;
   inactiveText: string;
   findActiveTask: (sessionKey?: string) => Task | undefined;
@@ -132,7 +169,7 @@ export function createMediaGenerateStatusActionResult<Task>(params: {
   };
 }
 
-export function createMediaGenerateDuplicateGuardResult<Task>(params: {
+function createMediaGenerateDuplicateGuardResult<Task>(params: {
   sessionKey?: string;
   findActiveTask: (sessionKey?: string) => Task | undefined;
   buildStatusText: TaskStatusTextBuilder<Task>;

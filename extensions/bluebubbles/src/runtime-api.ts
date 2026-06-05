@@ -11,7 +11,7 @@ export {
   evictOldHistoryKeys,
   recordPendingHistoryEntryIfEnabled,
 } from "openclaw/plugin-sdk/reply-history";
-export { resolveControlCommandGate } from "openclaw/plugin-sdk/command-auth";
+export { resolveStableChannelMessageIngress } from "openclaw/plugin-sdk/channel-ingress-runtime";
 export { logAckFailure, logTypingFailure } from "openclaw/plugin-sdk/channel-feedback";
 export { logInboundDrop } from "openclaw/plugin-sdk/channel-inbound";
 export { BLUEBUBBLES_ACTION_NAMES, BLUEBUBBLES_ACTIONS } from "./actions-contract.js";
@@ -29,20 +29,15 @@ export type {
   OpenClawConfig,
   PluginRuntime,
 } from "openclaw/plugin-sdk/channel-core";
-export { parseFiniteNumber } from "openclaw/plugin-sdk/infra-runtime";
+export { parseFiniteNumber } from "openclaw/plugin-sdk/number-runtime";
 export { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
-export {
-  DM_GROUP_ACCESS_REASON,
-  readStoreAllowFromForDmPolicy,
-  resolveDmGroupAccessWithLists,
-} from "openclaw/plugin-sdk/channel-policy";
 export { readBooleanParam } from "openclaw/plugin-sdk/boolean-param";
 export { mapAllowFromEntries } from "openclaw/plugin-sdk/channel-config-helpers";
 export { createChannelPairingController } from "openclaw/plugin-sdk/channel-pairing";
-export { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
+export { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-core";
 export { resolveRequestUrl } from "openclaw/plugin-sdk/request-url";
 export { buildProbeChannelStatusSummary } from "openclaw/plugin-sdk/channel-status";
-export { stripMarkdown } from "openclaw/plugin-sdk/text-runtime";
+export { stripMarkdown } from "openclaw/plugin-sdk/text-chunking";
 export { extractToolSend } from "openclaw/plugin-sdk/tool-send";
 export {
   WEBHOOK_RATE_LIMIT_DEFAULTS,
@@ -54,7 +49,7 @@ export {
   resolveWebhookTargetWithAuthOrRejectSync,
   withResolvedWebhookRequestPipeline,
 } from "openclaw/plugin-sdk/webhook-ingress";
-export { resolveChannelContextVisibilityMode } from "openclaw/plugin-sdk/config-runtime";
+export { resolveChannelContextVisibilityMode } from "openclaw/plugin-sdk/context-visibility-runtime";
 export {
   evaluateSupplementalContextVisibility,
   shouldIncludeSupplementalContext,

@@ -58,7 +58,7 @@ export type MessageReceivedHookContext = {
   content: string;
   /** Unix timestamp when the message was received */
   timestamp?: number;
-  /** Channel identifier (e.g., "telegram", "whatsapp") */
+  /** Channel identifier (for example "chat" or "support-chat") */
   channelId: string;
   /** Provider account ID for multi-account setups */
   accountId?: string;
@@ -85,7 +85,7 @@ export type MessageSentHookContext = {
   success: boolean;
   /** Error message if sending failed */
   error?: string;
-  /** Channel identifier (e.g., "telegram", "whatsapp") */
+  /** Channel identifier (for example "chat" or "support-chat") */
   channelId: string;
   /** Provider account ID for multi-account setups */
   accountId?: string;
@@ -116,7 +116,7 @@ type MessageEnrichedBodyHookContext = {
   bodyForAgent?: string;
   /** Unix timestamp when the message was received */
   timestamp?: number;
-  /** Channel identifier (e.g., "telegram", "whatsapp") */
+  /** Channel identifier (for example "chat" or "support-chat") */
   channelId: string;
   /** Conversation/chat ID */
   conversationId?: string;
@@ -392,7 +392,11 @@ export function isMessageReceivedEvent(
   if (!context) {
     return false;
   }
-  return hasStringContextField(context, "from") && hasStringContextField(context, "channelId");
+  return (
+    hasStringContextField(context, "from") &&
+    hasStringContextField(context, "content") &&
+    hasStringContextField(context, "channelId")
+  );
 }
 
 export function isMessageSentEvent(event: InternalHookEvent): event is MessageSentHookEvent {
@@ -405,6 +409,7 @@ export function isMessageSentEvent(event: InternalHookEvent): event is MessageSe
   }
   return (
     hasStringContextField(context, "to") &&
+    hasStringContextField(context, "content") &&
     hasStringContextField(context, "channelId") &&
     hasBooleanContextField(context, "success")
   );

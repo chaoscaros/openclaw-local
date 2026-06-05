@@ -4,11 +4,11 @@ import { parseSlashCommandOrNull } from "./commands-slash-parse.js";
 describe("parseSlashCommandOrNull", () => {
   const opts = { invalidMessage: "invalid" };
 
-  it("returns null when the input does not start with the slash prefix", () => {
+  it("returns null when the input doesn't start with the slash prefix", () => {
     expect(parseSlashCommandOrNull("hello world", "/config", opts)).toBeNull();
   });
 
-  it("parses action and args when the input has a clean word boundary", () => {
+  it("parses action + args when the input has a clean word boundary", () => {
     const result = parseSlashCommandOrNull("/config show enabled", "/config", opts);
     expect(result).toEqual({ ok: true, action: "show", args: "enabled" });
   });
@@ -21,25 +21,35 @@ describe("parseSlashCommandOrNull", () => {
     expect(result).toEqual({ ok: true, action: "show", args: "" });
   });
 
-  it("does not match a longer command name with a hyphen tail", () => {
-    expect(parseSlashCommandOrNull("/config-check arg1 arg2", "/config", opts)).toBeNull();
-  });
+  describe("regression: #84572 — prefix match must require a word boundary", () => {
+    // Previously, `/config-check <args>` matched the `/config` handler
+    // via a naive `startsWith` and surfaced as an invalid action, blocking
+    // any skill whose name shared a prefix with a built-in command.
+    it("does not match a longer command name with a hyphen tail (`/config-check`)", () => {
+      expect(parseSlashCommandOrNull("/config-check arg1 arg2", "/config", opts)).toBeNull();
+    });
 
-  it("does not match a longer command name with no whitespace after prefix", () => {
-    expect(parseSlashCommandOrNull("/configfoo", "/config", opts)).toBeNull();
-  });
+    it("does not match a longer command name with no whitespace after prefix", () => {
+      expect(parseSlashCommandOrNull("/configfoo", "/config", opts)).toBeNull();
+    });
 
-  it("does not match when prefix sits in the middle of a longer word", () => {
-    expect(parseSlashCommandOrNull("/modelsy", "/models", opts)).toBeNull();
-  });
+    it("does not match when prefix sits in the middle of a longer word", () => {
+      // /modelsy should not be captured by /models
+      expect(parseSlashCommandOrNull("/modelsy", "/models", opts)).toBeNull();
+    });
 
-  it("still matches when the boundary is a colon", () => {
-    const result = parseSlashCommandOrNull("/config:json", "/config", opts);
-    expect(result?.ok).toBe(true);
-  });
+    it("still matches when the boundary is a colon (`/config:json`)", () => {
+      // Some clients allow `cmd:subkey` to pass through to the action parser
+      // when there's no whitespace — the boundary character is still a
+      // separator and not an alpha continuation.
+      const result = parseSlashCommandOrNull("/config:json", "/config", opts);
+      expect(result).not.toBeNull();
+      expect(result?.ok).toBe(true);
+    });
 
-  it("still matches the exact prefix with leading whitespace", () => {
-    const result = parseSlashCommandOrNull("  /config show ", "/config", opts);
-    expect(result).toEqual({ ok: true, action: "show", args: "" });
+    it("still matches the exact prefix with leading whitespace", () => {
+      const result = parseSlashCommandOrNull("  /config show ", "/config", opts);
+      expect(result).toEqual({ ok: true, action: "show", args: "" });
+    });
   });
 });

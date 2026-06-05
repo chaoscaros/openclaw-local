@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage } from "node:http";
-import { listAgentIds, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { listAgentIds, resolveDefaultAgentId } from "../agents/agent-scope-config.js";
 import { listChannelPlugins } from "../channels/plugins/index.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { readJsonBodyWithLimit, requestBodyErrorToText } from "../infra/http-body.js";
@@ -10,7 +10,7 @@ import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
 } from "../shared/string-coerce.js";
-import { normalizeMessageChannel } from "../utils/message-channel.js";
+import { normalizeMessageChannel } from "../utils/message-channel-core.js";
 import {
   hasHookTemplateExpressions,
   type HookMappingResolved,
@@ -32,19 +32,19 @@ export type HooksConfigResolved = {
   sessionPolicy: HookSessionPolicyResolved;
 };
 
-export type HookAgentPolicyResolved = {
+type HookAgentPolicyResolved = {
   defaultAgentId: string;
   knownAgentIds: Set<string>;
   allowedAgentIds?: Set<string>;
 };
 
-export type HookSessionPolicyResolved = {
+type HookSessionPolicyResolved = {
   defaultSessionKey?: string;
   allowRequestSessionKey: boolean;
   allowedSessionKeyPrefixes?: string[];
 };
 
-export type HookSessionKeySource = "request" | "mapping-static" | "mapping-templated";
+type HookSessionKeySource = "request" | "mapping-static" | "mapping-templated";
 
 export function resolveHooksConfig(cfg: OpenClawConfig): HooksConfigResolved | null {
   if (cfg.hooks?.enabled !== true) {
@@ -210,7 +210,7 @@ export function normalizeWakePayload(
   return { ok: true, value: { text: normalizedText, mode } };
 }
 
-export type HookAgentPayload = {
+type HookAgentPayload = {
   message: string;
   name: string;
   agentId?: string;
@@ -227,6 +227,7 @@ export type HookAgentPayload = {
 
 export type HookAgentDispatchPayload = Omit<HookAgentPayload, "sessionKey"> & {
   sessionKey: string;
+  sourcePath: string;
   allowUnsafeExternalContent?: boolean;
   externalContentSource?: HookExternalContentSource;
 };
@@ -293,26 +294,29 @@ export function resolveHookTargetAgentId(
   return hooksConfig.agentPolicy.defaultAgentId;
 }
 
+export function resolveEffectiveHookTargetAgentId(
+  hooksConfig: HooksConfigResolved,
+  agentId: string | undefined,
+): string {
+  return resolveHookTargetAgentId(hooksConfig, agentId) ?? hooksConfig.agentPolicy.defaultAgentId;
+}
+
 export function isHookAgentAllowed(
   hooksConfig: HooksConfigResolved,
   agentId: string | undefined,
 ): boolean {
-  // Keep backwards compatibility for callers that omit agentId.
-  const raw = normalizeOptionalString(agentId);
-  if (!raw) {
-    return true;
-  }
   const allowed = hooksConfig.agentPolicy.allowedAgentIds;
   if (allowed === undefined) {
     return true;
   }
-  const resolved = resolveHookTargetAgentId(hooksConfig, raw);
-  return resolved ? allowed.has(resolved) : false;
+  // Omitted agentId still dispatches to the default agent downstream, so the
+  // allowlist must authorize that effective target before dispatch.
+  return allowed.has(resolveEffectiveHookTargetAgentId(hooksConfig, agentId));
 }
 
 export const getHookAgentPolicyError = () => "agentId is not allowed by hooks.allowedAgentIds";
-export const getHookSessionKeyRequestPolicyError = () =>
-  "sessionKey is disabled for external /hooks/agent payloads; set hooks.allowRequestSessionKey=true to enable";
+const getHookSessionKeyRequestPolicyError = () =>
+  "sessionKey is disabled for externally supplied hook payload values; set hooks.allowRequestSessionKey=true to enable";
 export const getHookSessionKeyPrefixError = (prefixes: string[]) =>
   `sessionKey must start with one of: ${prefixes.join(", ")}`;
 

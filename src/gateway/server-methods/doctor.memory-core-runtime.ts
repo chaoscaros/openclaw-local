@@ -1,13 +1,9 @@
 export {
   dedupeDreamDiaryEntries,
-  removeBackfillDiaryEntries,
   previewGroundedRemMarkdown,
+  previewRemHarness,
+  removeBackfillDiaryEntries,
+  removeGroundedShortTermCandidates,
   repairDreamingArtifacts,
   writeBackfillDiaryEntries,
-  removeGroundedShortTermCandidates,
-} from "../../plugin-sdk/memory-core-bundled-runtime.js";
-
-export {
-  resolveShortTermPromotionDreamingConfig,
-  runShortTermDreamingPromotionNow,
 } from "../../plugin-sdk/memory-core-bundled-runtime.js";

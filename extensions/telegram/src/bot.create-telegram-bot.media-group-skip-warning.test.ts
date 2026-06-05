@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const fetchRemoteMedia = vi.fn();
+const saveRemoteMedia = vi.fn();
 const saveMediaBuffer = vi.fn();
 const readRemoteMediaBuffer = vi.fn();
 const rootRead = vi.fn();
@@ -13,11 +13,10 @@ vi.mock("openclaw/plugin-sdk/file-access-runtime", () => ({
 }));
 
 vi.mock("./bot/delivery.resolve-media.runtime.js", async () => {
-  const actual = await vi.importActual<typeof import("./telegram-media.runtime.js")>(
+  const actual = await vi.importActual<typeof import("../src/telegram-media.runtime.js")>(
     "./telegram-media.runtime.js",
   );
   return {
-    fetchRemoteMedia: (...args: unknown[]) => fetchRemoteMedia(...args),
     readRemoteMediaBuffer: (...args: unknown[]) => readRemoteMediaBuffer(...args),
     formatErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
     logVerbose: () => {},
@@ -26,6 +25,7 @@ vi.mock("./bot/delivery.resolve-media.runtime.js", async () => {
       apiRoot?.trim() ? apiRoot.replace(/\/+$/u, "") : "https://api.telegram.org",
     retryAsync: async (fn: () => unknown) => await fn(),
     saveMediaBuffer: (...args: unknown[]) => saveMediaBuffer(...args),
+    saveRemoteMedia: (...args: unknown[]) => saveRemoteMedia(...args),
     shouldRetryTelegramTransportFallback: vi.fn(() => false),
     warn: (s: string) => s,
   };
@@ -49,13 +49,13 @@ const {
   telegramBotDepsForTest,
   telegramBotRuntimeForTest,
 } = harness;
-const { createTelegramBot: createTelegramBotBase, setTelegramBotRuntimeForTest } =
-  await import("./bot.js");
+const { createTelegramBotCore: createTelegramBotBase, setTelegramBotRuntimeForTest } =
+  await import("./bot-core.js");
 const { MediaFetchError } = await import("./telegram-media.runtime.js");
 
 let createTelegramBot: (
-  opts: Parameters<typeof createTelegramBotBase>[0],
-) => ReturnType<typeof createTelegramBotBase>;
+  opts: import("./bot.types.js").TelegramBotOptions,
+) => ReturnType<typeof import("./bot-core.js").createTelegramBotCore>;
 
 const loadConfig = getLoadConfigMock();
 
@@ -65,7 +65,6 @@ const TELEGRAM_TEST_TIMINGS = {
 } as const;
 
 const CHANNEL_ID = -100777111222;
-const GROUP_ID = -100777111333;
 
 function setOpenChannelPostConfig() {
   loadConfig.mockReturnValue({
@@ -83,30 +82,9 @@ function setOpenChannelPostConfig() {
   });
 }
 
-function setMentionRequiredGroupConfig() {
-  loadConfig.mockReturnValue({
-    channels: {
-      telegram: {
-        groupPolicy: "open",
-        groups: {
-          [String(GROUP_ID)]: {
-            enabled: true,
-            requireMention: true,
-          },
-        },
-      },
-    },
-  });
-}
-
 function getChannelPostHandler() {
   createTelegramBot({ token: "tok", testTimings: TELEGRAM_TEST_TIMINGS });
   return getOnHandler("channel_post") as (ctx: Record<string, unknown>) => Promise<void>;
-}
-
-function getGroupMessageHandler() {
-  createTelegramBot({ token: "tok", testTimings: TELEGRAM_TEST_TIMINGS });
-  return getOnHandler("message") as (ctx: Record<string, unknown>) => Promise<void>;
 }
 
 function resolveFlushTimer(setTimeoutSpy: ReturnType<typeof vi.spyOn>) {
@@ -153,28 +131,6 @@ function createChannelPostContext(params: {
   };
 }
 
-function createGroupMessageContext(params: {
-  messageId: number;
-  date: number;
-  caption?: string;
-  mediaGroupId: string;
-  photoFileId: string;
-}) {
-  return {
-    message: {
-      chat: { id: GROUP_ID, type: "group", title: "Ops Group" },
-      from: { id: 42, first_name: "Ada", username: "ada" },
-      message_id: params.messageId,
-      date: params.date,
-      ...(params.caption ? { caption: params.caption } : {}),
-      media_group_id: params.mediaGroupId,
-      photo: [{ file_id: params.photoFileId }],
-    },
-    me: { id: 9001, username: "openclaw_bot" },
-    getFile: async () => ({ file_path: `photos/${params.photoFileId}.jpg` }),
-  };
-}
-
 async function queueChannelPostAlbum(
   handler: (ctx: Record<string, unknown>) => Promise<void>,
   params: { caption: string; mediaGroupId: string; photoFileIds: string[] },
@@ -195,26 +151,6 @@ async function queueChannelPostAlbum(
   return baseMessageId;
 }
 
-async function queueGroupAlbum(
-  handler: (ctx: Record<string, unknown>) => Promise<void>,
-  params: { caption: string; mediaGroupId: string; photoFileIds: string[] },
-) {
-  const baseMessageId = 700;
-  const calls = params.photoFileIds.map((fileId, index) =>
-    handler(
-      createGroupMessageContext({
-        messageId: baseMessageId + index,
-        date: 1736380900 + index,
-        ...(index === 0 ? { caption: params.caption } : {}),
-        mediaGroupId: params.mediaGroupId,
-        photoFileId: fileId,
-      }),
-    ),
-  );
-  await Promise.all(calls);
-  return baseMessageId;
-}
-
 function urlOf(args: unknown[]): string {
   const opts = args[0];
   if (opts && typeof opts === "object" && "url" in opts) {
@@ -223,7 +159,7 @@ function urlOf(args: unknown[]): string {
   return "";
 }
 
-describe("createTelegramBot media-group skip warning", () => {
+describe("createTelegramBot media-group skip warning (#55216)", () => {
   beforeAll(() => {
     createTelegramBot = (opts) =>
       createTelegramBotBase({
@@ -235,17 +171,8 @@ describe("createTelegramBot media-group skip warning", () => {
 
   beforeEach(() => {
     setTelegramBotRuntimeForTest(telegramBotRuntimeForTest);
-    fetchRemoteMedia.mockReset();
+    saveRemoteMedia.mockReset();
     saveMediaBuffer.mockReset();
-    saveMediaBuffer.mockImplementation(
-      async (
-        _buffer: Uint8Array,
-        contentType: string | undefined,
-        _directory: string,
-        _maxBytes: number,
-        originalName: string,
-      ) => ({ path: `/tmp/${originalName}`, contentType }),
-    );
     readRemoteMediaBuffer.mockReset();
     rootRead.mockReset();
     sendMessageSpy.mockClear();
@@ -254,14 +181,10 @@ describe("createTelegramBot media-group skip warning", () => {
 
   it("warns the user once when an album drops some images", async () => {
     setOpenChannelPostConfig();
-    fetchRemoteMedia.mockImplementation(async (...args: unknown[]) => {
+    saveRemoteMedia.mockImplementation(async (...args: unknown[]) => {
       const url = urlOf(args);
       if (url.includes("photos/p1.jpg")) {
-        return {
-          buffer: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
-          contentType: "image/png",
-          fileName: "p1.jpg",
-        };
+        return { path: "/tmp/p1.jpg", contentType: "image/png" };
       }
       throw new MediaFetchError("fetch_failed", `Failed to fetch media from ${url}`);
     });
@@ -297,7 +220,7 @@ describe("createTelegramBot media-group skip warning", () => {
 
   it("warns the user when every album image fails", async () => {
     setOpenChannelPostConfig();
-    fetchRemoteMedia.mockImplementation(async (...args: unknown[]) => {
+    saveRemoteMedia.mockImplementation(async (...args: unknown[]) => {
       throw new MediaFetchError("fetch_failed", `Failed to fetch media from ${urlOf(args)}`);
     });
 
@@ -322,14 +245,10 @@ describe("createTelegramBot media-group skip warning", () => {
 
   it("pluralizes correctly for 2+ skipped", async () => {
     setOpenChannelPostConfig();
-    fetchRemoteMedia.mockImplementation(async (...args: unknown[]) => {
+    saveRemoteMedia.mockImplementation(async (...args: unknown[]) => {
       const url = urlOf(args);
       if (url.includes("photos/p1.jpg")) {
-        return {
-          buffer: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
-          contentType: "image/png",
-          fileName: "p1.jpg",
-        };
+        return { path: "/tmp/p1.jpg", contentType: "image/png" };
       }
       throw new MediaFetchError("fetch_failed", `Failed to fetch media from ${url}`);
     });
@@ -348,61 +267,6 @@ describe("createTelegramBot media-group skip warning", () => {
       const warningText = String(sendMessageSpy.mock.calls[0]?.[1]);
       expect(warningText).toContain("1 of 3 images");
       expect(warningText).toContain("2 could not be fetched and were skipped");
-    } finally {
-      setTimeoutSpy.mockRestore();
-    }
-  });
-
-  it("skips unmentioned requireMention group albums before downloading media", async () => {
-    setMentionRequiredGroupConfig();
-    fetchRemoteMedia.mockResolvedValue({
-      buffer: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
-      contentType: "image/png",
-      fileName: "p1.jpg",
-    });
-
-    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
-    try {
-      const handler = getGroupMessageHandler();
-      await queueGroupAlbum(handler, {
-        caption: "plain album",
-        mediaGroupId: "mention-album-1",
-        photoFileIds: ["p1", "p2"],
-      });
-      await flushChannelPostMediaGroup(setTimeoutSpy);
-
-      expect(fetchRemoteMedia).not.toHaveBeenCalled();
-      expect(sendMessageSpy).not.toHaveBeenCalled();
-      expect(replySpy).not.toHaveBeenCalled();
-    } finally {
-      setTimeoutSpy.mockRestore();
-    }
-  });
-
-  it("downloads mentioned requireMention group albums", async () => {
-    setMentionRequiredGroupConfig();
-    fetchRemoteMedia.mockImplementation(async (...args: unknown[]) => ({
-      buffer: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
-      contentType: "image/png",
-      fileName: urlOf(args).split("/").at(-1) ?? "photo.jpg",
-    }));
-
-    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
-    try {
-      const handler = getGroupMessageHandler();
-      await queueGroupAlbum(handler, {
-        caption: "hey @openclaw_bot album",
-        mediaGroupId: "mention-album-2",
-        photoFileIds: ["p1", "p2"],
-      });
-      await flushChannelPostMediaGroup(setTimeoutSpy);
-
-      expect(fetchRemoteMedia).toHaveBeenCalledTimes(2);
-      expect(replySpy).toHaveBeenCalledTimes(1);
-      const payload = replySpy.mock.calls[0]?.[0] as { Body?: string; WasMentioned?: boolean };
-      expect(payload.Body).toContain("@openclaw_bot album");
-      expect(payload.WasMentioned).toBe(true);
-      expect(sendMessageSpy).not.toHaveBeenCalled();
     } finally {
       setTimeoutSpy.mockRestore();
     }

@@ -9,18 +9,17 @@ const { patchSessionMock, loadSessionsMock } = vi.hoisted(() => ({
         patch: { mode?: "normal" | "task" | null; taskId?: string | null },
       ) => Promise<void>
     >(),
-  loadSessionsMock:
-    vi.fn<
-      (
-        state: unknown,
-        overrides?: {
-          activeMinutes?: number;
-          limit?: number;
-          includeGlobal?: boolean;
-          includeUnknown?: boolean;
-        },
-      ) => Promise<void>
-    >(),
+  loadSessionsMock: vi.fn<
+    (
+      state: unknown,
+      overrides?: {
+        activeMinutes?: number;
+        limit?: number;
+        includeGlobal?: boolean;
+        includeUnknown?: boolean;
+      },
+    ) => Promise<void>
+  >(),
 }));
 
 vi.mock("./sessions.ts", async () => {

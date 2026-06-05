@@ -25,16 +25,6 @@ vi.mock("../agents/model-auth.js", () => ({
   hasUsableCustomProviderApiKey,
 }));
 
-const resolvePluginProviders = vi.hoisted(() =>
-  vi.fn(() => [
-    { id: "openai", auth: [{}] },
-    { id: "openai-codex", auth: [{}] },
-  ]),
-);
-vi.mock("../plugins/providers.runtime.js", () => ({
-  resolvePluginProviders,
-}));
-
 describe("warnIfModelConfigLooksOff", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -67,7 +57,7 @@ describe("warnIfModelConfigLooksOff", () => {
     );
   });
 
-  it("accepts Codex OAuth profiles for canonical OpenAI models", async () => {
+  it("accepts Codex OAuth profiles for canonical OpenAI models using the Codex runtime", async () => {
     const note = vi.fn(async () => {});
     const prompter = makePrompter({ note });
     const store = {
@@ -136,5 +126,24 @@ describe("warnIfModelConfigLooksOff", () => {
       'No auth configured for provider "openai". The agent may fail until credentials are added. Run `openclaw models auth login --provider openai`, `openclaw configure`, or set an API key env var.',
       "Model check",
     );
+  });
+
+  it("keeps full catalog validation enabled by default", async () => {
+    const note = vi.fn(async () => {});
+    const prompter = makePrompter({ note });
+    const config = {
+      agents: {
+        defaults: {
+          model: "openai-codex/gpt-5.5",
+        },
+      },
+    } as OpenClawConfig;
+
+    await warnIfModelConfigLooksOff(config, prompter);
+
+    expect(loadModelCatalog).toHaveBeenCalledWith({
+      config,
+      useCache: false,
+    });
   });
 });

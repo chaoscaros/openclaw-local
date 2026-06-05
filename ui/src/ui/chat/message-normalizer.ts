@@ -211,13 +211,12 @@ function expandTextContent(text: string): {
   const content = mergeAdjacentTextItems(
     parts.map((item) => {
       if (item.type === "attachment" && item.attachment.kind === "audio" && audioAsVoice) {
-        return {
-          ...item,
+        return Object.assign({}, item, {
           attachment: {
             ...item.attachment,
             isVoiceNote: true,
           },
-        };
+        });
       }
       return item;
     }),

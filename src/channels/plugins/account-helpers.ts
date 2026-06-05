@@ -9,6 +9,7 @@ import {
   normalizeOptionalAccountId,
 } from "../../routing/session-key.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
+import { normalizeUniqueStringEntries } from "../../shared/string-normalization.js";
 import type { ChannelAccountSnapshot } from "./types.core.js";
 
 export function createAccountListHelpers(
@@ -70,7 +71,7 @@ export function createAccountListHelpers(
     if (!normalizeConfiguredAccountId) {
       return ids;
     }
-    return [...new Set(ids.map((id) => normalizeConfiguredAccountId(id)).filter(Boolean))];
+    return normalizeUniqueStringEntries(ids.map((id) => normalizeConfiguredAccountId(id)));
   }
 
   function listAccountIds(cfg: OpenClawConfig): string[] {
@@ -207,14 +208,14 @@ export function resolveMergedAccountConfig<TConfig extends Record<string, unknow
   });
 }
 
-export function describeAccountSnapshot<
-  TAccount extends {
-    accountId?: string | null;
-    enabled?: boolean | null;
-    name?: string | null | undefined;
-  },
->(params: {
-  account: TAccount;
+type AccountSnapshotInput = {
+  accountId?: string | null;
+  enabled?: boolean | null;
+  name?: string | null | undefined;
+};
+
+export function describeAccountSnapshot(params: {
+  account: AccountSnapshotInput;
   configured?: boolean | undefined;
   extra?: Record<string, unknown> | undefined;
 }): ChannelAccountSnapshot {
@@ -227,14 +228,8 @@ export function describeAccountSnapshot<
   };
 }
 
-export function describeWebhookAccountSnapshot<
-  TAccount extends {
-    accountId?: string | null;
-    enabled?: boolean | null;
-    name?: string | null | undefined;
-  },
->(params: {
-  account: TAccount;
+export function describeWebhookAccountSnapshot(params: {
+  account: AccountSnapshotInput;
   configured?: boolean | undefined;
   mode?: string | undefined;
   extra?: Record<string, unknown> | undefined;

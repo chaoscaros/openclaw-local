@@ -1,6 +1,11 @@
-import type { PluginCommandContext } from "openclaw/plugin-sdk/plugin-entry";
+import type { PluginCommandContext, PluginCommandResult } from "openclaw/plugin-sdk/plugin-entry";
 import { formatCodexDisplayText } from "./command-formatters.js";
 
+/**
+ * Lightweight read/write surface over the Openclaw config file. Plugged in by
+ * the command registration site so this module stays decoupled from the
+ * concrete `mutateConfigFile` import in tests.
+ */
 export type CodexPluginsManagementIO = {
   readConfig: () => Promise<{
     enabled?: boolean;
@@ -21,6 +26,10 @@ export type CodexPluginsConfigBlock = {
   plugins?: Record<string, CodexPluginConfigEntry>;
 };
 
+// Plugin lifecycle changes (enable/disable) write to openclaw.json
+// synchronously. The Codex app-server picks up the new policy when the next
+// thread starts; in-flight conversations keep the old policy until /new or
+// /reset. A full gateway restart is NOT needed.
 const POLICY_REFRESH_HINT =
   "New Codex conversations pick this up automatically. Use /new or /reset to refresh the current one.";
 
@@ -28,7 +37,7 @@ export async function handleCodexPluginsSubcommand(
   ctx: PluginCommandContext,
   rest: string[],
   io: CodexPluginsManagementIO,
-): Promise<{ text: string; presentation?: unknown }> {
+): Promise<PluginCommandResult> {
   const [verb = "list", ...args] = rest;
   const normalized = verb.toLowerCase();
 
@@ -77,10 +86,10 @@ export async function handleCodexPluginsSubcommand(
 }
 
 function canMutateCodexPlugins(ctx: PluginCommandContext): boolean {
-  if (!Array.isArray(ctx.gatewayClientScopes)) {
+  if (ctx.senderIsOwner === true) {
     return true;
   }
-  return ctx.gatewayClientScopes.includes("operator.admin");
+  return ctx.gatewayClientScopes?.includes("operator.admin") === true;
 }
 
 export function buildPluginsHelp(): string {
@@ -110,14 +119,14 @@ export function formatPluginList(
     const marketplace = formatCodexDisplayText(entry.marketplaceName ?? "?");
     return { displayKey, state, pluginName, marketplace };
   });
-  const keyW = Math.max(...rows.map((row) => row.displayKey.length));
-  const pluginW = Math.max(...rows.map((row) => row.pluginName.length));
+  const keyW = Math.max(...rows.map((r) => r.displayKey.length));
+  const pluginW = Math.max(...rows.map((r) => r.pluginName.length));
   return [
-    "Codex sub-plugins in OpenClaw config (~/.openclaw/openclaw.json):",
+    "Codex sub-plugins in Openclaw config (~/.openclaw/openclaw.json):",
     "",
     ...rows.map(
-      (row) =>
-        `  ${row.state}  ${row.displayKey.padEnd(keyW)}  ${row.pluginName.padEnd(pluginW)}  [${row.marketplace}]`,
+      (r) =>
+        `  ${r.state}  ${r.displayKey.padEnd(keyW)}  ${r.pluginName.padEnd(pluginW)}  [${r.marketplace}]`,
     ),
     "",
     ...(globalEnabled

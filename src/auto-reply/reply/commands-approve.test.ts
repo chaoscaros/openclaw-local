@@ -25,17 +25,24 @@ vi.mock("../../globals.js", () => ({
   logVerbose: vi.fn(),
 }));
 
-function approvalResolverRequest(callIndex = 0): Record<string, unknown> {
+function requireRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`expected ${label} to be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function approvalResolverRequest(callIndex = 0) {
   const call = resolveApprovalOverGatewayMock.mock.calls[callIndex] as unknown[] | undefined;
   if (!call) {
     throw new Error(`expected approval resolver call ${callIndex}`);
   }
-  return call[0] as Record<string, unknown>;
+  return requireRecord(call[0], `approval resolver call ${callIndex} request`);
 }
 
 function expectApprovalResolverCall(params: {
   callIndex?: number;
-  method: ApprovalMethod;
+  method: string;
   id: string;
   decision?: string;
 }) {
@@ -51,8 +58,6 @@ function expectApprovalResolverCall(params: {
   }
   expect(request.clientDisplayName).toMatch(/^Chat approval \(.+\)$/);
 }
-
-type ApprovalMethod = "exec.approval.resolve" | "plugin.approval.resolve";
 
 function normalizeDiscordDirectApproverId(value: string | number): string | undefined {
   const normalized = String(value)
@@ -124,6 +129,19 @@ const slackApproveTestPlugin: ChannelPlugin = {
       chatTypes: ["direct", "group", "thread"],
       reactions: true,
       threads: true,
+      nativeCommands: true,
+    },
+  }),
+};
+
+const whatsappApproveTestPlugin: ChannelPlugin = {
+  ...createChannelTestPluginBase({
+    id: "whatsapp",
+    label: "WhatsApp",
+    docsPath: "/channels/whatsapp",
+    capabilities: {
+      chatTypes: ["direct", "group"],
+      media: true,
       nativeCommands: true,
     },
   }),
@@ -375,6 +393,7 @@ function setApprovePluginRegistry(): void {
     createTestRegistry([
       { pluginId: "discord", plugin: discordApproveTestPlugin, source: "test" },
       { pluginId: "slack", plugin: slackApproveTestPlugin, source: "test" },
+      { pluginId: "whatsapp", plugin: whatsappApproveTestPlugin, source: "test" },
       { pluginId: "signal", plugin: signalApproveTestPlugin, source: "test" },
       { pluginId: "telegram", plugin: telegramApproveTestPlugin, source: "test" },
     ]),
@@ -468,7 +487,7 @@ describe("handleApproveCommand", () => {
   });
 
   it("submits approval", async () => {
-    resolveApprovalOverGatewayMock.mockResolvedValue({ ok: true });
+    resolveApprovalOverGatewayMock.mockResolvedValue(undefined);
     const result = await handleApproveCommand(
       buildApproveParams(
         "/approve abc allow-once",
@@ -487,7 +506,7 @@ describe("handleApproveCommand", () => {
   });
 
   it("accepts bare approve text for Slack-style manual approvals", async () => {
-    resolveApprovalOverGatewayMock.mockResolvedValue({ ok: true });
+    resolveApprovalOverGatewayMock.mockResolvedValue(undefined);
     const result = await handleApproveCommand(
       buildApproveParams(
         "approve abc allow-once",
@@ -516,7 +535,7 @@ describe("handleApproveCommand", () => {
       SenderId: "123",
     });
     params.command.isAuthorizedSender = false;
-    resolveApprovalOverGatewayMock.mockResolvedValue({ ok: true });
+    resolveApprovalOverGatewayMock.mockResolvedValue(undefined);
 
     const result = await handleApproveCommand(params, true);
     expect(result?.shouldContinue).toBe(false);
@@ -534,7 +553,7 @@ describe("handleApproveCommand", () => {
         },
       ]),
     );
-    resolveApprovalOverGatewayMock.mockResolvedValue({ ok: true });
+    resolveApprovalOverGatewayMock.mockResolvedValue(undefined);
     const params = buildApproveParams(
       "/approve abc12345 allow-once",
       {
@@ -584,7 +603,7 @@ describe("handleApproveCommand", () => {
       },
     );
     params.command.isAuthorizedSender = false;
-    resolveApprovalOverGatewayMock.mockResolvedValue({ ok: true });
+    resolveApprovalOverGatewayMock.mockResolvedValue(undefined);
 
     const result = await handleApproveCommand(params, true);
     expect(result?.shouldContinue).toBe(false);
@@ -674,7 +693,7 @@ describe("handleApproveCommand", () => {
   });
 
   it("keeps same-chat /approve available to authorized senders when helper approvers are empty", async () => {
-    resolveApprovalOverGatewayMock.mockResolvedValue({ ok: true });
+    resolveApprovalOverGatewayMock.mockResolvedValue(undefined);
     const params = buildApproveParams(
       "/approve abc12345 allow-once",
       {
@@ -724,7 +743,7 @@ describe("handleApproveCommand", () => {
       },
     );
     params.command.isAuthorizedSender = false;
-    resolveApprovalOverGatewayMock.mockResolvedValue({ ok: true });
+    resolveApprovalOverGatewayMock.mockResolvedValue(undefined);
 
     const result = await handleApproveCommand(params, true);
     expect(result?.shouldContinue).toBe(false);
@@ -767,7 +786,7 @@ describe("handleApproveCommand", () => {
     ] as const) {
       resolveApprovalOverGatewayMock.mockReset();
       if (testCase.expectedResolverCalls > 0) {
-        resolveApprovalOverGatewayMock.mockResolvedValue({ ok: true });
+        resolveApprovalOverGatewayMock.mockResolvedValue(undefined);
       }
       const result = await handleApproveCommand(
         buildApproveParams("/approve abc12345 allow-once", testCase.cfg, {
@@ -782,10 +801,9 @@ describe("handleApproveCommand", () => {
       expect(resolveApprovalOverGatewayMock, testCase.name).toHaveBeenCalledTimes(
         testCase.expectedResolverCalls,
       );
-      const expectedMethod = "expectedMethod" in testCase ? testCase.expectedMethod : undefined;
-      if (expectedMethod) {
+      if ("expectedMethod" in testCase && testCase.expectedMethod) {
         expectApprovalResolverCall({
-          method: expectedMethod,
+          method: testCase.expectedMethod,
           id: "abc12345",
         });
       }
@@ -806,7 +824,7 @@ describe("handleApproveCommand", () => {
       },
     ] as const) {
       resolveApprovalOverGatewayMock.mockReset();
-      resolveApprovalOverGatewayMock.mockResolvedValue({ ok: true });
+      resolveApprovalOverGatewayMock.mockResolvedValue(undefined);
       const result = await handleApproveCommand(
         buildApproveParams("/approve legacy-plugin-123 allow-once", testCase.cfg, {
           Provider: "discord",
@@ -825,7 +843,7 @@ describe("handleApproveCommand", () => {
     resolveApprovalOverGatewayMock.mockRejectedValueOnce(
       new Error("unknown or expired approval id"),
     );
-    resolveApprovalOverGatewayMock.mockResolvedValueOnce({ ok: true });
+    resolveApprovalOverGatewayMock.mockResolvedValueOnce(undefined);
     const result = await handleApproveCommand(
       buildApproveParams(
         "/approve legacy-plugin-123 allow-once",
@@ -916,7 +934,7 @@ describe("handleApproveCommand", () => {
     ] as const) {
       resolveApprovalOverGatewayMock.mockReset();
       if (testCase.expectedResolverCalls > 0) {
-        resolveApprovalOverGatewayMock.mockResolvedValue({ ok: true });
+        resolveApprovalOverGatewayMock.mockResolvedValue(undefined);
       }
       const result = await handleApproveCommand(
         buildApproveParams("/approve plugin:abc123 allow-once", testCase.cfg, {
@@ -932,10 +950,7 @@ describe("handleApproveCommand", () => {
         testCase.expectedResolverCalls,
       );
       if (testCase.expectedResolverCalls > 0) {
-        expectApprovalResolverCall({
-          method: "plugin.approval.resolve",
-          id: "plugin:abc123",
-        });
+        expectApprovalResolverCall({ method: "plugin.approval.resolve", id: "plugin:abc123" });
       }
     }
   });
@@ -1031,7 +1046,7 @@ describe("handleApproveCommand", () => {
       },
     ] as const) {
       resolveApprovalOverGatewayMock.mockReset();
-      resolveApprovalOverGatewayMock.mockResolvedValue({ ok: true });
+      resolveApprovalOverGatewayMock.mockResolvedValue(undefined);
       const result = await handleApproveCommand(
         buildApproveParams("/approve abc allow-once", cfg, {
           Provider: "webchat",

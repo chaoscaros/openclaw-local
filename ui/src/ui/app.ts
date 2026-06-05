@@ -2,6 +2,7 @@ import { LitElement } from "lit";
 import { state } from "lit/decorators.js";
 import { resolveAgentIdFromSessionKey } from "../../../src/routing/session-key.js";
 import { i18n, I18nController, isSupportedLocale, t } from "../i18n/index.ts";
+import type { ActivityEntry, ActivityStatus } from "./activity-model.ts";
 import {
   handleChannelConfigReload as handleChannelConfigReloadInternal,
   handleChannelConfigSave as handleChannelConfigSaveInternal,
@@ -32,9 +33,11 @@ import {
 import { renderApp } from "./app-render.ts";
 import {
   exportLogs as exportLogsInternal,
+  handleActivityScroll as handleActivityScrollInternal,
   handleChatScroll as handleChatScrollInternal,
   handleLogsScroll as handleLogsScrollInternal,
   resetChatScroll as resetChatScrollInternal,
+  scheduleActivityScroll as scheduleActivityScrollInternal,
   scheduleChatScroll as scheduleChatScrollInternal,
 } from "./app-scroll.ts";
 import {
@@ -68,7 +71,12 @@ import type {
   WikiImportInsights,
   WikiMemoryPalace,
 } from "./controllers/dreaming.ts";
-import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
+import {
+  dismissExecApprovalPrompt,
+  isStaleApprovalResolutionError,
+  refreshPendingApprovalQueue,
+  type ExecApprovalRequest,
+} from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
 import type {
   ClawHubSearchResult,
@@ -228,12 +236,13 @@ function resolveOnboardingMode(): boolean {
 }
 
 export class OpenClawApp extends LitElement {
-  private i18nController = new I18nController(this);
   clientInstanceId = generateUUID();
   connectGeneration = 0;
+  i18nController: I18nController;
   @state() settings: UiSettings = loadSettings();
   constructor() {
     super();
+    this.i18nController = new I18nController(this);
     if (isSupportedLocale(this.settings.locale)) {
       void i18n.setLocale(this.settings.locale);
     }
@@ -252,8 +261,8 @@ export class OpenClawApp extends LitElement {
   @state() lastError: string | null = null;
   @state() lastErrorCode: string | null = null;
   @state() eventLog: EventLogEntry[] = [];
-  private eventLogBuffer: EventLogEntry[] = [];
-  private toolStreamSyncTimer: number | null = null;
+  eventLogBuffer: EventLogEntry[] = [];
+  toolStreamSyncTimer: number | null = null;
   private sidebarCloseTimer: number | null = null;
   private sessionSwitchNoticeSeq = 0;
   private sessionSwitchNoticeTimer: number | null = null;
@@ -273,6 +282,17 @@ export class OpenClawApp extends LitElement {
   @state() chatMessage = "";
   @state() chatMessages: unknown[] = [];
   @state() chatToolMessages: unknown[] = [];
+  @state() activityEntries: ActivityEntry[] = [];
+  @state() activityFilterText = "";
+  @state() activityStatusFilters: Record<ActivityStatus, boolean> = {
+    running: true,
+    done: true,
+    error: true,
+  };
+  @state() activityToolFilter = "";
+  @state() activityExpandedIds = new Set<string>();
+  @state() activityAutoFollow = true;
+  @state() activityAtBottom = true;
   @state() chatStreamSegments: Array<{ text: string; ts: number }> = [];
   @state() chatStream: string | null = null;
   @state() chatStreamStartedAt: number | null = null;
@@ -630,17 +650,18 @@ export class OpenClawApp extends LitElement {
   @state() logsAtBottom = true;
 
   client: GatewayBrowserClient | null = null;
-  private chatScrollFrame: number | null = null;
-  private chatScrollTimeout: number | null = null;
-  private chatHasAutoScrolled = false;
-  private chatUserNearBottom = true;
+  chatScrollFrame: number | null = null;
+  chatScrollTimeout: number | null = null;
+  chatHasAutoScrolled = false;
+  chatUserNearBottom = true;
   @state() chatNewMessagesBelow = false;
-  private nodesPollInterval: number | null = null;
-  private logsPollInterval: number | null = null;
-  private debugPollInterval: number | null = null;
-  private logsScrollFrame: number | null = null;
-  private toolStreamById = new Map<string, ToolStreamEntry>();
-  private toolStreamOrder: string[] = [];
+  nodesPollInterval: number | null = null;
+  logsPollInterval: number | null = null;
+  debugPollInterval: number | null = null;
+  logsScrollFrame: number | null = null;
+  activityScrollFrame: number | null = null;
+  toolStreamById = new Map<string, ToolStreamEntry>();
+  toolStreamOrder: string[] = [];
   refreshSessionsAfterChat = new Set<string>();
   taskCarryoverAfterChatByRun = new Map<string, { taskId: string; sourceSessionKey: string }>();
   devExecuteCarryoverAfterChatByRun = new Map<
@@ -653,9 +674,9 @@ export class OpenClawApp extends LitElement {
   >();
   chatSideResultTerminalRuns = new Set<string>();
   basePath = "";
-  private popStateHandler = () =>
+  popStateHandler = () =>
     onPopStateInternal(this as unknown as Parameters<typeof onPopStateInternal>[0]);
-  private topbarObserver: ResizeObserver | null = null;
+  topbarObserver: ResizeObserver | null = null;
   private globalKeydownHandler = (e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === "k") {
       e.preventDefault();
@@ -667,11 +688,11 @@ export class OpenClawApp extends LitElement {
     }
   };
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.onSlashAction = (action: string) => {
       switch (action) {
@@ -697,11 +718,11 @@ export class OpenClawApp extends LitElement {
     handleConnected(this as unknown as Parameters<typeof handleConnected>[0]);
   }
 
-  protected firstUpdated() {
+  protected override firstUpdated() {
     handleFirstUpdated(this as unknown as Parameters<typeof handleFirstUpdated>[0]);
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     document.removeEventListener("keydown", this.globalKeydownHandler);
     if (this.sessionSwitchNoticeTimer !== null) {
       window.clearTimeout(this.sessionSwitchNoticeTimer);
@@ -715,7 +736,7 @@ export class OpenClawApp extends LitElement {
     super.disconnectedCallback();
   }
 
-  protected updated(changed: Map<PropertyKey, unknown>) {
+  protected override updated(changed: Map<PropertyKey, unknown>) {
     handleUpdated(this as unknown as Parameters<typeof handleUpdated>[0], changed);
     if (!changed.has("sessionKey") || this.agentsPanel !== "tools") {
       return;
@@ -750,6 +771,20 @@ export class OpenClawApp extends LitElement {
     handleLogsScrollInternal(
       this as unknown as Parameters<typeof handleLogsScrollInternal>[0],
       event,
+    );
+  }
+
+  handleActivityScroll(event: Event) {
+    handleActivityScrollInternal(
+      this as unknown as Parameters<typeof handleActivityScrollInternal>[0],
+      event,
+    );
+  }
+
+  scheduleActivityScroll(force = false) {
+    scheduleActivityScrollInternal(
+      this as unknown as Parameters<typeof scheduleActivityScrollInternal>[0],
+      force,
     );
   }
 
@@ -1308,8 +1343,16 @@ export class OpenClawApp extends LitElement {
         id: active.id,
         decision,
       });
-      this.execApprovalQueue = this.execApprovalQueue.filter((entry) => entry.id !== active.id);
+      dismissExecApprovalPrompt(this, active.id);
     } catch (err) {
+      if (isStaleApprovalResolutionError(err)) {
+        dismissExecApprovalPrompt(this, active.id);
+        await refreshPendingApprovalQueue(this);
+        return;
+      }
+      if (!this.execApprovalQueue.some((entry) => entry.id === active.id)) {
+        return;
+      }
       this.execApprovalError = `Approval failed: ${String(err)}`;
     } finally {
       this.execApprovalBusy = false;
@@ -1370,7 +1413,7 @@ export class OpenClawApp extends LitElement {
     this.applySettings({ ...this.settings, splitRatio: newRatio });
   }
 
-  render() {
+  override render() {
     return renderApp(this as unknown as AppViewState);
   }
 }

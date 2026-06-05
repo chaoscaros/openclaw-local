@@ -398,7 +398,7 @@ describe("GatewayBrowserClient", () => {
       message: "protocol mismatch",
     });
 
-    expect(error.message).toBe("protocol mismatch: Control UI v3");
+    expect(error.message).toBe("protocol mismatch: Control UI v4");
   });
 
   it("stops reconnecting on token mismatch when no device-token retry is available", async () => {

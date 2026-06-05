@@ -8,7 +8,7 @@ import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
-} from "openclaw/plugin-sdk/text-runtime";
+} from "openclaw/plugin-sdk/string-coerce-runtime";
 import { downloadBlueBubblesAttachment } from "./attachments.js";
 import { markBlueBubblesChatRead, sendBlueBubblesTyping } from "./chat.js";
 import { resolveBlueBubblesConversationRoute } from "./conversation-route.js";
@@ -27,7 +27,6 @@ import {
   type NormalizedWebhookReaction,
 } from "./monitor-normalize.js";
 import {
-  DM_GROUP_ACCESS_REASON,
   createChannelPairingController,
   createChannelReplyPipeline,
   evictOldHistoryKeys,
@@ -36,12 +35,10 @@ import {
   logInboundDrop,
   logTypingFailure,
   mapAllowFromEntries,
-  readStoreAllowFromForDmPolicy,
   recordPendingHistoryEntryIfEnabled,
   resolveAckReaction,
   resolveChannelContextVisibilityMode,
-  resolveDmGroupAccessWithLists,
-  resolveControlCommandGate,
+  resolveStableChannelMessageIngress,
   stripMarkdown,
   type HistoryEntry,
 } from "./monitor-processing-api.js";
@@ -98,6 +95,84 @@ let pendingOutboundMessageIdCounter = 0;
 
 function normalizeSnippet(value: string): string {
   return normalizeOptionalLowercaseString(stripMarkdown(value).replace(/\s+/g, " ")) ?? "";
+}
+
+function blueBubblesIngressIdentity(params: {
+  chatId?: number;
+  chatGuid?: string;
+  chatIdentifier?: string;
+}) {
+  return {
+    normalize: normalizeBlueBubblesHandle,
+    sensitivity: "pii" as const,
+    entryIdPrefix: "bluebubbles-entry",
+    aliases: [
+      {
+        key: "chatGuid",
+        kind: "plugin:chatGuid" as const,
+        normalizeEntry: (value: string) => normalizeOptionalString(value),
+        normalizeSubject: (value: string) => normalizeOptionalString(value),
+        sensitivity: "pii" as const,
+      },
+      {
+        key: "chatIdentifier",
+        kind: "plugin:chatIdentifier" as const,
+        normalizeEntry: (value: string) => normalizeOptionalString(value),
+        normalizeSubject: (value: string) => normalizeOptionalString(value),
+        sensitivity: "pii" as const,
+      },
+      {
+        key: "chatId",
+        kind: "plugin:chatId" as const,
+        normalizeEntry: (value: string) => normalizeOptionalString(value),
+        normalizeSubject: (value: string) => normalizeOptionalString(value),
+        sensitivity: "pii" as const,
+      },
+    ],
+    matchEntry: ({
+      entry,
+      subject,
+    }: {
+      entry: { value: string };
+      subject: { identifiers: Array<{ value: string }> };
+    }) =>
+      subject.identifiers.some((identifier) =>
+        isAllowedBlueBubblesSender({
+          allowFrom: [entry.value],
+          sender: identifier.value,
+          chatId: params.chatId,
+          chatGuid: params.chatGuid,
+          chatIdentifier: params.chatIdentifier,
+        }),
+      ),
+  };
+}
+
+function blueBubblesIngressSubject(params: {
+  senderId: string;
+  chatId?: number;
+  chatGuid?: string;
+  chatIdentifier?: string;
+}) {
+  return {
+    stableId: params.senderId,
+    aliases: {
+      chatId: params.chatId == null ? undefined : String(params.chatId),
+      chatGuid: params.chatGuid,
+      chatIdentifier: params.chatIdentifier,
+    },
+  };
+}
+
+function blueBubblesIngressAllowFrom(params: {
+  allowFrom: Array<string | number>;
+  dmPolicy?: string | null;
+  isGroup: boolean;
+}): Array<string | number> {
+  if (params.isGroup || params.dmPolicy !== "open") {
+    return params.allowFrom;
+  }
+  return ["*", ...params.allowFrom];
 }
 
 type BlueBubblesChatRecord = Record<string, unknown>;
@@ -177,7 +252,7 @@ async function queryBlueBubblesChats(params: {
     return [];
   }
   const payload = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-  const data = payload && typeof payload.data !== "undefined" ? (payload.data as unknown) : null;
+  const data = payload && payload.data !== undefined ? (payload.data as unknown) : null;
   return Array.isArray(data) ? (data as BlueBubblesChatRecord[]) : [];
 }
 
@@ -703,30 +778,49 @@ export async function processMessage(
   const dmPolicy = account.config.dmPolicy ?? "pairing";
   const groupPolicy = account.config.groupPolicy ?? "allowlist";
   const configuredAllowFrom = mapAllowFromEntries(account.config.allowFrom);
-  const storeAllowFrom = await readStoreAllowFromForDmPolicy({
-    provider: "bluebubbles",
+  const hasControlCmd = core.channel.text.hasControlCommand(text, config);
+  const chatId = message.chatId ?? undefined;
+  const chatGuid = message.chatGuid ?? undefined;
+  const chatIdentifier = message.chatIdentifier ?? undefined;
+  const accessDecision = await resolveStableChannelMessageIngress({
+    channelId: "bluebubbles",
     accountId: account.accountId,
-    dmPolicy,
-    readStore: pairing.readStoreForDmPolicy,
-  });
-  const accessDecision = resolveDmGroupAccessWithLists({
-    isGroup,
+    identity: blueBubblesIngressIdentity({ chatId, chatGuid, chatIdentifier }),
+    cfg: config,
+    readStoreAllowFrom: pairing.readStoreForDmPolicy,
+    subject: blueBubblesIngressSubject({
+      senderId: message.senderId,
+      chatId,
+      chatGuid,
+      chatIdentifier,
+    }),
+    conversation: {
+      kind: isGroup ? "group" : "direct",
+      id: isGroup
+        ? (message.chatGuid ?? message.chatIdentifier ?? String(message.chatId ?? "group"))
+        : message.senderId,
+    },
     dmPolicy,
     groupPolicy,
-    allowFrom: configuredAllowFrom,
+    policy: { groupAllowFromFallbackToAllowFrom: true },
+    allowFrom: blueBubblesIngressAllowFrom({
+      allowFrom: configuredAllowFrom,
+      dmPolicy,
+      isGroup,
+    }),
     groupAllowFrom: account.config.groupAllowFrom,
-    storeAllowFrom,
-    isSenderAllowed: (allowFrom) =>
-      isAllowedBlueBubblesSender({
-        allowFrom,
-        sender: message.senderId,
-        chatId: message.chatId ?? undefined,
-        chatGuid: message.chatGuid ?? undefined,
-        chatIdentifier: message.chatIdentifier ?? undefined,
-      }),
+    command: {
+      allowTextCommands: true,
+      hasControlCommand: hasControlCmd,
+      commandOwnerAllowFrom: configuredAllowFrom,
+      modeWhenAccessGroupsOff: "configured",
+      directGroupAllowFrom: "none",
+      commandGroupAllowFromFallbackToAllowFrom: true,
+    },
   });
-  const effectiveAllowFrom = accessDecision.effectiveAllowFrom;
-  const effectiveGroupAllowFrom = accessDecision.effectiveGroupAllowFrom;
+  const { commandAccess, senderAccess } = accessDecision;
+  const effectiveAllowFrom = senderAccess.effectiveAllowFrom;
+  const effectiveGroupAllowFrom = senderAccess.effectiveGroupAllowFrom;
   const groupAllowEntry = formatGroupAllowlistEntry({
     chatGuid: message.chatGuid,
     chatId: message.chatId ?? undefined,
@@ -734,9 +828,9 @@ export async function processMessage(
   });
   const groupName = normalizeOptionalString(message.chatName);
 
-  if (accessDecision.decision !== "allow") {
+  if (senderAccess.decision !== "allow") {
     if (isGroup) {
-      if (accessDecision.reasonCode === DM_GROUP_ACCESS_REASON.GROUP_POLICY_DISABLED) {
+      if (senderAccess.reasonCode === "group_policy_disabled") {
         logVerbose(core, runtime, "Blocked BlueBubbles group message (groupPolicy=disabled)");
         logGroupAllowlistHint({
           runtime,
@@ -747,7 +841,7 @@ export async function processMessage(
         });
         return;
       }
-      if (accessDecision.reasonCode === DM_GROUP_ACCESS_REASON.GROUP_POLICY_EMPTY_ALLOWLIST) {
+      if (senderAccess.reasonCode === "group_policy_empty_allowlist") {
         logVerbose(core, runtime, "Blocked BlueBubbles group message (no allowlist)");
         logGroupAllowlistHint({
           runtime,
@@ -758,7 +852,7 @@ export async function processMessage(
         });
         return;
       }
-      if (accessDecision.reasonCode === DM_GROUP_ACCESS_REASON.GROUP_POLICY_NOT_ALLOWLISTED) {
+      if (senderAccess.reasonCode === "group_policy_not_allowlisted") {
         logVerbose(
           core,
           runtime,
@@ -781,13 +875,13 @@ export async function processMessage(
       return;
     }
 
-    if (accessDecision.reasonCode === DM_GROUP_ACCESS_REASON.DM_POLICY_DISABLED) {
+    if (senderAccess.reasonCode === "dm_policy_disabled") {
       logVerbose(core, runtime, `Blocked BlueBubbles DM from ${message.senderId}`);
       logVerbose(core, runtime, `drop: dmPolicy disabled sender=${message.senderId}`);
       return;
     }
 
-    if (accessDecision.decision === "pairing") {
+    if (senderAccess.decision === "pairing") {
       await pairing.issueChallenge({
         senderId: message.senderId,
         senderIdLine: `Your BlueBubbles sender id: ${message.senderId}`,
@@ -830,9 +924,6 @@ export async function processMessage(
     return;
   }
 
-  const chatId = message.chatId ?? undefined;
-  const chatGuid = message.chatGuid ?? undefined;
-  const chatIdentifier = message.chatIdentifier ?? undefined;
   const peerId = isGroup
     ? (chatGuid ?? chatIdentifier ?? (chatId ? String(chatId) : "group"))
     : message.senderId;
@@ -868,42 +959,10 @@ export async function processMessage(
   });
 
   // Command gating (parity with iMessage/WhatsApp)
-  const useAccessGroups = config.commands?.useAccessGroups !== false;
-  const hasControlCmd = core.channel.text.hasControlCommand(messageText, config);
-  const commandDmAllowFrom = isGroup ? configuredAllowFrom : effectiveAllowFrom;
-  const ownerAllowedForCommands =
-    commandDmAllowFrom.length > 0
-      ? isAllowedBlueBubblesSender({
-          allowFrom: commandDmAllowFrom,
-          sender: message.senderId,
-          chatId: message.chatId ?? undefined,
-          chatGuid: message.chatGuid ?? undefined,
-          chatIdentifier: message.chatIdentifier ?? undefined,
-        })
-      : false;
-  const groupAllowedForCommands =
-    effectiveGroupAllowFrom.length > 0
-      ? isAllowedBlueBubblesSender({
-          allowFrom: effectiveGroupAllowFrom,
-          sender: message.senderId,
-          chatId: message.chatId ?? undefined,
-          chatGuid: message.chatGuid ?? undefined,
-          chatIdentifier: message.chatIdentifier ?? undefined,
-        })
-      : false;
-  const commandGate = resolveControlCommandGate({
-    useAccessGroups,
-    authorizers: [
-      { configured: commandDmAllowFrom.length > 0, allowed: ownerAllowedForCommands },
-      { configured: effectiveGroupAllowFrom.length > 0, allowed: groupAllowedForCommands },
-    ],
-    allowTextCommands: true,
-    hasControlCommand: hasControlCmd,
-  });
-  const commandAuthorized = commandGate.commandAuthorized;
+  const commandAuthorized = commandAccess.authorized;
 
   // Block control commands from unauthorized senders in groups
-  if (isGroup && commandGate.shouldBlock) {
+  if (isGroup && commandAccess.shouldBlockControlCommand) {
     logInboundDrop({
       log: (msg) => logVerbose(core, runtime, msg),
       channel: "bluebubbles",
@@ -1670,35 +1729,41 @@ export async function processReaction(
 
   const dmPolicy = account.config.dmPolicy ?? "pairing";
   const groupPolicy = account.config.groupPolicy ?? "allowlist";
-  const storeAllowFrom = await readStoreAllowFromForDmPolicy({
-    provider: "bluebubbles",
-    accountId: account.accountId,
-    dmPolicy,
-    readStore: pairing.readStoreForDmPolicy,
-  });
-  const accessDecision = resolveDmGroupAccessWithLists({
-    isGroup: reaction.isGroup,
-    dmPolicy,
-    groupPolicy,
-    allowFrom: account.config.allowFrom,
-    groupAllowFrom: account.config.groupAllowFrom,
-    storeAllowFrom,
-    isSenderAllowed: (allowFrom) =>
-      isAllowedBlueBubblesSender({
-        allowFrom,
-        sender: reaction.senderId,
-        chatId: reaction.chatId ?? undefined,
-        chatGuid: reaction.chatGuid ?? undefined,
-        chatIdentifier: reaction.chatIdentifier ?? undefined,
-      }),
-  });
-  if (accessDecision.decision !== "allow") {
-    return;
-  }
-
   const chatId = reaction.chatId ?? undefined;
   const chatGuid = reaction.chatGuid ?? undefined;
   const chatIdentifier = reaction.chatIdentifier ?? undefined;
+  const accessDecision = await resolveStableChannelMessageIngress({
+    channelId: "bluebubbles",
+    accountId: account.accountId,
+    identity: blueBubblesIngressIdentity({ chatId, chatGuid, chatIdentifier }),
+    cfg: config,
+    readStoreAllowFrom: pairing.readStoreForDmPolicy,
+    subject: blueBubblesIngressSubject({
+      senderId: reaction.senderId,
+      chatId,
+      chatGuid,
+      chatIdentifier,
+    }),
+    conversation: {
+      kind: reaction.isGroup ? "group" : "direct",
+      id: reaction.isGroup
+        ? (reaction.chatGuid ?? reaction.chatIdentifier ?? String(reaction.chatId ?? "group"))
+        : reaction.senderId,
+    },
+    dmPolicy,
+    groupPolicy,
+    policy: { groupAllowFromFallbackToAllowFrom: true },
+    allowFrom: blueBubblesIngressAllowFrom({
+      allowFrom: account.config.allowFrom ?? [],
+      dmPolicy,
+      isGroup: reaction.isGroup,
+    }),
+    groupAllowFrom: account.config.groupAllowFrom,
+  });
+  if (accessDecision.senderAccess.decision !== "allow") {
+    return;
+  }
+
   const peerId = reaction.isGroup
     ? (chatGuid ?? chatIdentifier ?? (chatId ? String(chatId) : "group"))
     : reaction.senderId;

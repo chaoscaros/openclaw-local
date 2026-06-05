@@ -7,7 +7,12 @@ import {
   startDebugPolling,
   stopDebugPolling,
 } from "./app-polling.ts";
-import { observeTopbar, scheduleChatScroll, scheduleLogsScroll } from "./app-scroll.ts";
+import {
+  observeTopbar,
+  scheduleActivityScroll,
+  scheduleChatScroll,
+  scheduleLogsScroll,
+} from "./app-scroll.ts";
 import {
   applySettingsFromUrl,
   detachThemeListener,
@@ -40,6 +45,10 @@ type LifecycleHost = {
   logsAutoFollow: boolean;
   logsAtBottom: boolean;
   logsEntries: unknown[];
+  activityEntries: unknown[];
+  activityAutoFollow: boolean;
+  activityAtBottom: boolean;
+  activityScrollFrame?: number | null;
   popStateHandler: () => void;
   topbarObserver: ResizeObserver | null;
 };
@@ -77,6 +86,10 @@ export function handleDisconnected(host: LifecycleHost) {
   stopNodesPolling(host as unknown as Parameters<typeof stopNodesPolling>[0]);
   stopLogsPolling(host as unknown as Parameters<typeof stopLogsPolling>[0]);
   stopDebugPolling(host as unknown as Parameters<typeof stopDebugPolling>[0]);
+  if (host.activityScrollFrame) {
+    cancelAnimationFrame(host.activityScrollFrame);
+    host.activityScrollFrame = null;
+  }
   host.client?.stop();
   host.client = null;
   host.connected = false;
@@ -119,6 +132,17 @@ export function handleUpdated(host: LifecycleHost, changed: Map<PropertyKey, unk
       scheduleLogsScroll(
         host as unknown as Parameters<typeof scheduleLogsScroll>[0],
         changed.has("tab") || changed.has("logsAutoFollow"),
+      );
+    }
+  }
+  if (
+    host.tab === "activity" &&
+    (changed.has("activityEntries") || changed.has("activityAutoFollow") || changed.has("tab"))
+  ) {
+    if (host.activityAutoFollow && host.activityAtBottom) {
+      scheduleActivityScroll(
+        host as unknown as Parameters<typeof scheduleActivityScroll>[0],
+        changed.has("tab") || changed.has("activityAutoFollow"),
       );
     }
   }

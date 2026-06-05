@@ -1,11 +1,9 @@
-import type { OpenClawConfig, OpenClawPluginApi } from "openclaw/plugin-sdk/memory-core";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { resolveMemoryDreamingConfig } from "openclaw/plugin-sdk/memory-core-host-status";
-import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/text-runtime";
+import type { OpenClawPluginApi, PluginCommandContext } from "openclaw/plugin-sdk/plugin-entry";
+import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { asRecord } from "./dreaming-shared.js";
-import {
-  resolveShortTermPromotionDreamingConfig,
-  runShortTermDreamingPromotionNow,
-} from "./dreaming.js";
+import { resolveShortTermPromotionDreamingConfig } from "./dreaming.js";
 
 function resolveMemoryCorePluginConfig(cfg: OpenClawConfig): Record<string, unknown> {
   const entry = asRecord(cfg.plugins?.entries?.["memory-core"]);
@@ -70,7 +68,6 @@ function formatUsage(includeStatus: string): string {
   return [
     "Usage: /dreaming status",
     "Usage: /dreaming on|off",
-    "Usage: /dreaming run",
     "",
     includeStatus,
     "",
@@ -83,75 +80,51 @@ function requiresAdminToMutateDreaming(gatewayClientScopes?: readonly string[]):
   return Array.isArray(gatewayClientScopes) && !gatewayClientScopes.includes("operator.admin");
 }
 
+export async function handleDreamingCommand(api: OpenClawPluginApi, ctx: PluginCommandContext) {
+  const args = ctx.args?.trim() ?? "";
+  const [firstToken = ""] = args
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => normalizeLowercaseStringOrEmpty(token));
+  const currentConfig = api.runtime.config.current() as OpenClawConfig;
+
+  if (!firstToken || firstToken === "help" || firstToken === "options" || firstToken === "phases") {
+    return { text: formatUsage(formatStatus(currentConfig)) };
+  }
+
+  if (firstToken === "status") {
+    return { text: formatStatus(currentConfig) };
+  }
+
+  if (firstToken === "on" || firstToken === "off") {
+    if (requiresAdminToMutateDreaming(ctx.gatewayClientScopes)) {
+      return { text: "⚠️ /dreaming on|off requires operator.admin for gateway clients." };
+    }
+    const enabled = firstToken === "on";
+    const committed = await api.runtime.config.mutateConfigFile({
+      afterWrite: { mode: "auto" },
+      mutate: (draft) => {
+        const nextConfig = updateDreamingEnabledInConfig(draft, enabled);
+        Object.assign(draft, nextConfig);
+      },
+    });
+    return {
+      text: [
+        `Dreaming ${enabled ? "enabled" : "disabled"}.`,
+        "",
+        formatStatus(committed.nextConfig),
+      ].join("\n"),
+    };
+  }
+
+  return { text: formatUsage(formatStatus(currentConfig)) };
+}
+
 export function registerDreamingCommand(api: OpenClawPluginApi): void {
   api.registerCommand({
     name: "dreaming",
     description: "Enable or disable memory dreaming.",
     acceptsArgs: true,
-    handler: async (ctx) => {
-      const args = ctx.args?.trim() ?? "";
-      const [firstToken = ""] = args
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((token) => normalizeLowercaseStringOrEmpty(token));
-      const currentConfig = api.runtime.config.loadConfig();
-
-      if (
-        !firstToken ||
-        firstToken === "help" ||
-        firstToken === "options" ||
-        firstToken === "phases"
-      ) {
-        return { text: formatUsage(formatStatus(currentConfig)) };
-      }
-
-      if (firstToken === "status") {
-        return { text: formatStatus(currentConfig) };
-      }
-
-      if (firstToken === "run") {
-        if (requiresAdminToMutateDreaming(ctx.gatewayClientScopes)) {
-          return { text: "⚠️ /dreaming run requires operator.admin for gateway clients." };
-        }
-        const summary = await runShortTermDreamingPromotionNow({
-          cfg: currentConfig,
-          config: resolveShortTermPromotionDreamingConfig({
-            pluginConfig: resolveMemoryCorePluginConfig(currentConfig),
-            cfg: currentConfig,
-          }),
-          logger: api.logger,
-          subagent: api.runtime?.subagent,
-        });
-        return {
-          text: [
-            "Dreaming sweep finished.",
-            `- workspaces: ${summary.workspaces}`,
-            `- candidates: ${summary.candidates}`,
-            `- promoted: ${summary.applied}`,
-            `- diary entries: ${summary.narrativeWritten}`,
-            `- diary skipped: ${summary.narrativeSkipped}`,
-            `- failed workspaces: ${summary.failed}`,
-          ].join("\n"),
-        };
-      }
-
-      if (firstToken === "on" || firstToken === "off") {
-        if (requiresAdminToMutateDreaming(ctx.gatewayClientScopes)) {
-          return { text: "⚠️ /dreaming on|off requires operator.admin for gateway clients." };
-        }
-        const enabled = firstToken === "on";
-        const nextConfig = updateDreamingEnabledInConfig(currentConfig, enabled);
-        await api.runtime.config.writeConfigFile(nextConfig);
-        return {
-          text: [
-            `Dreaming ${enabled ? "enabled" : "disabled"}.`,
-            "",
-            formatStatus(nextConfig),
-          ].join("\n"),
-        };
-      }
-
-      return { text: formatUsage(formatStatus(currentConfig)) };
-    },
+    handler: async (ctx) => await handleDreamingCommand(api, ctx),
   });
 }

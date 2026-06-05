@@ -139,11 +139,11 @@ export function buildBlueBubblesApiUrl(params: {
 }
 
 // Overridable guard for testing; production code uses fetchWithSsrFGuard.
-let _fetchGuard = fetchWithSsrFGuard;
+let fetchGuard = fetchWithSsrFGuard;
 
 /** @internal Replace the SSRF fetch guard in tests. */
-export function _setFetchGuardForTesting(impl: typeof fetchWithSsrFGuard | null): void {
-  _fetchGuard = impl ?? fetchWithSsrFGuard;
+export function setFetchGuardForTesting(impl: typeof fetchWithSsrFGuard | null): void {
+  fetchGuard = impl ?? fetchWithSsrFGuard;
 }
 
 export async function blueBubblesFetchWithTimeout(
@@ -155,7 +155,7 @@ export async function blueBubblesFetchWithTimeout(
   if (ssrfPolicy !== undefined) {
     // Use SSRF-guarded fetch; buffer the body so the dispatcher can be released
     // before the caller reads the response (API responses are small JSON payloads).
-    const { response, release } = await _fetchGuard({
+    const { response, release } = await fetchGuard({
       url,
       init,
       timeoutMs,

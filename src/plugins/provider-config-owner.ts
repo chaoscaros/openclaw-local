@@ -18,7 +18,8 @@ export function resolveProviderConfigApiOwnerHint(params: {
     Object.entries(providers).find(
       ([candidateId]) => normalizeProviderId(candidateId) === normalizedProvider,
     )?.[1];
-  const api = typeof providerConfig?.api === "string" ? normalizeProviderId(providerConfig.api) : "";
+  const api =
+    typeof providerConfig?.api === "string" ? normalizeProviderId(providerConfig.api) : "";
   if (!api || api === normalizedProvider) {
     return undefined;
   }

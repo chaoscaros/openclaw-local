@@ -1,4 +1,4 @@
-import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/channel-core";
 import {
   __testing as sessionBindingTesting,
   registerSessionBindingAdapter,

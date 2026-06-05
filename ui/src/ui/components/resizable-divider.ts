@@ -14,7 +14,7 @@ export class ResizableDivider extends LitElement {
   private startX = 0;
   private startRatio = 0;
 
-  static styles = css`
+  static override styles = css`
     :host {
       width: 4px;
       cursor: col-resize;
@@ -39,16 +39,16 @@ export class ResizableDivider extends LitElement {
     }
   `;
 
-  render() {
+  override render() {
     return nothing;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.addEventListener("mousedown", this.handleMouseDown);
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.removeEventListener("mousedown", this.handleMouseDown);
     document.removeEventListener("mousemove", this.handleMouseMove);

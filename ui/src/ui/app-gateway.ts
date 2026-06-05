@@ -39,12 +39,12 @@ import {
 import { loadDevices, type DevicesState } from "./controllers/devices.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import {
-  addExecApproval,
+  clearResolvedExecApprovalPrompt,
+  enqueueExecApprovalPrompt,
   parseExecApprovalRequested,
   parseExecApprovalResolved,
   parsePluginApprovalRequested,
   pruneExecApprovalQueue,
-  removeExecApproval,
 } from "./controllers/exec-approval.ts";
 import { loadHealthState, type HealthState } from "./controllers/health.ts";
 import { loadNodes, type NodesState } from "./controllers/nodes.ts";
@@ -127,6 +127,7 @@ type GatewayHost = {
     { changeReviewModeEnabled: boolean; remainingTurns: number }
   >;
   execApprovalQueue: ExecApprovalRequest[];
+  execApprovalBusy: boolean;
   execApprovalError: string | null;
   updateAvailable: UpdateAvailable | null;
 };
@@ -835,12 +836,7 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
   if (evt.event === "exec.approval.requested") {
     const entry = parseExecApprovalRequested(evt.payload);
     if (entry) {
-      host.execApprovalQueue = addExecApproval(host.execApprovalQueue, entry);
-      host.execApprovalError = null;
-      const delay = Math.max(0, entry.expiresAtMs - Date.now() + 500);
-      window.setTimeout(() => {
-        host.execApprovalQueue = removeExecApproval(host.execApprovalQueue, entry.id);
-      }, delay);
+      enqueueExecApprovalPrompt(host, entry);
     }
     return;
   }
@@ -848,7 +844,7 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
   if (evt.event === "exec.approval.resolved") {
     const resolved = parseExecApprovalResolved(evt.payload);
     if (resolved) {
-      host.execApprovalQueue = removeExecApproval(host.execApprovalQueue, resolved.id);
+      clearResolvedExecApprovalPrompt(host, resolved.id);
     }
     return;
   }
@@ -856,12 +852,7 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
   if (evt.event === "plugin.approval.requested") {
     const entry = parsePluginApprovalRequested(evt.payload);
     if (entry) {
-      host.execApprovalQueue = addExecApproval(host.execApprovalQueue, entry);
-      host.execApprovalError = null;
-      const delay = Math.max(0, entry.expiresAtMs - Date.now() + 500);
-      window.setTimeout(() => {
-        host.execApprovalQueue = removeExecApproval(host.execApprovalQueue, entry.id);
-      }, delay);
+      enqueueExecApprovalPrompt(host, entry);
     }
     return;
   }
@@ -869,7 +860,7 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
   if (evt.event === "plugin.approval.resolved") {
     const resolved = parseExecApprovalResolved(evt.payload);
     if (resolved) {
-      host.execApprovalQueue = removeExecApproval(host.execApprovalQueue, resolved.id);
+      clearResolvedExecApprovalPrompt(host, resolved.id);
     }
     return;
   }

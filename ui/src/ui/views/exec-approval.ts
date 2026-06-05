@@ -1,9 +1,16 @@
 import { html, nothing } from "lit";
 import type { AppViewState } from "../app-view-state.ts";
 import type {
+  ExecApprovalDecision,
   ExecApprovalRequest,
   ExecApprovalRequestPayload,
 } from "../controllers/exec-approval.ts";
+
+const DEFAULT_EXEC_APPROVAL_DECISIONS = [
+  "allow-once",
+  "allow-always",
+  "deny",
+] as const satisfies readonly ExecApprovalDecision[];
 
 function formatRemaining(ms: number): string {
   const remaining = Math.max(0, ms);
@@ -53,6 +60,51 @@ ${active.pluginDescription}</pre
   `;
 }
 
+function approvalDecisionLabel(decision: ExecApprovalDecision): string {
+  switch (decision) {
+    case "allow-once":
+      return "Allow once";
+    case "allow-always":
+      return "Always allow";
+    case "deny":
+      return "Deny";
+  }
+  return decision;
+}
+
+function approvalDecisionClass(decision: ExecApprovalDecision): string {
+  switch (decision) {
+    case "allow-once":
+      return "btn primary";
+    case "allow-always":
+      return "btn";
+    case "deny":
+      return "btn danger";
+  }
+  return "btn";
+}
+
+function resolveApprovalDecisions(active: ExecApprovalRequest): readonly ExecApprovalDecision[] {
+  if (active.request.allowedDecisions?.length) {
+    return active.request.allowedDecisions;
+  }
+  if (active.kind === "exec" && active.request.ask === "always") {
+    return ["allow-once", "deny"];
+  }
+  return DEFAULT_EXEC_APPROVAL_DECISIONS;
+}
+
+function renderUnavailableDecisionWarning(
+  active: ExecApprovalRequest,
+  decisions: readonly ExecApprovalDecision[],
+) {
+  return active.kind !== "exec" || decisions.includes("allow-always")
+    ? nothing
+    : html`<div class="exec-approval-warning">
+        The effective approval policy requires approval every time, so Allow Always is unavailable.
+      </div>`;
+}
+
 export function renderExecApprovalPrompt(state: AppViewState) {
   const active = state.execApprovalQueue[0];
   if (!active) {
@@ -66,6 +118,7 @@ export function renderExecApprovalPrompt(state: AppViewState) {
   const title = isPlugin
     ? (active.pluginTitle ?? "Plugin approval needed")
     : "Exec approval needed";
+  const decisions = resolveApprovalDecisions(active);
   return html`
     <div class="exec-approval-overlay" role="dialog" aria-live="polite">
       <div class="exec-approval-card">
@@ -79,31 +132,22 @@ export function renderExecApprovalPrompt(state: AppViewState) {
             : nothing}
         </div>
         ${isPlugin ? renderPluginBody(active) : renderExecBody(request)}
+        ${renderUnavailableDecisionWarning(active, decisions)}
         ${state.execApprovalError
           ? html`<div class="exec-approval-error">${state.execApprovalError}</div>`
           : nothing}
         <div class="exec-approval-actions">
-          <button
-            class="btn primary"
-            ?disabled=${state.execApprovalBusy}
-            @click=${() => state.handleExecApprovalDecision("allow-once")}
-          >
-            Allow once
-          </button>
-          <button
-            class="btn"
-            ?disabled=${state.execApprovalBusy}
-            @click=${() => state.handleExecApprovalDecision("allow-always")}
-          >
-            Always allow
-          </button>
-          <button
-            class="btn danger"
-            ?disabled=${state.execApprovalBusy}
-            @click=${() => state.handleExecApprovalDecision("deny")}
-          >
-            Deny
-          </button>
+          ${decisions.map(
+            (decision) => html`
+              <button
+                class=${approvalDecisionClass(decision)}
+                ?disabled=${state.execApprovalBusy}
+                @click=${() => state.handleExecApprovalDecision(decision)}
+              >
+                ${approvalDecisionLabel(decision)}
+              </button>
+            `,
+          )}
         </div>
       </div>
     </div>

@@ -18,7 +18,6 @@ export function createFeishuRuntimeMockModule(): {
         createInboundDebouncer: () => {
           enqueue: () => Promise<void>;
           flushKey: () => Promise<void>;
-          cancelKey: () => boolean;
         };
       };
       text: {

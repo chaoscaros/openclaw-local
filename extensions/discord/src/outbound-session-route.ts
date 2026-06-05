@@ -1,9 +1,6 @@
 import { buildThreadAwareOutboundSessionRoute } from "openclaw/plugin-sdk/channel-core";
-import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
-import {
-  buildOutboundBaseSessionKey,
-  type RoutePeer,
-} from "openclaw/plugin-sdk/routing";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
+import { buildOutboundBaseSessionKey, type RoutePeer } from "openclaw/plugin-sdk/routing";
 import { parseDiscordTarget } from "./target-parsing.js";
 
 export type ResolveDiscordOutboundSessionRouteParams = {
@@ -71,5 +68,5 @@ function resolveDiscordOutboundTargetKindHint(params: {
   if (/^(user:|discord:|@|<@!?)/i.test(target)) {
     return "user";
   }
-  return undefined;
+  return "channel";
 }

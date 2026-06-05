@@ -22,6 +22,7 @@ let stopped = false;
 let activeController: AbortController | undefined;
 
 function post(message: TelegramIngressWorkerMessage): void {
+  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- Node worker_threads ports do not accept a targetOrigin argument.
   parentPort?.postMessage(message);
 }
 
@@ -156,7 +157,7 @@ async function main(): Promise<void> {
       }
     }
   } finally {
-    await transport.close?.();
+    await transport.close();
   }
 }
 

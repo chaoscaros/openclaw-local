@@ -1,10 +1,10 @@
-import type { AssistantMessage } from "@mariozechner/pi-ai";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
   extractLeadingHttpStatus,
   formatRawAssistantErrorForUi,
-  isCloudflareOrHtmlErrorPage,
+  isGenericProviderInternalError,
   parseApiErrorInfo,
 } from "../../shared/assistant-error-format.js";
 import {
@@ -15,6 +15,7 @@ export {
   extractLeadingHttpStatus,
   formatRawAssistantErrorForUi,
   isCloudflareOrHtmlErrorPage,
+  isGenericProviderInternalError,
   parseApiErrorInfo,
 } from "../../shared/assistant-error-format.js";
 import { classifyOAuthRefreshFailure } from "../auth-profiles/oauth-refresh-failure.js";
@@ -37,22 +38,21 @@ import {
   matchesProviderContextOverflow,
 } from "./provider-error-patterns.js";
 import {
-  BILLING_ERROR_USER_MESSAGE,
   formatBillingErrorMessage,
   formatDiskSpaceErrorCopy,
   formatRateLimitOrOverloadedErrorCopy,
   formatTransportErrorCopy,
-  getApiErrorPayloadFingerprint,
   isInvalidStreamingEventOrderError,
   isLikelyHttpErrorText,
   isRawApiErrorPayload,
-  sanitizeUserFacingText,
+  isStreamingJsonParseError,
 } from "./sanitize-user-facing-text.js";
 import type { FailoverReason } from "./types.js";
 
 export {
   BILLING_ERROR_USER_MESSAGE,
   formatBillingErrorMessage,
+  formatRateLimitOrOverloadedErrorCopy,
   getApiErrorPayloadFingerprint,
   isRawApiErrorPayload,
   sanitizeUserFacingText,
@@ -69,6 +69,7 @@ export {
 } from "./failover-matches.js";
 
 const log = createSubsystemLogger("errors");
+const sandboxToolPolicyAuditMessages = new WeakSet<AssistantMessage>();
 
 export function isReasoningConstraintErrorMessage(raw: string): boolean {
   if (!raw) {
@@ -108,6 +109,8 @@ export function isContextOverflowError(errorMessage?: string): boolean {
     lower.includes("context window") ||
     lower.includes("context length") ||
     lower.includes("maximum context length");
+  const hasContextWindowOutOfRoom =
+    hasContextWindow && (lower.includes("ran out of room") || lower.includes("ran out of space"));
   return (
     lower.includes("request_too_large") ||
     (lower.includes("invalid_argument") && lower.includes("maximum number of tokens")) ||
@@ -119,6 +122,7 @@ export function isContextOverflowError(errorMessage?: string): boolean {
     lower.includes("exceeds model context window") ||
     lower.includes("model token limit") ||
     (lower.includes("input exceeds") && lower.includes("maximum number of tokens")) ||
+    hasContextWindowOutOfRoom ||
     (hasRequestSizeExceeds && hasContextWindow) ||
     lower.includes("context overflow:") ||
     lower.includes("exceed context limit") ||
@@ -209,13 +213,33 @@ export function isCompactionFailureError(errorMessage?: string): boolean {
 
 const OBSERVED_OVERFLOW_TOKEN_PATTERNS = [
   /prompt is too long:\s*([\d,]+)\s+tokens\s*>\s*[\d,]+\s+maximum/i,
+  /prompt is too long:\s*([\d,]+)\s*,\s*model maximum context length\s*:\s*[\d,]+/i,
   /requested\s+([\d,]+)\s+tokens/i,
+  /token limit\s*:\s*[\d,]+\s*\(requested\s*:\s*([\d,]+)\)/i,
   /resulted in\s+([\d,]+)\s+tokens/i,
+];
+
+const OBSERVED_OVERFLOW_TOKEN_SUM_PATTERNS = [
+  /input length(?:\s+and\s+max_tokens)?\s+exceed\s+context(?:\s+limit|\s+window)?\s*\(i\.e\s*([\d,]+)\s*\+\s*([\d,]+)\s*>\s*[\d,]+\)/i,
 ];
 
 export function extractObservedOverflowTokenCount(errorMessage?: string): number | undefined {
   if (!errorMessage) {
     return undefined;
+  }
+
+  for (const pattern of OBSERVED_OVERFLOW_TOKEN_SUM_PATTERNS) {
+    const match = errorMessage.match(pattern);
+    const rawLeft = match?.[1]?.replaceAll(",", "");
+    const rawRight = match?.[2]?.replaceAll(",", "");
+    if (!rawLeft || !rawRight) {
+      continue;
+    }
+    const left = Number(rawLeft);
+    const right = Number(rawRight);
+    if (Number.isFinite(left) && left > 0 && Number.isFinite(right) && right >= 0) {
+      return Math.floor(left + right);
+    }
   }
 
   for (const pattern of OBSERVED_OVERFLOW_TOKEN_PATTERNS) {
@@ -256,7 +280,12 @@ export type FailoverClassification =
 export type ProviderRuntimeFailureKind =
   | "auth_scope"
   | "auth_refresh"
-  | "auth_html_403"
+  | "refresh_timeout"
+  | "refresh_contention"
+  | "callback_timeout"
+  | "callback_validation"
+  | "auth_html"
+  | "upstream_html"
   | "proxy"
   | "rate_limit"
   | "dns"
@@ -264,6 +293,9 @@ export type ProviderRuntimeFailureKind =
   | "schema"
   | "sandbox_blocked"
   | "replay_invalid"
+  | "empty_response"
+  | "no_error_details"
+  | "unclassified"
   | "unknown";
 
 const BILLING_402_HINTS = [
@@ -293,7 +325,8 @@ const RETRYABLE_402_SCOPED_RESULT_HINTS = [
   "exhausted",
 ] as const;
 const RAW_402_MARKER_RE =
-  /["']?(?:status|code)["']?\s*[:=]\s*402\b|\bhttp\s*402\b|\berror(?:\s+code)?\s*[:=]?\s*402\b|\b(?:got|returned|received)\s+(?:a\s+)?402\b|^\s*402\s+payment required\b|^\s*402\s+.*used up your points\b/i;
+  /["']?(?:status|code)["']?\s*[:=]\s*402\b|\bhttp\s*402\b|\berror(?:\s+code)?\s*[:=]?\s*402\b|\b(?:got|returned|received)\s+(?:a\s+)?402\b|^\s*402\s+(?:payment required\b|.*used up your points\b|no available asset for api access\b)/i;
+const BARE_LEADING_402_RE = /^\s*402\b/i;
 const LEADING_402_WRAPPER_RE =
   /^(?:error[:\s-]+)?(?:(?:http\s*)?402(?:\s+payment required)?|payment required)(?:[:\s-]+|$)/i;
 const TIMEOUT_ERROR_CODES = new Set([
@@ -320,15 +353,46 @@ const DNS_ERROR_RE = /\benotfound\b|\beai_again\b|\bgetaddrinfo\b|\bno such host
 const INTERRUPTED_NETWORK_ERROR_RE =
   /\beconnrefused\b|\beconnreset\b|\beconnaborted\b|\benetreset\b|\behostunreach\b|\behostdown\b|\benetunreach\b|\bepipe\b|\bsocket hang up\b|\bconnection refused\b|\bconnection reset\b|\bconnection aborted\b|\bnetwork is unreachable\b|\bhost is unreachable\b|\bfetch failed\b|\bconnection error\b|\bnetwork request failed\b/i;
 const REPLAY_INVALID_RE =
-  /\bprevious_response_id\b.*\b(?:invalid|unknown|not found|does not exist|expired|mismatch)\b|\btool_(?:use|call)\.(?:input|arguments)\b.*\b(?:missing|required)\b|\bincorrect role information\b|\broles must alternate\b/i;
+  /\bprevious_response_id\b.*\b(?:invalid|unknown|not found|does not exist|expired|mismatch)\b|\btool_(?:use|call)\.(?:input|arguments)\b.*\b(?:missing|required)\b|\bincorrect role information\b|\broles must alternate\b|\binput item id does not belong to this connection\b/i;
 const SANDBOX_BLOCKED_RE =
   /\bapproval is required\b|\bapproval timed out\b|\bapproval was denied\b|\bblocked by sandbox\b|\bsandbox\b.*\b(?:blocked|denied|forbidden|disabled|not allowed)\b|\bexec denied\s*\(/i;
+const NO_BODY_HTTP_WRAPPER_RE =
+  /^(?:no body(?: response)?|no response body|status code \(no body\))$/i;
+
+function stripErrorPrefix(raw: string): string {
+  return raw.replace(/^error:\s*/i, "").trim();
+}
 
 export function inferSignalStatus(signal: FailoverSignal): number | undefined {
   if (typeof signal.status === "number" && Number.isFinite(signal.status)) {
     return signal.status;
   }
-  return extractLeadingHttpStatus(signal.message?.trim() ?? "")?.code;
+  return extractLeadingHttpStatus(stripErrorPrefix(signal.message?.trim() ?? ""))?.code;
+}
+
+function isExplicitNoBodyHttpMessage(raw: string | undefined, status?: number): boolean {
+  const trimmed = raw?.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const candidate = extractLeadingHttpStatus(trimmed) ? trimmed : stripErrorPrefix(trimmed);
+  const leadingStatus = extractLeadingHttpStatus(candidate);
+  if (leadingStatus) {
+    if (typeof status === "number" && leadingStatus.code !== status) {
+      return false;
+    }
+    return NO_BODY_HTTP_WRAPPER_RE.test(leadingStatus.rest);
+  }
+  return NO_BODY_HTTP_WRAPPER_RE.test(candidate);
+}
+
+export function isUnclassifiedNoBodyHttpSignal(signal: FailoverSignal): boolean {
+  const status = inferSignalStatus(signal);
+  if (status !== 400 && status !== 422) {
+    return false;
+  }
+  const message = signal.message?.trim();
+  return !message || isExplicitNoBodyHttpMessage(message, status);
 }
 
 function isHtmlErrorResponse(raw: string, status?: number): boolean {
@@ -336,15 +400,24 @@ function isHtmlErrorResponse(raw: string, status?: number): boolean {
   if (!trimmed) {
     return false;
   }
+  const candidate = extractLeadingHttpStatus(trimmed) ? trimmed : stripErrorPrefix(trimmed);
   const inferred =
     typeof status === "number" && Number.isFinite(status)
       ? status
-      : extractLeadingHttpStatus(trimmed)?.code;
+      : extractLeadingHttpStatus(candidate)?.code;
   if (typeof inferred !== "number" || inferred < 400) {
     return false;
   }
-  const rest = extractLeadingHttpStatus(trimmed)?.rest ?? trimmed;
+  const rest = extractLeadingHttpStatus(candidate)?.rest ?? candidate;
   return HTML_BODY_RE.test(rest) && HTML_CLOSE_RE.test(rest);
+}
+
+function isTransportHtmlErrorStatus(status: number | undefined): boolean {
+  return (
+    status === 408 ||
+    status === 499 ||
+    (typeof status === "number" && status >= 500 && status < 600)
+  );
 }
 
 function isOpenAICodexScopeContext(raw: string, provider?: string): boolean {
@@ -426,6 +499,25 @@ function isTimeoutTransportErrorMessage(raw: string, status?: number): boolean {
   return false;
 }
 
+function isOAuthRefreshTimeoutMessage(raw: string): boolean {
+  return /\boauth refresh call\b.*\bexceeded hard timeout\b/i.test(raw);
+}
+
+function isOAuthRefreshContentionMessage(raw: string): boolean {
+  return (
+    /\brefresh_contention\b/i.test(raw) ||
+    (/\bfile lock timeout\b/i.test(raw) &&
+      /(?:\/|\\|^)(?:oauth-refresh|openclaw-oauth-refresh)[^/\n\\]*?(?:\.lock)?\b/i.test(raw))
+  );
+}
+
+function isOAuthCallbackTimeoutMessage(raw: string): boolean {
+  return /\bcallback_timeout\b/i.test(raw);
+}
+
+function isOAuthCallbackValidationMessage(raw: string): boolean {
+  return /\bcallback_validation_failed\b/i.test(raw);
+}
 function includesAnyHint(text: string, hints: readonly string[]): boolean {
   return hints.some((hint) => text.includes(hint));
 }
@@ -462,6 +554,15 @@ function hasRetryable402TransientSignal(text: string): boolean {
   );
 }
 
+function hasKnownBareLeading402Signal(text: string): boolean {
+  return (
+    hasQuotaRefreshWindowSignal(text) ||
+    hasExplicit402BillingSignal(text) ||
+    isRateLimitErrorMessage(text) ||
+    hasRetryable402TransientSignal(text)
+  );
+}
+
 function normalize402Message(raw: string): string {
   return normalizeOptionalLowercaseString(raw)?.replace(LEADING_402_WRAPPER_RE, "").trim() ?? "";
 }
@@ -492,7 +593,14 @@ function classify402Message(message: string): PaymentRequiredFailoverReason {
 }
 
 function classifyFailoverReasonFrom402Text(raw: string): PaymentRequiredFailoverReason | null {
-  if (!RAW_402_MARKER_RE.test(raw)) {
+  if (RAW_402_MARKER_RE.test(raw)) {
+    return classify402Message(raw);
+  }
+  if (!BARE_LEADING_402_RE.test(raw)) {
+    return null;
+  }
+  const normalized = normalize402Message(raw);
+  if (!normalized || !hasKnownBareLeading402Signal(normalized)) {
     return null;
   }
   return classify402Message(raw);
@@ -533,6 +641,7 @@ export function classifyFailoverReasonFromHttpStatus(
       status,
       message,
       messageClassification,
+      status,
       opts?.provider,
     ),
   );
@@ -542,6 +651,7 @@ function classifyFailoverClassificationFromHttpStatus(
   status: number | undefined,
   message: string | undefined,
   messageClassification: FailoverClassification | null,
+  explicitStatus: number | undefined,
   provider?: string,
 ): FailoverClassification | null {
   const messageReason = failoverReasonFromClassification(messageClassification);
@@ -550,14 +660,26 @@ function classifyFailoverClassificationFromHttpStatus(
   }
 
   if (status === 402) {
-    return toReasonClassification(message ? classify402Message(message) : "billing");
+    if (!message) {
+      return toReasonClassification("billing");
+    }
+    const leadingStatus = extractLeadingHttpStatus(message.trim());
+    if (leadingStatus?.code === 402) {
+      const reasonFrom402Text = classifyFailoverReasonFrom402Text(message);
+      if (reasonFrom402Text) {
+        return toReasonClassification(reasonFrom402Text);
+      }
+      return typeof explicitStatus === "number"
+        ? toReasonClassification(classify402Message(message))
+        : messageClassification;
+    }
+    return toReasonClassification(classify402Message(message));
   }
   if (status === 429) {
-    if (
-      message &&
-      (isProvider(provider, "moonshot") || isProvider(provider, "kimi")) &&
-      isBillingErrorMessage(message)
-    ) {
+    if (messageReason === "billing" && !isAmbiguousGeneric429BalanceMessage(message ?? "")) {
+      return toReasonClassification("billing");
+    }
+    if (message && isBilling429MessageForProvider(message, provider)) {
       return toReasonClassification("billing");
     }
     return toReasonClassification("rate_limit");
@@ -615,6 +737,9 @@ function classifyFailoverClassificationFromHttpStatus(
     return toReasonClassification("timeout");
   }
   if (status === 500 || status === 502 || status === 504) {
+    if (messageReason === "server_error") {
+      return messageClassification;
+    }
     return toReasonClassification("timeout");
   }
   if (status === 529) {
@@ -624,9 +749,18 @@ function classifyFailoverClassificationFromHttpStatus(
     // 400/422 are ambiguous: inspect the payload first so provider-specific
     // rate limits, auth failures, model-not-found errors, and billing signals
     // are not collapsed into generic "format" failures.
-    if (messageClassification) {
+    if (messageClassification && messageReason !== "server_error") {
       return messageClassification;
     }
+    // When the response has no body at all, or only surfaces as an HTTP wrapper
+    // like "400 status code (no body)", return null instead of defaulting to
+    // "format". These shapes are likely transient proxy issues — classifying
+    // them as "format" triggers a compaction loop that cannot recover.
+    if (isUnclassifiedNoBodyHttpSignal({ status, message })) {
+      return null;
+    }
+    // Body exists but couldn't be classified — still treat as format error
+    // since the provider rejected the request schema.
     return toReasonClassification("format");
   }
   return null;
@@ -648,6 +782,8 @@ function classifyFailoverReasonFromCode(raw: string | undefined): FailoverReason
     case "THROTTLINGEXCEPTION":
     case "THROTTLING_EXCEPTION":
       return "rate_limit";
+    case "DEACTIVATED_WORKSPACE":
+      return "auth_permanent";
     case "OVERLOADED":
     case "OVERLOADED_ERROR":
       return "overloaded";
@@ -661,11 +797,46 @@ function isProvider(provider: string | undefined, match: string): boolean {
   return Boolean(normalized && normalized.includes(match));
 }
 
-function isAnthropicGenericUnknownError(raw: string, provider?: string): boolean {
+function hasProviderBilling429Override(provider: string | undefined): boolean {
   return (
-    isProvider(provider, "anthropic") &&
-    (normalizeOptionalLowercaseString(raw)?.includes("an unknown error occurred") ?? false)
+    isProvider(provider, "xai") || isProvider(provider, "moonshot") || isProvider(provider, "kimi")
   );
+}
+
+function hasStructuredBilling429Signal(raw: string): boolean {
+  if (hasBillingApiErrorType(raw)) {
+    return true;
+  }
+  const leadingStatus = extractLeadingHttpStatus(raw.trim());
+  return Boolean(leadingStatus?.rest && hasBillingApiErrorType(leadingStatus.rest));
+}
+
+function hasBillingApiErrorType(raw: string): boolean {
+  const type = normalizeOptionalLowercaseString(parseApiErrorInfo(raw)?.type);
+  if (!type) {
+    return false;
+  }
+  return isBillingErrorMessage(type) || isBillingErrorMessage(type.replaceAll("_", " "));
+}
+
+function isAmbiguousGeneric429BalanceMessage(raw: string): boolean {
+  return /\binsufficient\s+account\s+balance\b/i.test(raw) && !hasStructuredBilling429Signal(raw);
+}
+
+function isBilling429MessageForProvider(raw: string, provider: string | undefined): boolean {
+  if (!isBillingErrorMessage(raw)) {
+    return false;
+  }
+  return hasProviderBilling429Override(provider) || !isAmbiguousGeneric429BalanceMessage(raw);
+}
+
+// pi-ai providers throw `Error("An unknown error occurred")` provider-agnostically
+// (anthropic, google, vertex, openai-completions, mistral, bedrock, etc.) when a
+// stream ends with stopReason === "aborted" | "error" without specific info. Treat
+// it as a transient transport failure so the configured fallback chain rotates
+// instead of returning the bare string to the user (#71620).
+function isGenericUnknownStreamError(raw: string): boolean {
+  return /^\s*an unknown error occurred\.?\s*$/i.test(raw);
 }
 
 function isOpenRouterProviderReturnedError(raw: string, provider?: string): boolean {
@@ -678,6 +849,19 @@ function isOpenRouterProviderReturnedError(raw: string, provider?: string): bool
 function isOpenRouterKeyLimitExceededError(raw: string, provider?: string): boolean {
   return (
     isProvider(provider, "openrouter") && /\bkey\s+limit\s*(?:exceeded|reached|hit)\b/i.test(raw)
+  );
+}
+
+function isOpenRouterKeyBudgetLimitExceededError(raw: string, provider?: string): boolean {
+  return (
+    isProvider(provider, "openrouter") &&
+    /\bapi\s+key\s+budget\s+limit\s*(?:exceeded|reached|hit)\b/i.test(raw)
+  );
+}
+
+function isExactUnknownNoDetailsError(raw: string): boolean {
+  return (
+    normalizeOptionalLowercaseString(raw)?.trim() === "unknown error (no error details in response)"
   );
 }
 
@@ -704,7 +888,14 @@ function classifyFailoverClassificationFromMessage(
   if (reasonFrom402Text) {
     return toReasonClassification(reasonFrom402Text);
   }
-  if (isOpenRouterKeyLimitExceededError(raw, provider)) {
+  if (
+    isOpenRouterKeyLimitExceededError(raw, provider) ||
+    isOpenRouterKeyBudgetLimitExceededError(raw, provider)
+  ) {
+    return toReasonClassification("billing");
+  }
+  const leadingStatus = extractLeadingHttpStatus(raw.trim());
+  if (leadingStatus?.code !== 429 && isBillingErrorMessage(raw)) {
     return toReasonClassification("billing");
   }
   if (isPeriodicUsageLimitErrorMessage(raw)) {
@@ -716,6 +907,14 @@ function classifyFailoverClassificationFromMessage(
   if (isOverloadedErrorMessage(raw)) {
     return toReasonClassification("overloaded");
   }
+  if (
+    isStructuredServerErrorMessage(raw) &&
+    !isBillingErrorMessage(raw) &&
+    !isAuthPermanentErrorMessage(raw) &&
+    !isAuthErrorMessage(raw)
+  ) {
+    return toReasonClassification("server_error");
+  }
   if (isTransientHttpError(raw)) {
     const status = extractLeadingHttpStatus(raw.trim());
     if (status?.code === 529) {
@@ -723,12 +922,12 @@ function classifyFailoverClassificationFromMessage(
     }
     return toReasonClassification("timeout");
   }
-  // Billing and auth classifiers run before the broad isJsonApiInternalServerError
-  // check so that provider errors like {"type":"api_error","message":"insufficient
-  // balance"} are correctly classified as "billing"/"auth" rather than "timeout".
-  if (isBillingErrorMessage(raw)) {
-    return toReasonClassification("billing");
+  if (isGenericProviderInternalError(raw)) {
+    return toReasonClassification("timeout");
   }
+  // Auth classifiers run before the broad isJsonApiInternalServerError check so that
+  // provider errors like {"type":"api_error","message":"invalid api key"} are
+  // correctly classified as "auth" rather than "timeout".
   const oauthRefreshFailure = classifyOAuthRefreshFailure(raw);
   if (oauthRefreshFailure?.reason) {
     return toReasonClassification("auth_permanent");
@@ -739,7 +938,7 @@ function classifyFailoverClassificationFromMessage(
   if (isAuthErrorMessage(raw)) {
     return toReasonClassification("auth");
   }
-  if (isAnthropicGenericUnknownError(raw, provider)) {
+  if (isGenericUnknownStreamError(raw)) {
     return toReasonClassification("timeout");
   }
   if (isOpenRouterProviderReturnedError(raw, provider)) {
@@ -754,6 +953,9 @@ function classifyFailoverClassificationFromMessage(
   if (isCloudCodeAssistFormatError(raw)) {
     return toReasonClassification("format");
   }
+  if (isExactUnknownNoDetailsError(raw)) {
+    return toReasonClassification("no_error_details");
+  }
   if (isTimeoutErrorMessage(raw)) {
     return toReasonClassification("timeout");
   }
@@ -767,19 +969,30 @@ function classifyFailoverClassificationFromMessage(
 
 export function classifyFailoverSignal(signal: FailoverSignal): FailoverClassification | null {
   const inferredStatus = inferSignalStatus(signal);
+  if (
+    signal.message &&
+    isTransportHtmlErrorStatus(inferredStatus) &&
+    isHtmlErrorResponse(signal.message, inferredStatus)
+  ) {
+    return toReasonClassification("timeout");
+  }
   const messageClassification = signal.message
     ? classifyFailoverClassificationFromMessage(signal.message, signal.provider)
     : null;
+  const codeReason = classifyFailoverReasonFromCode(signal.code);
+  if (codeReason === "auth_permanent") {
+    return toReasonClassification(codeReason);
+  }
   const statusClassification = classifyFailoverClassificationFromHttpStatus(
     inferredStatus,
     signal.message,
     messageClassification,
+    signal.status,
     signal.provider,
   );
   if (statusClassification) {
     return statusClassification;
   }
-  const codeReason = classifyFailoverReasonFromCode(signal.code);
   if (codeReason) {
     return toReasonClassification(codeReason);
   }
@@ -794,7 +1007,22 @@ export function classifyProviderRuntimeFailureKind(
   const status = inferSignalStatus(normalizedSignal);
 
   if (!message && typeof status !== "number") {
-    return "unknown";
+    return "empty_response";
+  }
+  if (normalizedSignal.code === "refresh_contention") {
+    return "refresh_contention";
+  }
+  if (message && isOAuthRefreshContentionMessage(message)) {
+    return "refresh_contention";
+  }
+  if (message && isOAuthRefreshTimeoutMessage(message)) {
+    return "refresh_timeout";
+  }
+  if (message && isOAuthCallbackTimeoutMessage(message)) {
+    return "callback_timeout";
+  }
+  if (message && isOAuthCallbackValidationMessage(message)) {
+    return "callback_validation";
   }
   if (message && classifyOAuthRefreshFailure(message)) {
     return "auth_refresh";
@@ -802,11 +1030,11 @@ export function classifyProviderRuntimeFailureKind(
   if (message && isAuthScopeErrorMessage(message, status, normalizedSignal.provider)) {
     return "auth_scope";
   }
-  if (message && status === 403 && isHtmlErrorResponse(message, status)) {
-    return "auth_html_403";
-  }
   if (message && isProxyErrorMessage(message, status)) {
     return "proxy";
+  }
+  if (message && isHtmlErrorResponse(message, status)) {
+    return status === 401 || status === 403 ? "auth_html" : "upstream_html";
   }
   const failoverClassification = classifyFailoverSignal({
     ...normalizedSignal,
@@ -837,7 +1065,10 @@ export function classifyProviderRuntimeFailureKind(
   if (message && isTimeoutTransportErrorMessage(message, status)) {
     return "timeout";
   }
-  return "unknown";
+  if (message && isExactUnknownNoDetailsError(message)) {
+    return "no_error_details";
+  }
+  return "unclassified";
 }
 
 export function formatAssistantErrorText(
@@ -863,12 +1094,17 @@ export function formatAssistantErrorText(
     raw.match(/unknown tool[:\s]+["']?([a-z0-9_-]+)["']?/i) ??
     raw.match(/tool\s+["']?([a-z0-9_-]+)["']?\s+(?:not found|is not available)/i);
   if (unknownTool?.[1]) {
+    const audit = !sandboxToolPolicyAuditMessages.has(msg);
     const rewritten = formatSandboxToolPolicyBlockedMessage({
       cfg: opts?.cfg,
       sessionKey: opts?.sessionKey,
       toolName: unknownTool[1],
+      audit,
     });
     if (rewritten) {
+      if (audit) {
+        sandboxToolPolicyAuditMessages.add(msg);
+      }
       return rewritten;
     }
   }
@@ -882,6 +1118,34 @@ export function formatAssistantErrorText(
     return "Authentication refresh failed. Re-authenticate this provider and try again.";
   }
 
+  if (providerRuntimeFailureKind === "refresh_contention") {
+    return (
+      "Authentication refresh is already in progress elsewhere and this attempt " +
+      "timed out waiting for it. Retry in a moment."
+    );
+  }
+
+  if (providerRuntimeFailureKind === "refresh_timeout") {
+    return (
+      "Authentication refresh timed out before the provider completed. " +
+      "Retry in a moment; re-authenticate only if it keeps failing."
+    );
+  }
+
+  if (providerRuntimeFailureKind === "callback_timeout") {
+    return (
+      "Browser OAuth did not complete before manual fallback kicked in. " +
+      "Retry the login flow and paste the redirect URL if prompted."
+    );
+  }
+
+  if (providerRuntimeFailureKind === "callback_validation") {
+    return (
+      "Browser OAuth returned an invalid or incomplete callback. " +
+      "Retry the login flow and make sure the full redirect URL is pasted if prompted."
+    );
+  }
+
   if (providerRuntimeFailureKind === "auth_scope") {
     return (
       "Authentication is missing the required OpenAI Codex scopes. " +
@@ -889,10 +1153,18 @@ export function formatAssistantErrorText(
     );
   }
 
-  if (providerRuntimeFailureKind === "auth_html_403") {
+  if (providerRuntimeFailureKind === "auth_html") {
     return (
-      "Authentication failed with an HTML 403 response from the provider. " +
-      "Re-authenticate and verify your provider account access."
+      "Authentication failed at the provider. " +
+      "Re-authenticate and verify your provider credentials and account access."
+    );
+  }
+
+  if (providerRuntimeFailureKind === "upstream_html") {
+    return (
+      "The provider returned an HTML error page instead of an API response. " +
+      "This usually means a CDN or gateway (e.g. Cloudflare) blocked the request. " +
+      "Retry in a moment or check provider status."
     );
   }
 
@@ -943,9 +1215,23 @@ export function formatAssistantErrorText(
     return `LLM request rejected: ${invalidRequest[1]}`;
   }
 
+  if (
+    isOpenRouterKeyLimitExceededError(raw, opts?.provider) ||
+    isOpenRouterKeyBudgetLimitExceededError(raw, opts?.provider)
+  ) {
+    return formatBillingErrorMessage(opts?.provider, opts?.model ?? msg.model);
+  }
+  if (isBilling429MessageForProvider(raw, opts?.provider)) {
+    return formatBillingErrorMessage(opts?.provider, opts?.model ?? msg.model);
+  }
+
   const transientCopy = formatRateLimitOrOverloadedErrorCopy(raw);
   if (transientCopy) {
     return transientCopy;
+  }
+
+  if (isGenericProviderInternalError(raw)) {
+    return formatRawAssistantErrorForUi(raw);
   }
 
   const transportCopy = formatTransportErrorCopy(raw);
@@ -974,6 +1260,10 @@ export function formatAssistantErrorText(
 
   if (isLikelyHttpErrorText(raw) || isRawApiErrorPayload(raw)) {
     return formatRawAssistantErrorForUi(raw);
+  }
+
+  if (isStreamingJsonParseError(raw)) {
+    return "LLM streaming response contained a malformed fragment. Please try again.";
   }
 
   // Never return raw unhandled errors - log for debugging but return safe message
@@ -1042,6 +1332,14 @@ function isJsonApiInternalServerError(raw: string): boolean {
   // with non-transient messages (e.g. context overflow, schema validation) should
   // fall through to more specific classifiers or remain unclassified.
   return API_ERROR_TRANSIENT_SIGNALS_RE.test(raw);
+}
+
+function isStructuredServerErrorMessage(raw: string): boolean {
+  if (!raw) {
+    return false;
+  }
+  const value = normalizeLowercaseStringOrEmpty(raw);
+  return value.includes('"type":"server_error"') || value.includes('"code":"server_error"');
 }
 
 export function parseImageDimensionError(raw: string): {
@@ -1120,6 +1418,7 @@ function isCliSessionExpiredErrorMessage(raw: string): boolean {
     lower.includes("session expired") ||
     lower.includes("session invalid") ||
     lower.includes("conversation not found") ||
+    lower.includes("no conversation found") ||
     lower.includes("conversation does not exist") ||
     lower.includes("conversation expired") ||
     lower.includes("conversation invalid") ||
@@ -1134,11 +1433,8 @@ export function classifyFailoverReason(
   raw: string,
   opts?: { provider?: string },
 ): FailoverReason | null {
-  const trimmed = raw.trim();
-  const leadingStatus = extractLeadingHttpStatus(trimmed);
   return failoverReasonFromClassification(
     classifyFailoverSignal({
-      status: leadingStatus?.code,
       message: raw,
       provider: opts?.provider,
     }),

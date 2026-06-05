@@ -6,7 +6,7 @@ import {
   resolveBlueBubblesEffectiveAllowPrivateNetworkFromConfig,
   resolveBlueBubblesPrivateNetworkConfigValue as resolveBlueBubblesPrivateNetworkConfigValueFromConfig,
 } from "./accounts-normalization.js";
-import { _setFetchGuardForTesting } from "./types.js";
+import { setFetchGuardForTesting } from "./types.js";
 
 export const BLUE_BUBBLES_PRIVATE_API_STATUS = {
   enabled: true,
@@ -118,14 +118,14 @@ export function installBlueBubblesFetchTestHooks(params: {
   });
 
   afterEach(() => {
-    _setFetchGuardForTesting(null);
+    setFetchGuardForTesting(null);
     vi.unstubAllGlobals();
   });
 }
 
 export function createBlueBubblesFetchGuardPassthroughInstaller() {
   return (capturePolicy?: (policy: unknown) => void) => {
-    _setFetchGuardForTesting(async (params) => {
+    setFetchGuardForTesting(async (params) => {
       capturePolicy?.(params.policy);
       const raw = await globalThis.fetch(params.url, params.init);
       let body: ArrayBuffer;

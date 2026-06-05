@@ -93,22 +93,6 @@ describe("channel route projection", () => {
     });
   });
 
-  it("keeps local built-in parent-thread delivery target fallbacks", () => {
-    expect(
-      routeFromConversationRef({
-        channel: "telegram",
-        accountId: "default",
-        conversationId: "42",
-        parentConversationId: "-10099",
-      }),
-    ).toEqual({
-      channel: "telegram",
-      accountId: "default",
-      target: { to: "channel:-10099" },
-      thread: { id: "42", source: "target" },
-    });
-  });
-
   it("falls back to generic channel targets when a plugin has no target projection", () => {
     expect(
       routeFromConversationRef({

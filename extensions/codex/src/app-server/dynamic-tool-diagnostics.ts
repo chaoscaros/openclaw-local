@@ -64,7 +64,6 @@ export function emitDynamicToolTerminalDiagnostic(
       sessionKey: params.sessionKey,
       toolName: params.call.tool,
       toolCallId: params.call.callId,
-      durationMs: params.durationMs,
       deniedReason: "plugin-before-tool-call",
       reason: "Tool call blocked",
     });

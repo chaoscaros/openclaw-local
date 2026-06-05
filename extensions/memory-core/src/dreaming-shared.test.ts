@@ -8,7 +8,7 @@ describe("includesSystemEventToken", () => {
     expect(includesSystemEventToken(TOKEN, TOKEN)).toBe(true);
   });
 
-  it("matches a token wrapped by an isolated-cron prefix", () => {
+  it("matches a token wrapped by an isolated-cron `[cron:<id>]` prefix", () => {
     expect(includesSystemEventToken(`[cron:abc-123] ${TOKEN}`, TOKEN)).toBe(true);
   });
 
@@ -16,11 +16,19 @@ describe("includesSystemEventToken", () => {
     expect(includesSystemEventToken(`leading text\n${TOKEN}\ntrailing`, TOKEN)).toBe(true);
   });
 
-  it("does not match a user message that merely embeds the token mid-sentence", () => {
-    expect(includesSystemEventToken(`please tell me about ${TOKEN} later`, TOKEN)).toBe(false);
+  it("does NOT match a user message that merely embeds the token mid-sentence", () => {
+    expect(
+      includesSystemEventToken(`please tell me about ${TOKEN} when you have time`, TOKEN),
+    ).toBe(false);
   });
 
-  it("does not match arbitrary wrappers the runtime does not produce", () => {
+  it("does NOT match a user message with the token in a code-fence-style block", () => {
+    expect(
+      includesSystemEventToken(`here is a snippet:\n\`${TOKEN}\`\nwhat does that do?`, TOKEN),
+    ).toBe(false);
+  });
+
+  it("does NOT match an arbitrary wrapper the runtime does not produce", () => {
     expect(includesSystemEventToken(`[somewrap] ${TOKEN}`, TOKEN)).toBe(false);
   });
 

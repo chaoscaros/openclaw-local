@@ -16,7 +16,7 @@ export function resetOutboundChannelBootstrapStateForTests(): void {
 }
 
 function channelEntryCanSend(entry: PluginChannelRegistration | undefined): boolean {
-  return Boolean(entry?.plugin?.outbound?.sendText);
+  return Boolean(entry?.plugin?.outbound?.sendText ?? entry?.plugin?.message?.send?.text);
 }
 
 export function bootstrapOutboundChannelPlugin(params: {

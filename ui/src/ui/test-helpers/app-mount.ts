@@ -55,7 +55,7 @@ export function registerAppMountHooks() {
     const localStorage = createStorageMock();
     const sessionStorage = createStorageMock();
     const matchMedia = createMatchMediaMock(390);
-    window.__OPENCLAW_CONTROL_UI_BASE_PATH__ = undefined;
+    window["__OPENCLAW_CONTROL_UI_BASE_PATH__"] = undefined;
     vi.stubGlobal("localStorage", localStorage);
     vi.stubGlobal("sessionStorage", sessionStorage);
     vi.stubGlobal("matchMedia", matchMedia);
@@ -96,7 +96,7 @@ export function registerAppMountHooks() {
   });
 
   afterEach(async () => {
-    window.__OPENCLAW_CONTROL_UI_BASE_PATH__ = undefined;
+    window["__OPENCLAW_CONTROL_UI_BASE_PATH__"] = undefined;
     getSafeLocalStorage()?.clear();
     getSafeSessionStorage()?.clear();
     document.body.innerHTML = "";

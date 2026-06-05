@@ -1951,6 +1951,52 @@ describe("chat view", () => {
     expect(container.textContent).toContain("https://example.com");
   });
 
+  it("keeps failed tool output collapsed even when auto-expand is enabled", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          autoExpandToolCalls: true,
+          messages: [
+            {
+              id: "assistant-failed-tool",
+              role: "assistant",
+              toolCallId: "call-failed-tool",
+              content: [
+                {
+                  type: "toolcall",
+                  id: "call-failed-tool",
+                  name: "exec_command",
+                  arguments: { cmd: "./node_modules/.bin/eslint --no-ignore src/file.js" },
+                },
+                {
+                  type: "toolresult",
+                  id: "call-failed-tool",
+                  name: "exec_command",
+                  text: "Process exited with code 1\nERROR lint failed",
+                },
+              ],
+              timestamp: Date.now(),
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+
+    expect(container.textContent).not.toContain("Tool input");
+    expect(container.textContent).not.toContain("ERROR lint failed");
+    expect(container.querySelector(".chat-tool-msg-summary")).not.toBeNull();
+  });
+
+  it("does not duplicate global errors inside the chat card", () => {
+    const container = document.createElement("div");
+
+    render(renderChat(createProps({ error: "⚠️ 🛠 `run build:stage (repo)` failed" })), container);
+
+    expect(container.querySelector(".card.chat .callout.danger")).toBeNull();
+  });
+
   it("expands already-visible tool cards when auto-expand is turned on", () => {
     const container = document.createElement("div");
     const baseProps = createProps({
@@ -2278,6 +2324,39 @@ describe("chat view", () => {
     expect(assistantBubble?.querySelector(".chat-bubble-actions")).toBeInstanceOf(HTMLElement);
     expect(userBubble?.classList.contains("has-copy")).toBe(false);
     expect(userBubble?.querySelector(".chat-bubble-actions")).toBeNull();
+  });
+
+  it("renders user code blocks without copy chrome while preserving assistant code actions", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          messages: [
+            {
+              id: "assistant-code-copy",
+              role: "assistant",
+              content: "```bash\necho ok\n```",
+              timestamp: 1_000,
+            },
+            {
+              id: "user-code-no-copy",
+              role: "user",
+              content: "```bash\npython3 - <<'PY'\nprint('ok')\nPY\n```",
+              timestamp: 1_001,
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+
+    const assistantBubble = container.querySelector<HTMLElement>(
+      ".chat-group.assistant .chat-bubble",
+    );
+    const userBubble = container.querySelector<HTMLElement>(".chat-group.user .chat-bubble");
+    expect(assistantBubble?.querySelector(".code-block-copy")).toBeInstanceOf(HTMLButtonElement);
+    expect(userBubble?.querySelector(".code-block-copy")).toBeNull();
+    expect(userBubble?.textContent).toContain("python3 - <<'PY'");
   });
 
   it("renders assistant_message canvas results inside the assistant bubble when tool rows are hidden", () => {

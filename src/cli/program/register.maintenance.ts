@@ -1,48 +1,10 @@
 import type { Command } from "commander";
-import { dashboardCommand } from "../../commands/dashboard.js";
-import { doctorCommand } from "../../commands/doctor.js";
-import { migrateCommand } from "../../commands/migrate.js";
-import { resetCommand } from "../../commands/reset.js";
-import { uninstallCommand } from "../../commands/uninstall.js";
 import { defaultRuntime } from "../../runtime.js";
 import { formatDocsLink } from "../../terminal/links.js";
 import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils.js";
 
 export function registerMaintenanceCommands(program: Command) {
-  program
-    .command("migrate")
-    .description("Run a plugin-owned migration provider")
-    .argument("<providerId>", "Migration provider id")
-    .argument("[source]", "Optional source path or provider-specific source id")
-    .option("--plan", "Explicitly run plan-only mode", false)
-    .option("--apply", "Apply the generated migration plan", false)
-    .option("--include-secrets", "Allow provider to include secret-bearing data", false)
-    .option("--overwrite", "Allow provider to overwrite existing target state", false)
-    .option("--backup-path <path>", "Backup path to pass to the provider")
-    .option("--report-dir <path>", "Report directory to pass to the provider")
-    .option("--json", "Output JSON instead of text", false)
-    .addHelpText(
-      "after",
-      () =>
-        `\n${theme.muted("Docs:")} ${formatDocsLink("/cli/migrate", "docs.openclaw.ai/cli/migrate")}\n`,
-    )
-    .action(async (providerId: string, source: string | undefined, opts) => {
-      await runCommandWithRuntime(defaultRuntime, async () => {
-        await migrateCommand(defaultRuntime, {
-          providerId,
-          source,
-          plan: Boolean(opts.plan),
-          apply: Boolean(opts.apply),
-          includeSecrets: Boolean(opts.includeSecrets),
-          overwrite: Boolean(opts.overwrite),
-          backupPath: opts.backupPath as string | undefined,
-          reportDir: opts.reportDir as string | undefined,
-          json: Boolean(opts.json),
-        });
-      });
-    });
-
   program
     .command("doctor")
     .description("Health checks + quick fixes for the gateway and channels")
@@ -59,8 +21,54 @@ export function registerMaintenanceCommands(program: Command) {
     .option("--non-interactive", "Run without prompts (safe migrations only)", false)
     .option("--generate-gateway-token", "Generate and configure a gateway token", false)
     .option("--deep", "Scan system services for extra gateway installs", false)
+    .option("--lint", "Run read-only health checks and report findings", false)
+    .option("--json", "With --lint: emit JSON findings instead of human output", false)
+    .option(
+      "--severity-min <level>",
+      "With --lint: drop findings below this severity (info|warning|error)",
+    )
+    .option(
+      "--skip <id>",
+      "With --lint: skip a specific check id (repeatable)",
+      (v: string, prev: string[]) => [...prev, v],
+      [],
+    )
+    .option(
+      "--only <id>",
+      "With --lint: run only the specified check id (repeatable)",
+      (v: string, prev: string[]) => [...prev, v],
+      [],
+    )
     .action(async (opts) => {
+      if (opts.lint === true) {
+        await runCommandWithRuntime(
+          defaultRuntime,
+          async () => {
+            const { runDoctorLintCli } = await import("../../commands/doctor-lint.js");
+            const exitCode = await runDoctorLintCli(defaultRuntime, {
+              json: Boolean(opts.json),
+              severityMin: typeof opts.severityMin === "string" ? opts.severityMin : undefined,
+              skipIds: Array.isArray(opts.skip) ? opts.skip : [],
+              onlyIds: Array.isArray(opts.only) ? opts.only : [],
+            });
+            defaultRuntime.exit(exitCode);
+          },
+          (err) => {
+            defaultRuntime.error(String(err));
+            defaultRuntime.exit(2);
+          },
+        );
+        return;
+      }
+      if (hasLintOnlyDoctorOptions(opts)) {
+        defaultRuntime.error(
+          "doctor lint options require --lint. Use `openclaw doctor --lint ...`.",
+        );
+        defaultRuntime.exit(2);
+        return;
+      }
       await runCommandWithRuntime(defaultRuntime, async () => {
+        const { doctorCommand } = await import("../../commands/doctor.js");
         await doctorCommand(defaultRuntime, {
           workspaceSuggestions: opts.workspaceSuggestions,
           yes: Boolean(opts.yes),
@@ -83,10 +91,13 @@ export function registerMaintenanceCommands(program: Command) {
         `\n${theme.muted("Docs:")} ${formatDocsLink("/cli/dashboard", "docs.openclaw.ai/cli/dashboard")}\n`,
     )
     .option("--no-open", "Print URL but do not launch a browser")
+    .option("--yes", "Start/install the gateway without prompting when needed", false)
     .action(async (opts) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
+        const { dashboardCommand } = await import("../../commands/dashboard.js");
         await dashboardCommand(defaultRuntime, {
           noOpen: opts.open === false,
+          yes: Boolean(opts.yes),
         });
       });
     });
@@ -105,6 +116,7 @@ export function registerMaintenanceCommands(program: Command) {
     .option("--dry-run", "Print actions without removing files", false)
     .action(async (opts) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
+        const { resetCommand } = await import("../../commands/reset.js");
         await resetCommand(defaultRuntime, {
           scope: opts.scope,
           yes: Boolean(opts.yes),
@@ -132,6 +144,7 @@ export function registerMaintenanceCommands(program: Command) {
     .option("--dry-run", "Print actions without removing files", false)
     .action(async (opts) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
+        const { uninstallCommand } = await import("../../commands/uninstall.js");
         await uninstallCommand(defaultRuntime, {
           service: Boolean(opts.service),
           state: Boolean(opts.state),
@@ -144,4 +157,18 @@ export function registerMaintenanceCommands(program: Command) {
         });
       });
     });
+}
+
+function hasLintOnlyDoctorOptions(opts: {
+  readonly json?: boolean;
+  readonly severityMin?: unknown;
+  readonly skip?: unknown;
+  readonly only?: unknown;
+}): boolean {
+  return (
+    opts.json === true ||
+    typeof opts.severityMin === "string" ||
+    (Array.isArray(opts.skip) && opts.skip.length > 0) ||
+    (Array.isArray(opts.only) && opts.only.length > 0)
+  );
 }
