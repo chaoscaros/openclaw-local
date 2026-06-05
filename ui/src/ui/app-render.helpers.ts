@@ -17,7 +17,7 @@ import { createSessionAndRefresh, loadSessions } from "./controllers/sessions.ts
 import { resolveSessionTask } from "./controllers/tasks.ts";
 import { formatRelativeTimestamp } from "./format.ts";
 import { icons } from "./icons.ts";
-import { iconForTab, pathForTab, titleForTab, type Tab } from "./navigation.ts";
+import { iconForTab, isSettingsTab, pathForTab, titleForTab, type Tab } from "./navigation.ts";
 import {
   buildAgentMainSessionKey,
   doSessionKeysMatch,
@@ -154,7 +154,7 @@ function buildChatSessionRefreshOverrides(state: AppViewState) {
 
 export function renderTab(state: AppViewState, tab: Tab, opts?: { collapsed?: boolean }) {
   const href = pathForTab(tab, state.basePath);
-  const isActive = state.tab === tab;
+  const isActive = state.tab === tab || (tab === "config" && isSettingsTab(state.tab));
   const collapsed = opts?.collapsed ?? state.settings.navCollapsed;
   return html`
     <a

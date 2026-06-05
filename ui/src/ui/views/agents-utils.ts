@@ -200,6 +200,10 @@ export function normalizeAgentLabel(agent: {
 
 const AVATAR_URL_RE = /^(https?:\/\/|data:image\/|\/)/i;
 
+export function isRenderableControlUiAvatarUrl(value: string): boolean {
+  return AVATAR_URL_RE.test(value);
+}
+
 export function resolveAgentAvatarUrl(
   agent: { identity?: { avatar?: string; avatarUrl?: string } },
   agentIdentity?: AgentIdentityResult | null,
@@ -220,9 +224,47 @@ export function resolveAgentAvatarUrl(
   return null;
 }
 
+export function resolveChatAvatarRenderUrl(
+  candidate: string | null | undefined,
+  agent: { identity?: { avatar?: string; avatarUrl?: string } },
+  agentIdentity?: AgentIdentityResult | null,
+): string | null {
+  const trimmed = normalizeOptionalString(candidate);
+  if (trimmed?.startsWith("blob:")) {
+    return trimmed;
+  }
+  if (trimmed && isRenderableControlUiAvatarUrl(trimmed)) {
+    return trimmed;
+  }
+  return resolveAgentAvatarUrl(agent, agentIdentity);
+}
+
 export function agentLogoUrl(basePath: string): string {
   const base = normalizeOptionalString(basePath)?.replace(/\/$/, "") ?? "";
   return base ? `${base}/favicon.svg` : "favicon.svg";
+}
+
+export function assistantAvatarFallbackUrl(basePath: string): string {
+  const base = normalizeOptionalString(basePath)?.replace(/\/$/, "") ?? "";
+  return base ? `${base}/apple-touch-icon.png` : "apple-touch-icon.png";
+}
+
+const UNSAFE_ASSISTANT_TEXT_AVATAR_CHARS = /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/u;
+
+export function resolveAssistantTextAvatar(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed || isRenderableControlUiAvatarUrl(trimmed) || trimmed.startsWith("blob:")) {
+    return null;
+  }
+  if (
+    trimmed.length > 8 ||
+    /\s/.test(trimmed) ||
+    /[\\/.:]/.test(trimmed) ||
+    UNSAFE_ASSISTANT_TEXT_AVATAR_CHARS.test(trimmed)
+  ) {
+    return null;
+  }
+  return trimmed;
 }
 
 function isLikelyEmoji(value: string) {

@@ -6,31 +6,12 @@ export const TAB_GROUPS = [
   { label: "chat", tabs: ["chat"] },
   {
     label: "control",
-    tabs: [
-      "overview",
-      "activity",
-      "channels",
-      "instances",
-      "sessions",
-      "tasks",
-      "archives",
-      "usage",
-      "cron",
-    ],
+    tabs: ["overview", "activity", "instances", "sessions", "tasks", "archives", "usage", "cron"],
   },
   { label: "agent", tabs: ["agents", "skills", "nodes", "dreams"] },
   {
     label: "settings",
-    tabs: [
-      "config",
-      "communications",
-      "appearance",
-      "automation",
-      "infrastructure",
-      "aiAgents",
-      "debug",
-      "logs",
-    ],
+    tabs: ["config"],
   },
 ] as const;
 
@@ -57,6 +38,18 @@ export type Tab =
   | "debug"
   | "logs"
   | "dreams";
+
+export const SETTINGS_TABS = [
+  "config",
+  "channels",
+  "communications",
+  "appearance",
+  "automation",
+  "infrastructure",
+  "aiAgents",
+  "debug",
+  "logs",
+] as const satisfies readonly Tab[];
 
 const TAB_PATHS: Record<Tab, string> = {
   agents: "/agents",
@@ -127,6 +120,10 @@ export function pathForTab(tab: Tab, basePath = ""): string {
   const base = normalizeBasePath(basePath);
   const path = TAB_PATHS[tab];
   return base ? `${base}${path}` : path;
+}
+
+export function isSettingsTab(tab: Tab): boolean {
+  return (SETTINGS_TABS as readonly Tab[]).includes(tab);
 }
 
 export function tabFromPath(pathname: string, basePath = ""): Tab | null {

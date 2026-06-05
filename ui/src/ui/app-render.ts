@@ -126,8 +126,11 @@ import { formatRelativeTimestamp } from "./format.ts";
 import "./components/dashboard-header.ts";
 import { icons } from "./icons.ts";
 import {
+  iconForTab,
+  isSettingsTab,
   normalizeBasePath,
   pathForTab,
+  SETTINGS_TABS,
   TAB_GROUPS,
   subtitleForTab,
   titleForTab,
@@ -145,6 +148,8 @@ import {
 } from "./views/agents-utils.ts";
 import { renderChat } from "./views/chat.ts";
 import { renderCommandPalette } from "./views/command-palette.ts";
+import { getPresetById } from "./views/config-presets.ts";
+import { renderQuickSettings, type QuickSettingsChannel } from "./views/config-quick.ts";
 import { renderConfig, type ConfigProps } from "./views/config.ts";
 import { renderDreaming } from "./views/dreaming.ts";
 import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
@@ -176,6 +181,54 @@ function createLazy<T>(loader: () => Promise<T>): () => T | null {
   };
 }
 
+function renderSettingsSectionNav(state: AppViewState) {
+  if (!isSettingsTab(state.tab)) {
+    return nothing;
+  }
+  return html`
+    <nav class="settings-section-nav" aria-label=${t("common.settingsSections")}>
+      ${SETTINGS_TABS.map((tab) => {
+        const active = state.tab === tab;
+        const href = pathForTab(tab, state.basePath);
+        return html`
+          <a
+            href=${href}
+            class="settings-section-nav__item ${active ? "settings-section-nav__item--active" : ""}"
+            @click=${(event: MouseEvent) => {
+              if (
+                event.defaultPrevented ||
+                event.button !== 0 ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey
+              ) {
+                return;
+              }
+              event.preventDefault();
+              state.setTab(tab);
+            }}
+          >
+            <span class="settings-section-nav__icon" aria-hidden="true"
+              >${icons[iconForTab(tab)]}</span
+            >
+            <span class="settings-section-nav__label">${titleForTab(tab)}</span>
+          </a>
+        `;
+      })}
+    </nav>
+  `;
+}
+
+function renderSettingsWorkspace(state: AppViewState, body: unknown) {
+  return html`
+    <section class="settings-workspace">
+      ${renderSettingsSectionNav(state)}
+      <div class="settings-workspace__body">${body}</div>
+    </section>
+  `;
+}
+
 const lazyAgents = createLazy(() => import("./views/agents.ts"));
 const lazyActivity = createLazy(() => import("./views/activity.ts"));
 const lazyChannels = createLazy(() => import("./views/channels.ts"));
@@ -186,6 +239,164 @@ const lazyLogs = createLazy(() => import("./views/logs.ts"));
 const lazyNodes = createLazy(() => import("./views/nodes.ts"));
 const lazySessions = createLazy(() => import("./views/sessions.ts"));
 const lazySkills = createLazy(() => import("./views/skills.ts"));
+
+const KNOWN_CHANNEL_IDS = [
+  { id: "telegram", label: "Telegram" },
+  { id: "discord", label: "Discord" },
+  { id: "slack", label: "Slack" },
+  { id: "whatsapp", label: "WhatsApp" },
+  { id: "signal", label: "Signal" },
+  { id: "imessage", label: "iMessage" },
+] as const;
+
+function formatQuickSettingsLabel(id: string): string {
+  const trimmed = id.trim();
+  if (!trimmed) {
+    return "Unknown";
+  }
+  return trimmed
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function getConfigObject(state: AppViewState): Record<string, unknown> {
+  const config = state.configForm ?? state.configSnapshot?.config;
+  return config && typeof config === "object" && !Array.isArray(config) ? config : {};
+}
+
+function clonePlainConfig(value: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!value) {
+    return null;
+  }
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+function resetConfigPendingChanges(state: AppViewState) {
+  const original = clonePlainConfig(state.configFormOriginal);
+  if (!original) {
+    return;
+  }
+  state.configForm = original;
+  state.configRaw = JSON.stringify(original, null, 2);
+  state.configFormDirty = false;
+}
+
+function stageQuickSettingsPreset(
+  state: AppViewState,
+  presetId: Parameters<typeof getPresetById>[0],
+) {
+  const preset = getPresetById(presetId);
+  const defaults = preset?.patch.agents.defaults;
+  if (!defaults) {
+    return;
+  }
+  updateConfigFormValue(
+    state,
+    ["agents", "defaults", "bootstrapMaxChars"],
+    defaults.bootstrapMaxChars,
+  );
+  updateConfigFormValue(
+    state,
+    ["agents", "defaults", "bootstrapTotalMaxChars"],
+    defaults.bootstrapTotalMaxChars,
+  );
+  updateConfigFormValue(
+    state,
+    ["agents", "defaults", "contextInjection"],
+    defaults.contextInjection,
+  );
+}
+
+function extractQuickSettingsChannels(state: AppViewState): QuickSettingsChannel[] {
+  const config = getConfigObject(state);
+  const channelsConfig =
+    config.channels && typeof config.channels === "object" && !Array.isArray(config.channels)
+      ? (config.channels as Record<string, unknown>)
+      : {};
+  const configuredIds = Object.keys(channelsConfig).filter((id) => id.trim().length > 0);
+  const channelIds =
+    configuredIds.length > 0
+      ? configuredIds.toSorted((a, b) => a.localeCompare(b))
+      : KNOWN_CHANNEL_IDS.map(({ id }) => id);
+  const knownLabels = new Map(KNOWN_CHANNEL_IDS.map(({ id, label }) => [id, label]));
+  return channelIds.map((id) => {
+    const channelConfig = channelsConfig[id];
+    const connected =
+      channelConfig != null &&
+      typeof channelConfig === "object" &&
+      Object.keys(channelConfig).length > 0;
+    return {
+      id,
+      label: knownLabels.get(id) ?? formatQuickSettingsLabel(id),
+      connected,
+      detail: connected ? t("common.configured") : undefined,
+    };
+  });
+}
+
+function extractMcpServerCount(state: AppViewState): number {
+  const config = getConfigObject(state);
+  const mcp = config.mcp;
+  if (!mcp || typeof mcp !== "object" || Array.isArray(mcp)) {
+    return 0;
+  }
+  const servers = (mcp as Record<string, unknown>).servers;
+  return servers && typeof servers === "object" && !Array.isArray(servers)
+    ? Object.keys(servers).length
+    : 0;
+}
+
+function extractQuickSettingsSecurity(state: AppViewState) {
+  const config = getConfigObject(state);
+  const gateway =
+    config.gateway && typeof config.gateway === "object" && !Array.isArray(config.gateway)
+      ? (config.gateway as Record<string, unknown>)
+      : null;
+  const auth =
+    gateway?.auth && typeof gateway.auth === "object" && !Array.isArray(gateway.auth)
+      ? (gateway.auth as Record<string, unknown>)
+      : null;
+  let gatewayAuth = "unknown";
+  if (auth) {
+    const mode = typeof auth.mode === "string" ? auth.mode.trim() : "";
+    gatewayAuth =
+      mode ||
+      (auth.password
+        ? "password"
+        : auth.token
+          ? "token"
+          : auth.trustedProxy
+            ? "trusted-proxy"
+            : "none");
+  }
+  const tools =
+    config.tools && typeof config.tools === "object" && !Array.isArray(config.tools)
+      ? (config.tools as Record<string, unknown>)
+      : {};
+  const exec =
+    tools.exec && typeof tools.exec === "object" ? (tools.exec as Record<string, unknown>) : {};
+  const execPolicy =
+    typeof exec.security === "string" && exec.security.trim() ? exec.security.trim() : "allowlist";
+  const toolProfile =
+    typeof tools.profile === "string" && tools.profile.trim() ? tools.profile.trim() : "full";
+  const browser =
+    config.browser && typeof config.browser === "object" && !Array.isArray(config.browser)
+      ? (config.browser as Record<string, unknown>)
+      : null;
+  const browserEnabled = typeof browser?.enabled === "boolean" ? browser.enabled : true;
+  const controlUi =
+    gateway?.controlUi && typeof gateway.controlUi === "object" && !Array.isArray(gateway.controlUi)
+      ? (gateway.controlUi as Record<string, unknown>)
+      : null;
+  const deviceAuth = controlUi?.dangerouslyDisableDeviceAuth !== true;
+  return { gatewayAuth, execPolicy, deviceAuth, browserEnabled, toolProfile };
+}
+
+function resolveQuickSettingsSessionRow(state: AppViewState) {
+  return state.sessionsResult?.sessions?.find((row) => row.key === state.sessionKey);
+}
 
 function formatDreamNextCycle(nextRunAtMs?: number): string | null {
   if (!nextRunAtMs) {
@@ -938,7 +1149,123 @@ export function renderApp(state: AppViewState) {
   );
   const renderConfigTabForActiveTab = () => {
     switch (state.tab) {
-      case "config":
+      case "config": {
+        if (state.configSettingsMode === "quick") {
+          const configObj = getConfigObject(state);
+          const agentsDefaults =
+            configObj.agents &&
+            typeof configObj.agents === "object" &&
+            !Array.isArray(configObj.agents)
+              ? (((configObj.agents as Record<string, unknown>).defaults ?? {}) as Record<
+                  string,
+                  unknown
+                >)
+              : {};
+          const activeSession = resolveQuickSettingsSessionRow(state);
+          const currentModel =
+            typeof activeSession?.model === "string"
+              ? activeSession.model
+              : typeof agentsDefaults.model === "string"
+                ? agentsDefaults.model
+                : "default";
+          const thinkingLevel =
+            typeof activeSession?.thinkingLevel === "string"
+              ? activeSession.thinkingLevel
+              : typeof agentsDefaults.thinkingLevel === "string"
+                ? agentsDefaults.thinkingLevel
+                : "off";
+          const fastMode =
+            typeof activeSession?.fastMode === "boolean"
+              ? activeSession.fastMode
+              : agentsDefaults.fastMode === true;
+          return renderQuickSettings({
+            currentModel,
+            thinkingLevel,
+            fastMode,
+            onModelChange: () => {
+              state.configSettingsMode = "advanced";
+              state.aiAgentsActiveSection = "models";
+              state.setTab("aiAgents");
+            },
+            onThinkingChange: (level) => {
+              void patchSession(state, state.sessionKey, { thinkingLevel: level }).then(() =>
+                requestHostUpdate?.(),
+              );
+            },
+            onFastModeToggle: () => {
+              void patchSession(state, state.sessionKey, { fastMode: !fastMode }).then(() =>
+                requestHostUpdate?.(),
+              );
+            },
+            channels: extractQuickSettingsChannels(state),
+            onChannelConfigure: () => state.setTab("channels"),
+            automation: {
+              cronJobCount: state.cronJobs?.length ?? 0,
+              skillCount: state.skillsReport?.skills?.length ?? 0,
+              mcpServerCount: extractMcpServerCount(state),
+            },
+            onManageCron: () => state.setTab("cron"),
+            onBrowseSkills: () => state.setTab("skills"),
+            onConfigureMcp: () => {
+              state.infrastructureActiveSection = "mcp";
+              state.setTab("infrastructure");
+            },
+            security: extractQuickSettingsSecurity(state),
+            onSecurityConfigure: () => {
+              state.configSettingsMode = "advanced";
+              state.configActiveSection = "auth";
+              requestHostUpdate?.();
+            },
+            onBrowserEnabledToggle: (enabled) => {
+              updateConfigFormValue(state, ["browser", "enabled"], enabled);
+              requestHostUpdate?.();
+            },
+            onToolProfileChange: (profile) => {
+              updateConfigFormValue(state, ["tools", "profile"], profile);
+              requestHostUpdate?.();
+            },
+            theme: state.theme,
+            themeMode: state.themeMode,
+            hasCustomTheme: false,
+            borderRadius: state.settings.borderRadius,
+            textScale: state.settings.textScale ?? 100,
+            setTheme: (theme, context) => state.setTheme(theme, context),
+            setThemeMode: (mode, context) => state.setThemeMode(mode, context),
+            setBorderRadius: (value) => state.setBorderRadius(value),
+            setTextScale: (value) => state.setTextScale(value),
+            userAvatar: null,
+            assistantAvatar: state.assistantAvatar,
+            assistantAvatarUrl: chatAvatarUrl,
+            assistantAvatarStatus: chatAvatarUrl ? "local" : null,
+            assistantAvatarReason: null,
+            basePath: state.basePath ?? "",
+            configObject: configObj,
+            savedConfigObject:
+              (state.configSnapshot?.config as Record<string, unknown> | null) ?? {},
+            configDirty: state.configFormDirty,
+            configSaving: state.configSaving,
+            configApplying: state.configApplying,
+            configReady: Boolean(state.configSnapshot?.hash),
+            onSelectPreset: (presetId) => {
+              stageQuickSettingsPreset(state, presetId);
+              requestHostUpdate?.();
+            },
+            onResetConfig: () => {
+              resetConfigPendingChanges(state);
+              requestHostUpdate?.();
+            },
+            onSaveConfig: () => saveConfig(state),
+            onApplyConfig: () => applyConfig(state),
+            onAdvancedSettings: () => {
+              state.configSettingsMode = "advanced";
+              requestHostUpdate?.();
+            },
+            connected: state.connected,
+            gatewayUrl: state.settings.gatewayUrl,
+            assistantName: state.assistantName,
+            version: state.hello?.server?.version ?? "",
+          });
+        }
         return renderConfigTab({
           formMode: state.configFormMode,
           searchQuery: state.configSearchQuery,
@@ -961,6 +1288,7 @@ export function renderApp(state: AppViewState) {
             "wizard",
           ],
         });
+      }
       case "communications":
         return renderConfigTab({
           formMode: state.communicationsFormMode,
@@ -1316,7 +1644,7 @@ export function renderApp(state: AppViewState) {
               </button>
             </div>`
           : nothing}
-        ${state.tab === "config"
+        ${isSettingsTab(state.tab)
           ? nothing
           : html`<section class="content-header">
               <div>
@@ -1463,41 +1791,44 @@ export function renderApp(state: AppViewState) {
             )
           : nothing}
         ${state.tab === "channels"
-          ? lazyRender(lazyChannels, (m) =>
-              m.renderChannels({
-                connected: state.connected,
-                loading: state.channelsLoading,
-                snapshot: state.channelsSnapshot,
-                lastError: state.channelsError,
-                lastSuccessAt: state.channelsLastSuccess,
-                whatsappMessage: state.whatsappLoginMessage,
-                whatsappQrDataUrl: state.whatsappLoginQrDataUrl,
-                whatsappConnected: state.whatsappLoginConnected,
-                whatsappBusy: state.whatsappBusy,
-                configSchema: state.configSchema,
-                configSchemaLoading: state.configSchemaLoading,
-                configForm: state.configForm,
-                configUiHints: state.configUiHints,
-                configSaving: state.configSaving,
-                configFormDirty: state.configFormDirty,
-                nostrProfileFormState: state.nostrProfileFormState,
-                nostrProfileAccountId: state.nostrProfileAccountId,
-                onRefresh: (probe) => loadChannels(state, probe),
-                onWhatsAppStart: (force) => state.handleWhatsAppStart(force),
-                onWhatsAppWait: () => state.handleWhatsAppWait(),
-                onWhatsAppLogout: () => state.handleWhatsAppLogout(),
-                onConfigPatch: (path, value) => updateConfigFormValue(state, path, value),
-                onConfigSave: () => state.handleChannelConfigSave(),
-                onConfigReload: () => state.handleChannelConfigReload(),
-                onNostrProfileEdit: (accountId, profile) =>
-                  state.handleNostrProfileEdit(accountId, profile),
-                onNostrProfileCancel: () => state.handleNostrProfileCancel(),
-                onNostrProfileFieldChange: (field, value) =>
-                  state.handleNostrProfileFieldChange(field, value),
-                onNostrProfileSave: () => state.handleNostrProfileSave(),
-                onNostrProfileImport: () => state.handleNostrProfileImport(),
-                onNostrProfileToggleAdvanced: () => state.handleNostrProfileToggleAdvanced(),
-              }),
+          ? renderSettingsWorkspace(
+              state,
+              lazyRender(lazyChannels, (m) =>
+                m.renderChannels({
+                  connected: state.connected,
+                  loading: state.channelsLoading,
+                  snapshot: state.channelsSnapshot,
+                  lastError: state.channelsError,
+                  lastSuccessAt: state.channelsLastSuccess,
+                  whatsappMessage: state.whatsappLoginMessage,
+                  whatsappQrDataUrl: state.whatsappLoginQrDataUrl,
+                  whatsappConnected: state.whatsappLoginConnected,
+                  whatsappBusy: state.whatsappBusy,
+                  configSchema: state.configSchema,
+                  configSchemaLoading: state.configSchemaLoading,
+                  configForm: state.configForm,
+                  configUiHints: state.configUiHints,
+                  configSaving: state.configSaving,
+                  configFormDirty: state.configFormDirty,
+                  nostrProfileFormState: state.nostrProfileFormState,
+                  nostrProfileAccountId: state.nostrProfileAccountId,
+                  onRefresh: (probe) => loadChannels(state, probe),
+                  onWhatsAppStart: (force) => state.handleWhatsAppStart(force),
+                  onWhatsAppWait: () => state.handleWhatsAppWait(),
+                  onWhatsAppLogout: () => state.handleWhatsAppLogout(),
+                  onConfigPatch: (path, value) => updateConfigFormValue(state, path, value),
+                  onConfigSave: () => state.handleChannelConfigSave(),
+                  onConfigReload: () => state.handleChannelConfigReload(),
+                  onNostrProfileEdit: (accountId, profile) =>
+                    state.handleNostrProfileEdit(accountId, profile),
+                  onNostrProfileCancel: () => state.handleNostrProfileCancel(),
+                  onNostrProfileFieldChange: (field, value) =>
+                    state.handleNostrProfileFieldChange(field, value),
+                  onNostrProfileSave: () => state.handleNostrProfileSave(),
+                  onNostrProfileImport: () => state.handleNostrProfileImport(),
+                  onNostrProfileToggleAdvanced: () => state.handleNostrProfileToggleAdvanced(),
+                }),
+              ),
             )
           : nothing}
         ${state.tab === "instances"
@@ -2558,48 +2889,61 @@ export function renderApp(state: AppViewState) {
               basePath: state.basePath ?? "",
             })
           : nothing}
-        ${renderConfigTabForActiveTab()}
+        ${isSettingsTab(state.tab) &&
+        state.tab !== "channels" &&
+        state.tab !== "debug" &&
+        state.tab !== "logs"
+          ? renderSettingsWorkspace(state, renderConfigTabForActiveTab())
+          : !isSettingsTab(state.tab)
+            ? renderConfigTabForActiveTab()
+            : nothing}
         ${state.tab === "debug"
-          ? lazyRender(lazyDebug, (m) =>
-              m.renderDebug({
-                loading: state.debugLoading,
-                status: state.debugStatus,
-                health: state.debugHealth,
-                models: state.debugModels,
-                heartbeat: state.debugHeartbeat,
-                eventLog: state.eventLog,
-                methods: (state.hello?.features?.methods ?? []).toSorted(),
-                callMethod: state.debugCallMethod,
-                callParams: state.debugCallParams,
-                callResult: state.debugCallResult,
-                callError: state.debugCallError,
-                onCallMethodChange: (next) => (state.debugCallMethod = next),
-                onCallParamsChange: (next) => (state.debugCallParams = next),
-                onRefresh: () => loadDebug(state),
-                onCall: () => callDebugMethod(state),
-              }),
+          ? renderSettingsWorkspace(
+              state,
+              lazyRender(lazyDebug, (m) =>
+                m.renderDebug({
+                  loading: state.debugLoading,
+                  status: state.debugStatus,
+                  health: state.debugHealth,
+                  models: state.debugModels,
+                  heartbeat: state.debugHeartbeat,
+                  eventLog: state.eventLog,
+                  methods: (state.hello?.features?.methods ?? []).toSorted(),
+                  callMethod: state.debugCallMethod,
+                  callParams: state.debugCallParams,
+                  callResult: state.debugCallResult,
+                  callError: state.debugCallError,
+                  onCallMethodChange: (next) => (state.debugCallMethod = next),
+                  onCallParamsChange: (next) => (state.debugCallParams = next),
+                  onRefresh: () => loadDebug(state),
+                  onCall: () => callDebugMethod(state),
+                }),
+              ),
             )
           : nothing}
         ${state.tab === "logs"
-          ? lazyRender(lazyLogs, (m) =>
-              m.renderLogs({
-                loading: state.logsLoading,
-                error: state.logsError,
-                file: state.logsFile,
-                entries: state.logsEntries,
-                filterText: state.logsFilterText,
-                levelFilters: state.logsLevelFilters,
-                autoFollow: state.logsAutoFollow,
-                truncated: state.logsTruncated,
-                onFilterTextChange: (next) => (state.logsFilterText = next),
-                onLevelToggle: (level, enabled) => {
-                  state.logsLevelFilters = { ...state.logsLevelFilters, [level]: enabled };
-                },
-                onToggleAutoFollow: (next) => (state.logsAutoFollow = next),
-                onRefresh: () => loadLogs(state, { reset: true }),
-                onExport: (lines, label) => state.exportLogs(lines, label),
-                onScroll: (event) => state.handleLogsScroll(event),
-              }),
+          ? renderSettingsWorkspace(
+              state,
+              lazyRender(lazyLogs, (m) =>
+                m.renderLogs({
+                  loading: state.logsLoading,
+                  error: state.logsError,
+                  file: state.logsFile,
+                  entries: state.logsEntries,
+                  filterText: state.logsFilterText,
+                  levelFilters: state.logsLevelFilters,
+                  autoFollow: state.logsAutoFollow,
+                  truncated: state.logsTruncated,
+                  onFilterTextChange: (next) => (state.logsFilterText = next),
+                  onLevelToggle: (level, enabled) => {
+                    state.logsLevelFilters = { ...state.logsLevelFilters, [level]: enabled };
+                  },
+                  onToggleAutoFollow: (next) => (state.logsAutoFollow = next),
+                  onRefresh: () => loadLogs(state, { reset: true }),
+                  onExport: (lines, label) => state.exportLogs(lines, label),
+                  onScroll: (event) => state.handleLogsScroll(event),
+                }),
+              ),
             )
           : nothing}
         ${state.tab === "dreams"
