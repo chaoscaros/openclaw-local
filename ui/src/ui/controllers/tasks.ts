@@ -168,7 +168,14 @@ export function resolveSessionTask(
   opts?: { mode?: "normal" | "task" | null },
 ): ResolvedSessionTask {
   void sessionKey;
-  void opts;
+  if (opts?.mode !== "task") {
+    return {
+      boundTask: null,
+      displayTask: null,
+      unresolvedBoundTaskId: null,
+      derivedFromSessionLink: false,
+    };
+  }
   const normalizedTaskId =
     typeof sessionTaskId === "string" && sessionTaskId.trim() ? sessionTaskId.trim() : null;
   const boundTask = normalizedTaskId
@@ -527,13 +534,11 @@ export async function setCurrentTaskForSession(state: TasksState, taskId: string
 }
 
 export async function setCurrentSessionMode(state: TasksState, mode: "normal" | "task") {
-  const currentSession = findSessionRowByKey(state.sessionsResult?.sessions, state.sessionKey);
   state.tasksBusy = true;
   try {
-    await patchSession(state, state.sessionKey, {
-      mode,
-      taskId: mode === "normal" ? null : (currentSession?.taskId ?? null),
-    });
+    const patch = mode === "normal" ? ({ mode, taskId: null } as const) : ({ mode } as const);
+    applyOptimisticSessionTaskBinding(state, patch);
+    await patchSession(state, state.sessionKey, patch);
     if (mode === "task") {
       await loadTaskModeData(state);
     }
