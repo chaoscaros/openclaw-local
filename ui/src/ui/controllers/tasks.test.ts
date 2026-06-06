@@ -36,6 +36,7 @@ import {
   loadTaskModeData,
   resolveSessionTask,
   setCurrentTaskForSession,
+  setCurrentSessionMode,
   setTaskTodoStatus,
   syncTaskModeTaskProgress,
   type TasksState,
@@ -116,7 +117,46 @@ describe("setCurrentTaskForSession", () => {
   });
 });
 
+describe("setCurrentSessionMode", () => {
+  it("clears the current task binding when switching back to normal mode", async () => {
+    const state = buildTasksState();
+
+    await setCurrentSessionMode(state, "normal");
+
+    expect(state.sessionsResult?.sessions[0]?.mode).toBe("normal");
+    expect(state.sessionsResult?.sessions[0]?.taskId).toBeUndefined();
+    expect(patchSessionMock).toHaveBeenCalledWith(state, "main", {
+      mode: "normal",
+      taskId: null,
+    });
+  });
+});
+
 describe("resolveSessionTask", () => {
+  it("does not associate normal-mode sessions with stale task ids", () => {
+    const result = resolveSessionTask(
+      "agent:solo:main",
+      "task-real",
+      [
+        {
+          taskId: "task-real",
+          title: "supply_vue项目",
+          status: "active",
+          effectiveStatus: "active",
+          archived: false,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      [],
+      { mode: "normal" },
+    );
+
+    expect(result.boundTask).toBeNull();
+    expect(result.displayTask).toBeNull();
+    expect(result.unresolvedBoundTaskId).toBeNull();
+  });
+
   it("keeps the bound task as the only current-task fact source", () => {
     const result = resolveSessionTask(
       "agent:solo:main",
