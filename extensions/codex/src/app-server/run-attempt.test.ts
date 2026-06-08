@@ -7721,7 +7721,7 @@ describe("runCodexAppServerAttempt", () => {
     }
   });
 
-  it("keeps a replacement Codex native hook relay registered when prior cleanup is pending", async () => {
+  it("keeps overlapping Codex native hook relays isolated by run", async () => {
     const sessionFile = path.join(tempDir, "session.jsonl");
     const workspaceDir = path.join(tempDir, "workspace");
     const firstHarness = createStartedThreadHarness();
@@ -7772,25 +7772,28 @@ describe("runCodexAppServerAttempt", () => {
       (request) => request.method === "thread/resume",
     );
     const secondRelayId = extractRelayIdFromThreadRequest(resumeRequest?.params);
-    expect(secondRelayId).toBe(firstRelayId);
+    expect(secondRelayId).not.toBe(firstRelayId);
     const resumedRegistration =
-      nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(firstRelayId);
+      nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(secondRelayId);
     expect(resumedRegistration?.runId).toBe("run-2");
     expect(resumedRegistration?.allowedEvents).toEqual(["pre_tool_use"]);
 
     testing.flushPendingCodexNativeHookRelayUnregistersForTests();
-    expect(nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(firstRelayId)?.runId).toBe(
-      "run-2",
-    );
+    expect(
+      nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(firstRelayId),
+    ).toBeUndefined();
+    expect(
+      nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(secondRelayId)?.runId,
+    ).toBe("run-2");
 
     await secondHarness.completeTurn({ threadId: "thread-existing", turnId: "turn-1" });
     await secondRun;
-    expect(nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(firstRelayId)?.runId).toBe(
-      "run-2",
-    );
+    expect(
+      nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(secondRelayId)?.runId,
+    ).toBe("run-2");
     testing.flushPendingCodexNativeHookRelayUnregistersForTests();
     expect(
-      nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(firstRelayId),
+      nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(secondRelayId),
     ).toBeUndefined();
   });
 
@@ -7799,11 +7802,13 @@ describe("runCodexAppServerAttempt", () => {
       agentId: "dev-codex",
       sessionId: "cu-pr-relay-smoke",
       sessionKey: "agent:dev-codex:cu-pr-relay-smoke",
+      runId: "run-1",
     });
 
-    expect(relayId).toBe("codex-8810b5252975550c887ff0def512b25e944bac39");
+    expect(relayId).toBe("codex-cee8adf77a91d2beb5f2f5d91bff862a42cff542");
     expect(relayId).not.toContain("dev-codex");
     expect(relayId).not.toContain("cu-pr-relay-smoke");
+    expect(relayId).not.toContain("run-1");
   });
 
   it("extends native hook relay cleanup grace for configured hook timeouts", () => {

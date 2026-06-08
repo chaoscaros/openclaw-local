@@ -3946,6 +3946,7 @@ function createCodexNativeHookRelay(params: {
       agentId: params.agentId,
       sessionId: params.sessionId,
       sessionKey: params.sessionKey,
+      runId: params.runId,
     }),
     ...(params.agentId ? { agentId: params.agentId } : {}),
     sessionId: params.sessionId,
@@ -4007,13 +4008,16 @@ function buildCodexNativeHookRelayId(params: {
   agentId: string | undefined;
   sessionId: string;
   sessionKey: string | undefined;
+  runId: string;
 }): string {
   const hash = createHash("sha256");
-  hash.update("openclaw:codex:native-hook-relay:v1");
+  hash.update("openclaw:codex:native-hook-relay:v2");
   hash.update("\0");
   hash.update(params.agentId?.trim() || "");
   hash.update("\0");
   hash.update(params.sessionKey?.trim() || params.sessionId);
+  hash.update("\0");
+  hash.update(params.runId.trim());
   return `codex-${hash.digest("hex").slice(0, 40)}`;
 }
 
