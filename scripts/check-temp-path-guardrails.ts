@@ -244,6 +244,7 @@ async function readRuntimeSourceFiles(
       try {
         source = await fs.readFile(absolutePath, "utf8");
       } catch {
+        // File tracked by git but deleted on disk (e.g. pending deletion).
         continue;
       }
       output[index] = {
