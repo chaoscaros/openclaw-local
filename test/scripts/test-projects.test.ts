@@ -1454,8 +1454,9 @@ describe("scripts/test-projects full-suite sharding", () => {
     const gatewayTargets = gatewayPlans.flatMap((plan) => plan.forwardedArgs);
     const gatewayChunkSizes = gatewayPlans.map((plan) => plan.forwardedArgs.length);
     expect(gatewayPlans).toHaveLength(4);
-    expect(gatewayTargets.length).toBeGreaterThan(70);
+    expect(gatewayTargets.length).toBeGreaterThan(90);
     expect(new Set(gatewayTargets).size).toBe(gatewayTargets.length);
+    expect(gatewayTargets).toContain("src/gateway/server-network-runtime.e2e.test.ts");
     expect(gatewayTargets).not.toContain("src/gateway/gateway.test.ts");
     expect(Math.max(...gatewayChunkSizes) - Math.min(...gatewayChunkSizes)).toBeLessThanOrEqual(1);
     expect(plans.filter((plan) => plan.config !== gatewayServerConfig)).toEqual(
