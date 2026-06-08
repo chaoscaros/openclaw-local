@@ -128,6 +128,7 @@ export type QuickSettingsProps = {
 // ── Theme options ──
 
 type ThemeOption = { id: ThemeName; label: string };
+type QuickThemeOption = { id: ThemeName | "custom"; label: string };
 const BUILTIN_THEME_OPTIONS: ThemeOption[] = [
   { id: "claw", label: "Claw" },
   { id: "knot", label: "Knot" },
@@ -613,7 +614,7 @@ function renderAppearanceCard(props: QuickSettingsProps) {
   const importedThemeName = props.hasCustomTheme
     ? (props.customThemeLabel ?? qs("appearance.importedTheme"))
     : qs("appearance.import");
-  const themeOptions: ThemeOption[] = [
+  const themeOptions: QuickThemeOption[] = [
     ...BUILTIN_THEME_OPTIONS,
     { id: "custom", label: importedThemeName },
   ];
@@ -631,8 +632,10 @@ function renderAppearanceCard(props: QuickSettingsProps) {
                     ? "qs-segmented__btn--active"
                     : ""}"
                   @click=${(e: Event) => {
-                    if (opt.id === "custom" && !props.hasCustomTheme) {
-                      props.onOpenCustomThemeImport?.();
+                    if (opt.id === "custom") {
+                      if (!props.hasCustomTheme) {
+                        props.onOpenCustomThemeImport?.();
+                      }
                       return;
                     }
                     if (opt.id !== props.theme) {

@@ -320,7 +320,9 @@ function extractQuickSettingsChannels(state: AppViewState): QuickSettingsChannel
     configuredIds.length > 0
       ? configuredIds.toSorted((a, b) => a.localeCompare(b))
       : KNOWN_CHANNEL_IDS.map(({ id }) => id);
-  const knownLabels = new Map(KNOWN_CHANNEL_IDS.map(({ id, label }) => [id, label]));
+  const knownLabels = new Map<string, string>(
+    KNOWN_CHANNEL_IDS.map(({ id, label }) => [id, label]),
+  );
   return channelIds.map((id) => {
     const channelConfig = channelsConfig[id];
     const connected =

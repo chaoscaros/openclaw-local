@@ -99,7 +99,6 @@
   "secret-ref-runtime",
   "secret-file-runtime",
   "security-runtime",
-  "browser-security-runtime",
   "gateway-method-runtime",
   "gateway-runtime",
   "cli-runtime",

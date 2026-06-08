@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { isLocalBuildMetadataDistPath } from "../../scripts/lib/local-build-metadata-paths.mjs";
+import privateLocalOnlyPluginSdkSubpathList from "../../scripts/lib/plugin-sdk-private-local-only-subpaths.json" with { type: "json" };
 import { sortUniqueStrings } from "../shared/string-normalization.js";
 import { readJsonIfExists, writeJson } from "./json-files.js";
 
@@ -34,6 +35,18 @@ const OMITTED_PRIVATE_QA_PLUGIN_SDK_FILES = new Set([
   "dist/plugin-sdk/src/plugin-sdk/qa-runtime.d.ts",
 ]);
 const OMITTED_PRIVATE_QA_DIST_PREFIXES = ["dist/qa-runtime-"];
+const PRIVATE_LOCAL_ONLY_PLUGIN_SDK_DIST_FILES = new Set(
+  privateLocalOnlyPluginSdkSubpathList
+    .filter((entry): entry is string => typeof entry === "string" && !entry.includes("/"))
+    .flatMap((entry) => [
+      `dist/plugin-sdk/${entry}.d.ts`,
+      `dist/plugin-sdk/${entry}.js`,
+      `dist/plugin-sdk/src/plugin-sdk/${entry}.d.ts`,
+    ]),
+);
+const PRIVATE_LOCAL_ONLY_PLUGIN_SDK_PREFIXES = [
+  "dist/plugin-sdk/src/plugin-sdk/test-helpers/",
+] as const;
 const OMITTED_DIST_SUBTREE_PATTERNS = [
   /^dist\/extensions\/node_modules(?:\/|$)/u,
   /^dist\/extensions\/[^/]+\/node_modules(?:\/|$)/u,
@@ -175,6 +188,12 @@ function isPackagedDistPath(
     return false;
   }
   if (relativePath === "dist/plugin-sdk/.tsbuildinfo") {
+    return false;
+  }
+  if (
+    PRIVATE_LOCAL_ONLY_PLUGIN_SDK_DIST_FILES.has(relativePath) ||
+    PRIVATE_LOCAL_ONLY_PLUGIN_SDK_PREFIXES.some((prefix) => relativePath.startsWith(prefix))
+  ) {
     return false;
   }
   if (
