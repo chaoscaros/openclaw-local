@@ -1063,6 +1063,60 @@ If earlier conversation history mentions different tasks, treat those as stale u
 });
 
 describe("sendChatMessage", () => {
+  it("sends task context when the current session is in task mode", async () => {
+    const request = vi.fn().mockResolvedValue({});
+    const state = createState({
+      connected: true,
+      client: { request } as unknown as ChatState["client"],
+      sessionKey: "agent:solo:main2",
+      sessionsResult: {
+        ts: 1,
+        path: "",
+        count: 1,
+        defaults: { modelProvider: null, model: null, contextTokens: null },
+        sessions: [
+          {
+            key: "agent:solo:main2",
+            kind: "direct",
+            updatedAt: 1,
+            mode: "task",
+            taskId: "task-1",
+          },
+        ],
+      },
+      tasksItems: [
+        {
+          taskId: "task-1",
+          title: "丰链AI_前端开发工作流探讨",
+          description: "梳理前端开发工作流",
+          progressSummary: "继续按任务上下文推进",
+          workspaceDir: "/project/supply_vue",
+          status: "active",
+          effectiveStatus: "active",
+          archived: false,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      ],
+    });
+
+    await sendChatMessage(state, "任务莫名其妙被顶掉了");
+
+    expect(request).toHaveBeenCalledWith(
+      "chat.send",
+      expect.objectContaining({
+        sessionKey: "agent:solo:main2",
+        message: expect.stringContaining("[Current task binding for this turn]"),
+      }),
+    );
+    const sentMessage = request.mock.calls[0]?.[1]?.message as string;
+    expect(sentMessage).toContain("Task id: task-1");
+    expect(sentMessage).toContain("Task title: 丰链AI_前端开发工作流探讨");
+    expect(sentMessage).toContain("Task summary: 继续按任务上下文推进");
+    expect(sentMessage).toContain("任务莫名其妙被顶掉了");
+    expect(extractText(state.chatMessages.at(-1))).toBe("任务莫名其妙被顶掉了");
+  });
+
   it("does not start a second chat.send while the first send is awaiting ack", async () => {
     let resolveSent: ((value: unknown) => void) | undefined;
     const sent = new Promise((resolve) => {

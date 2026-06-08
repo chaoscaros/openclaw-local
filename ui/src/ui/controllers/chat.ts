@@ -2,7 +2,7 @@ import { resetToolStream } from "../app-tool-stream.ts";
 import { extractText } from "../chat/message-extract.ts";
 import { formatConnectError } from "../connect-error.ts";
 import { GatewayRequestError, type GatewayBrowserClient } from "../gateway.ts";
-import { doSessionKeysMatch } from "../session-key.ts";
+import { doSessionKeysMatch, findSessionRowByKey } from "../session-key.ts";
 import {
   clearSessionRunTerminalOverride,
   recordSessionRunTerminalOverride,
@@ -16,6 +16,7 @@ import {
   formatMissingOperatorReadScopeMessage,
   isMissingOperatorReadScopeError,
 } from "./scope-errors.ts";
+import type { TaskItem } from "./tasks.ts";
 
 const SILENT_REPLY_PATTERN = /^\s*NO_REPLY\s*$/;
 const SYNTHETIC_TRANSCRIPT_REPAIR_RESULT =
@@ -396,6 +397,8 @@ export type ChatState = {
   chatStreamStartedAt: number | null;
   sessionRunTerminalOverrides?: Record<string, SessionRunTerminalOverride>;
   sessionsResult?: SessionsListResult | null;
+  tasksItems?: TaskItem[];
+  archivedTaskItems?: TaskItem[];
   lastError: string | null;
   requestUpdate?: () => void;
 };
@@ -434,6 +437,78 @@ function maybeResetToolStream(state: ChatState) {
 
 function requestChatUiUpdate(state: ChatState) {
   state.requestUpdate?.();
+}
+
+function clampTaskBindingLine(value: string | undefined, maxLength: number): string | null {
+  const normalized = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  if (!normalized) {
+    return null;
+  }
+  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength - 1)}…`;
+}
+
+function formatTaskBindingTimestamp(date: Date): string {
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()] ?? "Sun";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hour = pad(date.getHours());
+  const minute = pad(date.getMinutes());
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absOffsetMinutes = Math.abs(offsetMinutes);
+  const offsetHours = Math.trunc(absOffsetMinutes / 60);
+  const offsetRemainder = absOffsetMinutes % 60;
+  const timezone =
+    offsetRemainder === 0
+      ? `GMT${sign}${offsetHours}`
+      : `GMT${sign}${offsetHours}:${pad(offsetRemainder)}`;
+  return `${weekday} ${year}-${month}-${day} ${hour}:${minute} ${timezone}`;
+}
+
+function resolveTaskBindingTask(state: ChatState): TaskItem | null {
+  const session = findSessionRowByKey(state.sessionsResult?.sessions, state.sessionKey);
+  if (session?.mode !== "task") {
+    return null;
+  }
+  const taskId = typeof session.taskId === "string" ? session.taskId.trim() : "";
+  if (!taskId) {
+    return null;
+  }
+  return (
+    (state.tasksItems ?? []).find((task) => task.taskId === taskId) ??
+    (state.archivedTaskItems ?? []).find((task) => task.taskId === taskId) ??
+    null
+  );
+}
+
+function buildTaskBoundChatMessage(state: ChatState, message: string): string {
+  if (message.startsWith(TASK_BINDING_PROMPT_PREFIX)) {
+    return message;
+  }
+  const task = resolveTaskBindingTask(state);
+  if (!task) {
+    return message;
+  }
+  const taskTitle = clampTaskBindingLine(task.title, 240);
+  const taskSummary = clampTaskBindingLine(
+    task.nextStep ?? task.progressSummary ?? task.description ?? task.workspaceDir,
+    360,
+  );
+  const taskWorkspace = clampTaskBindingLine(task.workspaceDir, 240);
+  const bindingLines = [
+    TASK_BINDING_PROMPT_PREFIX,
+    `Task id: ${task.taskId}`,
+    taskTitle ? `Task title: ${taskTitle}` : undefined,
+    taskSummary ? `Task summary: ${taskSummary}` : undefined,
+    taskWorkspace && taskWorkspace !== taskSummary ? `Task workspace: ${taskWorkspace}` : undefined,
+    "Use the task binding above as the task the user is continuing right now.",
+    "If earlier conversation history mentions different tasks, treat those as stale unless the user explicitly switches again.",
+    "",
+    `[${formatTaskBindingTimestamp(new Date())}] ${message}`,
+  ].filter((line): line is string => typeof line === "string");
+  return bindingLines.join("\n");
 }
 
 export async function loadChatHistory(state: ChatState) {
@@ -585,9 +660,10 @@ async function requestChatSend(
   const resumeDevExecute =
     changeReviewModeEnabled &&
     state.consumeResumedDevExecuteForSession?.(state.sessionKey, params.message) === true;
+  const message = buildTaskBoundChatMessage(state, params.message);
   return await state.client!.request("chat.send", {
     sessionKey: state.sessionKey,
-    message: params.message,
+    message,
     deliver: false,
     applyDreamingAssist: dreamingAssistEnabled,
     planModeEnabled,
