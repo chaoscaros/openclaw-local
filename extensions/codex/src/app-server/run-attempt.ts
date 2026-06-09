@@ -215,6 +215,7 @@ const CODEX_DYNAMIC_IMAGE_TOOL_TIMEOUT_MS = 60_000;
 const CODEX_DYNAMIC_MESSAGE_TOOL_TIMEOUT_MS = 120_000;
 const CODEX_APP_SERVER_STARTUP_CONNECTION_CLOSE_MAX_ATTEMPTS = 3;
 const CODEX_APP_SERVER_STARTUP_TIMEOUT_FLOOR_MS = 100;
+const MAX_TIMER_TIMEOUT_MS = 2_147_483_647;
 const CODEX_APP_SERVER_INTERRUPT_TIMEOUT_MS = 5_000;
 const CODEX_APP_SERVER_UNSUBSCRIBE_TIMEOUT_MS = 5_000;
 const CODEX_USAGE_LIMIT_RATE_LIMIT_REFRESH_TIMEOUT_MS = 5_000;
@@ -1881,7 +1882,7 @@ export async function runCodexAppServerAttempt(
   let turnAssistantCompletionIdleWatchArmed = false;
   let turnAssistantCompletionLastActivityAt = Date.now();
   let turnAssistantCompletionLastActivityDetails: Record<string, unknown> | undefined;
-  const turnAttemptIdleTimeoutMs = Math.max(100, Math.floor(params.timeoutMs));
+  const turnAttemptIdleTimeoutMs = Math.max(100, resolveTimerTimeoutMs(params.timeoutMs, 100));
   let turnAttemptIdleTimer: ReturnType<typeof setTimeout> | undefined;
   let turnAttemptIdleWatchArmed = false;
   let turnTerminalIdleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -4929,53 +4930,43 @@ function resolveCodexStartupTimeoutMs(params: {
   timeoutMs: number;
   timeoutFloorMs?: number;
 }): number {
-  return Math.max(
-    params.timeoutFloorMs ?? CODEX_APP_SERVER_STARTUP_TIMEOUT_FLOOR_MS,
-    params.timeoutMs,
+  const timeoutFloorMs = resolvePositiveIntegerTimeoutMs(
+    params.timeoutFloorMs,
+    CODEX_APP_SERVER_STARTUP_TIMEOUT_FLOOR_MS,
   );
+  const timeoutMs = resolvePositiveIntegerTimeoutMs(params.timeoutMs, timeoutFloorMs);
+  return Math.max(timeoutFloorMs, timeoutMs);
 }
 
 function resolveCodexTurnCompletionIdleTimeoutMs(value: number | undefined): number {
-  if (value === undefined) {
-    return CODEX_TURN_COMPLETION_IDLE_TIMEOUT_MS;
-  }
-  if (!Number.isFinite(value)) {
-    return CODEX_TURN_COMPLETION_IDLE_TIMEOUT_MS;
-  }
-  return Math.max(1, Math.floor(value));
+  return resolvePositiveIntegerTimeoutMs(value, CODEX_TURN_COMPLETION_IDLE_TIMEOUT_MS);
 }
 
 function resolveCodexTurnAssistantCompletionIdleTimeoutMs(value: number | undefined): number {
-  if (value === undefined) {
-    return CODEX_TURN_ASSISTANT_COMPLETION_IDLE_TIMEOUT_MS;
-  }
-  if (!Number.isFinite(value)) {
-    return CODEX_TURN_ASSISTANT_COMPLETION_IDLE_TIMEOUT_MS;
-  }
-  return Math.max(1, Math.floor(value));
+  return resolvePositiveIntegerTimeoutMs(value, CODEX_TURN_ASSISTANT_COMPLETION_IDLE_TIMEOUT_MS);
 }
 
 function resolveCodexPostToolRawAssistantCompletionIdleTimeoutMs(
   value: number | undefined,
   fallbackMs: number,
 ): number {
-  if (value === undefined) {
-    return fallbackMs;
-  }
-  if (!Number.isFinite(value)) {
-    return fallbackMs;
-  }
-  return Math.max(1, Math.floor(value));
+  return resolvePositiveIntegerTimeoutMs(value, fallbackMs);
 }
 
 function resolveCodexTurnTerminalIdleTimeoutMs(value: number | undefined): number {
-  if (value === undefined) {
-    return CODEX_TURN_TERMINAL_IDLE_TIMEOUT_MS;
+  return resolvePositiveIntegerTimeoutMs(value, CODEX_TURN_TERMINAL_IDLE_TIMEOUT_MS);
+}
+
+function resolvePositiveIntegerTimeoutMs(value: number | undefined, fallbackMs: number): number {
+  const fallback = resolveTimerTimeoutMs(fallbackMs, 1);
+  return resolveTimerTimeoutMs(value, fallback);
+}
+
+function resolveTimerTimeoutMs(value: number | undefined, fallbackMs: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallbackMs;
   }
-  if (!Number.isFinite(value)) {
-    return CODEX_TURN_TERMINAL_IDLE_TIMEOUT_MS;
-  }
-  return Math.max(1, Math.floor(value));
+  return Math.max(1, Math.min(MAX_TIMER_TIMEOUT_MS, Math.floor(value)));
 }
 
 function readDynamicToolCallParams(
@@ -6342,7 +6333,9 @@ export const testing = {
   CODEX_DYNAMIC_TOOL_MAX_TIMEOUT_MS,
   CODEX_DYNAMIC_IMAGE_TOOL_TIMEOUT_MS,
   CODEX_DYNAMIC_MESSAGE_TOOL_TIMEOUT_MS,
+  MAX_TIMER_TIMEOUT_MS,
   CODEX_TURN_COMPLETION_IDLE_TIMEOUT_MS,
+  CODEX_TURN_ASSISTANT_COMPLETION_IDLE_TIMEOUT_MS,
   CODEX_TURN_TERMINAL_IDLE_TIMEOUT_MS,
   createCodexSteeringQueue,
   buildCodexNativeHookRelayId,
@@ -6359,6 +6352,11 @@ export const testing = {
   buildCodexSystemPromptReport,
   remapCodexContextFilePath,
   resolveDynamicToolCallTimeoutMs,
+  resolveCodexStartupTimeoutMs,
+  resolveCodexTurnCompletionIdleTimeoutMs,
+  resolveCodexTurnAssistantCompletionIdleTimeoutMs,
+  resolveCodexPostToolRawAssistantCompletionIdleTimeoutMs,
+  resolveCodexTurnTerminalIdleTimeoutMs,
   resolveCodexDynamicToolsLoading,
   rotateOversizedCodexAppServerStartupBinding,
   resolveCodexAppServerForOpenClawToolPolicy,

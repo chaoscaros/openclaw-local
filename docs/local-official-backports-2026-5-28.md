@@ -95,6 +95,11 @@ scoped verification.
   pinned to the first mismatched generation observed so a second stale
   generation is still rejected. The broader Codex app-server resume binding
   work remains a later sub-slice.
+- `c91cbf3f71` / `228bed7da5` local run-attempt timeout subset: Codex
+  app-server startup and idle timeout helpers now default non-finite values to
+  their existing fallbacks and cap oversized timer delays to the platform timer
+  ceiling. This local port keeps the existing `run-attempt.ts` layout instead
+  of adopting the official `attempt-timeouts.ts` file split.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

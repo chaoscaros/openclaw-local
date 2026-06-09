@@ -871,6 +871,66 @@ function extractRelayIdFromThreadRequest(params: unknown): string {
   return match[1];
 }
 
+describe("Codex app-server attempt timeout normalization", () => {
+  it("defaults non-finite timeout values and caps oversized timers", () => {
+    expect(testing.resolveCodexStartupTimeoutMs({ timeoutMs: 500 })).toBe(500);
+    expect(testing.resolveCodexStartupTimeoutMs({ timeoutMs: 5, timeoutFloorMs: 250 })).toBe(250);
+    expect(testing.resolveCodexStartupTimeoutMs({ timeoutMs: Number.NaN })).toBe(100);
+    expect(
+      testing.resolveCodexStartupTimeoutMs({ timeoutMs: 500, timeoutFloorMs: Number.NaN }),
+    ).toBe(500);
+    expect(
+      testing.resolveCodexStartupTimeoutMs({
+        timeoutMs: Number.MAX_SAFE_INTEGER,
+        timeoutFloorMs: Number.MAX_SAFE_INTEGER,
+      }),
+    ).toBe(testing.MAX_TIMER_TIMEOUT_MS);
+
+    expect(testing.resolveCodexTurnCompletionIdleTimeoutMs(undefined)).toBe(
+      testing.CODEX_TURN_COMPLETION_IDLE_TIMEOUT_MS,
+    );
+    expect(testing.resolveCodexTurnCompletionIdleTimeoutMs(Number.NaN)).toBe(
+      testing.CODEX_TURN_COMPLETION_IDLE_TIMEOUT_MS,
+    );
+    expect(testing.resolveCodexTurnCompletionIdleTimeoutMs(2.9)).toBe(2);
+    expect(testing.resolveCodexTurnCompletionIdleTimeoutMs(0)).toBe(1);
+    expect(testing.resolveCodexTurnCompletionIdleTimeoutMs(Number.MAX_SAFE_INTEGER)).toBe(
+      testing.MAX_TIMER_TIMEOUT_MS,
+    );
+
+    expect(testing.resolveCodexTurnAssistantCompletionIdleTimeoutMs(undefined)).toBe(
+      testing.CODEX_TURN_ASSISTANT_COMPLETION_IDLE_TIMEOUT_MS,
+    );
+    expect(testing.resolveCodexPostToolRawAssistantCompletionIdleTimeoutMs(undefined, 123)).toBe(
+      123,
+    );
+    expect(testing.resolveCodexPostToolRawAssistantCompletionIdleTimeoutMs(Number.NaN, 123)).toBe(
+      123,
+    );
+    expect(
+      testing.resolveCodexPostToolRawAssistantCompletionIdleTimeoutMs(undefined, Number.NaN),
+    ).toBe(1);
+    expect(
+      testing.resolveCodexPostToolRawAssistantCompletionIdleTimeoutMs(
+        Number.MAX_SAFE_INTEGER,
+        Number.MAX_SAFE_INTEGER,
+      ),
+    ).toBe(testing.MAX_TIMER_TIMEOUT_MS);
+
+    expect(testing.resolveCodexTurnTerminalIdleTimeoutMs(undefined)).toBe(
+      testing.CODEX_TURN_TERMINAL_IDLE_TIMEOUT_MS,
+    );
+    expect(testing.resolveCodexTurnTerminalIdleTimeoutMs(Number.NaN)).toBe(
+      testing.CODEX_TURN_TERMINAL_IDLE_TIMEOUT_MS,
+    );
+    expect(testing.resolveCodexTurnTerminalIdleTimeoutMs(3.7)).toBe(3);
+    expect(testing.resolveCodexTurnTerminalIdleTimeoutMs(-1)).toBe(1);
+    expect(testing.resolveCodexTurnTerminalIdleTimeoutMs(Number.MAX_SAFE_INTEGER)).toBe(
+      testing.MAX_TIMER_TIMEOUT_MS,
+    );
+  });
+});
+
 describe("runCodexAppServerAttempt", () => {
   beforeEach(async () => {
     clearInternalHooks();
