@@ -1,4 +1,5 @@
 export const MAX_TIMER_TIMEOUT_MS = 2_147_483_647;
+export const MAX_TIMER_TIMEOUT_SECONDS = Math.floor(MAX_TIMER_TIMEOUT_MS / 1000);
 
 export function asFiniteNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;

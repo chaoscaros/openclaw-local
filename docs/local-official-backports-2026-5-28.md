@@ -223,6 +223,9 @@ scoped verification.
   `timeoutSeconds` now clamp oversized wait timers to the timer-safe ceiling
   before calling `agent.wait`. The local port uses the existing
   `clampTimerTimeoutMs` helper instead of the later upstream seconds helper.
+- `81533ff9d9` local equivalent: shared web tool timeout parsing now caps
+  provider `timeoutSeconds` values at the timer-safe seconds ceiling before
+  callers convert them to milliseconds.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
