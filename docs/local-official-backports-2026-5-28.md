@@ -156,6 +156,9 @@ scoped verification.
 - `f3e285126a` local equivalent: restart sentinels now write doctor follow-up
   guidance as an actionable terminal/approvals-capable command instead of a
   terse `Run:` hint.
+- `c9151ba902` local equivalent: provider transport now bounds local service
+  startup with the resolved model request timeout and combines that timeout
+  with any caller abort signal.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
