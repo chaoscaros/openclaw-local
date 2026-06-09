@@ -159,6 +159,9 @@ scoped verification.
 - `c9151ba902` local equivalent: provider transport now bounds local service
   startup with the resolved model request timeout and combines that timeout
   with any caller abort signal.
+- `b4e5038692` local equivalent: root CLI version output now uses the
+  root-only version invocation parser, so subcommands that accept their own
+  `--version` option no longer trigger top-level OpenClaw version output.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
