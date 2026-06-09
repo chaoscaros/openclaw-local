@@ -171,6 +171,10 @@ scoped verification.
   unsupported input schemas now emit trusted `tool.execution.blocked`
   diagnostic events with run/session context in addition to warning logs and
   bridge telemetry.
+- `65e2120f8c` local equivalent: plugin `message_received` hook events now
+  receive canonical inbound media metadata (`mediaPath`, `mediaUrl`,
+  `mediaType`, and their array forms), matching the fields already exposed to
+  inbound claim hooks.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
