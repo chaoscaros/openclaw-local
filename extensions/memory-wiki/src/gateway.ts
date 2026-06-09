@@ -55,18 +55,27 @@ function readStringParam(
   return undefined;
 }
 
-function readNumberParam(params: Record<string, unknown>, key: string): number | undefined {
+function readPositiveIntegerParam(
+  params: Record<string, unknown>,
+  key: string,
+): number | undefined {
   const value = params[key];
+  let parsed: number | undefined;
   if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
+    parsed = value;
+  } else if (typeof value === "string" && value.trim()) {
+    const numberValue = Number(value);
+    if (Number.isFinite(numberValue)) {
+      parsed = numberValue;
     }
   }
-  return undefined;
+  if (parsed === undefined) {
+    return undefined;
+  }
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`${key} must be a positive integer`);
+  }
+  return parsed;
 }
 
 function readEnumParam<T extends string>(
@@ -135,7 +144,7 @@ export function registerMemoryWikiGatewayMethods(params: {
     "wiki.importRuns",
     async ({ params: requestParams, respond }) => {
       try {
-        const limit = readNumberParam(requestParams, "limit");
+        const limit = readPositiveIntegerParam(requestParams, "limit");
         respond(true, await listMemoryWikiImportRuns(config, limit !== undefined ? { limit } : {}));
       } catch (error) {
         respondError(respond, error);
@@ -287,7 +296,7 @@ export function registerMemoryWikiGatewayMethods(params: {
       try {
         await syncImportedSourcesIfNeeded(config, appConfig);
         const query = readStringParam(requestParams, "query", { required: true });
-        const maxResults = readNumberParam(requestParams, "maxResults");
+        const maxResults = readPositiveIntegerParam(requestParams, "maxResults");
         const searchBackend = readEnumParam(requestParams, "backend", WIKI_SEARCH_BACKENDS);
         const searchCorpus = readEnumParam(requestParams, "corpus", WIKI_SEARCH_CORPORA);
         const mode = readEnumParam(requestParams, "mode", WIKI_SEARCH_MODES);
@@ -337,8 +346,8 @@ export function registerMemoryWikiGatewayMethods(params: {
       try {
         await syncImportedSourcesIfNeeded(config, appConfig);
         const lookup = readStringParam(requestParams, "lookup", { required: true });
-        const fromLine = readNumberParam(requestParams, "fromLine");
-        const lineCount = readNumberParam(requestParams, "lineCount");
+        const fromLine = readPositiveIntegerParam(requestParams, "fromLine");
+        const lineCount = readPositiveIntegerParam(requestParams, "lineCount");
         const searchBackend = readEnumParam(requestParams, "backend", WIKI_SEARCH_BACKENDS);
         const searchCorpus = readEnumParam(requestParams, "corpus", WIKI_SEARCH_CORPORA);
         const agentId = resolveGatewayAgentId(requestParams, appConfig);

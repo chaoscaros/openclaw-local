@@ -123,6 +123,9 @@ scoped verification.
 - `361753908e` local equivalent: Memory Core `memory_get.from` and
   `memory_get.lines` now use positive-integer tool schemas and fail before
   builtin or QMD/wiki reads when invalid ranges are supplied.
+- `30de7874cf` local equivalent: Memory Wiki gateway and tool schemas now
+  require positive integers for import-run limits, search result counts, and
+  page range parameters before dispatching gateway operations.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
