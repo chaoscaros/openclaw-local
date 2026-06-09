@@ -153,6 +153,9 @@ scoped verification.
   `GatewayClient.stopAndWait()` to drain before resolving, falling back to
   `stop()` if close draining fails. The real socket-handle regression remains a
   later optional validation slice.
+- `f3e285126a` local equivalent: restart sentinels now write doctor follow-up
+  guidance as an actionable terminal/approvals-capable command instead of a
+  terse `Run:` hint.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
