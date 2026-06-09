@@ -241,6 +241,10 @@ scoped verification.
   cap configured `timeoutMs` values before arming fetch and WebSocket timers.
   The local port keeps the timer ceiling inside the Signal plugin to preserve
   extension import boundaries.
+- `f66d14def5` local equivalent: Zalo Bot API request timeout options now
+  clamp oversized values before scheduling abort timers. The local port keeps
+  the timer ceiling inside the Zalo plugin to preserve extension import
+  boundaries.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

@@ -7,6 +7,7 @@ import { resolvePinnedHostnameWithPolicy, type SsrFPolicy } from "openclaw/plugi
 
 const ZALO_API_BASE = "https://bot-api.zaloplatforms.com";
 const ZALO_MEDIA_SSRF_POLICY: SsrFPolicy = {};
+const ZALO_TIMER_TIMEOUT_MAX_MS = 2_147_483_647;
 
 export type ZaloFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -112,9 +113,12 @@ export async function callZaloApi<T = unknown>(
 ): Promise<ZaloApiResponse<T>> {
   const url = `${ZALO_API_BASE}/bot${token}/${method}`;
   const controller = new AbortController();
-  const timeoutId = options?.timeoutMs
-    ? setTimeout(() => controller.abort(), options.timeoutMs)
-    : undefined;
+  const requestTimeoutMs =
+    options?.timeoutMs === undefined ? undefined : resolveZaloTimerTimeoutMs(options.timeoutMs);
+  const timeoutId =
+    requestTimeoutMs === undefined
+      ? undefined
+      : setTimeout(() => controller.abort(), requestTimeoutMs);
   const fetcher = options?.fetch ?? fetch;
 
   try {
@@ -143,6 +147,13 @@ export async function callZaloApi<T = unknown>(
       clearTimeout(timeoutId);
     }
   }
+}
+
+function resolveZaloTimerTimeoutMs(timeoutMs: number): number {
+  if (!Number.isFinite(timeoutMs)) {
+    return 1;
+  }
+  return Math.min(ZALO_TIMER_TIMEOUT_MAX_MS, Math.max(1, Math.floor(timeoutMs)));
 }
 
 /**
