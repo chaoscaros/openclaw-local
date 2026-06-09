@@ -215,6 +215,10 @@ scoped verification.
   bodies, and preserves request timeout behavior. The local port keeps the
   helper private because the official shared script bounded-response helper has
   not been absorbed yet.
+- `e8217cbb7a` local equivalent: transitive manifest risk reporting now reads
+  npm packuments through a bounded 16 MiB registry text reader, sends an
+  explicit JSON Accept header, and cancels oversized registry responses before
+  parsing.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
