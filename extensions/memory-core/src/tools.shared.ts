@@ -37,8 +37,8 @@ export const MemorySearchSchema = Type.Object({
 
 export const MemoryGetSchema = Type.Object({
   path: Type.String(),
-  from: Type.Optional(Type.Number()),
-  lines: Type.Optional(Type.Number()),
+  from: Type.Optional(Type.Integer({ minimum: 1 })),
+  lines: Type.Optional(Type.Integer({ minimum: 1 })),
   corpus: Type.Optional(stringEnum(["memory", "wiki", "all"])),
 });
 

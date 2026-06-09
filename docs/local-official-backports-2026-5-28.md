@@ -120,6 +120,9 @@ scoped verification.
 - `e9cca2d1ef` local equivalent: Memory Core `memory_search.maxResults` is now
   declared as a positive integer in tool schemas and rejected before any memory
   or wiki supplement search when fractional, non-finite, zero, or negative.
+- `361753908e` local equivalent: Memory Core `memory_get.from` and
+  `memory_get.lines` now use positive-integer tool schemas and fail before
+  builtin or QMD/wiki reads when invalid ranges are supplied.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
