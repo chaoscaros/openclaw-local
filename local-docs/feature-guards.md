@@ -11,6 +11,7 @@
 - 顶部任务绑定和当前任务入口。
 - 任务中心、任务详情、任务上下文。
 - 会话与任务绑定后的协作上下文。
+- 普通对话和任务模式必须分离；切回普通对话后不能继续注入当前任务上下文。
 - 移动端任务模式入口和控制项。
 - 任务切换、归档、已完成状态展示。
 - 任务切过去后不能自动消失。
@@ -55,6 +56,8 @@ Control UI 是本地主要使用界面。
 - runtime config 读取边界。
 - 临时路径和过期配置 API guard。
 - shrinkwrap 与 plugin SDK 入口校验。
+- Codex native hook relay 必须按 run 隔离，避免 PreToolUse 阶段出现 `Native hook relay unavailable` 后阻断 `exec_command`、`apply_patch`、`python3` 等本地命令。
+- 涉及 Codex app-server、Gateway 协议或 Control UI 构建时，必须确认 `dist/build-info.json` 指向当前提交；如果服务已启动在旧构建上，需要重新构建并由用户重启后再验收。
 
 如果出现 `protocol mismatch`、`unknown method`、`invalid chat.send params` 等错误，先判断是 UI 和 gateway 版本不一致，还是协议/schema 没同步。
 
