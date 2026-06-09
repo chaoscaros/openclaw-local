@@ -162,6 +162,11 @@ scoped verification.
 - `b4e5038692` local equivalent: root CLI version output now uses the
   root-only version invocation parser, so subcommands that accept their own
   `--version` option no longer trigger top-level OpenClaw version output.
+- `00004ca798` local equivalent: CLI respawn and source compile-cache respawn
+  signal handling now waits for the child process to exit after force-kill
+  before falling back to a hard parent exit. The official root `openclaw.mjs`
+  launcher hunk is not applicable because the local launcher no longer carries
+  that respawn loop.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
