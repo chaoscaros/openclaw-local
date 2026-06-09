@@ -249,6 +249,10 @@ scoped verification.
   oversized timeout values before constructing `AbortSignal.timeout` signals.
   The local port keeps the timer ceiling inside the QA Matrix plugin to
   preserve extension import boundaries.
+- `6e125adf3a` local equivalent: Xiaomi MiMo TTS requests now clamp oversized
+  timeout values before scheduling abort timers or passing timeouts into the
+  SSRF-guarded fetch path. The local port keeps the timer ceiling inside the
+  Xiaomi plugin to preserve extension import boundaries.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

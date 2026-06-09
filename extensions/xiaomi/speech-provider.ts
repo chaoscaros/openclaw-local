@@ -17,6 +17,7 @@ const DEFAULT_XIAOMI_TTS_BASE_URL = "https://api.xiaomimimo.com/v1";
 const DEFAULT_XIAOMI_TTS_MODEL = "mimo-v2.5-tts";
 const DEFAULT_XIAOMI_TTS_VOICE = "mimo_default";
 const DEFAULT_XIAOMI_TTS_FORMAT = "mp3";
+const XIAOMI_TTS_TIMER_TIMEOUT_MAX_MS = 2_147_483_647;
 
 const XIAOMI_TTS_MODELS = ["mimo-v2.5-tts", "mimo-v2-tts"] as const;
 
@@ -205,8 +206,9 @@ async function xiaomiTTS(params: {
   timeoutMs: number;
 }): Promise<Buffer> {
   const { text, apiKey, baseUrl, model, voice, format, style, timeoutMs } = params;
+  const requestTimeoutMs = resolveXiaomiTtsTimerTimeoutMs(timeoutMs);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
 
   try {
     const { response, release } = await fetchWithSsrFGuard({
@@ -224,7 +226,7 @@ async function xiaomiTTS(params: {
         }),
         signal: controller.signal,
       },
-      timeoutMs,
+      timeoutMs: requestTimeoutMs,
       policy: ssrfPolicyFromHttpBaseUrlAllowedHostname(baseUrl),
       auditContext: "xiaomi.tts",
     });
@@ -237,6 +239,13 @@ async function xiaomiTTS(params: {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function resolveXiaomiTtsTimerTimeoutMs(timeoutMs: number): number {
+  if (!Number.isFinite(timeoutMs)) {
+    return 1;
+  }
+  return Math.min(XIAOMI_TTS_TIMER_TIMEOUT_MAX_MS, Math.max(1, Math.floor(timeoutMs)));
 }
 
 export function buildXiaomiSpeechProvider(): SpeechProviderPlugin {

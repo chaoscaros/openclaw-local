@@ -8,6 +8,8 @@ vi.mock("openclaw/plugin-sdk/media-runtime", () => ({
 
 import { buildXiaomiSpeechProvider } from "./speech-provider.js";
 
+const XIAOMI_TTS_TIMER_TIMEOUT_MAX_MS = 2_147_483_647;
+
 describe("buildXiaomiSpeechProvider", () => {
   const provider = buildXiaomiSpeechProvider();
 
@@ -206,6 +208,40 @@ describe("buildXiaomiSpeechProvider", () => {
         tempPrefix: "tts-xiaomi-",
         timeoutMs: 30000,
       });
+    });
+
+    it("caps oversized TTS request timeouts before scheduling or fetching", async () => {
+      const audio = Buffer.from("fake-mp3-audio").toString("base64");
+      const timeoutSpy = vi
+        .spyOn(globalThis, "setTimeout")
+        .mockImplementation((() => 1) as typeof setTimeout);
+      const clearTimeoutSpy = vi
+        .spyOn(globalThis, "clearTimeout")
+        .mockImplementation(() => undefined);
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+        new Response(JSON.stringify({ choices: [{ message: { audio: { data: audio } } }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+      try {
+        await provider.synthesize({
+          text: "Hello from OpenClaw.",
+          cfg: {} as never,
+          providerConfig: { apiKey: "sk-test" },
+          target: "audio-file",
+          timeoutMs: Number.MAX_SAFE_INTEGER,
+        });
+
+        expect(timeoutSpy).toHaveBeenCalledWith(
+          expect.any(Function),
+          XIAOMI_TTS_TIMER_TIMEOUT_MAX_MS,
+        );
+      } finally {
+        timeoutSpy.mockRestore();
+        clearTimeoutSpy.mockRestore();
+      }
     });
 
     it("throws when API key is missing", async () => {
