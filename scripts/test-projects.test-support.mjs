@@ -1836,6 +1836,7 @@ export function buildVitestRunPlans(
     "wizard",
     "e2e",
     "extensionAcpx",
+    "extensionCodex",
     "extensionDiffs",
     "extensionBrowser",
     "extensionDiscord",

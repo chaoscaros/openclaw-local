@@ -1,21 +1,21 @@
 ---
-summary: "CLI reference for `openclaw agents` (init/list/add/delete/bindings/bind/unbind/set identity)"
+summary: "`openclaw agents` CLI 说明：初始化、列表、增删、绑定和身份设置"
 read_when:
-  - You want multiple isolated agents (workspaces + routing + auth)
+  - 需要多个隔离智能体（工作区、路由、认证）
 title: "agents"
 ---
 
 # `openclaw agents`
 
-Manage isolated agents (workspaces + auth + routing).
+管理隔离智能体，包括工作区、认证和消息路由。
 
-Related:
+相关文档：
 
-- Multi-agent routing: [Multi-Agent Routing](/concepts/multi-agent)
-- Agent workspace: [Agent workspace](/concepts/agent-workspace)
-- Skill visibility config: [Skills config](/tools/skills-config)
+- 多智能体路由：[Multi-Agent Routing](/concepts/multi-agent)
+- 智能体工作区：[Agent workspace](/concepts/agent-workspace)
+- 技能可见性配置：[Skills config](/tools/skills-config)
 
-## Examples
+## 示例
 
 ```bash
 openclaw agents list
@@ -31,16 +31,13 @@ openclaw agents set-identity --agent main --avatar avatars/openclaw.png
 openclaw agents delete work
 ```
 
-## Routing bindings
+## 路由绑定
 
-Use routing bindings to pin inbound channel traffic to a specific agent.
+路由绑定用于把某个渠道的入站消息固定分配给指定智能体。
 
-If you also want different visible skills per agent, configure
-`agents.defaults.skills` and `agents.list[].skills` in `openclaw.json`. See
-[Skills config](/tools/skills-config) and
-[Configuration Reference](/gateway/configuration-reference#agents-defaults-skills).
+如果还需要为不同智能体配置不同可见技能，可以在 `openclaw.json` 里配置 `agents.defaults.skills` 和 `agents.list[].skills`。参考 [Skills config](/tools/skills-config) 和 [Configuration Reference](/gateway/configuration-reference#agents-defaults-skills)。
 
-List bindings:
+列出绑定：
 
 ```bash
 openclaw agents bindings
@@ -48,65 +45,64 @@ openclaw agents bindings --agent work
 openclaw agents bindings --json
 ```
 
-Add bindings:
+添加绑定：
 
 ```bash
 openclaw agents bind --agent work --bind telegram:ops --bind discord:guild-a
 ```
 
-If you omit `accountId` (`--bind <channel>`), OpenClaw resolves it from channel defaults and plugin setup hooks when available.
+如果省略 `accountId`（即使用 `--bind <channel>`），OpenClaw 会尽量从渠道默认账号和插件 setup hook 中解析。
 
-If you omit `--agent` for `bind` or `unbind`, OpenClaw targets the current default agent.
+如果执行 `bind` 或 `unbind` 时省略 `--agent`，OpenClaw 会使用当前默认智能体。
 
-### Binding scope behavior
+### 绑定作用域
 
-- A binding without `accountId` matches the channel default account only.
-- `accountId: "*"` is the channel-wide fallback (all accounts) and is less specific than an explicit account binding.
-- If the same agent already has a matching channel binding without `accountId`, and you later bind with an explicit or resolved `accountId`, OpenClaw upgrades that existing binding in place instead of adding a duplicate.
+- 不带 `accountId` 的绑定只匹配渠道默认账号。
+- `accountId: "*"` 表示渠道级兜底（所有账号），优先级低于显式账号绑定。
+- 如果同一个智能体已经有不带 `accountId` 的渠道绑定，后续再绑定显式或解析出的 `accountId`，OpenClaw 会原地升级已有绑定，而不是新增重复项。
 
-Example:
+示例：
 
 ```bash
-# initial channel-only binding
+# 初始渠道绑定
 openclaw agents bind --agent work --bind telegram
 
-# later upgrade to account-scoped binding
+# 后续升级为账号级绑定
 openclaw agents bind --agent work --bind telegram:ops
 ```
 
-After the upgrade, routing for that binding is scoped to `telegram:ops`. If you also want default-account routing, add it explicitly (for example `--bind telegram:default`).
+升级后，该绑定只路由到 `telegram:ops`。如果还需要默认账号路由，需要显式添加，例如 `--bind telegram:default`。
 
-Remove bindings:
+移除绑定：
 
 ```bash
 openclaw agents unbind --agent work --bind telegram:ops
 openclaw agents unbind --agent work --all
 ```
 
-`unbind` accepts either `--all` or one or more `--bind` values, not both.
+`unbind` 可以使用 `--all`，也可以传一个或多个 `--bind`，但不能同时使用。
 
-## Command surface
+## 命令入口
 
 ### `agents`
 
-Running `openclaw agents` with no subcommand is equivalent to `openclaw agents list`.
+不带子命令运行 `openclaw agents` 等同于 `openclaw agents list`。
 
 ### `agents init`
 
-Create or update the local default `solo` agent from the `.env` and config file
-created by `openclaw env init` and `openclaw config init`.
+根据 `openclaw env init` 和 `openclaw config init` 生成的 `.env` 与配置文件，创建或更新本地默认 `solo` 智能体。
 
-Behavior:
+行为：
 
-- Reads `~/.openclaw/.env`
-- Requires `OPENCLAW_STATE_DIR` and `OPENCLAW_CONFIG_PATH`
-- Reads the config file pointed at by `OPENCLAW_CONFIG_PATH`
-- Creates the agent state directory and session directory recursively
-- Sets `solo` as the default agent
-- Uses the current working directory as the `solo` workspace
-- Preserves an existing `solo` agent unless `--force` is passed
+- 读取 `~/.openclaw/.env`
+- 要求存在 `OPENCLAW_STATE_DIR` 和 `OPENCLAW_CONFIG_PATH`
+- 读取 `OPENCLAW_CONFIG_PATH` 指向的配置文件
+- 递归创建智能体状态目录和会话目录
+- 将 `solo` 设为默认智能体
+- 使用当前工作目录作为 `solo` 工作区
+- 默认保留已有 `solo` 智能体，除非传入 `--force`
 
-Examples:
+示例：
 
 ```bash
 openclaw agents init
@@ -115,84 +111,84 @@ openclaw agents init --force
 
 ### `agents list`
 
-Options:
+选项：
 
 - `--json`
-- `--bindings`: include full routing rules, not only per-agent counts/summaries
+- `--bindings`：包含完整路由规则，而不是只显示每个智能体的数量/摘要
 
 ### `agents add [name]`
 
-Options:
+选项：
 
 - `--workspace <dir>`
 - `--model <id>`
 - `--agent-dir <dir>`
-- `--bind <channel[:accountId]>` (repeatable)
+- `--bind <channel[:accountId]>`（可重复）
 - `--non-interactive`
 - `--json`
 
-Notes:
+说明：
 
-- Passing any explicit add flags switches the command into the non-interactive path.
-- Non-interactive mode requires both an agent name and `--workspace`.
-- `main` is reserved and cannot be used as the new agent id.
+- 传入任何显式 add 选项都会进入非交互路径。
+- 非交互模式要求同时提供智能体名称和 `--workspace`。
+- `main` 是保留 id，不能作为新智能体 id。
 
 ### `agents bindings`
 
-Options:
+选项：
 
 - `--agent <id>`
 - `--json`
 
 ### `agents bind`
 
-Options:
+选项：
 
-- `--agent <id>` (defaults to the current default agent)
-- `--bind <channel[:accountId]>` (repeatable)
+- `--agent <id>`（默认使用当前默认智能体）
+- `--bind <channel[:accountId]>`（可重复）
 - `--json`
 
 ### `agents unbind`
 
-Options:
+选项：
 
-- `--agent <id>` (defaults to the current default agent)
-- `--bind <channel[:accountId]>` (repeatable)
+- `--agent <id>`（默认使用当前默认智能体）
+- `--bind <channel[:accountId]>`（可重复）
 - `--all`
 - `--json`
 
 ### `agents delete <id>`
 
-Options:
+选项：
 
 - `--force`
 - `--json`
 
-Notes:
+说明：
 
-- `main` cannot be deleted.
-- Without `--force`, interactive confirmation is required.
-- Workspace, agent state, and session transcript directories are moved to Trash, not hard-deleted.
+- `main` 不能删除。
+- 不传 `--force` 时需要交互确认。
+- 工作区、智能体状态和会话 transcript 目录会移到废纸篓，不会直接硬删除。
 
-## Identity files
+## 身份文件
 
-Each agent workspace can include an `IDENTITY.md` at the workspace root:
+每个智能体工作区根目录都可以包含一个 `IDENTITY.md`：
 
-- Example path: `~/.openclaw/workspace/IDENTITY.md`
-- `set-identity --from-identity` reads from the workspace root (or an explicit `--identity-file`)
+- 示例路径：`~/.openclaw/workspace/IDENTITY.md`
+- `set-identity --from-identity` 会从工作区根目录读取，也可以通过 `--identity-file` 显式指定
 
-Avatar paths resolve relative to the workspace root.
+头像路径按工作区根目录解析。
 
-## Set identity
+## 设置身份
 
-`set-identity` writes fields into `agents.list[].identity`:
+`set-identity` 会写入 `agents.list[].identity` 字段：
 
 - `name`
 - `theme`
 - `emoji`
-- `avatar` (workspace-relative path, http(s) URL, or data URI)
+- `avatar`（工作区相对路径、http(s) URL 或 data URI）
 
-Options:
+选项：
 
 - `--agent <id>`
 - `--workspace <dir>`
@@ -204,25 +200,25 @@ Options:
 - `--avatar <value>`
 - `--json`
 
-Notes:
+说明：
 
-- `--agent` or `--workspace` can be used to select the target agent.
-- If you rely on `--workspace` and multiple agents share that workspace, the command fails and asks you to pass `--agent`.
-- When no explicit identity fields are provided, the command reads identity data from `IDENTITY.md`.
+- 可以用 `--agent` 或 `--workspace` 选择目标智能体。
+- 如果多个智能体共享同一个工作区，而你只传 `--workspace`，命令会失败并要求改传 `--agent`。
+- 如果没有提供显式身份字段，命令会从 `IDENTITY.md` 读取身份数据。
 
-Load from `IDENTITY.md`:
+从 `IDENTITY.md` 读取：
 
 ```bash
 openclaw agents set-identity --workspace ~/.openclaw/workspace --from-identity
 ```
 
-Override fields explicitly:
+显式覆盖字段：
 
 ```bash
 openclaw agents set-identity --agent main --name "OpenClaw" --emoji "🦞" --avatar avatars/openclaw.png
 ```
 
-Config sample:
+配置示例：
 
 ```json5
 {

@@ -249,6 +249,16 @@ describe("Codex native hook relay config", () => {
       "hooks.PostToolUse": [],
       "hooks.PermissionRequest": [],
       "hooks.Stop": [],
+      "hooks.state": {
+        "/<session-flags>/config.toml:pre_tool_use:0:0": { enabled: false },
+        "<session-flags>/config.toml:pre_tool_use:0:0": { enabled: false },
+        "/<session-flags>/config.toml:post_tool_use:0:0": { enabled: false },
+        "<session-flags>/config.toml:post_tool_use:0:0": { enabled: false },
+        "/<session-flags>/config.toml:permission_request:0:0": { enabled: false },
+        "<session-flags>/config.toml:permission_request:0:0": { enabled: false },
+        "/<session-flags>/config.toml:stop:0:0": { enabled: false },
+        "<session-flags>/config.toml:stop:0:0": { enabled: false },
+      },
     });
   });
 });

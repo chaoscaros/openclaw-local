@@ -56,7 +56,10 @@ Control UI 是本地主要使用界面。
 - runtime config 读取边界。
 - 临时路径和过期配置 API guard。
 - shrinkwrap 与 plugin SDK 入口校验。
+- `pnpm fast` 是本地常用启动入口，必须保留 `scripts/fast-gateway.mjs`，并确保 Windows 下 `Ctrl+C` 能停止 gateway 子进程树。
 - Codex native hook relay 必须按 run 隔离，避免 PreToolUse 阶段出现 `Native hook relay unavailable` 后阻断 `exec_command`、`apply_patch`、`python3` 等本地命令。
+- 禁用 Codex native hook relay 时，必须同时清空 hook 列表并把 `hooks.state` 标记为 disabled，避免旧会话残留的信任状态继续触发本地 hook。
+- `extensions/codex` 单测必须路由到 Codex extension Vitest lane，不能出现 `pnpm test extensions/codex/...` 看似运行但实际跳过的情况。
 - 涉及 Codex app-server、Gateway 协议或 Control UI 构建时，必须确认 `dist/build-info.json` 指向当前提交；如果服务已启动在旧构建上，需要重新构建并由用户重启后再验收。
 
 如果出现 `protocol mismatch`、`unknown method`、`invalid chat.send params` 等错误，先判断是 UI 和 gateway 版本不一致，还是协议/schema 没同步。

@@ -1,21 +1,19 @@
 ---
-summary: "CLI reference for `openclaw config` (init/get/set/unset/file/schema/validate)"
+summary: "`openclaw config` CLI 说明：init/get/set/unset/file/schema/validate"
 read_when:
-  - You want to read or edit config non-interactively
+  - 需要用非交互方式读取或修改配置
 title: "config"
 ---
 
 # `openclaw config`
 
-Config helpers for non-interactive edits in `openclaw.json`: init/get/set/unset/file/schema/validate
-values by path and print the active config file. Run without a subcommand to
-open the configure wizard (same as `openclaw configure`).
+用于非交互修改 `openclaw.json` 的配置辅助命令。支持按路径执行 init/get/set/unset/file/schema/validate，也可以打印当前生效的配置文件路径。不带子命令运行时，会打开配置向导，等同于 `openclaw configure`。
 
-Root options:
+根选项：
 
-- `--section <section>`: repeatable guided-setup section filter when you run `openclaw config` without a subcommand
+- `--section <section>`：不带子命令运行 `openclaw config` 时，用于筛选配置向导章节；可重复传入
 
-Supported guided sections:
+支持的向导章节：
 
 - `workspace`
 - `model`
@@ -27,7 +25,7 @@ Supported guided sections:
 - `skills`
 - `health`
 
-## Examples
+## 示例
 
 ```bash
 openclaw config file
@@ -49,27 +47,26 @@ openclaw config validate --json
 
 ### `config init`
 
-Create the config file pointed at by `OPENCLAW_CONFIG_PATH` in
-`~/.openclaw/.env`.
+根据 `~/.openclaw/.env` 里的 `OPENCLAW_CONFIG_PATH` 创建配置文件。
 
-Use it after `openclaw env init` and after editing `.env`:
+请在执行 `openclaw env init` 并编辑好 `.env` 后使用：
 
 ```bash
 openclaw env init
-# edit ~/.openclaw/.env and set OPENCLAW_STATE_DIR plus OPENCLAW_CONFIG_PATH
+# 手动编辑 ~/.openclaw/.env，填好 OPENCLAW_STATE_DIR 和 OPENCLAW_CONFIG_PATH
 openclaw config init
 ```
 
-Behavior:
+行为：
 
-- Reads `~/.openclaw/.env`
-- Requires `OPENCLAW_STATE_DIR` and `OPENCLAW_CONFIG_PATH`
-- Creates the state directory and the config parent directory recursively
-- Writes Gateway auth with an env SecretRef to `OPENCLAW_GATEWAY_TOKEN`
-- Refuses to overwrite an existing config unless `--force` is passed
-- Rejects copied macOS/Linux home paths such as `/Users/...` on Windows
+- 读取 `~/.openclaw/.env`
+- 要求存在 `OPENCLAW_STATE_DIR` 和 `OPENCLAW_CONFIG_PATH`
+- 递归创建状态目录和配置文件父目录
+- 写入 Gateway 认证配置，并通过 env SecretRef 引用 `OPENCLAW_GATEWAY_TOKEN`
+- 默认不覆盖已有配置，除非传入 `--force`
+- Windows 上会拒绝复制来的 macOS/Linux home 路径，例如 `/Users/...`
 
-Examples:
+示例：
 
 ```bash
 openclaw config init
@@ -78,54 +75,50 @@ openclaw config init --force
 
 ### `config schema`
 
-Print the generated JSON schema for `openclaw.json` to stdout as JSON.
+将生成后的 `openclaw.json` JSON schema 以 JSON 形式输出到标准输出。
 
-What it includes:
+包含内容：
 
-- The current root config schema, plus a root `$schema` string field for editor tooling
-- Field `title` and `description` docs metadata used by the Control UI
-- Nested object, wildcard (`*`), and array-item (`[]`) nodes inherit the same `title` / `description` metadata when matching field documentation exists
-- `anyOf` / `oneOf` / `allOf` branches inherit the same docs metadata too when matching field documentation exists
-- Best-effort live plugin + channel schema metadata when runtime manifests can be loaded
-- A clean fallback schema even when the current config is invalid
+- 当前根配置 schema，并为编辑器工具补充根级 `$schema` 字符串字段
+- Control UI 使用的字段 `title` 和 `description` 文档元数据
+- 当存在匹配字段文档时，嵌套对象、通配符（`*`）和数组项（`[]`）节点会继承相同的 `title` / `description` 元数据
+- 当存在匹配字段文档时，`anyOf` / `oneOf` / `allOf` 分支也会继承相同文档元数据
+- 如果运行时 manifest 可加载，会尽力合入实时插件和渠道 schema 元数据
+- 即使当前配置无效，也会输出干净的兜底 schema
 
-Related runtime RPC:
+相关运行时 RPC：
 
-- `config.schema.lookup` returns one normalized config path with a shallow
-  schema node (`title`, `description`, `type`, `enum`, `const`, common bounds),
-  matched UI hint metadata, and immediate child summaries. Use it for
-  path-scoped drill-down in Control UI or custom clients.
+- `config.schema.lookup` 返回一个规范化配置路径、浅层 schema 节点（`title`、`description`、`type`、`enum`、`const`、常见边界）、匹配的 UI hint 元数据，以及直接子节点摘要。Control UI 或自定义客户端可以用它做按路径钻取。
 
 ```bash
 openclaw config schema
 ```
 
-Pipe it into a file when you want to inspect or validate it with other tools:
+如果需要用其它工具检查或验证，可以重定向到文件：
 
 ```bash
 openclaw config schema > openclaw.schema.json
 ```
 
-### Paths
+### 路径
 
-Paths use dot or bracket notation:
+路径支持点号或方括号写法：
 
 ```bash
 openclaw config get agents.defaults.workspace
 openclaw config get agents.list[0].id
 ```
 
-Use the agent list index to target a specific agent:
+可以用智能体列表下标定位某个智能体：
 
 ```bash
 openclaw config get agents.list
 openclaw config set agents.list[1].tools.exec.node "node-id-or-name"
 ```
 
-## Values
+## 值
 
-Values are parsed as JSON5 when possible; otherwise they are treated as strings.
-Use `--strict-json` to require JSON5 parsing. `--json` remains supported as a legacy alias.
+值会尽量按 JSON5 解析；无法解析时会按字符串处理。使用 `--strict-json` 可要求必须按 JSON5 解析。`--json` 仍作为旧别名保留。
 
 ```bash
 openclaw config set agents.defaults.heartbeat.every "0m"
@@ -133,14 +126,14 @@ openclaw config set gateway.port 19001 --strict-json
 openclaw config set channels.whatsapp.groups '["*"]' --strict-json
 ```
 
-`config get <path> --json` prints the raw value as JSON instead of terminal-formatted text.
+`config get <path> --json` 会以 JSON 输出原始值，而不是终端格式化文本。
 
-## `config set` modes
+## `config set` 写入模式
 
-`openclaw config set` supports four assignment styles:
+`openclaw config set` 支持四种赋值方式：
 
-1. Value mode: `openclaw config set <path> <value>`
-2. SecretRef builder mode:
+1. 值模式：`openclaw config set <path> <value>`
+2. SecretRef 构建模式：
 
 ```bash
 openclaw config set channels.discord.token \
@@ -149,7 +142,7 @@ openclaw config set channels.discord.token \
   --ref-id DISCORD_BOT_TOKEN
 ```
 
-3. Provider builder mode (`secrets.providers.<alias>` path only):
+3. Provider 构建模式（只适用于 `secrets.providers.<alias>` 路径）：
 
 ```bash
 openclaw config set secrets.providers.vault \
@@ -160,7 +153,7 @@ openclaw config set secrets.providers.vault \
   --provider-timeout-ms 5000
 ```
 
-4. Batch mode (`--batch-json` or `--batch-file`):
+4. 批量模式（`--batch-json` 或 `--batch-file`）：
 
 ```bash
 openclaw config set --batch-json '[
@@ -179,14 +172,13 @@ openclaw config set --batch-json '[
 openclaw config set --batch-file ./config-set.batch.json --dry-run
 ```
 
-Policy note:
+策略说明：
 
-- SecretRef assignments are rejected on unsupported runtime-mutable surfaces (for example `hooks.token`, `commands.ownerDisplaySecret`, Discord thread-binding webhook tokens, and WhatsApp creds JSON). See [SecretRef Credential Surface](/reference/secretref-credential-surface).
+- 不支持 SecretRef 的运行时可变配置面会拒绝 SecretRef 赋值，例如 `hooks.token`、`commands.ownerDisplaySecret`、Discord thread-binding webhook token、WhatsApp creds JSON。参考 [SecretRef Credential Surface](/reference/secretref-credential-surface)。
 
-Batch parsing always uses the batch payload (`--batch-json`/`--batch-file`) as the source of truth.
-`--strict-json` / `--json` do not change batch parsing behavior.
+批量解析始终以批量载荷（`--batch-json` / `--batch-file`）为准。`--strict-json` / `--json` 不会改变批量解析行为。
 
-JSON path/value mode remains supported for both SecretRefs and providers:
+SecretRef 和 provider 仍支持 JSON 路径/值模式：
 
 ```bash
 openclaw config set channels.discord.token \
@@ -198,39 +190,39 @@ openclaw config set secrets.providers.vaultfile \
   --strict-json
 ```
 
-## Provider Builder Flags
+## Provider 构建参数
 
-Provider builder targets must use `secrets.providers.<alias>` as the path.
+Provider 构建模式的目标路径必须是 `secrets.providers.<alias>`。
 
-Common flags:
+通用参数：
 
 - `--provider-source <env|file|exec>`
-- `--provider-timeout-ms <ms>` (`file`, `exec`)
+- `--provider-timeout-ms <ms>`（适用于 `file`、`exec`）
 
-Env provider (`--provider-source env`):
+Env provider（`--provider-source env`）：
 
-- `--provider-allowlist <ENV_VAR>` (repeatable)
+- `--provider-allowlist <ENV_VAR>`（可重复）
 
-File provider (`--provider-source file`):
+File provider（`--provider-source file`）：
 
-- `--provider-path <path>` (required)
+- `--provider-path <path>`（必填）
 - `--provider-mode <singleValue|json>`
 - `--provider-max-bytes <bytes>`
 
-Exec provider (`--provider-source exec`):
+Exec provider（`--provider-source exec`）：
 
-- `--provider-command <path>` (required)
-- `--provider-arg <arg>` (repeatable)
+- `--provider-command <path>`（必填）
+- `--provider-arg <arg>`（可重复）
 - `--provider-no-output-timeout-ms <ms>`
 - `--provider-max-output-bytes <bytes>`
 - `--provider-json-only`
-- `--provider-env <KEY=VALUE>` (repeatable)
-- `--provider-pass-env <ENV_VAR>` (repeatable)
-- `--provider-trusted-dir <path>` (repeatable)
+- `--provider-env <KEY=VALUE>`（可重复）
+- `--provider-pass-env <ENV_VAR>`（可重复）
+- `--provider-trusted-dir <path>`（可重复）
 - `--provider-allow-insecure-path`
 - `--provider-allow-symlink-command`
 
-Hardened exec provider example:
+加固版 exec provider 示例：
 
 ```bash
 openclaw config set secrets.providers.vault \
@@ -246,7 +238,7 @@ openclaw config set secrets.providers.vault \
 
 ## Dry run
 
-Use `--dry-run` to validate changes without writing `openclaw.json`.
+使用 `--dry-run` 可以在不写入 `openclaw.json` 的情况下验证改动。
 
 ```bash
 openclaw config set channels.discord.token \
@@ -270,27 +262,27 @@ openclaw config set channels.discord.token \
   --allow-exec
 ```
 
-Dry-run behavior:
+Dry-run 行为：
 
-- Builder mode: runs SecretRef resolvability checks for changed refs/providers.
-- JSON mode (`--strict-json`, `--json`, or batch mode): runs schema validation plus SecretRef resolvability checks.
-- Policy validation also runs for known unsupported SecretRef target surfaces.
-- Policy checks evaluate the full post-change config, so parent-object writes (for example setting `hooks` as an object) cannot bypass unsupported-surface validation.
-- Exec SecretRef checks are skipped by default during dry-run to avoid command side effects.
-- Use `--allow-exec` with `--dry-run` to opt in to exec SecretRef checks (this may execute provider commands).
-- `--allow-exec` is dry-run only and errors if used without `--dry-run`.
+- 构建模式：对变更的 refs/providers 执行 SecretRef 可解析性检查。
+- JSON 模式（`--strict-json`、`--json` 或批量模式）：执行 schema 验证和 SecretRef 可解析性检查。
+- 已知不支持 SecretRef 的目标配置面也会执行策略验证。
+- 策略检查会评估变更后的完整配置，因此父对象写入（例如把 `hooks` 设为对象）不能绕过不支持配置面的验证。
+- dry-run 默认跳过 exec SecretRef 检查，避免命令副作用。
+- 如需检查 exec SecretRef，可在 `--dry-run` 中传入 `--allow-exec`（这可能执行 provider 命令）。
+- `--allow-exec` 只能配合 dry-run 使用；不带 `--dry-run` 会报错。
 
-`--dry-run --json` prints a machine-readable report:
+`--dry-run --json` 会输出机器可读报告：
 
-- `ok`: whether dry-run passed
-- `operations`: number of assignments evaluated
-- `checks`: whether schema/resolvability checks ran
-- `checks.resolvabilityComplete`: whether resolvability checks ran to completion (false when exec refs are skipped)
-- `refsChecked`: number of refs actually resolved during dry-run
-- `skippedExecRefs`: number of exec refs skipped because `--allow-exec` was not set
-- `errors`: structured schema/resolvability failures when `ok=false`
+- `ok`：dry-run 是否通过
+- `operations`：评估的赋值操作数量
+- `checks`：是否执行 schema / 可解析性检查
+- `checks.resolvabilityComplete`：可解析性检查是否完整执行（跳过 exec refs 时为 false）
+- `refsChecked`：dry-run 中实际解析的 refs 数量
+- `skippedExecRefs`：由于未设置 `--allow-exec` 而跳过的 exec refs 数量
+- `errors`：当 `ok=false` 时输出结构化 schema / 可解析性错误
 
-### JSON Output Shape
+### JSON 输出结构
 
 ```json5
 {
@@ -309,13 +301,13 @@ Dry-run behavior:
     {
       kind: "schema" | "resolvability",
       message: string,
-      ref?: string, // present for resolvability errors
+      ref?: string, // 可解析性错误时存在
     },
   ],
 }
 ```
 
-Success example:
+成功示例：
 
 ```json
 {
@@ -333,7 +325,7 @@ Success example:
 }
 ```
 
-Failure example:
+失败示例：
 
 ```json
 {
@@ -358,24 +350,23 @@ Failure example:
 }
 ```
 
-If dry-run fails:
+如果 dry-run 失败：
 
-- `config schema validation failed`: your post-change config shape is invalid; fix path/value or provider/ref object shape.
-- `Config policy validation failed: unsupported SecretRef usage`: move that credential back to plaintext/string input and keep SecretRefs on supported surfaces only.
-- `SecretRef assignment(s) could not be resolved`: referenced provider/ref currently cannot resolve (missing env var, invalid file pointer, exec provider failure, or provider/source mismatch).
-- `Dry run note: skipped <n> exec SecretRef resolvability check(s)`: dry-run skipped exec refs; rerun with `--allow-exec` if you need exec resolvability validation.
-- For batch mode, fix failing entries and rerun `--dry-run` before writing.
+- `config schema validation failed`：变更后的配置形状无效；需要修正路径/值或 provider/ref 对象结构。
+- `Config policy validation failed: unsupported SecretRef usage`：该凭据目标不支持 SecretRef；改回明文/字符串输入，并只在支持的配置面使用 SecretRef。
+- `SecretRef assignment(s) could not be resolved`：引用的 provider/ref 当前无法解析，可能是 env 缺失、文件指针无效、exec provider 失败或 provider/source 不匹配。
+- `Dry run note: skipped <n> exec SecretRef resolvability check(s)`：dry-run 跳过了 exec refs；如需验证 exec 可解析性，请加 `--allow-exec` 重新运行。
+- 批量模式下，先修正失败项，再重新运行 `--dry-run`，确认通过后再写入。
 
-## Subcommands
+## 子命令
 
-- `config file`: Print the active config file path (resolved from `OPENCLAW_CONFIG_PATH` or default location).
+- `config file`：打印当前生效的配置文件路径（来自 `OPENCLAW_CONFIG_PATH` 或默认位置）。
 
-Restart the gateway after edits.
+修改配置后需要重启 gateway。
 
-## Validate
+## 验证
 
-Validate the current config against the active schema without starting the
-gateway.
+在不启动 gateway 的情况下，用当前生效 schema 验证当前配置。
 
 ```bash
 openclaw config validate

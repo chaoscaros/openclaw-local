@@ -1,25 +1,31 @@
 ---
-summary: "CLI reference for `openclaw codex` (Codex auth cleanup helpers)"
+summary: "`openclaw codex` CLI 说明：清理 Codex 认证绑定"
 read_when:
-  - You need to switch Codex accounts used by OpenClaw agents
+  - 需要切换 OpenClaw 智能体使用的 Codex 账号
 title: "codex"
 ---
 
 # `openclaw codex`
 
-Helpers for Codex-related local auth state.
+管理 OpenClaw 侧保存的 Codex 本地认证状态。
+
+## Codex OAuth 重新登录
+
+如果只是想重新登录 OpenClaw 使用的 Codex OAuth 账号，可以运行：
+
+```bash
+pnpm openclaw models auth login --provider openai-codex
+```
+
+这个命令会走 `openai-codex` provider 的登录流程，更新 OpenClaw 侧用于 `openai-codex/*` 模型的认证。它不会清理旧的 Codex 绑定；如果你要先移除旧绑定再重新登录，先执行 `openclaw codex clean`。
 
 ## `codex clean`
 
-Remove OpenClaw-side `openai-codex` auth bindings from agent auth state so you
-can sign in with a different Codex account cleanly.
+从智能体认证状态里移除 OpenClaw 侧的 `openai-codex` 绑定，方便干净地切换到另一个 Codex 账号。
 
-The command only touches OpenClaw agent auth files under the configured state
-directory. It does not delete Codex CLI auth files such as `~/.codex/auth.json`,
-and it does not remove other providers such as OpenAI API keys, Anthropic,
-Google, Discord, or Telegram.
+这个命令只会处理配置状态目录下的 OpenClaw 智能体认证文件。它不会删除 Codex CLI 自己的认证文件，例如 `~/.codex/auth.json`，也不会清理 OpenAI API key、Anthropic、Google、Discord、Telegram 等其它 provider 认证。
 
-Examples:
+示例：
 
 ```bash
 openclaw codex clean --dry-run
@@ -27,16 +33,16 @@ openclaw codex clean
 openclaw codex clean --force
 ```
 
-Options:
+选项：
 
-- `--dry-run`: show what would be cleaned without writing files
-- `--force`: skip the confirmation prompt
-- `--json`: print machine-readable output
+- `--dry-run`：只预览将要清理的内容，不写入文件
+- `--force`：跳过确认提示
+- `--json`：输出机器可读 JSON
 
-Recommended account-switch flow:
+推荐切换账号流程：
 
 ```bash
 openclaw codex clean
-# Sign in or select the new Codex OAuth account.
-openclaw configure --section model
+# 重新登录或选择新的 Codex OAuth 账号
+pnpm openclaw models auth login --provider openai-codex
 ```

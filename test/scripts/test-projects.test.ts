@@ -1024,6 +1024,20 @@ describe("scripts/test-projects changed-target routing", () => {
     ]);
   });
 
+  it("routes Codex extension tests to the Codex extension lane", () => {
+    const target = "extensions/codex/src/app-server/native-hook-relay.test.ts";
+    const plans = buildVitestRunPlans([target], process.cwd());
+
+    expect(plans).toEqual([
+      {
+        config: "test/vitest/vitest.extension-codex.config.ts",
+        forwardedArgs: [],
+        includePatterns: [target],
+        watchMode: false,
+      },
+    ]);
+  });
+
   it.each(["src/tui/tui-pty-harness.e2e.test.ts", "src/tui/tui-pty-local.e2e.test.ts"])(
     "routes TUI PTY integration target %s to the PTY lane",
     (target) => {

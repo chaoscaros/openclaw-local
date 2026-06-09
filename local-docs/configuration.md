@@ -66,18 +66,30 @@ pnpm openclaw agents init
 pnpm openclaw codex clean
 ```
 
-对应实现和文档：
+对应命令说明：
 
 - `openclaw env init` / `openclaw env token`
+  - 用途：创建默认 `.env`，或轮换 `.env` 里的 `OPENCLAW_GATEWAY_TOKEN`。
+  - 使用时机：首次初始化、token 泄露风险、需要重新生成 gateway token。
+  - 注意：`env token` 默认不打印 token；只有明确需要复制时才用 `--print`。
   - 实现：`src/cli/env-cli.ts`
   - 文档：`docs/cli/env.md`
 - `openclaw config init`
+  - 用途：根据 `.env` 里的 `OPENCLAW_STATE_DIR` 和 `OPENCLAW_CONFIG_PATH` 生成默认运行配置。
+  - 使用时机：执行完 `env init` 并编辑好 `.env` 后。
+  - 注意：配置文件应保存 env SecretRef，不写真实 token；Windows 上不要复制 `/Users/...` 这类 macOS 路径。
   - 实现：`src/cli/config-init.ts`
   - 文档：`docs/cli/config.md`
 - `openclaw agents init`
+  - 用途：根据 `.env` 和运行配置创建本地默认 `solo` 智能体。
+  - 使用时机：配置文件已生成后，需要让当前项目有默认 agent 工作区。
+  - 注意：默认使用当前项目目录作为 `solo` 工作区；已有 `solo` 默认保留，除非传 `--force`。
   - 实现：`src/cli/agent-init.ts`
   - 文档：`docs/cli/agents.md`
 - `openclaw codex clean`
+  - 用途：清理 OpenClaw 侧保存的 Codex / `openai-codex` 认证绑定。
+  - 使用时机：需要退出或切换 Codex OAuth 账号。
+  - 注意：不会删除 Codex CLI 自己的 `~/.codex/auth.json`，也不会清理其它 provider 认证。
   - 实现：`src/cli/codex-clean.ts`、`src/cli/codex-cli.ts`
   - 文档：`docs/cli/codex.md`
 
