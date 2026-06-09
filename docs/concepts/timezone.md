@@ -15,10 +15,10 @@ OpenClaw standardizes timestamps so the model sees a **single reference time**.
 Inbound messages are wrapped in an envelope like:
 
 ```
-[Provider ... 2026-01-05 16:26 PST] message text
+[Provider ... Mon 2026-01-05 16:26:34 PST] message text
 ```
 
-The timestamp in the envelope is **host-local by default**, with minutes precision.
+The timestamp in the envelope is **host-local by default**, with seconds precision.
 
 You can override this with:
 
@@ -45,13 +45,13 @@ You can override this with:
 **Local (default):**
 
 ```
-[Signal Alice +1555 2026-01-18 00:19 PST] hello
+[Signal Alice +1555 Sun 2026-01-18 00:19:42 PST] hello
 ```
 
 **Fixed timezone:**
 
 ```
-[Signal Alice +1555 2026-01-18 06:19 GMT+1] hello
+[Signal Alice +1555 Sun 2026-01-18 06:19:42 GMT+1] hello
 ```
 
 **Elapsed time:**

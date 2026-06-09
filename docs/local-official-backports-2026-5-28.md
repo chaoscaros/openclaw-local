@@ -146,6 +146,9 @@ scoped verification.
 - `efbd00f282` local equivalent: provider transport retry handling now ignores
   blank or malformed `retry-after-ms` values so `retry-after` fallback headers
   still determine terminal retry behavior.
+- `2900c1c25c` local equivalent: inbound metadata and auto-reply envelope
+  timestamps now include seconds, with docs updated to show the weekday plus
+  second-precision form.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
