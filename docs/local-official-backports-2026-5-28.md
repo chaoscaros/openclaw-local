@@ -60,6 +60,49 @@ The official `v2026.5.28` range is very large, so treat it as several small
 audit lanes. Each lane should fit in roughly 30 minutes of implementation plus
 scoped verification.
 
+## Current Position
+
+- `codex/dev` has absorbed the first pass of timer-safety hardening through
+  the local Xiaomi TTS equivalent of `6e125adf3a`.
+- The next large unabsorbed protected-surface candidate in stable-tag order is
+  `69c3b56bde`, Codex Supervisor session-listing stability. It should be split
+  from the timeout-hardening lane because it touches plugin tool schemas,
+  app-server session listing semantics, WebSocket close behavior, docs, and
+  tests.
+- The Android private-LAN sequence and iOS gateway/talk sequence are still
+  unabsorbed feature lanes, not small safety patches. Verify local mobile
+  environment before attempting them.
+- Workboard remains unabsorbed as a large optional dashboard/plugin feature
+  lane. Do not pull it into a task-mode or Control UI fix opportunistically.
+
+## Next Slice Queue
+
+1. **Codex Supervisor Session Listing**: evaluate `69c3b56bde` as a standalone
+   slice. Prefer the runtime behavior first: loaded-session listing should use
+   `thread/loaded/list`; stored-session listing should be opt-in, bounded, and
+   state-DB-only; endpoint resolution should avoid broad stored-history scans
+   when an exact `thread/read` can answer. Keep changelog/docs edits minimal or
+   local-tracker-only unless the user wants release-note parity.
+2. **Codex Supervisor WebSocket Close**: if the previous slice grows beyond 30
+   minutes, split WebSocket intentional-close cleanup from stored-session
+   pagination. Validate with the smallest supervisor/json-rpc-client tests.
+3. **Mobile Native Safety**: compare the Android private-LAN commits
+   `ec3ac182c5`, `633c40aa65`, `5f3d6cde19`, and `771ddcf184` against local
+   mobile code. Confirm Java/Android SDK availability before running Android
+   checks; do not touch unrelated `supply_vue` code.
+4. **iOS Gateway/Talk Flow**: compare `f6e51ff99a`, `0167f0a6df`,
+   `6897711d19`, and `7965644da0`. Treat this as native/mobile work that may
+   require build verification; tell the user if a restart or app rebuild is
+   needed.
+5. **Workboard / Control UI**: keep `86ed25af34..61031d1b1c` as a separate
+   feature lane. Before implementation, inspect local task-mode, archive, and
+   mobile entry behavior so the workboard plugin does not mask or regress
+   existing task workflows.
+6. **Release / CI / Generated Baselines**: leave broad release workflow churn,
+   `49d6efc65b`, `ea8c052bcf`, and `420bfad613` until product/runtime slices
+   are stable. These may require broader build/check gates and should not be
+   bundled with user-facing runtime fixes.
+
 ## Absorbed In This Iteration
 
 - `202ccf4cf7` / `c4e1bb30da` local equivalent, first hook-relay slice:
@@ -383,17 +426,20 @@ Local check before editing this lane:
   or published surfaces, run `pnpm build` and report that the user needs to
   restart services before acceptance testing.
 
-## First Slice Execution Plan
+## Current Execution Plan
 
-1. Record the dirty/untracked baseline before each implementation slice.
-2. Start with Lane 1 because hook relay, gateway protocol behavior, and
-   `pnpm fast` are active protection points.
-3. After Lane 1, continue with Lane 2 task/session separation before absorbing
-   workboard or mobile feature changes.
-4. Keep each slice under 30 minutes. If a lane is larger, split by one commit
-   family and leave the rest in this tracker.
-5. For each completed lane, add an "Absorbed In This Iteration" entry with the
-   exact official commit or local-equivalent explanation.
+1. Record the dirty/untracked baseline before each implementation slice, and
+   keep commits scoped to the touched files plus this tracker.
+2. Continue with Codex Supervisor session-listing stability before workboard or
+   mobile feature lanes, because it is directly adjacent to Codex session
+   control and app-server reliability.
+3. Keep each slice under 30 minutes. Split Codex Supervisor into stored-session
+   listing and WebSocket close cleanup if needed.
+4. For every completed slice, add an "Absorbed In This Iteration" entry with
+   the exact official commit or local-equivalent explanation.
+5. Run the most focused test for the slice. Use `FAST_COMMIT=1` only after
+   scoped verification, and report any unrelated `pnpm check` blocker instead
+   of repairing it in passing.
 
 ## Validation Plan
 
