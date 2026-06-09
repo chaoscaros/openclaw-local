@@ -137,6 +137,9 @@ scoped verification.
 - `fd643139b1` local equivalent: LanceDB memory config now defaults non-finite
   capture/recall character budgets and rejects non-finite or fractional
   embedding dimensions in both runtime parsing and the manifest schema.
+- `c36ba9ea7a` local equivalent: QMD backend numeric overrides now clamp
+  positive sub-unit values to 1 and fall back for non-finite session, timeout,
+  and result-limit overrides.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
