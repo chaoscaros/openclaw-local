@@ -230,6 +230,9 @@ scoped verification.
   resolution now caps oversized configured `timeoutSeconds` before scheduling
   Bot API timers. The local port keeps the timer ceiling inside the Telegram
   plugin to preserve extension import boundaries.
+- `bc1db759ac` local equivalent: ACPX service timeoutSeconds values now resolve
+  through a plugin-local timer-safe milliseconds helper before constructing the
+  default runtime or arming the startup probe watchdog.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

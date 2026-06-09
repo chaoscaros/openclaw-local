@@ -41,6 +41,7 @@ type AcpRuntimeTurnResult = Awaited<AcpRuntimeTurn["result"]>;
 const ENABLE_STARTUP_PROBE_ENV = "OPENCLAW_ACPX_RUNTIME_STARTUP_PROBE";
 const SKIP_RUNTIME_PROBE_ENV = "OPENCLAW_SKIP_ACPX_RUNTIME_PROBE";
 const ACPX_BACKEND_ID = "acpx";
+export const ACPX_TIMER_TIMEOUT_MAX_MS = 2_147_483_647;
 
 type AcpxRuntimeModule = typeof import("./runtime.js");
 let runtimeModulePromise: Promise<AcpxRuntimeModule> | null = null;
@@ -62,6 +63,16 @@ type CreateAcpxRuntimeServiceParams = {
 function loadRuntimeModule(): Promise<AcpxRuntimeModule> {
   runtimeModulePromise ??= import("./runtime.js");
   return runtimeModulePromise;
+}
+
+export function resolveAcpxTimerTimeoutMs(timeoutSeconds: number | undefined): number | undefined {
+  if (timeoutSeconds === undefined) {
+    return undefined;
+  }
+  if (!Number.isFinite(timeoutSeconds)) {
+    return ACPX_TIMER_TIMEOUT_MAX_MS;
+  }
+  return Math.min(ACPX_TIMER_TIMEOUT_MAX_MS, Math.max(1, Math.floor(timeoutSeconds * 1_000)));
 }
 
 function createDeferredResult<T>() {
@@ -239,10 +250,7 @@ function createLazyDefaultRuntime(params: AcpxRuntimeFactoryParams): AcpxRuntime
         mcpServers: toAcpMcpServers(params.pluginConfig.mcpServers),
         permissionMode: params.pluginConfig.permissionMode,
         nonInteractivePermissions: params.pluginConfig.nonInteractivePermissions,
-        timeoutMs:
-          params.pluginConfig.timeoutSeconds != null
-            ? params.pluginConfig.timeoutSeconds * 1_000
-            : undefined,
+        timeoutMs: resolveAcpxTimerTimeoutMs(params.pluginConfig.timeoutSeconds),
       }) as AcpxRuntimeLike;
       return runtime;
     });
@@ -403,7 +411,7 @@ async function withStartupProbeTimeout<T>(params: {
   timeoutSeconds: number;
 }): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
-  const timeoutMs = Math.max(1, params.timeoutSeconds * 1_000);
+  const timeoutMs = resolveAcpxTimerTimeoutMs(params.timeoutSeconds) ?? 1;
   try {
     return await Promise.race([
       params.promise,
