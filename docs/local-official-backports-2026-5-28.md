@@ -82,6 +82,12 @@ scoped verification.
   local port keeps compatibility for older Gateway contexts while ensuring
   orphaned raw buffers and buffered agent events are reaped once their run is no
   longer active.
+- `d9051151d7` local equivalent for assistant idempotency dedupe: transcript
+  abort partial persistence now dedupes only existing assistant messages, so a
+  colliding user or other non-assistant transcript entry no longer suppresses a
+  Gateway-injected assistant abort message. Legacy assistant transcript entries
+  without a top-level message id are still treated as existing writes and return
+  the idempotency key as the fallback message id.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
