@@ -129,6 +129,9 @@ scoped verification.
 - `27cd18748f` local equivalent: LanceDB memory capture and recall query text
   limits now fall back to defaults for non-finite values instead of accidentally
   disabling the length guard.
+- `25a5cb3270` local equivalent: QMD-backed memory reads now normalize
+  non-finite partial read windows before streaming canonical memory files,
+  keeping `from` at line 1 and line counts on bounded defaults.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
