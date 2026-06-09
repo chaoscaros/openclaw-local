@@ -237,6 +237,10 @@ scoped verification.
   oversized values before creating `AbortSignal.timeout` signals. The local
   port keeps the timer ceiling inside the Discord plugin to preserve extension
   import boundaries.
+- `f8ad20b87e` local equivalent: Signal container REST and receive checks now
+  cap configured `timeoutMs` values before arming fetch and WebSocket timers.
+  The local port keeps the timer ceiling inside the Signal plugin to preserve
+  extension import boundaries.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

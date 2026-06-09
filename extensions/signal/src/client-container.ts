@@ -46,6 +46,7 @@ export type ContainerWebSocketMessage = {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_ATTACHMENT_RESPONSE_MAX_BYTES = 1_048_576;
+export const SIGNAL_CONTAINER_TIMER_TIMEOUT_MAX_MS = 2_147_483_647;
 const CONTAINER_TEXT_STYLE_MARKERS: Record<string, string> = {
   BOLD: "**",
   ITALIC: "*",
@@ -76,13 +77,21 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   if (!fetchImpl) {
     throw new Error("fetch is not available");
   }
+  const safeTimeoutMs = resolveSignalContainerTimerTimeoutMs(timeoutMs);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), safeTimeoutMs);
   try {
     return await fetchImpl(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
+}
+
+function resolveSignalContainerTimerTimeoutMs(timeoutMs: number): number {
+  if (!Number.isFinite(timeoutMs)) {
+    return DEFAULT_TIMEOUT_MS;
+  }
+  return Math.min(SIGNAL_CONTAINER_TIMER_TIMEOUT_MAX_MS, Math.max(1, Math.floor(timeoutMs)));
 }
 
 function normalizeMaxResponseBytes(value: number | undefined): number {
@@ -148,10 +157,11 @@ function containerReceiveCheck(
   return new Promise((resolve) => {
     let settled = false;
     let ws: WebSocket | undefined;
+    const safeTimeoutMs = resolveSignalContainerTimerTimeoutMs(timeoutMs);
     const timer = setTimeout(() => {
       settle({ ok: false, status: null, error: "Signal container receive WebSocket timed out" });
       ws?.terminate();
-    }, timeoutMs);
+    }, safeTimeoutMs);
     timer.unref?.();
     const settle = (result: { ok: boolean; status?: number | null; error?: string | null }) => {
       if (settled) {
