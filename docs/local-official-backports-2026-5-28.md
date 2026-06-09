@@ -88,6 +88,13 @@ scoped verification.
   Gateway-injected assistant abort message. Legacy assistant transcript entries
   without a top-level message id are still treated as existing writes and return
   the idempotency key as the fallback message id.
+- `42e9504114` / `cc2948d1e1` local core-harness subset: native hook relay
+  registration can now intentionally preserve a caller-provided generation and
+  accept one bounded bootstrap generation mismatch for resumed Codex hook
+  commands. The grace path is disabled by default, expires on schedule, and is
+  pinned to the first mismatched generation observed so a second stale
+  generation is still rejected. The broader Codex app-server resume binding
+  work remains a later sub-slice.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
