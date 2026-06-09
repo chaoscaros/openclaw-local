@@ -132,6 +132,8 @@ scoped verification.
 - `25a5cb3270` local equivalent: QMD-backed memory reads now normalize
   non-finite partial read windows before streaming canonical memory files,
   keeping `from` at line 1 and line counts on bounded defaults.
+- `9596b7bd7a` local equivalent: shared memory read-result slicing now
+  normalizes non-finite line windows and character budgets to positive defaults.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
