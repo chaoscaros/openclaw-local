@@ -1,6 +1,11 @@
 import { withFetchPreconnect } from "openclaw/plugin-sdk/test-env";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DiscordApiError, fetchDiscord, requestDiscord } from "./api.js";
+import {
+  DISCORD_REQUEST_TIMEOUT_MAX_MS,
+  DiscordApiError,
+  fetchDiscord,
+  requestDiscord,
+} from "./api.js";
 import { jsonResponse } from "./test-http-helpers.js";
 
 describe("fetchDiscord", () => {
@@ -148,5 +153,24 @@ describe("fetchDiscord", () => {
     expect(request.method).toBe("POST");
     expect(request.body).toBe(JSON.stringify({ content: "hello" }));
     expect(new Headers(request.headers).get("content-type")).toBe("application/json");
+  });
+
+  it("caps oversized request timeouts before creating abort signals", async () => {
+    const timeoutController = new AbortController();
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutController.signal);
+    let request: RequestInit | undefined;
+    const fetcher = withFetchPreconnect(async (_url, init) => {
+      request = init;
+      return jsonResponse({ id: "42" }, 200);
+    });
+
+    await requestDiscord<{ id: string }>("/channels/c/messages", "test", {
+      fetcher,
+      retry: { attempts: 1 },
+      timeoutMs: Number.MAX_SAFE_INTEGER,
+    });
+
+    expect(timeoutSpy).toHaveBeenCalledWith(DISCORD_REQUEST_TIMEOUT_MAX_MS);
+    expect(request?.signal).toBe(timeoutController.signal);
   });
 });

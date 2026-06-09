@@ -7,6 +7,7 @@ import {
 import { isDiscordHtmlResponseBody, summarizeDiscordResponseBody } from "./error-body.js";
 
 const DISCORD_API_BASE = "https://discord.com/api/v10";
+export const DISCORD_REQUEST_TIMEOUT_MAX_MS = 2_147_483_647;
 const DISCORD_API_RETRY_DEFAULTS = {
   attempts: 3,
   minDelayMs: 500,
@@ -156,7 +157,11 @@ function resolveDiscordRequestSignal(options: DiscordApiRequestOptions) {
   if (options.signal || typeof options.timeoutMs !== "number") {
     return options.signal;
   }
-  return AbortSignal.timeout(options.timeoutMs);
+  return AbortSignal.timeout(
+    Number.isFinite(options.timeoutMs)
+      ? Math.min(DISCORD_REQUEST_TIMEOUT_MAX_MS, Math.max(1, Math.floor(options.timeoutMs)))
+      : DISCORD_REQUEST_TIMEOUT_MAX_MS,
+  );
 }
 
 export async function requestDiscord<T>(

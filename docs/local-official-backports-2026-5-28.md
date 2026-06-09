@@ -233,6 +233,10 @@ scoped verification.
 - `bc1db759ac` local equivalent: ACPX service timeoutSeconds values now resolve
   through a plugin-local timer-safe milliseconds helper before constructing the
   default runtime or arming the startup probe watchdog.
+- `4b9a80d895` local equivalent: Discord API request timeout options now clamp
+  oversized values before creating `AbortSignal.timeout` signals. The local
+  port keeps the timer ceiling inside the Discord plugin to preserve extension
+  import boundaries.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
