@@ -167,6 +167,10 @@ scoped verification.
   before falling back to a hard parent exit. The official root `openclaw.mjs`
   launcher hunk is not applicable because the local launcher no longer carries
   that respawn loop.
+- `da5fe990d8` local equivalent: Codex dynamic tools quarantined for
+  unsupported input schemas now emit trusted `tool.execution.blocked`
+  diagnostic events with run/session context in addition to warning logs and
+  bridge telemetry.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
