@@ -197,6 +197,10 @@ scoped verification.
 - `95e898bf05` local equivalent: exec process timeouts now normalize
   non-finite values away and clamp oversized positive values to the timer-safe
   delay ceiling before spawning supervised processes.
+- `2106714f6b` local equivalent: node-host exec timeouts now normalize
+  non-finite explicit values to the configured default and clamp oversized
+  invoke/run timeout values before forwarding `system.run` through the node
+  gateway.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
