@@ -207,6 +207,9 @@ scoped verification.
 - `4eeb7bfa57` local equivalent: shared retry helpers now fall back for
   malformed numeric overload attempts and cap retry/backoff delays at the
   timer-safe ceiling before sleeping.
+- `75ef73d4f7` local equivalent: realtime talk fast-context lookup timeouts
+  now clamp huge finite timeout values before scheduling the lookup abort
+  timer.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
