@@ -484,6 +484,8 @@ for the default agent. The behavior depends on the configured backend and provid
   present in the environment or auth store. Prints actionable fix hints if missing.
 - **Auto provider**: checks local model availability first, then tries each remote
   provider in auto-selection order.
+- **Legacy auto provider**: `memorySearch.provider: "auto"` is treated as OpenAI
+  readiness for compatibility, and `doctor --fix` rewrites it to `provider: "openai"`.
 
 When a gateway probe result is available (gateway was healthy at the time of the
 check), doctor cross-references its result with the CLI-visible config and notes

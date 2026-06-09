@@ -140,6 +140,9 @@ scoped verification.
 - `c36ba9ea7a` local equivalent: QMD backend numeric overrides now clamp
   positive sub-unit values to 1 and fall back for non-finite session, timeout,
   and result-limit overrides.
+- `a7d2d9c6df` local equivalent: `openclaw doctor --fix` now migrates legacy
+  `memorySearch.provider: "auto"` values to explicit `openai` after moving
+  top-level memory search config into agent defaults.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
