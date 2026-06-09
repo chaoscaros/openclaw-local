@@ -100,6 +100,13 @@ scoped verification.
   their existing fallbacks and cap oversized timer delays to the platform timer
   ceiling. This local port keeps the existing `run-attempt.ts` layout instead
   of adopting the official `attempt-timeouts.ts` file split.
+- `6950e85605` local focused subset: `sessions_spawn.taskName` now accepts
+  lowercase hyphenated task slugs while preserving underscore aliases and
+  rejecting uppercase, space-containing, leading-hyphen, and reserved names.
+  The direct validator, tool schema description, system-prompt guidance, and
+  focused tests are updated. The local `docs/tools/subagents.md` file does not
+  currently contain the official taskName parameter text, and generated prompt
+  snapshots were intentionally not modified in this chat.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
