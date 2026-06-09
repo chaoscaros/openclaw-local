@@ -1082,6 +1082,41 @@ describe("native hook relay registry", () => {
     ).rejects.toThrow("native hook relay bridge not found");
   });
 
+  it("removes direct bridge registry files when their loopback port is closed", async () => {
+    const relayId = uniqueNativeHookRelayIdForTests("codex-closed-bridge");
+    const registryPath = testing.getNativeHookRelayBridgeRegistryPathForTests(relayId);
+    writeFileSync(
+      registryPath,
+      `${JSON.stringify({
+        version: 1,
+        relayId,
+        pid: process.pid,
+        hostname: "127.0.0.1",
+        port: 9,
+        token: `token-${relayId}`,
+        expiresAtMs: Date.now() + 10_000,
+      })}\n`,
+      { mode: 0o600 },
+    );
+
+    await expect(
+      invokeNativeHookRelayBridge({
+        provider: "codex",
+        relayId,
+        generation: "generation-1",
+        event: "pre_tool_use",
+        registrationTimeoutMs: 1,
+        timeoutMs: 50,
+        rawPayload: {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "pnpm test" },
+        },
+      }),
+    ).rejects.toThrow();
+    expect(testing.getNativeHookRelayBridgeRecordForTests(relayId)).toBeUndefined();
+  });
+
   it("binds direct bridge tokens to the relay they were issued for", async () => {
     const first = registerNativeHookRelay({
       provider: "codex",

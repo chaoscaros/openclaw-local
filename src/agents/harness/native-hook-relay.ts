@@ -806,6 +806,14 @@ function unregisterNativeHookRelayBridge(
   }
 }
 
+function removeNativeHookRelayBridgeRecordIfCurrent(record: NativeHookRelayBridgeRecord): void {
+  const registryPath = nativeHookRelayBridgeRegistryPath(record.relayId);
+  const current = readNativeHookRelayBridgeRecordIfExists(record.relayId);
+  if (current?.token === record.token) {
+    rmSync(registryPath, { force: true });
+  }
+}
+
 async function handleNativeHookRelayBridgeRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -972,6 +980,9 @@ async function invokeNativeHookRelayBridgeRecord(params: {
       );
     }
   }
+  if (isUnavailableNativeHookRelayBridgeRecordError(lastError)) {
+    removeNativeHookRelayBridgeRecordIfCurrent(params.record);
+  }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
@@ -1058,6 +1069,11 @@ function isRetryableNativeHookRelayBridgeError(error: unknown): boolean {
     code === "EAGAIN" ||
     (error instanceof Error && error.message === "native hook relay bridge not found")
   );
+}
+
+function isUnavailableNativeHookRelayBridgeRecordError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "ECONNREFUSED" || code === "ECONNRESET" || code === "EPIPE";
 }
 
 function isRetryableNativeHookRelayBridgeLookupError(params: {
