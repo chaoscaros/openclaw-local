@@ -65,31 +65,30 @@ scoped verification.
 - `codex/dev` has absorbed the first pass of timer-safety hardening through
   the local Xiaomi TTS equivalent of `6e125adf3a`.
 - The next large unabsorbed protected-surface candidate in stable-tag order is
-  `69c3b56bde`, Codex Supervisor session-listing stability. It should be split
-  from the timeout-hardening lane because it touches plugin tool schemas,
-  app-server session listing semantics, WebSocket close behavior, docs, and
-  tests.
-- The Android private-LAN sequence and iOS gateway/talk sequence are still
-  unabsorbed feature lanes, not small safety patches. Verify local mobile
-  environment before attempting them.
+  `69c3b56bde`, Codex Supervisor session-listing stability, but the local
+  branch does not yet include the base `extensions/codex-supervisor` plugin
+  from `9dd3bce549`. Treat that as a separate feature/plugin absorption before
+  attempting the session-listing stabilization patch.
+- The Android private-LAN sequence is now absorbed. The iOS gateway/talk
+  sequence remains unabsorbed feature work. Verify local mobile environment
+  before attempting it.
 - Workboard remains unabsorbed as a large optional dashboard/plugin feature
   lane. Do not pull it into a task-mode or Control UI fix opportunistically.
 
 ## Next Slice Queue
 
-1. **Codex Supervisor Session Listing**: evaluate `69c3b56bde` as a standalone
-   slice. Prefer the runtime behavior first: loaded-session listing should use
-   `thread/loaded/list`; stored-session listing should be opt-in, bounded, and
-   state-DB-only; endpoint resolution should avoid broad stored-history scans
-   when an exact `thread/read` can answer. Keep changelog/docs edits minimal or
-   local-tracker-only unless the user wants release-note parity.
-2. **Codex Supervisor WebSocket Close**: if the previous slice grows beyond 30
+1. **Codex Supervisor Base Plugin**: decide whether to absorb the base
+   `9dd3bce549` codex-supervisor extension. Do not start from `69c3b56bde`
+   alone because the local target files do not exist yet.
+2. **Codex Supervisor Session Listing**: after the base plugin exists,
+   evaluate `69c3b56bde` as a standalone slice. Prefer runtime behavior first:
+   loaded-session listing should use `thread/loaded/list`; stored-session
+   listing should be opt-in, bounded, and state-DB-only; endpoint resolution
+   should avoid broad stored-history scans when an exact `thread/read` can
+   answer.
+3. **Codex Supervisor WebSocket Close**: if the previous slice grows beyond 30
    minutes, split WebSocket intentional-close cleanup from stored-session
    pagination. Validate with the smallest supervisor/json-rpc-client tests.
-3. **Mobile Native Safety**: compare the Android private-LAN commits
-   `ec3ac182c5`, `633c40aa65`, `5f3d6cde19`, and `771ddcf184` against local
-   mobile code. Confirm Java/Android SDK availability before running Android
-   checks; do not touch unrelated `supply_vue` code.
 4. **iOS Gateway/Talk Flow**: compare `f6e51ff99a`, `0167f0a6df`,
    `6897711d19`, and `7965644da0`. Treat this as native/mobile work that may
    require build verification; tell the user if a restart or app rebuild is
@@ -296,6 +295,13 @@ scoped verification.
   timeout values before scheduling abort timers or passing timeouts into the
   SSRF-guarded fetch path. The local port keeps the timer ceiling inside the
   Xiaomi plugin to preserve extension import boundaries.
+- `ec3ac182c5`, `633c40aa65`, `5f3d6cde19`, and `771ddcf184` local equivalent:
+  Android manual and setup-code pairing now allows cleartext gateway URLs for
+  localhost, emulator bridge hosts, and private LAN IPs while keeping
+  discovered non-loopback gateways on TLS unless they are explicitly trusted.
+  Bootstrap handoff credentials are trusted for local-cleartext hosts, and
+  manual private-LAN cleartext can intentionally override a previously stored
+  TLS pin.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
@@ -430,11 +436,10 @@ Local check before editing this lane:
 
 1. Record the dirty/untracked baseline before each implementation slice, and
    keep commits scoped to the touched files plus this tracker.
-2. Continue with Codex Supervisor session-listing stability before workboard or
-   mobile feature lanes, because it is directly adjacent to Codex session
-   control and app-server reliability.
-3. Keep each slice under 30 minutes. Split Codex Supervisor into stored-session
-   listing and WebSocket close cleanup if needed.
+2. Do not attempt Codex Supervisor session-listing stability until the base
+   codex-supervisor extension is intentionally absorbed or explicitly skipped.
+3. Keep each slice under 30 minutes. Split Codex Supervisor into base plugin,
+   stored-session listing, and WebSocket close cleanup if needed.
 4. For every completed slice, add an "Absorbed In This Iteration" entry with
    the exact official commit or local-equivalent explanation.
 5. Run the most focused test for the slice. Use `FAST_COMMIT=1` only after
