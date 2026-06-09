@@ -204,6 +204,9 @@ scoped verification.
 - `f440121a49` local equivalent: node-host `withTimeout` now caps huge finite
   timeout delays before scheduling the abort timer while preserving the
   existing finite/positive timeout behavior.
+- `4eeb7bfa57` local equivalent: shared retry helpers now fall back for
+  malformed numeric overload attempts and cap retry/backoff delays at the
+  timer-safe ceiling before sleeping.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
