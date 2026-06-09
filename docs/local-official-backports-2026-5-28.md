@@ -111,6 +111,9 @@ scoped verification.
   content-safe output digests (`outBytes` plus a short sha256 hash) for ordinary
   subprocess turns, Claude live-session turns, and synthetic cron
   `before_agent_reply` short-circuits, without logging assistant response text.
+- `b5bc752a48` local equivalent: Active Memory recall subagents now run on a
+  dedicated `active-memory` lane instead of sharing the parent prompt-build
+  lane, preserving recall isolation from ordinary prompt construction work.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
