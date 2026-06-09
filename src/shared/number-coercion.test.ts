@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { asFiniteNumber, parseFiniteNumber } from "./number-coercion.js";
+import {
+  asFiniteNumber,
+  clampTimerTimeoutMs,
+  MAX_TIMER_TIMEOUT_MS,
+  parseFiniteNumber,
+} from "./number-coercion.js";
 
 describe("number-coercion", () => {
   test("asFiniteNumber accepts only finite numbers", () => {
@@ -14,5 +19,10 @@ describe("number-coercion", () => {
     expect(parseFiniteNumber("4.5ms")).toBe(4.5);
     expect(parseFiniteNumber("")).toBeUndefined();
     expect(parseFiniteNumber("nope")).toBeUndefined();
+  });
+
+  test("clampTimerTimeoutMs floors values and caps timer-unsafe delays", () => {
+    expect(clampTimerTimeoutMs(12.8)).toBe(12);
+    expect(clampTimerTimeoutMs(Number.MAX_SAFE_INTEGER)).toBe(MAX_TIMER_TIMEOUT_MS);
   });
 });

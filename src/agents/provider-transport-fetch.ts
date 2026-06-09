@@ -17,6 +17,7 @@ import {
   isLinkLocalIpAddress,
   parseCanonicalIpAddress,
 } from "../shared/net/ip.js";
+import { clampTimerTimeoutMs } from "../shared/number-coercion.js";
 import { emitModelTransportDebug } from "./model-transport-debug.js";
 import { formatModelTransportDebugUrl } from "./model-transport-url.js";
 import {
@@ -393,11 +394,13 @@ export function resolveModelRequestTimeoutMs(
   timeoutMs: number | undefined,
 ): number | undefined {
   if (timeoutMs !== undefined) {
-    return timeoutMs;
+    return typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? clampTimerTimeoutMs(timeoutMs)
+      : undefined;
   }
   const modelTimeoutMs = (model as { requestTimeoutMs?: unknown }).requestTimeoutMs;
   return typeof modelTimeoutMs === "number" && Number.isFinite(modelTimeoutMs) && modelTimeoutMs > 0
-    ? Math.floor(modelTimeoutMs)
+    ? clampTimerTimeoutMs(modelTimeoutMs)
     : undefined;
 }
 

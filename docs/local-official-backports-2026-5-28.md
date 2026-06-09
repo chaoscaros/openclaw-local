@@ -187,6 +187,9 @@ scoped verification.
   embedded agent models now caps oversized `timeoutSeconds` values at the
   timer-safe ceiling. The local path is `pi-embedded-runner` rather than the
   official `embedded-agent-runner` directory.
+- `4e2d9b0b76` local equivalent: provider transport model request timeouts now
+  use a shared timer-safe clamp before arming `AbortSignal.timeout`, passing
+  local service startup signals, or forwarding guarded-fetch timeout options.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
