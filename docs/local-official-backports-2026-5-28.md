@@ -245,6 +245,10 @@ scoped verification.
   clamp oversized values before scheduling abort timers. The local port keeps
   the timer ceiling inside the Zalo plugin to preserve extension import
   boundaries.
+- `0983e763fe` local equivalent: QA Matrix substrate JSON requests now clamp
+  oversized timeout values before constructing `AbortSignal.timeout` signals.
+  The local port keeps the timer ceiling inside the QA Matrix plugin to
+  preserve extension import boundaries.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
