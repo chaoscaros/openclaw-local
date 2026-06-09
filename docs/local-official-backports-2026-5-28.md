@@ -126,6 +126,9 @@ scoped verification.
 - `30de7874cf` local equivalent: Memory Wiki gateway and tool schemas now
   require positive integers for import-run limits, search result counts, and
   page range parameters before dispatching gateway operations.
+- `27cd18748f` local equivalent: LanceDB memory capture and recall query text
+  limits now fall back to defaults for non-finite values instead of accidentally
+  disabling the length guard.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
