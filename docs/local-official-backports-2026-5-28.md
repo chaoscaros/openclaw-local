@@ -302,6 +302,9 @@ scoped verification.
   Bootstrap handoff credentials are trusted for local-cleartext hosts, and
   manual private-LAN cleartext can intentionally override a previously stored
   TLS pin.
+- `7965644da0` local equivalent: shared iOS/macOS gateway WebSocket ping
+  handling now guards checked continuations so duplicate ping callbacks caused
+  by cancellation races cannot resume the same continuation twice.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
