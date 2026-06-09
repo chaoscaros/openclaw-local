@@ -192,6 +192,23 @@ function parsePositiveIntegerOption(value: string | undefined, flag: string): nu
   return parsed;
 }
 
+function readMemoryRecallLimitParam(params: Record<string, unknown>): number {
+  const value = params.limit;
+  if (value === undefined) {
+    return 5;
+  }
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^\d+$/u.test(value.trim())
+        ? Number(value.trim())
+        : Number.NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new Error("limit must be a positive integer");
+  }
+  return parsed;
+}
+
 class MemoryDB {
   private db: LanceDB.Connection | null = null;
   private table: LanceDB.Table | null = null;
@@ -712,10 +729,17 @@ export default definePluginEntry({
           "Search through long-term memories. Use when you need context about user preferences, past decisions, or previously discussed topics.",
         parameters: Type.Object({
           query: Type.String({ description: "Search query" }),
-          limit: Type.Optional(Type.Number({ description: "Max results (default: 5)" })),
+          limit: Type.Optional(
+            Type.Union([
+              Type.Number({ description: "Max results (default: 5)", minimum: 1 }),
+              Type.String({ description: "Max results (default: 5)" }),
+            ]),
+          ),
         }),
         async execute(_toolCallId, params) {
-          const { query, limit = 5 } = params as { query: string; limit?: number };
+          const rawParams = params as Record<string, unknown>;
+          const query = rawParams.query as string;
+          const limit = readMemoryRecallLimitParam(rawParams);
 
           const currentCfg = resolveCurrentHookConfig();
           const vector = await embeddings.embed(

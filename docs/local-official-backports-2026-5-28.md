@@ -114,6 +114,9 @@ scoped verification.
 - `b5bc752a48` local equivalent: Active Memory recall subagents now run on a
   dedicated `active-memory` lane instead of sharing the parent prompt-build
   lane, preserving recall isolation from ordinary prompt construction work.
+- `61c538e2fc` local equivalent: LanceDB `memory_recall.limit` is normalized
+  before querying LanceDB, accepting positive integer strings while rejecting
+  fractional, non-finite, or otherwise invalid limits.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
