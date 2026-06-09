@@ -86,6 +86,17 @@ describe("memory_search unavailable payloads", () => {
     });
   });
 
+  it("rejects fractional maxResults before searching", async () => {
+    const tool = createMemorySearchToolOrThrow();
+    await expect(
+      tool.execute("fractional-max-results", {
+        query: "hello",
+        maxResults: 1.5,
+      }),
+    ).rejects.toThrow("maxResults must be a positive integer");
+    expect(getMemorySearchManagerMockCalls()).toBe(0);
+  });
+
   it("re-resolves the manager once when a cached sqlite handle was closed", async () => {
     let searchCalls = 0;
     setMemorySearchImpl(async () => {

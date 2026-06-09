@@ -81,6 +81,20 @@ function mergeMemorySearchCorpusResults(params: {
   return sortMemorySearchToolResults(selected).slice(0, params.maxResults);
 }
 
+function readPositiveIntegerParam(
+  rawParams: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const value = readNumberParam(rawParams, key, { strict: true });
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${key} must be a positive integer`);
+  }
+  return value;
+}
+
 function isClosedMemoryStoreError(error: unknown): boolean {
   const message = formatErrorMessage(error).toLowerCase();
   return (
@@ -255,7 +269,7 @@ export function createMemorySearchTool(options: {
       async (_toolCallId, params) => {
         const rawParams = asToolParamsRecord(params);
         const query = readStringParam(rawParams, "query", { required: true });
-        const maxResults = readNumberParam(rawParams, "maxResults");
+        const maxResults = readPositiveIntegerParam(rawParams, "maxResults");
         const minScore = readNumberParam(rawParams, "minScore");
         const requestedCorpus = readStringParam(rawParams, "corpus") as
           | "memory"
