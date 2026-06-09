@@ -134,6 +134,9 @@ scoped verification.
   keeping `from` at line 1 and line counts on bounded defaults.
 - `9596b7bd7a` local equivalent: shared memory read-result slicing now
   normalizes non-finite line windows and character budgets to positive defaults.
+- `fd643139b1` local equivalent: LanceDB memory config now defaults non-finite
+  capture/recall character budgets and rejects non-finite or fractional
+  embedding dimensions in both runtime parsing and the manifest schema.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
