@@ -1,4 +1,5 @@
 export const TELEGRAM_GET_UPDATES_REQUEST_TIMEOUT_MS = 45_000;
+export const TELEGRAM_TIMER_TIMEOUT_MAX_MS = 2_147_483_647;
 const TELEGRAM_OUTBOUND_TEXT_REQUEST_TIMEOUT_MS = 60_000;
 const TELEGRAM_DEFAULT_LONG_POLL_TIMEOUT_SECONDS = 30;
 const TELEGRAM_LONG_POLL_ABORT_MARGIN_SECONDS = 5;
@@ -34,7 +35,7 @@ function resolveConfiguredTelegramRequestTimeoutMs(timeoutSeconds: unknown): num
   if (typeof timeoutSeconds !== "number" || !Number.isFinite(timeoutSeconds)) {
     return undefined;
   }
-  return Math.max(1, Math.floor(timeoutSeconds)) * 1000;
+  return Math.min(TELEGRAM_TIMER_TIMEOUT_MAX_MS, Math.max(1, Math.floor(timeoutSeconds)) * 1000);
 }
 
 export function resolveTelegramRequestTimeoutMs(
@@ -70,6 +71,6 @@ export function resolveTelegramStartupProbeTimeoutMs(timeoutSeconds: unknown): n
   if (typeof timeoutSeconds !== "number" || !Number.isFinite(timeoutSeconds)) {
     return getMeTimeoutMs;
   }
-  const configuredTimeoutMs = Math.max(1, Math.floor(timeoutSeconds)) * 1000;
+  const configuredTimeoutMs = resolveConfiguredTelegramRequestTimeoutMs(timeoutSeconds) ?? 1_000;
   return Math.max(getMeTimeoutMs, configuredTimeoutMs);
 }

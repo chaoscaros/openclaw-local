@@ -3,6 +3,7 @@ import {
   resolveTelegramLongPollTimeoutSeconds,
   resolveTelegramRequestTimeoutMs,
   resolveTelegramStartupProbeTimeoutMs,
+  TELEGRAM_TIMER_TIMEOUT_MAX_MS,
 } from "./request-timeouts.js";
 
 describe("resolveTelegramRequestTimeoutMs", () => {
@@ -31,6 +32,15 @@ describe("resolveTelegramRequestTimeoutMs", () => {
     expect(resolveTelegramRequestTimeoutMs("sendchataction", 90)).toBe(90_000);
     expect(resolveTelegramRequestTimeoutMs("editmessagetext", 90)).toBe(90_000);
     expect(resolveTelegramRequestTimeoutMs("getupdates", 90)).toBe(45_000);
+  });
+
+  it("caps oversized configured timeoutSeconds before outbound timers use them", () => {
+    expect(resolveTelegramRequestTimeoutMs("sendmessage", Number.MAX_SAFE_INTEGER)).toBe(
+      TELEGRAM_TIMER_TIMEOUT_MAX_MS,
+    );
+    expect(resolveTelegramRequestTimeoutMs("sendmessage", Number.MAX_VALUE)).toBe(
+      TELEGRAM_TIMER_TIMEOUT_MAX_MS,
+    );
   });
 
   it("does not let low timeoutSeconds shorten method guards", () => {
@@ -69,5 +79,14 @@ describe("resolveTelegramStartupProbeTimeoutMs", () => {
 
   it("honors higher configured timeoutSeconds", () => {
     expect(resolveTelegramStartupProbeTimeoutMs(60)).toBe(60_000);
+  });
+
+  it("caps oversized configured timeoutSeconds before startup probe timers use them", () => {
+    expect(resolveTelegramStartupProbeTimeoutMs(Number.MAX_SAFE_INTEGER)).toBe(
+      TELEGRAM_TIMER_TIMEOUT_MAX_MS,
+    );
+    expect(resolveTelegramStartupProbeTimeoutMs(Number.MAX_VALUE)).toBe(
+      TELEGRAM_TIMER_TIMEOUT_MAX_MS,
+    );
   });
 });

@@ -226,6 +226,10 @@ scoped verification.
 - `81533ff9d9` local equivalent: shared web tool timeout parsing now caps
   provider `timeoutSeconds` values at the timer-safe seconds ceiling before
   callers convert them to milliseconds.
+- `ca78397386` local equivalent: Telegram request and startup probe timeout
+  resolution now caps oversized configured `timeoutSeconds` before scheduling
+  Bot API timers. The local port keeps the timer ceiling inside the Telegram
+  plugin to preserve extension import boundaries.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
