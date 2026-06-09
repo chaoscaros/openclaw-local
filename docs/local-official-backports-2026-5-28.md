@@ -194,6 +194,9 @@ scoped verification.
   treats unsafe oversized retry delays as terminal bypasses and ignores unsafe
   `OPENCLAW_SDK_RETRY_MAX_WAIT_SECONDS` overrides instead of allowing very long
   SDK retry waits.
+- `95e898bf05` local equivalent: exec process timeouts now normalize
+  non-finite values away and clamp oversized positive values to the timer-safe
+  delay ceiling before spawning supervised processes.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
