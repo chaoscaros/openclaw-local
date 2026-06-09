@@ -149,6 +149,10 @@ scoped verification.
 - `2900c1c25c` local equivalent: inbound metadata and auto-reply envelope
   timestamps now include seconds, with docs updated to show the weekday plus
   second-precision form.
+- `cc72519053` local mocked subset: Gateway probing now waits for
+  `GatewayClient.stopAndWait()` to drain before resolving, falling back to
+  `stop()` if close draining fails. The real socket-handle regression remains a
+  later optional validation slice.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
