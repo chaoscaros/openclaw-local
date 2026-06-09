@@ -201,6 +201,9 @@ scoped verification.
   non-finite explicit values to the configured default and clamp oversized
   invoke/run timeout values before forwarding `system.run` through the node
   gateway.
+- `f440121a49` local equivalent: node-host `withTimeout` now caps huge finite
+  timeout delays before scheduling the abort timer while preserving the
+  existing finite/positive timeout behavior.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

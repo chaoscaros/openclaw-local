@@ -1,3 +1,5 @@
+import { clampTimerTimeoutMs } from "../shared/number-coercion.js";
+
 export async function withTimeout<T>(
   work: (signal: AbortSignal | undefined) => Promise<T>,
   timeoutMs?: number,
@@ -5,7 +7,7 @@ export async function withTimeout<T>(
 ): Promise<T> {
   const resolved =
     typeof timeoutMs === "number" && Number.isFinite(timeoutMs)
-      ? Math.max(1, Math.floor(timeoutMs))
+      ? Math.max(1, clampTimerTimeoutMs(timeoutMs))
       : undefined;
   if (!resolved) {
     return await work(undefined);
