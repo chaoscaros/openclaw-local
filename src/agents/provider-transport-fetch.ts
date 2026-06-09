@@ -34,6 +34,8 @@ import {
 const DEFAULT_MAX_SDK_RETRY_WAIT_SECONDS = 60;
 const log = createSubsystemLogger("provider-transport-fetch");
 const BLOCKED_EXACT_ORIGIN_TRUST_HOSTNAME_LABELS = new Set(["instance-data"]);
+const RETRY_AFTER_HTTP_DATE_RE =
+  /^[A-Za-z]{3},\s+\d{1,2}\s+[A-Za-z]{3}\s+\d{4}\s+\d{2}:\d{2}:\d{2}\s+GMT$/;
 
 function hasReadableSseData(block: string): boolean {
   const dataLines = block
@@ -236,9 +238,11 @@ function parseRetryAfterSeconds(headers: Headers): number | undefined {
   const retryAfterMs = headers.get("retry-after-ms");
   if (retryAfterMs) {
     const trimmedRetryAfterMs = retryAfterMs.trim();
-    const milliseconds = Number(trimmedRetryAfterMs);
-    if (/^\d+(?:\.\d+)?$/.test(trimmedRetryAfterMs) && Number.isFinite(milliseconds)) {
-      return milliseconds / 1000;
+    if (/^\d+(?:\.\d+)?$/.test(trimmedRetryAfterMs)) {
+      const milliseconds = Number(trimmedRetryAfterMs);
+      return Number.isFinite(milliseconds) && milliseconds <= Number.MAX_SAFE_INTEGER
+        ? milliseconds / 1000
+        : Number.POSITIVE_INFINITY;
     }
   }
 
@@ -247,12 +251,18 @@ function parseRetryAfterSeconds(headers: Headers): number | undefined {
     return undefined;
   }
 
-  const seconds = Number.parseFloat(retryAfter);
-  if (Number.isFinite(seconds) && seconds >= 0) {
-    return seconds;
+  const trimmedRetryAfter = retryAfter.trim();
+  if (/^\d+$/.test(trimmedRetryAfter)) {
+    const seconds = Number(trimmedRetryAfter);
+    return Number.isFinite(seconds) && seconds <= Number.MAX_SAFE_INTEGER
+      ? seconds
+      : Number.POSITIVE_INFINITY;
   }
 
-  const retryAt = Date.parse(retryAfter);
+  if (!RETRY_AFTER_HTTP_DATE_RE.test(trimmedRetryAfter)) {
+    return undefined;
+  }
+  const retryAt = Date.parse(trimmedRetryAfter);
   if (Number.isNaN(retryAt)) {
     return undefined;
   }
@@ -270,8 +280,13 @@ function resolveMaxSdkRetryWaitSeconds(): number | undefined {
     return undefined;
   }
 
-  const seconds = Number.parseFloat(raw);
-  if (Number.isFinite(seconds) && seconds > 0) {
+  const seconds = /^\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : undefined;
+  if (
+    typeof seconds === "number" &&
+    Number.isFinite(seconds) &&
+    seconds > 0 &&
+    seconds <= Number.MAX_SAFE_INTEGER
+  ) {
     return seconds;
   }
 

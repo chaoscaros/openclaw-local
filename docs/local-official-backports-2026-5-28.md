@@ -190,6 +190,10 @@ scoped verification.
 - `4e2d9b0b76` local equivalent: provider transport model request timeouts now
   use a shared timer-safe clamp before arming `AbortSignal.timeout`, passing
   local service startup signals, or forwarding guarded-fetch timeout options.
+- `fca7f220a7` local equivalent: provider transport retry-after handling now
+  treats unsafe oversized retry delays as terminal bypasses and ignores unsafe
+  `OPENCLAW_SDK_RETRY_MAX_WAIT_SECONDS` overrides instead of allowing very long
+  SDK retry waits.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
