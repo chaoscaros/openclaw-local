@@ -41,6 +41,11 @@ function createOps(params: {
   entry: ChatAbortControllerEntry;
   buffer?: string;
 }): ChatAbortOps & {
+  chatDeltaSentAt: Map<string, number>;
+  chatDeltaLastBroadcastLen: Map<string, number>;
+  chatDeltaLastBroadcastText: Map<string, string>;
+  agentDeltaSentAt: Map<string, number>;
+  bufferedAgentEvents: Map<string, unknown>;
   broadcast: ReturnType<typeof vi.fn>;
   nodeSendToSession: ReturnType<typeof vi.fn>;
   removeChatRun: ReturnType<typeof vi.fn>;
@@ -49,29 +54,45 @@ function createOps(params: {
   const broadcast = vi.fn();
   const nodeSendToSession = vi.fn();
   const removeChatRun = vi.fn();
+  const chatRunBuffers = new Map(buffer !== undefined ? [[runId, buffer]] : []);
+  const chatDeltaSentAt = new Map([[runId, Date.now()]]);
+  const chatDeltaLastBroadcastLen = new Map([[runId, buffer?.length ?? 0]]);
+  const chatDeltaLastBroadcastText = new Map(buffer !== undefined ? [[runId, buffer]] : []);
+  const agentDeltaSentAt = new Map([[`${runId}:assistant`, Date.now()]]);
+  const bufferedAgentEvents = new Map([
+    [
+      `${runId}:assistant`,
+      {
+        payload: {
+          runId,
+          seq: 1,
+          stream: "assistant",
+          ts: Date.now(),
+          data: { text: "buffer", delta: "buffer" },
+        },
+      },
+    ],
+  ]);
 
   return {
     chatAbortControllers: new Map([[runId, entry]]),
-    chatRunBuffers: new Map(buffer !== undefined ? [[runId, buffer]] : []),
-    chatDeltaSentAt: new Map([[runId, Date.now()]]),
-    chatDeltaLastBroadcastLen: new Map([[runId, buffer?.length ?? 0]]),
-    chatDeltaLastBroadcastText: new Map(buffer !== undefined ? [[runId, buffer]] : []),
-    agentDeltaSentAt: new Map([[`${runId}:assistant`, Date.now()]]),
-    bufferedAgentEvents: new Map([
-      [
-        `${runId}:assistant`,
-        {
-          payload: {
-            runId,
-            seq: 1,
-            stream: "assistant",
-            ts: Date.now(),
-            data: { text: "buffer", delta: "buffer" },
-          },
-        },
-      ],
-    ]),
+    chatRunBuffers,
+    chatDeltaSentAt,
+    chatDeltaLastBroadcastLen,
+    chatDeltaLastBroadcastText,
+    agentDeltaSentAt,
+    bufferedAgentEvents,
     chatAbortedRuns: new Map(),
+    clearChatRunState: (targetRunId) => {
+      chatRunBuffers.delete(targetRunId);
+      chatDeltaSentAt.delete(targetRunId);
+      chatDeltaLastBroadcastLen.delete(targetRunId);
+      chatDeltaLastBroadcastText.delete(targetRunId);
+      for (const key of [targetRunId, `${targetRunId}:assistant`, `${targetRunId}:thinking`]) {
+        agentDeltaSentAt.delete(key);
+        bufferedAgentEvents.delete(key);
+      }
+    },
     removeChatRun,
     agentRunSeq: new Map(),
     broadcast,

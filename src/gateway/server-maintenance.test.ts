@@ -32,6 +32,13 @@ function createActiveRun(
 }
 
 function createMaintenanceTimerDeps() {
+  const chatRunBuffers = new Map<string, string>();
+  const chatDeltaSentAt = new Map<string, number>();
+  const chatDeltaLastBroadcastLen = new Map<string, number>();
+  const deltaLastBroadcastText = new Map<string, string>();
+  const agentDeltaSentAt = new Map<string, number>();
+  const bufferedAgentEvents = new Map<string, unknown>();
+  const bufferUpdatedAt = new Map<string, number>();
   return {
     broadcast: () => {},
     nodeSendToAllSubscribed: () => {},
@@ -43,13 +50,25 @@ function createMaintenanceTimerDeps() {
     chatAbortControllers: new Map(),
     chatRunState: {
       abortedRuns: new Map(),
-      deltaLastBroadcastText: new Map(),
-      agentDeltaSentAt: new Map(),
-      bufferedAgentEvents: new Map(),
+      bufferUpdatedAt,
+      deltaLastBroadcastText,
+      agentDeltaSentAt,
+      bufferedAgentEvents,
+      clearRun: (runId: string) => {
+        chatRunBuffers.delete(runId);
+        chatDeltaSentAt.delete(runId);
+        chatDeltaLastBroadcastLen.delete(runId);
+        deltaLastBroadcastText.delete(runId);
+        bufferUpdatedAt.delete(runId);
+        for (const key of [runId, `${runId}:assistant`, `${runId}:thinking`]) {
+          agentDeltaSentAt.delete(key);
+          bufferedAgentEvents.delete(key);
+        }
+      },
     },
-    chatRunBuffers: new Map(),
-    chatDeltaSentAt: new Map(),
-    chatDeltaLastBroadcastLen: new Map(),
+    chatRunBuffers,
+    chatDeltaSentAt,
+    chatDeltaLastBroadcastLen,
     removeChatRun: () => undefined,
     agentRunSeq: new Map(),
     nodeSendToSession: () => {},
@@ -228,6 +247,23 @@ describe("startGatewayMaintenanceTimers", () => {
     expect(deps.chatDeltaSentAt.has(runId)).toBe(false);
     expect(deps.chatDeltaLastBroadcastLen.has(runId)).toBe(false);
     expect(deps.chatRunState.deltaLastBroadcastText.has(runId)).toBe(false);
+
+    stopMaintenanceTimers(timers);
+  });
+
+  it("sweeps orphaned raw buffers even when no delta was broadcast", async () => {
+    vi.useFakeTimers();
+    const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
+    const deps = createMaintenanceTimerDeps();
+    const runId = "suppressed-buffer-run";
+    deps.chatRunBuffers.set(runId, "hidden heartbeat text");
+    deps.chatRunState.bufferUpdatedAt.set(runId, Date.now() - ABORTED_RUN_TTL_MS - 1);
+
+    const timers = startGatewayMaintenanceTimers(deps);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(deps.chatRunBuffers.has(runId)).toBe(false);
+    expect(deps.chatRunState.bufferUpdatedAt.has(runId)).toBe(false);
 
     stopMaintenanceTimers(timers);
   });

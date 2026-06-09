@@ -51,9 +51,11 @@ describe("startGatewayEarlyRuntime", () => {
       chatAbortControllers: new Map(),
       chatRunState: {
         abortedRuns: new Map(),
+        bufferUpdatedAt: new Map(),
         deltaLastBroadcastText: new Map(),
         agentDeltaSentAt: new Map(),
         bufferedAgentEvents: new Map(),
+        clearRun: () => {},
       },
       chatRunBuffers: new Map(),
       chatDeltaSentAt: new Map(),

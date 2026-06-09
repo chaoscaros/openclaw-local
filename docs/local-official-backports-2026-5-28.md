@@ -76,6 +76,12 @@ scoped verification.
   auto-enable metadata to that runtime config before dispatching channel
   actions. Ordinary `send` requests do not read runtime snapshots in this port,
   preserving the existing hot path and dedupe behavior.
+- `18f9310844` local equivalent, core stale-buffer cleanup: chat run state now
+  owns `clearRun`, tracks raw/suppressed buffer update time, and uses the shared
+  cleanup path from abort, finalization, restart, and maintenance sweeps. The
+  local port keeps compatibility for older Gateway contexts while ensuring
+  orphaned raw buffers and buffered agent events are reaped once their run is no
+  longer active.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

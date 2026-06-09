@@ -132,12 +132,13 @@ function normalizeProviderIdForActiveRun(providerId: string | undefined): string
 export type ChatAbortOps = {
   chatAbortControllers: Map<string, ChatAbortControllerEntry>;
   chatRunBuffers: Map<string, string>;
-  chatDeltaSentAt: Map<string, number>;
-  chatDeltaLastBroadcastLen: Map<string, number>;
-  chatDeltaLastBroadcastText: Map<string, string>;
-  agentDeltaSentAt: Map<string, number>;
-  bufferedAgentEvents: Map<string, BufferedAgentEvent>;
+  chatDeltaSentAt?: Map<string, number>;
+  chatDeltaLastBroadcastLen?: Map<string, number>;
+  chatDeltaLastBroadcastText?: Map<string, string>;
+  agentDeltaSentAt?: Map<string, number>;
+  bufferedAgentEvents?: Map<string, BufferedAgentEvent>;
   chatAbortedRuns: Map<string, number>;
+  clearChatRunState?: (runId: string) => void;
   removeChatRun: (
     sessionId: string,
     clientRunId: string,
@@ -201,16 +202,20 @@ export function abortChatRunById(
   }
   active.controller.abort(createChatAbortSignalReason(stopReason));
   ops.chatAbortControllers.delete(runId);
-  ops.chatRunBuffers.delete(runId);
-  ops.chatDeltaSentAt.delete(runId);
-  ops.chatDeltaLastBroadcastLen.delete(runId);
-  ops.chatDeltaLastBroadcastText.delete(runId);
-  ops.agentDeltaSentAt.delete(runId);
-  ops.agentDeltaSentAt.delete(`${runId}:assistant`);
-  ops.agentDeltaSentAt.delete(`${runId}:thinking`);
-  ops.bufferedAgentEvents.delete(runId);
-  ops.bufferedAgentEvents.delete(`${runId}:assistant`);
-  ops.bufferedAgentEvents.delete(`${runId}:thinking`);
+  if (ops.clearChatRunState) {
+    ops.clearChatRunState(runId);
+  } else {
+    ops.chatRunBuffers.delete(runId);
+    ops.chatDeltaSentAt?.delete(runId);
+    ops.chatDeltaLastBroadcastLen?.delete(runId);
+    ops.chatDeltaLastBroadcastText?.delete(runId);
+    ops.agentDeltaSentAt?.delete(runId);
+    ops.agentDeltaSentAt?.delete(`${runId}:assistant`);
+    ops.agentDeltaSentAt?.delete(`${runId}:thinking`);
+    ops.bufferedAgentEvents?.delete(runId);
+    ops.bufferedAgentEvents?.delete(`${runId}:assistant`);
+    ops.bufferedAgentEvents?.delete(`${runId}:thinking`);
+  }
   const removed = ops.removeChatRun(runId, runId, sessionKey);
   broadcastChatAborted(ops, { runId, sessionKey, stopReason, partialText });
   emitAgentEvent({
