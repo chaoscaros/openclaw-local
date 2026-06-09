@@ -179,6 +179,10 @@ scoped verification.
   gateway call timeout after adding grace time while preserving the original
   node-level timeout parameter. The local port keeps the clamp helper private
   because the official shared numeric coercion helper has not been absorbed yet.
+- `9d12dbb00b` local equivalent: cron agent-turn timeoutSeconds values now use
+  a cron-local timer-safe seconds-to-milliseconds helper, capping oversized
+  explicit job timeouts and the isolated-run timeout override before they reach
+  timer-backed runtime paths.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

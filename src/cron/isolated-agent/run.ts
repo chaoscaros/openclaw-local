@@ -37,6 +37,7 @@ import {
   createCronRunDiagnosticsFromError,
   mergeCronRunDiagnostics,
 } from "../run-diagnostics.js";
+import { finiteSecondsToCronTimerSafeMilliseconds } from "../timer-safe-timeout.js";
 import type {
   CronAgentExecutionPhaseUpdate,
   CronAgentExecutionStarted,
@@ -708,7 +709,7 @@ async function prepareCronRunContext(params: {
     typeof explicitTimeoutSeconds === "number" &&
     Number.isFinite(explicitTimeoutSeconds) &&
     explicitTimeoutSeconds > 0
-      ? explicitTimeoutSeconds * 1000
+      ? finiteSecondsToCronTimerSafeMilliseconds(explicitTimeoutSeconds)
       : undefined;
   const agentPayload = input.job.payload.kind === "agentTurn" ? input.job.payload : null;
   const { deliveryPlan, deliveryRequested, resolvedDelivery, sourceDelivery } =
