@@ -69,6 +69,8 @@ type ProviderRuntimeHooks = {
   normalizeProviderTransportWithPlugin: typeof normalizeProviderTransportWithPlugin;
 };
 
+const MAX_TIMER_TIMEOUT_MS = 2_147_483_647;
+
 const TARGET_PROVIDER_RUNTIME_HOOKS: ProviderRuntimeHooks = {
   buildProviderUnknownModelHintWithPlugin,
   prepareProviderDynamicModel,
@@ -361,7 +363,7 @@ function resolveProviderRequestTimeoutMs(timeoutSeconds: unknown): number | unde
   ) {
     return undefined;
   }
-  return Math.floor(timeoutSeconds) * 1000;
+  return Math.min(Math.floor(timeoutSeconds) * 1000, MAX_TIMER_TIMEOUT_MS);
 }
 
 function mergeModelMediaInput(

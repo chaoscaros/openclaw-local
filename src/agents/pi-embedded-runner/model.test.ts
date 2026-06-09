@@ -1373,6 +1373,38 @@ describe("resolveModel", () => {
     );
   });
 
+  it("caps oversized provider request timeout metadata at the timer-safe ceiling", () => {
+    mockDiscoveredModel(discoverModels, {
+      provider: "openai",
+      modelId: "gpt-5.5",
+      templateModel: {
+        ...makeModel("gpt-5.5"),
+        provider: "openai",
+      },
+    });
+    const cfg = {
+      models: {
+        providers: {
+          openai: {
+            timeoutSeconds: Number.MAX_SAFE_INTEGER,
+          },
+        },
+      },
+    } satisfies OpenClawConfigInput;
+
+    const result = resolveModelForTest(
+      "openai",
+      "gpt-5.5",
+      "/tmp/agent",
+      cfg as unknown as OpenClawConfig,
+    );
+
+    expect(result.error).toBeUndefined();
+    expect((result.model as { requestTimeoutMs?: number } | undefined)?.requestTimeoutMs).toBe(
+      2_147_483_647,
+    );
+  });
+
   it("uses provider-level context defaults over discovered metadata", () => {
     mockDiscoveredModel(discoverModels, {
       provider: "ollama",

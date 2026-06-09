@@ -183,6 +183,10 @@ scoped verification.
   a cron-local timer-safe seconds-to-milliseconds helper, capping oversized
   explicit job timeouts and the isolated-run timeout override before they reach
   timer-backed runtime paths.
+- `82560fa1ba` local equivalent: provider-level request timeout metadata for
+  embedded agent models now caps oversized `timeoutSeconds` values at the
+  timer-safe ceiling. The local path is `pi-embedded-runner` rather than the
+  official `embedded-agent-runner` directory.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
