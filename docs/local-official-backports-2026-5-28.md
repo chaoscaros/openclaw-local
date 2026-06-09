@@ -219,6 +219,10 @@ scoped verification.
   npm packuments through a bounded 16 MiB registry text reader, sends an
   explicit JSON Accept header, and cancels oversized registry responses before
   parsing.
+- `bf42c73d18` local equivalent: agent run waits and `sessions_send`
+  `timeoutSeconds` now clamp oversized wait timers to the timer-safe ceiling
+  before calling `agent.wait`. The local port uses the existing
+  `clampTimerTimeoutMs` helper instead of the later upstream seconds helper.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

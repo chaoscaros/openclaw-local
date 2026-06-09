@@ -1,6 +1,7 @@
 import { callGateway } from "../gateway/call.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { normalizeBlockedLivenessWaitStatus } from "../shared/agent-liveness.js";
+import { clampTimerTimeoutMs } from "../shared/number-coercion.js";
 import { AGENT_RUN_ABORTED_ERROR, isAbortedAgentStopReason } from "./run-termination.js";
 import {
   normalizeAgentRunTimeoutPhase,
@@ -173,7 +174,11 @@ export async function waitForAgentRun(params: {
   timeoutMs: number;
   callGateway?: GatewayCaller;
 }): Promise<AgentWaitResult> {
-  const timeoutMs = Math.max(1, Math.floor(params.timeoutMs));
+  const rawTimeoutMs =
+    typeof params.timeoutMs === "number" && Number.isFinite(params.timeoutMs)
+      ? params.timeoutMs
+      : 1;
+  const timeoutMs = Math.max(1, clampTimerTimeoutMs(rawTimeoutMs));
   try {
     const wait = await (params.callGateway ?? runWaitDeps.callGateway)({
       method: "agent.wait",
@@ -181,7 +186,7 @@ export async function waitForAgentRun(params: {
         runId: params.runId,
         timeoutMs,
       },
-      timeoutMs: timeoutMs + 2000,
+      timeoutMs: clampTimerTimeoutMs(timeoutMs + 2000),
     });
     if (wait?.status === "timeout") {
       return normalizeAgentWaitResult("timeout", wait);
