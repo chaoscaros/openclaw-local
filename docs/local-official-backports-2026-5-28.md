@@ -70,6 +70,12 @@ scoped verification.
   races instead of observing a missing relay. The local port intentionally
   leaves the broader deferred app-server tool approval path for a later
   sub-slice because that patch depends on a wider `agent-tools` approval seam.
+- `9fc0e9659e` local equivalent for Gateway message actions: `message.action`
+  now selects the resolved runtime config snapshot when the active source
+  snapshot still matches the request config, then re-applies local plugin
+  auto-enable metadata to that runtime config before dispatching channel
+  actions. Ordinary `send` requests do not read runtime snapshots in this port,
+  preserving the existing hot path and dedupe behavior.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

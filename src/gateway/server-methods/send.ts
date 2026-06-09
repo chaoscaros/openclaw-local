@@ -4,6 +4,11 @@ import { normalizeChannelId } from "../../channels/plugins/index.js";
 import { dispatchChannelMessageAction } from "../../channels/plugins/message-action-dispatch.js";
 import { createOutboundSendDeps } from "../../cli/deps.js";
 import { applyPluginAutoEnable } from "../../config/plugin-auto-enable.js";
+import {
+  getRuntimeConfigSnapshot,
+  getRuntimeConfigSourceSnapshot,
+  selectApplicableRuntimeConfig,
+} from "../../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resolveOutboundChannelPlugin } from "../../infra/outbound/channel-resolution.js";
 import { resolveMessageChannelSelection } from "../../infra/outbound/channel-selection.js";
@@ -87,6 +92,19 @@ function resolveGatewayInflightMap(params: { context: GatewayRequestContext; ded
   return { kind: "ready", inflightMap };
 }
 
+function resolveGatewayConfigWithPluginAutoEnable(config: OpenClawConfig): OpenClawConfig {
+  const currentSnapshot = getCurrentPluginMetadataSnapshot({
+    config,
+    env: process.env,
+  });
+  return applyPluginAutoEnable({
+    config,
+    env: process.env,
+    manifestRegistry: currentSnapshot?.manifestRegistry,
+    discovery: currentSnapshot?.discovery,
+  }).config;
+}
+
 async function runGatewayInflightWork(params: {
   inflightMap: Map<string, Promise<InflightResult>>;
   dedupeKey: string;
@@ -110,6 +128,7 @@ async function resolveRequestedChannel(params: {
 }): Promise<
   | {
       cfg: OpenClawConfig;
+      sourceCfg: OpenClawConfig;
       channel: string;
     }
   | {
@@ -132,17 +151,8 @@ async function resolveRequestedChannel(params: {
       error: errorShape(ErrorCodes.INVALID_REQUEST, params.unsupportedMessage(channelInput)),
     };
   }
-  const runtimeConfig = params.context.getRuntimeConfig();
-  const currentSnapshot = getCurrentPluginMetadataSnapshot({
-    config: runtimeConfig,
-    env: process.env,
-  });
-  const cfg = applyPluginAutoEnable({
-    config: runtimeConfig,
-    env: process.env,
-    manifestRegistry: currentSnapshot?.manifestRegistry,
-    discovery: currentSnapshot?.discovery,
-  }).config;
+  const sourceCfg = params.context.getRuntimeConfig();
+  const cfg = resolveGatewayConfigWithPluginAutoEnable(sourceCfg);
   let channel = normalizedChannel;
   if (!channel) {
     try {
@@ -151,7 +161,7 @@ async function resolveRequestedChannel(params: {
       return { error: errorShape(ErrorCodes.INVALID_REQUEST, String(err)) };
     }
   }
-  return { cfg, channel };
+  return { cfg, sourceCfg, channel };
 }
 
 function resolveGatewayOutboundTarget(params: {
@@ -182,6 +192,26 @@ function resolveGatewayOutboundTarget(params: {
     };
   }
   return { ok: true, to: resolved.to };
+}
+
+function resolveMessageActionRuntimeConfig(params: {
+  cfg: OpenClawConfig;
+  sourceCfg: OpenClawConfig;
+}): OpenClawConfig {
+  const runtimeConfig = getRuntimeConfigSnapshot();
+  const runtimeSourceConfig = getRuntimeConfigSourceSnapshot();
+  if (!runtimeConfig || !runtimeSourceConfig) {
+    return params.cfg;
+  }
+  const selected = selectApplicableRuntimeConfig({
+    inputConfig: params.sourceCfg,
+    runtimeConfig,
+    runtimeSourceConfig,
+  });
+  if (selected === runtimeConfig && selected !== params.cfg) {
+    return resolveGatewayConfigWithPluginAutoEnable(selected);
+  }
+  return params.cfg;
 }
 
 function buildGatewayDeliveryPayload(params: {
@@ -381,7 +411,8 @@ export const sendHandlers: GatewayRequestHandlers = {
       if ("error" in resolvedChannel) {
         return { ok: false, error: resolvedChannel.error };
       }
-      const { cfg, channel } = resolvedChannel;
+      const { cfg: selectedCfg, sourceCfg, channel } = resolvedChannel;
+      const cfg = resolveMessageActionRuntimeConfig({ cfg: selectedCfg, sourceCfg });
       const plugin = resolveOutboundChannelPlugin({ channel, cfg });
       if (!plugin?.actions?.handleAction) {
         return {
