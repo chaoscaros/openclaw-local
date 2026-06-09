@@ -175,6 +175,10 @@ scoped verification.
   receive canonical inbound media metadata (`mediaPath`, `mediaUrl`,
   `mediaType`, and their array forms), matching the fields already exposed to
   inbound claim hooks.
+- `11ffe36441` local equivalent: plugin CLI node invocation now caps the
+  gateway call timeout after adding grace time while preserving the original
+  node-level timeout parameter. The local port keeps the clamp helper private
+  because the official shared numeric coercion helper has not been absorbed yet.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

@@ -3,6 +3,17 @@ import { callGateway } from "../gateway/call.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../gateway/protocol/client-info.js";
 import type { PluginRuntime } from "./runtime/types.js";
 
+const MAX_TIMER_TIMEOUT_MS = 2_147_483_647;
+
+export function resolvePluginCliNodeInvokeGatewayTimeoutMs(
+  timeoutMs: number | undefined,
+): number | undefined {
+  if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return undefined;
+  }
+  return Math.min(timeoutMs + 5_000, MAX_TIMER_TIMEOUT_MS);
+}
+
 export function createPluginCliGatewayNodesRuntime(): PluginRuntime["nodes"] {
   return {
     async list(params) {
@@ -36,7 +47,7 @@ export function createPluginCliGatewayNodesRuntime(): PluginRuntime["nodes"] {
           timeoutMs: params.timeoutMs,
           idempotencyKey: params.idempotencyKey || randomUUID(),
         },
-        timeoutMs: params.timeoutMs ? params.timeoutMs + 5_000 : undefined,
+        timeoutMs: resolvePluginCliNodeInvokeGatewayTimeoutMs(params.timeoutMs),
         clientName: GATEWAY_CLIENT_NAMES.CLI,
         mode: GATEWAY_CLIENT_MODES.CLI,
       });
