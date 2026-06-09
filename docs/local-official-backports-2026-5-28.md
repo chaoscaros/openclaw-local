@@ -60,6 +60,17 @@ The official `v2026.5.28` range is very large, so treat it as several small
 audit lanes. Each lane should fit in roughly 30 minutes of implementation plus
 scoped verification.
 
+## Absorbed In This Iteration
+
+- `202ccf4cf7` / `c4e1bb30da` local equivalent, first hook-relay slice:
+  native hook relay registration now prunes dead or expired same-user foreign
+  bridge registry files while preserving live or unknown-liveness foreign
+  records, and stable relay-id replacement leaves the previous registry record
+  in place briefly so bridge callers can retry stale-registration/connection
+  races instead of observing a missing relay. The local port intentionally
+  leaves the broader deferred app-server tool approval path for a later
+  sub-slice because that patch depends on a wider `agent-tools` approval seam.
+
 ### Lane 1: Gateway, Codex, And Hook Relay
 
 High-priority official changes to compare against the local branch:

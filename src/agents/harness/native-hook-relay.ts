@@ -1,5 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import {
   createServer,
   request as httpRequest,
@@ -185,6 +193,7 @@ const MAX_PERMISSION_ALLOW_ALWAYS_ENTRIES = 512;
 const MAX_NATIVE_HOOK_BRIDGE_BODY_BYTES = 5_000_000;
 const MAX_NATIVE_HOOK_BRIDGE_RESPONSE_BYTES = 5_000_000;
 const NATIVE_HOOK_BRIDGE_RETRY_INTERVAL_MS = 25;
+const NATIVE_HOOK_BRIDGE_REPLACEMENT_RECORD_GRACE_MS = 250;
 const NATIVE_HOOK_RELAY_BRIDGE_STALE_REGISTRATION_ERROR =
   "native hook relay bridge stale registration";
 const ANSI_ESCAPE_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
@@ -598,7 +607,12 @@ export async function invokeNativeHookRelayBridge(
       ) {
         break;
       }
-      if (!isRetryableNativeHookRelayBridgeError(error)) {
+      if (
+        !isRetryableNativeHookRelayBridgeLookupError({
+          error,
+          elapsedMs: Date.now() - startedAt,
+        })
+      ) {
         break;
       }
       await delay(
@@ -660,7 +674,10 @@ function pruneExpiredNativeHookRelays(now = Date.now()): void {
 }
 
 function registerNativeHookRelayBridge(registration: ActiveNativeHookRelayRegistration): void {
-  unregisterNativeHookRelayBridge(registration.relayId);
+  pruneStaleNativeHookRelayBridgeRecords();
+  unregisterNativeHookRelayBridge(registration.relayId, {
+    deferRegistryRemovalMs: NATIVE_HOOK_BRIDGE_REPLACEMENT_RECORD_GRACE_MS,
+  });
   const token = randomUUID();
   const bridgeDir = ensureNativeHookRelayBridgeDir();
   const bridgeKey = nativeHookRelayBridgeKey(registration.relayId);
@@ -720,7 +737,10 @@ function writeNativeHookRelayBridgeRecordForRegistration(
   writeNativeHookRelayBridgeRecord(bridge.registryPath, record);
 }
 
-function unregisterNativeHookRelayBridge(relayId: string): void {
+function unregisterNativeHookRelayBridge(
+  relayId: string,
+  options?: { deferRegistryRemovalMs?: number },
+): void {
   const bridge = relayBridges.get(relayId);
   if (!bridge) {
     return;
@@ -729,6 +749,16 @@ function unregisterNativeHookRelayBridge(relayId: string): void {
   bridge.server.close();
   const record = readNativeHookRelayBridgeRecordIfExists(relayId);
   if (record?.token === bridge.token) {
+    const deferRegistryRemovalMs = normalizePositiveInteger(options?.deferRegistryRemovalMs, 0);
+    if (deferRegistryRemovalMs > 0) {
+      const timeout = setTimeout(() => {
+        if (readNativeHookRelayBridgeRecordIfExists(relayId)?.token === bridge.token) {
+          rmSync(bridge.registryPath, { force: true });
+        }
+      }, deferRegistryRemovalMs);
+      timeout.unref();
+      return;
+    }
     rmSync(bridge.registryPath, { force: true });
   }
 }
@@ -985,6 +1015,67 @@ function isRetryableNativeHookRelayBridgeError(error: unknown): boolean {
     code === "EAGAIN" ||
     (error instanceof Error && error.message === "native hook relay bridge not found")
   );
+}
+
+function isRetryableNativeHookRelayBridgeLookupError(params: {
+  error: unknown;
+  elapsedMs: number;
+}): boolean {
+  return (
+    isRetryableNativeHookRelayBridgeError(params.error) ||
+    (params.elapsedMs < NATIVE_HOOK_BRIDGE_REPLACEMENT_RECORD_GRACE_MS &&
+      isNativeHookRelayBridgeStaleRegistrationError(params.error))
+  );
+}
+
+function pruneStaleNativeHookRelayBridgeRecords(): void {
+  let bridgeDir: string;
+  try {
+    bridgeDir = ensureNativeHookRelayBridgeDir();
+  } catch (error) {
+    log.debug("native hook relay bridge dir prune skipped", { error });
+    return;
+  }
+  const now = Date.now();
+  for (const name of readdirSync(bridgeDir)) {
+    if (!name.endsWith(".json")) {
+      continue;
+    }
+    const registryPath = path.join(bridgeDir, name);
+    let record: { pid?: number; expiresAtMs?: number };
+    try {
+      record = JSON.parse(readFileSync(registryPath, "utf8")) as {
+        pid?: number;
+        expiresAtMs?: number;
+      };
+    } catch {
+      continue;
+    }
+    if (!record || typeof record.pid !== "number" || record.pid === process.pid) {
+      continue;
+    }
+    const expired = typeof record.expiresAtMs === "number" && now > record.expiresAtMs;
+    const deadPid = !expired && isNativeHookRelayBridgePidDead(record.pid);
+    if (!expired && !deadPid) {
+      continue;
+    }
+    rmSync(registryPath, { force: true });
+    log.debug("pruned stale native hook relay bridge file", {
+      file: name,
+      stalePid: record.pid,
+      currentPid: process.pid,
+      reason: deadPid ? "dead-pid" : "expired",
+    });
+  }
+}
+
+function isNativeHookRelayBridgePidDead(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    return typeof error === "object" && error !== null && "code" in error && error.code === "ESRCH";
+  }
 }
 
 function nativeHookRelayBridgeDir(): string {
@@ -1976,6 +2067,9 @@ export const testing = {
   getNativeHookRelayBridgeRecordForTests(relayId: string): Record<string, unknown> | undefined {
     const record = readNativeHookRelayBridgeRecordIfExists(relayId);
     return record ? { ...record } : undefined;
+  },
+  isNativeHookRelayBridgeLookupRetryableForTests(error: unknown, elapsedMs = 0): boolean {
+    return isRetryableNativeHookRelayBridgeLookupError({ error, elapsedMs });
   },
   formatPermissionApprovalDescriptionForTests(
     request: NativeHookRelayPermissionApprovalRequest,
