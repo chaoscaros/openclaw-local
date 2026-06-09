@@ -143,6 +143,9 @@ scoped verification.
 - `a7d2d9c6df` local equivalent: `openclaw doctor --fix` now migrates legacy
   `memorySearch.provider: "auto"` values to explicit `openai` after moving
   top-level memory search config into agent defaults.
+- `efbd00f282` local equivalent: provider transport retry handling now ignores
+  blank or malformed `retry-after-ms` values so `retry-after` fallback headers
+  still determine terminal retry behavior.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
