@@ -107,6 +107,10 @@ scoped verification.
   focused tests are updated. The local `docs/tools/subagents.md` file does not
   currently contain the official taskName parameter text, and generated prompt
   snapshots were intentionally not modified in this chat.
+- `5518ac998f` local equivalent: CLI backend turn logs now include
+  content-safe output digests (`outBytes` plus a short sha256 hash) for ordinary
+  subprocess turns, Claude live-session turns, and synthetic cron
+  `before_agent_reply` short-circuits, without logging assistant response text.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
