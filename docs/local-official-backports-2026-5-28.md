@@ -210,6 +210,11 @@ scoped verification.
 - `75ef73d4f7` local equivalent: realtime talk fast-context lookup timeouts
   now clamp huge finite timeout values before scheduling the lookup abort
   timer.
+- `7aca070723` local equivalent: `gh-read` now reads successful GitHub JSON
+  responses through a bounded local reader capped at 1 MiB, cancels oversized
+  bodies, and preserves request timeout behavior. The local port keeps the
+  helper private because the official shared script bounded-response helper has
+  not been absorbed yet.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

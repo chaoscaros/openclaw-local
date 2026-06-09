@@ -10,6 +10,7 @@ const INSTALLATION_ID_ENV = "OPENCLAW_GH_READ_INSTALLATION_ID";
 const PERMISSIONS_ENV = "OPENCLAW_GH_READ_PERMISSIONS";
 const API_VERSION = "2022-11-28";
 const DEFAULT_GITHUB_FETCH_TIMEOUT_MS = 30_000;
+const GITHUB_JSON_BODY_MAX_BYTES = 1024 * 1024;
 const DEFAULT_READ_PERMISSION_KEYS = [
   "actions",
   "checks",
@@ -190,6 +191,60 @@ async function withGitHubFetchTimeout<T>(
   }
 }
 
+function createGitHubResponseTooLargeError(maxBytes: number): Error & { code: string } {
+  return Object.assign(new Error(`GitHub API response body exceeded ${maxBytes} bytes`), {
+    code: "ETOOBIG",
+  });
+}
+
+async function cancelResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // Best-effort cleanup for oversized bodies.
+  }
+}
+
+export async function readBoundedGitHubJson<T>(
+  response: Response,
+  maxBytes = GITHUB_JSON_BODY_MAX_BYTES,
+): Promise<T> {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && /^\d+$/.test(contentLength) && Number(contentLength) > maxBytes) {
+    await cancelResponseBody(response);
+    throw createGitHubResponseTooLargeError(maxBytes);
+  }
+
+  if (!response.body) {
+    const text = await response.text();
+    if (Buffer.byteLength(text) > maxBytes) {
+      throw createGitHubResponseTooLargeError(maxBytes);
+    }
+    return JSON.parse(text) as T;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    if (!value) {
+      continue;
+    }
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel();
+      throw createGitHubResponseTooLargeError(maxBytes);
+    }
+    chunks.push(value);
+  }
+
+  return JSON.parse(Buffer.concat(chunks, totalBytes).toString("utf8")) as T;
+}
+
 export async function githubJson<T>(
   path: string,
   bearerToken: string,
@@ -223,7 +278,7 @@ export async function githubJson<T>(
         fail(`${init?.method ?? "GET"} ${path} failed (${response.status}): ${text}`);
       }
 
-      return (await response.json()) as T;
+      return await readBoundedGitHubJson<T>(response);
     },
   );
 }
