@@ -602,6 +602,12 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     pending state when Gateway chat events are missed.
   - Added shared ChatViewModel coverage for the completion-observer fallback so
     mobile chat does not remain stuck in a pending state after a completed run.
+- `f6e51ff99a` shared Chat new-session subset:
+  - Changed `/new` from resetting the current conversation to creating a fresh
+    session through `sessions.create`, preserving the parent session key for
+    model/runtime inheritance.
+  - Added coverage that `/new` generates an agent-scoped iOS session key and
+    does not call `sessions.reset` on the parent session.
 
 ## Validation Plan
 

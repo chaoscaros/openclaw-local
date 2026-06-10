@@ -467,7 +467,8 @@ public final class OpenClawChatViewModel {
         return "\(message.role)|\(timestamp)|\(text)"
     }
 
-    private static let resetTriggers: Set<String> = ["/new", "/reset", "/clear"]
+    private static let newSessionTriggers: Set<String> = ["/new"]
+    private static let resetTriggers: Set<String> = ["/reset", "/clear"]
     private static let compactTriggers: Set<String> = ["/compact"]
 
     private func performSend() async {
@@ -475,6 +476,11 @@ public final class OpenClawChatViewModel {
         let trimmed = self.input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !self.attachments.isEmpty else { return }
 
+        if Self.newSessionTriggers.contains(trimmed.lowercased()) {
+            self.input = ""
+            await self.performStartNewSession()
+            return
+        }
         if Self.resetTriggers.contains(trimmed.lowercased()) {
             self.input = ""
             await self.performReset()
@@ -617,6 +623,54 @@ public final class OpenClawChatViewModel {
         self.sessionKey = next
         self.modelSelectionID = Self.defaultModelSelectionID
         await self.bootstrap()
+    }
+
+    private func performStartNewSession() async {
+        let requested = self.generatedNewSessionKey()
+        let parentSessionKey = self.sessionKey
+        let next: String
+        let nextSessionId: String?
+        do {
+            let created = try await self.transport.createSession(
+                key: requested,
+                label: nil,
+                parentSessionKey: parentSessionKey)
+            let createdKey = created.key.trimmingCharacters(in: .whitespacesAndNewlines)
+            next = createdKey.isEmpty ? requested : createdKey
+            nextSessionId = created.sessionId
+        } catch {
+            await self.performReset()
+            return
+        }
+
+        self.sessionKey = next
+        self.modelSelectionID = Self.defaultModelSelectionID
+        self.messages = []
+        self.sessionId = nextSessionId
+        self.streamingAssistantText = nil
+        self.pendingToolCallsById = [:]
+        self.clearPendingRuns(reason: nil)
+        await self.bootstrap()
+    }
+
+    private func generatedNewSessionKey() -> String {
+        let baseKey = "ios-\(UUID().uuidString.lowercased())"
+        guard let agentID = Self.agentID(fromSessionKey: self.sessionKey) ??
+            Self.agentID(fromSessionKey: self.resolvedMainSessionKey) ??
+            self.sessions.lazy.compactMap({ Self.agentID(fromSessionKey: $0.key) }).first
+        else {
+            return baseKey
+        }
+        return "agent:\(agentID):\(baseKey)"
+    }
+
+    private static func agentID(fromSessionKey sessionKey: String) -> String? {
+        let parts = sessionKey
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count >= 3, parts[0].lowercased() == "agent" else { return nil }
+        let agentID = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return agentID.isEmpty ? nil : agentID
     }
 
     private func performReset() async {

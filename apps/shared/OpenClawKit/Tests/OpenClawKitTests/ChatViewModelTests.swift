@@ -83,6 +83,7 @@ private func makeViewModel(
     historyResponses: [OpenClawChatHistoryPayload],
     sessionsResponses: [OpenClawChatSessionsListResponse] = [],
     modelResponses: [[OpenClawChatModelChoice]] = [],
+    createSessionHook: (@Sendable (String, String?) async throws -> Void)? = nil,
     resetSessionHook: (@Sendable (String) async throws -> Void)? = nil,
     compactSessionHook: (@Sendable (String) async throws -> Void)? = nil,
     setSessionModelHook: (@Sendable (String?) async throws -> Void)? = nil,
@@ -96,6 +97,7 @@ private func makeViewModel(
         historyResponses: historyResponses,
         sessionsResponses: sessionsResponses,
         modelResponses: modelResponses,
+        createSessionHook: createSessionHook,
         resetSessionHook: resetSessionHook,
         compactSessionHook: compactSessionHook,
         setSessionModelHook: setSessionModelHook,
@@ -241,6 +243,8 @@ private actor TestChatTransportState {
     var sessionsCallCount: Int = 0
     var modelsCallCount: Int = 0
     var resetSessionKeys: [String] = []
+    var createdSessionKeys: [String] = []
+    var createdParentSessionKeys: [String?] = []
     var compactSessionKeys: [String] = []
     var sentRunIds: [String] = []
     var sentThinkingLevels: [String] = []
@@ -255,6 +259,7 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
     private let historyResponses: [OpenClawChatHistoryPayload]
     private let sessionsResponses: [OpenClawChatSessionsListResponse]
     private let modelResponses: [[OpenClawChatModelChoice]]
+    private let createSessionHook: (@Sendable (String, String?) async throws -> Void)?
     private let resetSessionHook: (@Sendable (String) async throws -> Void)?
     private let compactSessionHook: (@Sendable (String) async throws -> Void)?
     private let setSessionModelHook: (@Sendable (String?) async throws -> Void)?
@@ -268,6 +273,7 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
         historyResponses: [OpenClawChatHistoryPayload],
         sessionsResponses: [OpenClawChatSessionsListResponse] = [],
         modelResponses: [[OpenClawChatModelChoice]] = [],
+        createSessionHook: (@Sendable (String, String?) async throws -> Void)? = nil,
         resetSessionHook: (@Sendable (String) async throws -> Void)? = nil,
         compactSessionHook: (@Sendable (String) async throws -> Void)? = nil,
         setSessionModelHook: (@Sendable (String?) async throws -> Void)? = nil,
@@ -277,6 +283,7 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
         self.historyResponses = historyResponses
         self.sessionsResponses = sessionsResponses
         self.modelResponses = modelResponses
+        self.createSessionHook = createSessionHook
         self.resetSessionHook = resetSessionHook
         self.compactSessionHook = compactSessionHook
         self.setSessionModelHook = setSessionModelHook
@@ -294,6 +301,19 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
     }
 
     func setActiveSessionKey(_: String) async throws {}
+
+    func createSession(
+        key: String,
+        label _: String?,
+        parentSessionKey: String?) async throws -> OpenClawChatCreateSessionResponse
+    {
+        if let createSessionHook {
+            try await createSessionHook(key, parentSessionKey)
+        }
+        await self.state.createdSessionKeysAppend(key)
+        await self.state.createdParentSessionKeysAppend(parentSessionKey)
+        return OpenClawChatCreateSessionResponse(ok: true, key: key, sessionId: "created-\(key)")
+    }
 
     func requestHistory(sessionKey: String) async throws -> OpenClawChatHistoryPayload {
         let idx = await self.state.historyCallCount
@@ -417,6 +437,14 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
         await self.state.resetSessionKeys
     }
 
+    func createdSessionKeys() async -> [String] {
+        await self.state.createdSessionKeys
+    }
+
+    func createdParentSessionKeys() async -> [String?] {
+        await self.state.createdParentSessionKeys
+    }
+
     func compactSessionKeys() async -> [String] {
         await self.state.compactSessionKeys
     }
@@ -461,6 +489,14 @@ extension TestChatTransportState {
 
     fileprivate func resetSessionKeysAppend(_ v: String) {
         self.resetSessionKeys.append(v)
+    }
+
+    fileprivate func createdSessionKeysAppend(_ v: String) {
+        self.createdSessionKeys.append(v)
+    }
+
+    fileprivate func createdParentSessionKeysAppend(_ v: String?) {
+        self.createdParentSessionKeys.append(v)
     }
 
     fileprivate func compactSessionKeysAppend(_ v: String) {
@@ -780,6 +816,46 @@ extension TestChatTransportState {
                     }
             }
         }
+    }
+
+    @Test func slashNewCreatesFreshAgentSession() async throws {
+        let now = Date().timeIntervalSince1970 * 1000
+        let before = historyPayload(
+            sessionKey: "agent:aiden:main",
+            messages: [
+                chatTextMessage(role: "assistant", text: "before new", timestamp: now),
+            ])
+        let after = historyPayload(messages: [])
+        let sessions = OpenClawChatSessionsListResponse(
+            ts: now,
+            path: nil,
+            count: 1,
+            defaults: OpenClawChatSessionsDefaults(
+                model: nil,
+                contextTokens: nil,
+                mainSessionKey: "agent:aiden:main"),
+            sessions: [
+                sessionEntry(key: "agent:aiden:main", updatedAt: now),
+            ])
+        let (transport, vm) = await makeViewModel(
+            sessionKey: "agent:aiden:main",
+            historyResponses: [before, after],
+            sessionsResponses: [sessions])
+        try await loadAndWaitBootstrap(vm: vm)
+
+        await MainActor.run {
+            vm.input = "/new"
+            vm.send()
+        }
+
+        try await waitUntil("fresh agent session selected") {
+            await MainActor.run { vm.sessionKey.hasPrefix("agent:aiden:ios-") && vm.messages.isEmpty }
+        }
+        let createdKeys = await transport.createdSessionKeys()
+        #expect(createdKeys.count == 1)
+        #expect(createdKeys.first?.hasPrefix("agent:aiden:ios-") == true)
+        #expect(await transport.createdParentSessionKeys() == ["agent:aiden:main"])
+        #expect(await transport.resetSessionKeys().isEmpty)
     }
 
     @Test func preservesMessageIDsAcrossHistoryRefreshes() async throws {
