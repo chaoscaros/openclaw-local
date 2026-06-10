@@ -328,6 +328,13 @@ false`, and avoid touching unrelated package/lock or workflow sync residue
   `exec_command`, `pwd`, `apply_patch`, and write-file flows from being blocked
   by a stale relay while still letting Codex's native approval path handle
   authorization when OpenClaw cannot decide.
+- `9dd3bce549` plus the `69c3b56bde` stabilized shape, local first slice:
+  added the default-off `codex-supervisor` bundled plugin directory with
+  endpoint probing, loaded-session listing, bounded state-DB-only stored-session
+  listing, opt-in raw transcript reads, and opt-in send/interrupt controls.
+  The local port keeps dependency metadata inside
+  `extensions/codex-supervisor/package.json` and aligns the plugin version with
+  the current local package version instead of bumping the tree to `2026.5.28`.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
@@ -511,6 +518,11 @@ the official-tag execution order. Resume the 2026.5.28 audit in this order:
   (`supervisor`, `json-rpc-client`, MCP tools, and plugin tools). Only widen to
   build or plugin inventory generation if the touched files affect build output
   or generated plugin docs.
+- First-slice validation: `OPENCLAW_LOCAL_CHECK=0 node scripts/test-projects.mjs
+  extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
+  `pnpm test extensions/codex-supervisor` currently tries to run `pnpm install`
+  because a new workspace package was added, then aborts without a TTY before
+  tests start; do not treat that as a plugin test failure.
 
 ## Validation Plan
 
