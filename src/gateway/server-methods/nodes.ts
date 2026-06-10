@@ -199,8 +199,14 @@ async function resolveDirectNodePushConfig() {
     : { ok: false as const, error: auth.error };
 }
 
-function resolveRelayNodePushConfig(cfg: OpenClawConfig) {
-  const relay = resolveApnsRelayConfigFromEnv(process.env, cfg.gateway);
+function resolveRelayNodePushConfig(
+  cfg: OpenClawConfig,
+  registration: NonNullable<Awaited<ReturnType<typeof loadApnsRegistration>>>,
+) {
+  const relay = resolveApnsRelayConfigFromEnv(process.env, cfg.gateway, {
+    registrationRelayOrigin:
+      registration.transport === "relay" ? registration.relayOrigin : undefined,
+  });
   return relay.ok
     ? { ok: true as const, relayConfig: relay.value }
     : { ok: false as const, error: relay.error };
@@ -493,7 +499,7 @@ export async function maybeWakeNodeWithApns(
 
       let wakeResult;
       if (registration.transport === "relay") {
-        const relay = resolveRelayNodePushConfig(opts?.cfg ?? getRuntimeConfig());
+        const relay = resolveRelayNodePushConfig(opts?.cfg ?? getRuntimeConfig(), registration);
         if (!relay.ok) {
           return withDuration({
             available: false,
@@ -595,7 +601,7 @@ export async function maybeSendNodeWakeNudge(
   try {
     let result;
     if (registration.transport === "relay") {
-      const relay = resolveRelayNodePushConfig(opts?.cfg ?? getRuntimeConfig());
+      const relay = resolveRelayNodePushConfig(opts?.cfg ?? getRuntimeConfig(), registration);
       if (!relay.ok) {
         return withDuration({
           sent: false,

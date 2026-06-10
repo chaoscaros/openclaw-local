@@ -36,6 +36,7 @@ type RelayApnsRegistration = {
   relayHandle: string;
   sendGrant: string;
   installationId: string;
+  relayOrigin?: string;
   topic: string;
   environment: "production";
   distribution: "official";
@@ -106,6 +107,7 @@ type RegisterRelayApnsParams = {
   relayHandle: string;
   sendGrant: string;
   installationId: string;
+  relayOrigin?: unknown;
   topic: string;
   environment?: unknown;
   distribution?: unknown;
@@ -309,6 +311,7 @@ function normalizeRelayRegistration(
   const relayHandle = normalizeRelayHandle(record.relayHandle);
   const sendGrant = record.sendGrant.trim();
   const installationId = normalizeInstallationId(record.installationId);
+  const relayOrigin = normalizeNonEmptyString(record.relayOrigin);
   const topic = normalizeTopic(typeof record.topic === "string" ? record.topic : "");
   const environment = normalizeApnsEnvironment(record.environment);
   const distribution = normalizeDistribution(record.distribution);
@@ -333,6 +336,7 @@ function normalizeRelayRegistration(
     relayHandle,
     sendGrant,
     installationId,
+    ...(relayOrigin ? { relayOrigin } : {}),
     topic,
     environment,
     distribution,
@@ -431,6 +435,9 @@ export async function registerApnsRegistration(
         normalizeInstallationId(params.installationId),
         "installationId",
       );
+      const relayOrigin = normalizeNonEmptyString(
+        typeof params.relayOrigin === "string" ? params.relayOrigin : undefined,
+      );
       const environment = normalizeApnsEnvironment(params.environment);
       const distribution = normalizeDistribution(params.distribution);
       if (environment !== "production") {
@@ -445,6 +452,7 @@ export async function registerApnsRegistration(
         relayHandle,
         sendGrant,
         installationId,
+        ...(relayOrigin ? { relayOrigin } : {}),
         topic,
         environment,
         distribution,

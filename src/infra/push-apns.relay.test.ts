@@ -64,8 +64,32 @@ describe("push-apns.relay", () => {
       expect(resolveApnsRelayConfigFromEnv({} as NodeJS.ProcessEnv)).toEqual({
         ok: false,
         error:
-          "APNs relay config missing: set gateway.push.apns.relay.baseUrl or OPENCLAW_APNS_RELAY_BASE_URL",
+          "APNs relay config missing: set gateway.push.apns.relay.baseUrl or OPENCLAW_APNS_RELAY_BASE_URL for relay registrations without the hosted relay origin",
       });
+    });
+
+    it("uses the hosted relay default when the registration came from the hosted relay", () => {
+      const resolved = resolveApnsRelayConfigFromEnv({} as NodeJS.ProcessEnv, undefined, {
+        registrationRelayOrigin: "https://ios-push-relay.openclaw.ai/",
+      });
+
+      expectRelayConfig(resolved, {
+        baseUrl: "https://ios-push-relay.openclaw.ai",
+        timeoutMs: 10_000,
+      });
+    });
+
+    it("rejects relay registrations whose origin differs from explicit relay config", () => {
+      const resolved = resolveApnsRelayConfigFromEnv(
+        {} as NodeJS.ProcessEnv,
+        { push: { apns: { relay: { baseUrl: "https://relay.example.com" } } } },
+        { registrationRelayOrigin: "https://ios-push-relay.openclaw.ai" },
+      );
+
+      expect(resolved.ok).toBe(false);
+      if (!resolved.ok) {
+        expect(resolved.error).toContain("origin mismatch");
+      }
     });
 
     it("lets env overrides win and clamps tiny timeout values", () => {

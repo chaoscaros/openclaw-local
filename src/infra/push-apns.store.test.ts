@@ -43,6 +43,7 @@ describe("push APNs registration store", () => {
       relayHandle: "relay-handle-123",
       sendGrant: "send-grant-123",
       installationId: "install-123",
+      relayOrigin: " https://ios-push-relay.openclaw.ai/ ",
       topic: "ai.openclaw.ios",
       environment: "production",
       distribution: "official",
@@ -52,6 +53,7 @@ describe("push APNs registration store", () => {
 
     const loaded = await loadApnsRegistration("ios-node-relay", baseDir);
     expect(saved.transport).toBe("relay");
+    expect(saved.relayOrigin).toBe("https://ios-push-relay.openclaw.ai/");
     expect(loaded).toEqual(saved);
     expect(loaded && "token" in loaded).toBe(false);
   });

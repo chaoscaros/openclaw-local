@@ -341,6 +341,11 @@ false`, and avoid touching unrelated package/lock or workflow sync residue
 - `806dac4f3d` Codex Supervisor subset: the release-test typecheck tail for
   WebSocket raw data handling is absorbed without pulling unrelated Xiaomi,
   Zalo, or node-host test updates into this slice.
+- `0167f0a6df` local focused subset: APNs relay registrations now carry
+  `relayOrigin`, gateway relay resolution defaults to the hosted OpenClaw relay
+  only when the stored registration came from that hosted origin, and push test,
+  node wake, and exec-approval push paths reject mismatched relay origins rather
+  than silently sending through a different relay.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
