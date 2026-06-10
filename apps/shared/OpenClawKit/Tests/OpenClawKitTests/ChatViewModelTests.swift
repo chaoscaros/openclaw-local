@@ -95,6 +95,7 @@ private func makeViewModel(
     waitForRunCompletionHook: (@Sendable (String, Int) async -> Bool)? = nil,
     healthResponses: [Bool] = [true],
     initialThinkingLevel: String? = nil,
+    onSessionChanged: (@MainActor (String) -> Void)? = nil,
     onThinkingLevelChanged: (@MainActor @Sendable (String) -> Void)? = nil) async
     -> (TestChatTransport, OpenClawChatViewModel)
 {
@@ -114,6 +115,7 @@ private func makeViewModel(
             sessionKey: sessionKey,
             transport: transport,
             initialThinkingLevel: initialThinkingLevel,
+            onSessionChanged: onSessionChanged,
             onThinkingLevelChanged: onThinkingLevelChanged)
     }
     return (transport, vm)
@@ -256,6 +258,15 @@ private actor AsyncCounter {
     func increment() -> Int {
         self.value += 1
         return self.value
+    }
+}
+
+@MainActor
+private final class SessionChangeRecorder {
+    private(set) var values: [String] = []
+
+    func append(_ value: String) {
+        self.values.append(value)
     }
 }
 
@@ -1325,10 +1336,12 @@ extension TestChatTransportState {
             sessions: [
                 sessionEntry(key: "agent:aiden:main", updatedAt: now),
             ])
+        let changedSessionKeys = await MainActor.run { SessionChangeRecorder() }
         let (transport, vm) = await makeViewModel(
             sessionKey: "agent:aiden:main",
             historyResponses: [before, after],
-            sessionsResponses: [sessions])
+            sessionsResponses: [sessions],
+            onSessionChanged: { changedSessionKeys.append($0) })
         try await loadAndWaitBootstrap(vm: vm)
 
         await MainActor.run {
@@ -1342,6 +1355,7 @@ extension TestChatTransportState {
         let createdKeys = await transport.createdSessionKeys()
         #expect(createdKeys.count == 1)
         #expect(createdKeys.first?.hasPrefix("agent:aiden:ios-") == true)
+        #expect(await MainActor.run { changedSessionKeys.values } == createdKeys)
         #expect(await transport.createdParentSessionKeys() == ["agent:aiden:main"])
         #expect(await transport.resetSessionKeys().isEmpty)
     }

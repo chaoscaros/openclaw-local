@@ -668,6 +668,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     and `canSendDraft`, preserving `canSend` as the pending-aware gate.
   - This prepares the clean composer/talk-control UI without changing current
     send button behavior.
+- `f6e51ff99a` shared Chat session-change callback subset:
+  - Added an optional ViewModel `onSessionChanged` callback and invoked it when
+    switching sessions or creating a fresh `/new` session.
+  - Existing callers keep the same behavior because the callback defaults to
+    nil; later embedded chat surfaces can track session-key changes explicitly.
 
 ## Validation Plan
 
