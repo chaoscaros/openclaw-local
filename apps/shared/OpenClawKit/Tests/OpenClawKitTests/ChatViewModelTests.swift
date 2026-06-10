@@ -413,6 +413,10 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
         return ids.last
     }
 
+    func sentRunIds() async -> [String] {
+        await self.state.sentRunIds
+    }
+
     func abortedRunIds() async -> [String] {
         await self.state.abortedRunIds
     }
@@ -505,6 +509,32 @@ extension TestChatTransportState {
 }
 
 @Suite struct ChatViewModelTests {
+    @Test func pendingRunBlocksSecondMainSend() async throws {
+        let sessionId = "sess-main"
+        let history = historyPayload(sessionId: sessionId, messages: [])
+        let (transport, vm) = await makeViewModel(historyResponses: [history, history])
+        try await loadAndWaitBootstrap(vm: vm, sessionId: sessionId)
+
+        await sendUserMessage(vm, text: "first")
+        try await waitUntil("first send becomes pending") {
+            await MainActor.run { vm.pendingRunCount == 1 && !vm.isSending }
+        }
+
+        let firstRunIds = await transport.sentRunIds()
+        #expect(firstRunIds.count == 1)
+        #expect(await MainActor.run { !vm.canSend })
+
+        await MainActor.run {
+            vm.input = "second"
+            vm.send()
+        }
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(await transport.sentRunIds() == firstRunIds)
+        #expect(await MainActor.run { vm.pendingRunCount } == 1)
+        #expect(await MainActor.run { vm.input } == "second")
+    }
+
     @Test func streamsAssistantAndClearsOnFinal() async throws {
         let sessionId = "sess-main"
         let history1 = historyPayload(sessionId: sessionId)

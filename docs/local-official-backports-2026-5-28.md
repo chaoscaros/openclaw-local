@@ -613,6 +613,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     app becomes active again.
   - Added ViewModel coverage that a run completed while backgrounded refreshes
     history and clears pending state on foreground resume.
+- `f6e51ff99a` shared Chat pending-send guard subset:
+  - Blocked direct `send()` calls while a run is already pending so non-button
+    paths cannot enqueue a second main chat request.
+  - Added ViewModel coverage that the second input stays in the composer and no
+    additional transport send occurs while the first run remains pending.
 
 ## Validation Plan
 

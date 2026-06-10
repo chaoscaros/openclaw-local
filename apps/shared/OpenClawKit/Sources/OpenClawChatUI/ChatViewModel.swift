@@ -504,6 +504,7 @@ public final class OpenClawChatViewModel {
 
     private func performSend() async {
         guard !self.isSending else { return }
+        guard self.pendingRuns.isEmpty else { return }
         let trimmed = self.input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !self.attachments.isEmpty else { return }
 
