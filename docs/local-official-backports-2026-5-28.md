@@ -588,6 +588,14 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Added a regression test for external run completion events emitted under a
     resolved main session key, preventing the mobile/chat UI from missing
     canonical Gateway events.
+- `f6e51ff99a` iOS Chat transport subset:
+  - Added the shared Chat transport contract for `sessions.create` and
+    `agent.wait` completion observation with defaults for existing transports.
+  - Implemented the iOS Gateway transport wrappers for `sessions.create` and
+    `agent.wait`, including request-timeout grace for long waits.
+  - Added iOS transport unit coverage for create-session params, agent-wait
+    timeout sizing, completion status parsing, and disconnected create-session
+    failure.
 
 ## Validation Plan
 
