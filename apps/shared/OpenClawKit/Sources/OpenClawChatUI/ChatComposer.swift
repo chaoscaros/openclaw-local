@@ -9,8 +9,6 @@ import UniformTypeIdentifiers
 
 @MainActor
 struct OpenClawChatComposer: View {
-    private static let menuThinkingLevels = ["off", "low", "medium", "high"]
-
     @Bindable var viewModel: OpenClawChatViewModel
     let style: OpenClawChatView.Style
     let showsSessionSwitcher: Bool
@@ -95,18 +93,27 @@ struct OpenClawChatComposer: View {
                 get: { self.viewModel.thinkingLevel },
                 set: { next in self.viewModel.selectThinkingLevel(next) }))
         {
-            Text("Off").tag("off")
-            Text("Low").tag("low")
-            Text("Medium").tag("medium")
-            Text("High").tag("high")
-            if !Self.menuThinkingLevels.contains(self.viewModel.thinkingLevel) {
-                Text(self.viewModel.thinkingLevel.capitalized).tag(self.viewModel.thinkingLevel)
+            ForEach(self.thinkingOptions) { option in
+                Text(option.label.capitalized).tag(option.id)
             }
         }
         .labelsHidden()
         .pickerStyle(.menu)
         .controlSize(.small)
-        .frame(maxWidth: 140, alignment: .leading)
+        .frame(maxWidth: 160, alignment: .leading)
+    }
+
+    private var thinkingOptions: [OpenClawChatThinkingLevelOption] {
+        let options = self.viewModel.thinkingLevelOptions
+        if options.isEmpty {
+            return [
+                OpenClawChatThinkingLevelOption(id: "off", label: "off"),
+                OpenClawChatThinkingLevelOption(id: "low", label: "low"),
+                OpenClawChatThinkingLevelOption(id: "medium", label: "medium"),
+                OpenClawChatThinkingLevelOption(id: "high", label: "high"),
+            ]
+        }
+        return options
     }
 
     private var modelPicker: some View {

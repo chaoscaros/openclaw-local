@@ -658,6 +658,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     refreshed history contains an assistant reply after the optimistic user turn.
   - Added coverage that completion without synced assistant history keeps the
     run pending instead of prematurely hiding the waiting state.
+- `f6e51ff99a` shared Chat dynamic-thinking picker subset:
+  - Switched the shared composer thinking picker from fixed labels to
+    ViewModel-provided thinking options, with a baseline fallback.
+  - Kept this as a wiring-only UI slice; the broader Pro composer redesign is
+    still deferred to the larger visual refresh lane.
 
 ## Validation Plan
 
