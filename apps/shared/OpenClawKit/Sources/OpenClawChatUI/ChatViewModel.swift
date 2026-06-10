@@ -1207,7 +1207,9 @@ public final class OpenClawChatViewModel {
     }
 
     private func handleAgentEvent(_ evt: OpenClawAgentEventPayload) {
-        if let sessionId, evt.runId != sessionId {
+        let isPendingRun = self.pendingRuns.contains(evt.runId)
+        let isLegacySessionStream = self.pendingRuns.isEmpty && self.sessionId == evt.runId
+        if !isPendingRun, !isLegacySessionStream {
             return
         }
 
@@ -1216,6 +1218,8 @@ public final class OpenClawChatViewModel {
             if let text = evt.data["text"]?.value as? String {
                 self.streamingAssistantText = text
             }
+        case "lifecycle":
+            self.handleAgentLifecycleEvent(evt, isPendingRun: isPendingRun)
         case "tool":
             guard let phase = evt.data["phase"]?.value as? String else { return }
             guard let name = evt.data["name"]?.value as? String else { return }
@@ -1234,6 +1238,62 @@ public final class OpenClawChatViewModel {
         default:
             break
         }
+    }
+
+    private func handleAgentLifecycleEvent(_ evt: OpenClawAgentEventPayload, isPendingRun: Bool) {
+        let phase = Self.lowercasedAgentEventString(evt.data["phase"])
+        let status = Self.lowercasedAgentEventString(evt.data["status"])
+        let aborted = Self.agentEventBool(evt.data["aborted"])
+        let isFailure =
+            phase == "error" || phase == "failed" || phase == "aborted" ||
+            status == "error" || status == "failed" || status == "aborted"
+        let isSuccessfulStatus =
+            status == "ok" || status == "success" || status == "succeeded" ||
+            status == "complete" || status == "completed"
+        let isTerminalPhase = phase == "end" || phase == "complete" || phase == "completed"
+
+        guard isTerminalPhase || isFailure || aborted || isSuccessfulStatus else { return }
+
+        if isFailure || aborted {
+            self.errorText = Self.agentLifecycleErrorMessage(evt, aborted: aborted)
+        }
+        if isPendingRun {
+            self.clearPendingRun(evt.runId)
+        }
+        self.pendingToolCallsById = [:]
+        self.streamingAssistantText = nil
+        Task { await self.refreshHistoryAfterRun() }
+    }
+
+    private static func lowercasedAgentEventString(_ value: AnyCodable?) -> String? {
+        (value?.value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func agentEventBool(_ value: AnyCodable?) -> Bool {
+        if let boolValue = value?.value as? Bool {
+            return boolValue
+        }
+        guard let stringValue = lowercasedAgentEventString(value) else {
+            return false
+        }
+        return stringValue == "true" || stringValue == "yes" || stringValue == "1"
+    }
+
+    private static func agentLifecycleErrorMessage(_ evt: OpenClawAgentEventPayload, aborted: Bool) -> String {
+        if aborted {
+            return "Run aborted"
+        }
+        if let message = evt.data["error"]?.value as? String,
+           !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            return message
+        }
+        if let message = evt.data["message"]?.value as? String,
+           !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            return message
+        }
+        return "Chat failed"
     }
 
     private func refreshHistoryAfterRun() async {

@@ -192,6 +192,21 @@ private func emitToolStart(
                 ])))
 }
 
+private func emitAgentLifecycleEnd(
+    transport: TestChatTransport,
+    runId: String,
+    seq: Int = 3)
+{
+    transport.emit(
+        .agent(
+            OpenClawAgentEventPayload(
+                runId: runId,
+                seq: seq,
+                stream: "lifecycle",
+                ts: Int(Date().timeIntervalSince1970 * 1000),
+                data: ["phase": AnyCodable("end")])))
+}
+
 private func emitExternalFinal(
     transport: TestChatTransport,
     runId: String = "other-run",
@@ -638,18 +653,18 @@ extension TestChatTransportState {
         try await loadAndWaitBootstrap(vm: vm, sessionId: sessionId)
         await sendUserMessage(vm)
         try await waitUntil("pending run starts") { await MainActor.run { vm.pendingRunCount == 1 } }
+        let runId = try #require(await transport.lastSentRunId())
 
-        emitAssistantText(transport: transport, runId: sessionId, text: "streaming…")
+        emitAssistantText(transport: transport, runId: runId, text: "streaming…")
 
         try await waitUntil("assistant stream visible") {
             await MainActor.run { vm.streamingAssistantText == "streaming…" }
         }
 
-        emitToolStart(transport: transport, runId: sessionId)
+        emitToolStart(transport: transport, runId: runId)
 
         try await waitUntil("tool call pending") { await MainActor.run { vm.pendingToolCalls.count == 1 } }
 
-        let runId = try #require(await transport.lastSentRunId())
         transport.emit(
             .chat(
                 OpenClawChatEventPayload(
@@ -665,6 +680,42 @@ extension TestChatTransportState {
         }
         #expect(await MainActor.run { vm.streamingAssistantText } == nil)
         #expect(await MainActor.run { vm.pendingToolCalls.isEmpty })
+    }
+
+    @Test func agentLifecycleEndRefreshesHistoryAndClearsPendingRun() async throws {
+        let sessionId = "sess-main"
+        let now = Date().timeIntervalSince1970 * 1000
+        let history1 = historyPayload(sessionId: sessionId)
+        let history2 = historyPayload(
+            sessionId: sessionId,
+            messages: [
+                chatTextMessage(
+                    role: "assistant",
+                    text: "completed from lifecycle",
+                    timestamp: now + 60000),
+            ])
+        let (transport, vm) = await makeViewModel(historyResponses: [history1, history2])
+        try await loadAndWaitBootstrap(vm: vm, sessionId: sessionId)
+
+        await sendUserMessage(vm, text: "hello")
+        try await waitUntil("pending run starts") { await MainActor.run { vm.pendingRunCount == 1 } }
+        let runId = try #require(await transport.lastSentRunId())
+
+        emitAssistantText(transport: transport, runId: runId, text: "streaming reply")
+        emitToolStart(transport: transport, runId: runId)
+        emitAgentLifecycleEnd(transport: transport, runId: runId)
+
+        try await waitUntil("lifecycle end refresh clears pending run") {
+            await MainActor.run {
+                vm.pendingRunCount == 0 &&
+                    vm.streamingAssistantText == nil &&
+                    vm.pendingToolCalls.isEmpty &&
+                    vm.messages.contains { message in
+                        message.role == "assistant" &&
+                            message.content.contains { $0.text == "completed from lifecycle" }
+                    }
+            }
+        }
     }
 
     @Test func rendersFinalChatEventMessageWhenHistoryIsStale() async throws {

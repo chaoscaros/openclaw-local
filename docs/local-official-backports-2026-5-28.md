@@ -638,6 +638,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     the assistant error turn has no meaningful text body.
   - Added coverage so provider errors replace empty/fallback text without
     overriding partial assistant content or non-error stops.
+- `f6e51ff99a` shared Chat agent-run event subset:
+  - Matched agent stream and lifecycle events against pending run IDs while
+    retaining the older session-id stream compatibility path.
+  - Added lifecycle-end coverage so pending runs clear, tool/streaming state is
+    reset, and history refreshes when Gateway emits a terminal run event.
 
 ## Validation Plan
 
