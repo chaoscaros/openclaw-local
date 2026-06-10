@@ -70,6 +70,15 @@ scoped verification.
   branch does not yet include the base `extensions/codex-supervisor` plugin
   from `9dd3bce549`. Treat that as a separate feature/plugin absorption before
   attempting the session-listing stabilization patch.
+- Initial Codex Supervisor audit is complete: `9dd3bce549` is a full bundled
+  plugin addition, not a narrow runtime fix. The local branch has already
+  diverged from the official loader and gateway-client layout, so this lane
+  must be re-applied against the current plugin/runtime surfaces rather than
+  cherry-picked mechanically.
+- If the Codex Supervisor plugin is absorbed, include the `69c3b56bde`
+  session-listing stabilization in the same feature package or as the immediate
+  follow-up slice. The base plugin alone leaves known unstable behavior around
+  stored-session scans and app-server endpoint resolution.
 - The Android private-LAN sequence is now absorbed. The iOS gateway/talk
   sequence remains unabsorbed feature work. Verify local mobile environment
   before attempting it.
@@ -84,16 +93,18 @@ scoped verification.
 
 ## Next Slice Queue
 
-1. **Codex Supervisor Base Plugin**: decide whether to absorb the base
-   `9dd3bce549` codex-supervisor extension. Do not start from `69c3b56bde`
-   alone because the local target files do not exist yet.
-2. **Codex Supervisor Session Listing**: after the base plugin exists,
-   evaluate `69c3b56bde` as a standalone slice. Prefer runtime behavior first:
-   loaded-session listing should use `thread/loaded/list`; stored-session
-   listing should be opt-in, bounded, and state-DB-only; endpoint resolution
-   should avoid broad stored-history scans when an exact `thread/read` can
-   answer.
-3. **Codex Supervisor WebSocket Close**: if the previous slice grows beyond 30
+1. **Codex Supervisor Base + Stability Decision**: decide whether to absorb
+   the `9dd3bce549` codex-supervisor extension as a local feature package. If
+   accepted, port it directly with the `69c3b56bde` safeguards: loaded-session
+   listing should use `thread/loaded/list`; stored-session listing should be
+   opt-in, bounded, and state-DB-only; endpoint resolution should avoid broad
+   stored-history scans when an exact `thread/read` can answer.
+2. **Codex Supervisor Port Slice**: if accepted, add the plugin against the
+   current local plugin/runtime layout. Keep dependency ownership inside
+   `extensions/codex-supervisor/package.json`, preserve `activation.onStartup:
+false`, and avoid touching unrelated package/lock or workflow sync residue
+   unless the current build/test contract requires it.
+3. **Codex Supervisor WebSocket Close**: if the port grows beyond 30
    minutes, split WebSocket intentional-close cleanup from stored-session
    pagination. Validate with the smallest supervisor/json-rpc-client tests.
 4. **iOS Gateway/Talk Flow**: compare `f6e51ff99a`, `0167f0a6df`,
@@ -479,6 +490,27 @@ the official-tag execution order. Resume the 2026.5.28 audit in this order:
    continue to the remaining iOS gateway/talk flow.
 5. Keep Workboard/Control UI and broad release/CI/generated-baseline changes as
    later lanes unless the user explicitly pulls one forward.
+
+## Codex Supervisor Absorption Notes
+
+- Treat Codex Supervisor as a new bundled plugin feature, not as a hotfix.
+  Default-off activation is required for the first local port.
+- Port from the stabilized shape after `69c3b56bde`, even if the commit log
+  order records `9dd3bce549` first. The unstable base behavior should not be
+  landed as an independently validated local state.
+- Keep raw transcript reads and write controls opt-in. The default local
+  acceptance path should prove endpoint probing and loaded-session listing
+  before enabling send or interrupt flows.
+- Do not reuse the official `src/agents/sessions/extensions/loader.ts` hunk:
+  that file is absent in the current local branch. Reconcile any required
+  loader or virtual-module behavior with the current plugin loader instead.
+- Avoid broad package or lockfile churn until the extension files compile
+  locally. If dependency metadata must change, keep it scoped to the plugin and
+  the minimal generated/runtime artifacts required by the current repo checks.
+- Validation should start with the plugin's own unit tests
+  (`supervisor`, `json-rpc-client`, MCP tools, and plugin tools). Only widen to
+  build or plugin inventory generation if the touched files affect build output
+  or generated plugin docs.
 
 ## Validation Plan
 
