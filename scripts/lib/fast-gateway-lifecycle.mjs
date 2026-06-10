@@ -27,6 +27,21 @@ export function createFastGatewaySpawnSpec(params) {
   };
 }
 
+export function createFastGatewayBuildInfoMismatchMessage(params) {
+  const buildCommit = params.buildInfoCommit?.trim();
+  const headCommit = params.headCommit?.trim();
+  if (!buildCommit || !headCommit || buildCommit === headCommit) {
+    return null;
+  }
+  return [
+    "pnpm fast refused to start because dist/build-info.json is stale.",
+    `  dist/build-info.json: ${buildCommit}`,
+    `  git HEAD:             ${headCommit}`,
+    "Run `pnpm build`, then restart `pnpm fast` so the gateway loads the current code.",
+    "Set OPENCLAW_FAST_ALLOW_STALE_DIST=1 only for intentional stale-dist debugging.",
+  ].join("\n");
+}
+
 function taskkillProcessTree(pid, spawnSyncImpl) {
   if (!Number.isInteger(pid) || pid <= 0) {
     return;
