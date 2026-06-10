@@ -89,6 +89,7 @@ private func makeViewModel(
     setSessionModelHook: (@Sendable (String?) async throws -> Void)? = nil,
     setSessionThinkingHook: (@Sendable (String) async throws -> Void)? = nil,
     waitForRunCompletionHook: (@Sendable (String, Int) async -> Bool)? = nil,
+    healthResponses: [Bool] = [true],
     initialThinkingLevel: String? = nil,
     onThinkingLevelChanged: (@MainActor @Sendable (String) -> Void)? = nil) async
     -> (TestChatTransport, OpenClawChatViewModel)
@@ -102,7 +103,8 @@ private func makeViewModel(
         compactSessionHook: compactSessionHook,
         setSessionModelHook: setSessionModelHook,
         setSessionThinkingHook: setSessionThinkingHook,
-        waitForRunCompletionHook: waitForRunCompletionHook)
+        waitForRunCompletionHook: waitForRunCompletionHook,
+        healthResponses: healthResponses)
     let vm = await MainActor.run {
         OpenClawChatViewModel(
             sessionKey: sessionKey,
@@ -242,10 +244,12 @@ private actor TestChatTransportState {
     var historyCallCount: Int = 0
     var sessionsCallCount: Int = 0
     var modelsCallCount: Int = 0
+    var healthCallCount: Int = 0
     var resetSessionKeys: [String] = []
     var createdSessionKeys: [String] = []
     var createdParentSessionKeys: [String?] = []
     var compactSessionKeys: [String] = []
+    var sentSessionKeys: [String] = []
     var sentRunIds: [String] = []
     var sentThinkingLevels: [String] = []
     var abortedRunIds: [String] = []
@@ -265,6 +269,7 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
     private let setSessionModelHook: (@Sendable (String?) async throws -> Void)?
     private let setSessionThinkingHook: (@Sendable (String) async throws -> Void)?
     private let waitForRunCompletionHook: (@Sendable (String, Int) async -> Bool)?
+    private let healthResponses: [Bool]
 
     private let stream: AsyncStream<OpenClawChatTransportEvent>
     private let continuation: AsyncStream<OpenClawChatTransportEvent>.Continuation
@@ -278,7 +283,8 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
         compactSessionHook: (@Sendable (String) async throws -> Void)? = nil,
         setSessionModelHook: (@Sendable (String?) async throws -> Void)? = nil,
         setSessionThinkingHook: (@Sendable (String) async throws -> Void)? = nil,
-        waitForRunCompletionHook: (@Sendable (String, Int) async -> Bool)? = nil)
+        waitForRunCompletionHook: (@Sendable (String, Int) async -> Bool)? = nil,
+        healthResponses: [Bool] = [true])
     {
         self.historyResponses = historyResponses
         self.sessionsResponses = sessionsResponses
@@ -289,6 +295,7 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
         self.setSessionModelHook = setSessionModelHook
         self.setSessionThinkingHook = setSessionThinkingHook
         self.waitForRunCompletionHook = waitForRunCompletionHook
+        self.healthResponses = healthResponses
         var cont: AsyncStream<OpenClawChatTransportEvent>.Continuation!
         self.stream = AsyncStream { c in
             cont = c
@@ -329,12 +336,13 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
     }
 
     func sendMessage(
-        sessionKey _: String,
+        sessionKey: String,
         message _: String,
         thinking: String,
         idempotencyKey: String,
         attachments _: [OpenClawChatAttachmentPayload]) async throws -> OpenClawChatSendResponse
     {
+        await self.state.sentSessionKeysAppend(sessionKey)
         await self.state.sentRunIdsAppend(idempotencyKey)
         await self.state.sentThinkingLevelsAppend(thinking)
         return OpenClawChatSendResponse(runId: idempotencyKey, status: "ok")
@@ -396,7 +404,12 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
     }
 
     func requestHealth(timeoutMs _: Int) async throws -> Bool {
-        true
+        let idx = await self.state.healthCallCount
+        await self.state.setHealthCallCount(idx + 1)
+        if idx < self.healthResponses.count {
+            return self.healthResponses[idx]
+        }
+        return self.healthResponses.last ?? true
     }
 
     func waitForRunCompletion(runId: String, timeoutMs: Int) async -> Bool {
@@ -415,6 +428,11 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
 
     func sentRunIds() async -> [String] {
         await self.state.sentRunIds
+    }
+
+    func lastSentSessionKey() async -> String? {
+        let keys = await self.state.sentSessionKeys
+        return keys.last
     }
 
     func abortedRunIds() async -> [String] {
@@ -465,6 +483,14 @@ extension TestChatTransportState {
 
     fileprivate func setModelsCallCount(_ v: Int) {
         self.modelsCallCount = v
+    }
+
+    fileprivate func setHealthCallCount(_ v: Int) {
+        self.healthCallCount = v
+    }
+
+    fileprivate func sentSessionKeysAppend(_ v: String) {
+        self.sentSessionKeys.append(v)
     }
 
     fileprivate func sentRunIdsAppend(_ v: String) {
@@ -611,6 +637,23 @@ extension TestChatTransportState {
                     }
             }
         }
+    }
+
+    @Test func sendAttemptsRequestWhenCachedHealthIsStaleFalse() async throws {
+        let (transport, vm) = await makeViewModel(
+            historyResponses: [historyPayload()],
+            healthResponses: [false])
+        await MainActor.run { vm.load() }
+        try await waitUntil("bootstrap records stale health") {
+            await MainActor.run { vm.sessionId == "sess-main" && !vm.healthOK }
+        }
+
+        await sendUserMessage(vm, text: "hello despite stale health")
+
+        try await waitUntil("send reaches transport") {
+            await transport.lastSentSessionKey() == "main"
+        }
+        #expect(await MainActor.run { vm.errorText } == nil)
     }
 
     @Test func keepsOptimisticUserMessageWhenFinalRefreshReturnsOnlyAssistantHistory() async throws {

@@ -526,9 +526,8 @@ public final class OpenClawChatViewModel {
 
         let sessionKey = self.sessionKey
 
-        guard self.healthOK else {
-            self.errorText = "Gateway health not OK; cannot send"
-            return
+        if !self.healthOK {
+            await self.pollHealthIfNeeded(force: true)
         }
 
         self.isSending = true

@@ -623,6 +623,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     `chat` final events can render before the next history refresh catches up.
   - Added ViewModel coverage that a stale history response does not hide the
     final event's assistant reply.
+- `f6e51ff99a` shared Chat stale-health send subset:
+  - Changed send flow to refresh stale health before sending instead of
+    fail-closing on a cached unhealthy status.
+  - Added ViewModel coverage that a stale `healthOK == false` cache does not
+    prevent the message from reaching the transport.
 
 ## Validation Plan
 
