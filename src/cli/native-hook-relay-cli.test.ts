@@ -101,13 +101,7 @@ describe("native hook relay CLI", () => {
     );
 
     expect(exitCode).toBe(0);
-    expect(JSON.parse(stdout.text())).toEqual({
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-        permissionDecisionReason: "Native hook relay unavailable",
-      },
-    });
+    expect(stdout.text()).toBe("");
     expect(stderr.text()).toContain("native hook relay unavailable");
     expect(stderr.text()).toContain("generation must be non-empty string");
     expect(callGateway).toHaveBeenCalledWith(
@@ -121,13 +115,7 @@ describe("native hook relay CLI", () => {
   it.each([
     {
       event: "pre_tool_use",
-      stdout: {
-        hookSpecificOutput: {
-          hookEventName: "PreToolUse",
-          permissionDecision: "deny",
-          permissionDecisionReason: "Native hook relay unavailable",
-        },
-      },
+      stdout: null,
     },
     {
       event: "permission_request",
@@ -219,7 +207,7 @@ describe("native hook relay CLI", () => {
     expect(callGateway).not.toHaveBeenCalled();
   });
 
-  it("fails closed for PreToolUse when the gateway relay is unavailable", async () => {
+  it("does not block PreToolUse when the gateway relay is unavailable", async () => {
     const callGateway = vi.fn(async () => {
       throw new Error("gateway closed");
     });
@@ -237,13 +225,7 @@ describe("native hook relay CLI", () => {
     );
 
     expect(exitCode).toBe(0);
-    expect(JSON.parse(stdout.text())).toEqual({
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-        permissionDecisionReason: "Native hook relay unavailable",
-      },
-    });
+    expect(stdout.text()).toBe("");
     expect(stderr.text()).toContain("native hook relay unavailable");
   });
 
