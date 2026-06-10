@@ -1235,7 +1235,7 @@ extension TestChatTransportState {
         let history2 = historyPayload(
             messages: [
                 chatTextMessage(role: "user", text: "hello", timestamp: now),
-                chatTextMessage(role: "assistant", text: "completed after wait", timestamp: now + 1),
+                chatTextMessage(role: "assistant", text: "completed after wait", timestamp: now + 60000),
             ])
         let (transport, vm) = await makeViewModel(
             historyResponses: [history1, history2],
@@ -1258,6 +1258,23 @@ extension TestChatTransportState {
                     }
             }
         }
+    }
+
+    @Test func runCompletionWaitKeepsPendingWhenHistoryHasNoAssistantReply() async throws {
+        let history = historyPayload(messages: [])
+        let (transport, vm) = await makeViewModel(
+            historyResponses: [history, history],
+            waitForRunCompletionHook: { _, _ in true })
+        try await loadAndWaitBootstrap(vm: vm)
+
+        await sendUserMessage(vm, text: "hello")
+        try await waitUntil("agent wait called") {
+            !(await transport.waitCompletionRunIds()).isEmpty
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(await MainActor.run { vm.pendingRunCount } == 1)
+        #expect(await MainActor.run { !vm.messages.contains { $0.role == "assistant" } })
     }
 
     @Test func foregroundResumeRefreshesAndClearsCompletedPendingRun() async throws {

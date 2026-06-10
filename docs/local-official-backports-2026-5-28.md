@@ -653,6 +653,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     matching defaults, or baseline levels while keeping the current level visible.
   - Added coverage for session-specific thinking levels and fallback legacy
     thinking options that preserve unsupported current levels such as `xhigh`.
+- `f6e51ff99a` shared Chat completion-wait guard subset:
+  - Changed `agent.wait` completion refresh to clear pending state only after
+    refreshed history contains an assistant reply after the optimistic user turn.
+  - Added coverage that completion without synced assistant history keeps the
+    run pending instead of prematurely hiding the waiting state.
 
 ## Validation Plan
 

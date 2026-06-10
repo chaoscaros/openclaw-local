@@ -591,12 +591,13 @@ public final class OpenClawChatViewModel {
                     name: nil,
                     arguments: nil))
         }
+        let userMessageTimestamp = Date().timeIntervalSince1970 * 1000
         self.messages.append(
             OpenClawChatMessage(
                 id: UUID(),
                 role: "user",
                 content: userContent,
-                timestamp: Date().timeIntervalSince1970 * 1000))
+                timestamp: userMessageTimestamp))
 
         // Clear input immediately for responsive UX (before network await)
         self.input = ""
@@ -617,7 +618,10 @@ public final class OpenClawChatViewModel {
                 self.armPendingRunTimeout(runId: response.runId)
                 activeRunId = response.runId
             }
-            self.armRunCompletionRefresh(runId: activeRunId, sessionKey: sessionKey)
+            self.armRunCompletionRefresh(
+                runId: activeRunId,
+                sessionKey: sessionKey,
+                userMessageTimestamp: userMessageTimestamp)
         } catch {
             self.clearPendingRun(runId)
             self.errorText = error.localizedDescription
@@ -1475,17 +1479,24 @@ public final class OpenClawChatViewModel {
         }
     }
 
-    private func armRunCompletionRefresh(runId: String, sessionKey: String) {
+    private func armRunCompletionRefresh(runId: String, sessionKey: String, userMessageTimestamp: Double) {
         let timeoutMs = Int(self.pendingRunTimeoutMs)
         let transport = self.transport
         Task { [weak self, transport] in
             let observedCompletion = await transport.waitForRunCompletion(runId: runId, timeoutMs: timeoutMs)
             guard observedCompletion else { return }
-            await self?.refreshAfterObservedRunCompletion(runId: runId, sessionKey: sessionKey)
+            await self?.refreshAfterObservedRunCompletion(
+                runId: runId,
+                sessionKey: sessionKey,
+                userMessageTimestamp: userMessageTimestamp)
         }
     }
 
-    private func refreshAfterObservedRunCompletion(runId: String, sessionKey: String) async {
+    private func refreshAfterObservedRunCompletion(
+        runId: String,
+        sessionKey: String,
+        userMessageTimestamp: Double) async
+    {
         guard self.sessionKey == sessionKey, self.pendingRuns.contains(runId) else {
             return
         }
@@ -1493,7 +1504,24 @@ public final class OpenClawChatViewModel {
         guard self.sessionKey == sessionKey, self.pendingRuns.contains(runId) else {
             return
         }
+        guard self.hasAssistantMessage(after: userMessageTimestamp) else {
+            return
+        }
         self.clearPendingRun(runId)
+        self.pendingToolCallsById = [:]
+        self.streamingAssistantText = nil
+    }
+
+    private func hasAssistantMessage(after timestamp: Double) -> Bool {
+        self.messages.contains { message in
+            guard message.role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "assistant" else {
+                return false
+            }
+            guard (message.timestamp ?? 0) >= timestamp else { return false }
+            let text = message.content.compactMap(\.text).joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return !text.isEmpty || message.errorMessage != nil
+        }
     }
 
     private func armPendingRunTimeout(runId: String) {
