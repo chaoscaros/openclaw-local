@@ -93,30 +93,26 @@ scoped verification.
 
 ## Next Slice Queue
 
-1. **Finish iOS Hosted Push Relay Default Audit**: the safety-critical
-   `0167f0a6df` relay-origin subset is absorbed. Next, compare the remaining
-   docs, config help/hints, beta-prepare script, and node-event defaults before
-   marking the official commit fully absorbed.
-2. **Split iOS Talk Tab Realtime Playback**: handle `6897711d19` in two
+1. **Split iOS Talk Tab Realtime Playback**: handle `6897711d19` in two
    slices. First absorb the Gateway/OpenAI realtime metadata contract
    (`itemId`, `responseId`, and relay `audioDone`) with focused TypeScript
    tests. Then separately decide the native iOS Talk UI and playback work,
    which may require Xcode/Swift verification.
-3. **Audit iOS Pro UI / Gateway Flow Bulk Commit**: keep `f6e51ff99a` as a
+2. **Audit iOS Pro UI / Gateway Flow Bulk Commit**: keep `f6e51ff99a` as a
    large native/mobile feature lane. Do not cherry-pick it wholesale; identify
    protected gateway/task/talk behaviors first and split into sub-30-minute
    slices.
-4. **Codex Supervisor Package/Workspace Reconciliation**: the plugin feature
+3. **Codex Supervisor Package/Workspace Reconciliation**: the plugin feature
    and close/type cleanup are absorbed and pushed. Remaining work is to decide
    whether root workspace metadata, generated plugin inventory, or lockfile
    updates are truly required, because plain `pnpm test
 extensions/codex-supervisor` currently stops before tests while pnpm tries
    to reconcile the new workspace package without a TTY.
-5. **Workboard / Control UI**: keep `86ed25af34..61031d1b1c` as a separate
+4. **Workboard / Control UI**: keep `86ed25af34..61031d1b1c` as a separate
    feature lane. Before implementation, inspect local task-mode, archive, and
    mobile entry behavior so the workboard plugin does not mask or regress
    existing task workflows.
-6. **Release / CI / Generated Baselines**: leave broad release workflow churn,
+5. **Release / CI / Generated Baselines**: leave broad release workflow churn,
    `49d6efc65b`, `ea8c052bcf`, and `420bfad613` until product/runtime slices
    are stable. These may require broader build/check gates and should not be
    bundled with user-facing runtime fixes.
@@ -347,6 +343,11 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   only when the stored registration came from that hosted origin, and push test,
   node wake, and exec-approval push paths reject mismatched relay origins rather
   than silently sending through a different relay.
+- `0167f0a6df` remaining local equivalent: hosted iOS push relay is now the
+  documented/default beta and gateway path, custom relay configuration is
+  marked optional, config help/placeholders point at the hosted relay, the beta
+  preparation script defaults to the hosted relay, and node-event relay
+  registrations preserve the reported `relayOrigin`.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
@@ -503,16 +504,14 @@ order:
 
 1. Reconfirm `codex/dev` is at or beyond the hook relay protection commit and
    that task-related files are not carrying accidental uncommitted edits.
-2. Finish the remaining `0167f0a6df` hosted push relay default audit without
-   reopening the already-absorbed relay-origin safety subset.
-3. Split `6897711d19` into a backend realtime metadata slice and a native iOS
+2. Split `6897711d19` into a backend realtime metadata slice and a native iOS
    Talk UI/playback slice.
-4. Keep the large `f6e51ff99a` iOS pro UI/gateway-flow commit as its own
+3. Keep the large `f6e51ff99a` iOS pro UI/gateway-flow commit as its own
    multi-slice native/mobile lane.
-5. Revisit Codex Supervisor only for workspace/package metadata, generated
+4. Revisit Codex Supervisor only for workspace/package metadata, generated
    plugin inventory, or lockfile reconciliation after deciding whether those
    surfaces are required locally.
-6. Keep Workboard/Control UI and broad release/CI/generated-baseline changes as
+5. Keep Workboard/Control UI and broad release/CI/generated-baseline changes as
    later lanes unless the user explicitly pulls one forward.
 
 ## Codex Supervisor Absorption Notes

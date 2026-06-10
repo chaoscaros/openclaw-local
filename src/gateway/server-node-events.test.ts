@@ -735,6 +735,7 @@ describe("node exec events", () => {
         topic: "ai.openclaw.ios",
         environment: "production",
         distribution: "official",
+        relayOrigin: "https://ios-push-relay.openclaw.ai",
         tokenDebugSuffix: "abcd1234",
       }),
     });
@@ -748,6 +749,7 @@ describe("node exec events", () => {
       topic: "ai.openclaw.ios",
       environment: "production",
       distribution: "official",
+      relayOrigin: "https://ios-push-relay.openclaw.ai",
       tokenDebugSuffix: "abcd1234",
     });
   });
