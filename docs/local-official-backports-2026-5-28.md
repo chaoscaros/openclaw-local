@@ -48,8 +48,9 @@ verified.
   mobile entry points must stay usable.
 - Gateway and runtime protections include protocol mismatch diagnostics,
   unknown-method handling, strict `chat.send` parameter handling, native hook
-  relay cleanup, and `dist/build-info.json` matching the current source after
-  build-affecting changes.
+  relay cleanup, native hook relay unavailable fallbacks for both `PreToolUse`
+  and `PermissionRequest`, and `dist/build-info.json` matching the current
+  source after build-affecting changes.
 - `pnpm fast` is a protection point: keep `scripts/fast-gateway.mjs`, preserve
   gateway process-tree shutdown on Windows Ctrl+C, and do not start or restart
   services from the agent side.
@@ -72,6 +73,12 @@ scoped verification.
 - The Android private-LAN sequence is now absorbed. The iOS gateway/talk
   sequence remains unabsorbed feature work. Verify local mobile environment
   before attempting it.
+- The iOS/macOS gateway ping continuation guard is absorbed, but the broader
+  iOS gateway/talk flow remains unabsorbed feature work.
+- The local Codex native hook relay interruption is closed for both read-style
+  `PreToolUse` commands and write/approval-style `PermissionRequest` commands:
+  when the relay is unavailable, OpenClaw now defers to the provider approval
+  path instead of returning a stale deny.
 - Workboard remains unabsorbed as a large optional dashboard/plugin feature
   lane. Do not pull it into a task-mode or Control UI fix opportunistically.
 
@@ -305,6 +312,11 @@ scoped verification.
 - `7965644da0` local equivalent: shared iOS/macOS gateway WebSocket ping
   handling now guards checked continuations so duplicate ping callbacks caused
   by cancellation races cannot resume the same continuation twice.
+- Local Codex native hook relay guard follow-up: unavailable relay handling now
+  returns no-op output for both `PreToolUse` and `PermissionRequest`. This keeps
+  `exec_command`, `pwd`, `apply_patch`, and write-file flows from being blocked
+  by a stale relay while still letting Codex's native approval path handle
+  authorization when OpenClaw cannot decide.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
@@ -329,6 +341,9 @@ Local check before editing this lane:
 
 - Confirm the recent local fix still clears `hooks.state` when native hook relay
   is disabled.
+- Confirm an unavailable native hook relay does not block either `PreToolUse`
+  commands or `PermissionRequest`/`apply_patch` flows; the hook must no-op so
+  Codex's provider approval path can continue.
 - Confirm `scripts/fast-gateway.mjs` is still present before and after the
   slice.
 - Prefer scoped gateway/Codex tests over full `pnpm check` when the unrelated
@@ -448,6 +463,22 @@ Local check before editing this lane:
 5. Run the most focused test for the slice. Use `FAST_COMMIT=1` only after
    scoped verification, and report any unrelated `pnpm check` blocker instead
    of repairing it in passing.
+
+## Resume Order After Hook Relay Interruption
+
+The hook relay interruption is a closed protection fix, not a reason to change
+the official-tag execution order. Resume the 2026.5.28 audit in this order:
+
+1. Reconfirm `codex/dev` is at or beyond the hook relay protection commit and
+   that task-related files are not carrying accidental uncommitted edits.
+2. Decide the Codex Supervisor base-plugin slice (`9dd3bce549`) before any
+   session-listing stabilization work.
+3. If the base plugin is accepted, split supervisor follow-up into
+   session-listing stability (`69c3b56bde`) and WebSocket close cleanup.
+4. After supervisor scope is resolved or explicitly deferred by the user,
+   continue to the remaining iOS gateway/talk flow.
+5. Keep Workboard/Control UI and broad release/CI/generated-baseline changes as
+   later lanes unless the user explicitly pulls one forward.
 
 ## Validation Plan
 
