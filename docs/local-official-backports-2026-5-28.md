@@ -608,6 +608,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     model/runtime inheritance.
   - Added coverage that `/new` generates an agent-scoped iOS session key and
     does not call `sessions.reset` on the parent session.
+- `f6e51ff99a` shared Chat foreground-resume subset:
+  - Added a foreground resume hook so ChatView refreshes pending runs when the
+    app becomes active again.
+  - Added ViewModel coverage that a run completed while backgrounded refreshes
+    history and clears pending state on foreground resume.
 
 ## Validation Plan
 

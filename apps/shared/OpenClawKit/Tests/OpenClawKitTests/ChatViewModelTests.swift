@@ -818,6 +818,35 @@ extension TestChatTransportState {
         }
     }
 
+    @Test func foregroundResumeRefreshesAndClearsCompletedPendingRun() async throws {
+        let now = Date().timeIntervalSince1970 * 1000
+        let history1 = historyPayload(messages: [])
+        let history2 = historyPayload(
+            messages: [
+                chatTextMessage(role: "user", text: "hello", timestamp: now),
+                chatTextMessage(role: "assistant", text: "completed while backgrounded", timestamp: now + 1),
+            ])
+        let (_, vm) = await makeViewModel(historyResponses: [history1, history2])
+        try await loadAndWaitBootstrap(vm: vm)
+
+        await sendUserMessage(vm, text: "hello")
+        try await waitUntil("pending run starts") {
+            await MainActor.run { vm.pendingRunCount == 1 }
+        }
+
+        await MainActor.run { vm.resumeFromForeground() }
+
+        try await waitUntil("foreground refresh clears pending run") {
+            await MainActor.run {
+                vm.pendingRunCount == 0 &&
+                    vm.messages.contains { message in
+                        message.role == "assistant" &&
+                            message.content.contains { $0.text == "completed while backgrounded" }
+                    }
+            }
+        }
+    }
+
     @Test func slashNewCreatesFreshAgentSession() async throws {
         let now = Date().timeIntervalSince1970 * 1000
         let before = historyPayload(

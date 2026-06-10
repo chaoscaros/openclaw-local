@@ -113,6 +113,10 @@ public final class OpenClawChatViewModel {
         Task { await self.bootstrap() }
     }
 
+    public func resumeFromForeground() {
+        Task { await self.refreshPendingRunAfterForeground() }
+    }
+
     public func send() {
         Task { await self.performSend() }
     }
@@ -258,6 +262,17 @@ public final class OpenClawChatViewModel {
                 .map { Self.stripInboundMetadata(from: $0) }
         }
         return Self.dedupeMessages(decoded)
+    }
+
+    private func refreshPendingRunAfterForeground() async {
+        guard self.pendingRunCount > 0 else { return }
+        await self.refreshHistoryAfterRun()
+        await self.pollHealthIfNeeded(force: true)
+        if self.hasAssistantMessageAfterLatestUser() {
+            self.clearPendingRuns(reason: nil)
+            self.pendingToolCallsById = [:]
+            self.streamingAssistantText = nil
+        }
     }
 
     private static func stripInboundMetadata(from message: OpenClawChatMessage) -> OpenClawChatMessage {
@@ -465,6 +480,22 @@ public final class OpenClawChatViewModel {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
         return "\(message.role)|\(timestamp)|\(text)"
+    }
+
+    private func hasAssistantMessageAfterLatestUser() -> Bool {
+        let latestUserTimestamp = self.messages
+            .filter { $0.role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "user" }
+            .compactMap(\.timestamp)
+            .max()
+        guard let latestUserTimestamp else {
+            return self.messages.contains {
+                $0.role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "assistant"
+            }
+        }
+        return self.messages.contains { message in
+            message.role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "assistant" &&
+                (message.timestamp ?? 0) >= latestUserTimestamp
+        }
     }
 
     private static let newSessionTriggers: Set<String> = ["/new"]
