@@ -93,14 +93,16 @@ scoped verification.
 
 ## Next Slice Queue
 
-1. **iOS Talk Tab Realtime Playback UI**: the `6897711d19` Gateway/OpenAI
-   realtime metadata contract is absorbed. Next, decide the native iOS Talk UI
-   and playback files separately, because they add a large `TalkProTab.swift`
-   surface and may require Xcode/Swift verification.
-2. **Audit iOS Pro UI / Gateway Flow Bulk Commit**: keep `f6e51ff99a` as a
+1. **Audit iOS Pro UI / Gateway Flow Bulk Commit**: keep `f6e51ff99a` as a
    large native/mobile feature lane. Do not cherry-pick it wholesale; identify
    protected gateway/task/talk behaviors first and split into sub-30-minute
    slices.
+2. **iOS Talk Tab Realtime Playback UI**: the `6897711d19` Gateway/OpenAI
+   realtime metadata contract is absorbed. The native Talk UI/playback files
+   depend on `f6e51ff99a` because local `codex/dev` does not yet have the
+   `Sources/Design` Pro UI components, the newer `RootTabs` tab model,
+   `TalkGatewayPermissionState`, or the earlier `RealtimeTalkRelaySession`
+   surface.
 3. **Codex Supervisor Package/Workspace Reconciliation**: the plugin feature
    and close/type cleanup are absorbed and pushed. Remaining work is to decide
    whether root workspace metadata, generated plugin inventory, or lockfile
@@ -353,6 +355,12 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   attaches them to audio deltas plus emits `audioDone` when provider output
   completes or is cancelled. The native iOS Talk tab UI/playback files remain
   a separate slice.
+- `6897711d19` native UI audit: `TalkProTab.swift` cannot be absorbed on the
+  current local UI tree by itself. It imports the Pro UI design layer from
+  `f6e51ff99a` (`OpenClawBrand`, `CommandPanel`, `OpenClawProMetric`), relies
+  on that commit's RootTabs rewrite, and uses Talk permission/runtime state
+  that is absent from the current branch. Resume by splitting `f6e51ff99a`
+  first, then return to the native Talk tab.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
@@ -509,14 +517,13 @@ order:
 
 1. Reconfirm `codex/dev` is at or beyond the hook relay protection commit and
    that task-related files are not carrying accidental uncommitted edits.
-2. Split `6897711d19` into a backend realtime metadata slice and a native iOS
-   Talk UI/playback slice.
-3. Keep the large `f6e51ff99a` iOS pro UI/gateway-flow commit as its own
-   multi-slice native/mobile lane.
-4. Revisit Codex Supervisor only for workspace/package metadata, generated
+2. Keep the large `f6e51ff99a` iOS pro UI/gateway-flow commit as its own
+   multi-slice native/mobile lane before returning to the remaining native
+   Talk UI/playback slice from `6897711d19`.
+3. Revisit Codex Supervisor only for workspace/package metadata, generated
    plugin inventory, or lockfile reconciliation after deciding whether those
    surfaces are required locally.
-5. Keep Workboard/Control UI and broad release/CI/generated-baseline changes as
+4. Keep Workboard/Control UI and broad release/CI/generated-baseline changes as
    later lanes unless the user explicitly pulls one forward.
 
 ## Codex Supervisor Absorption Notes
