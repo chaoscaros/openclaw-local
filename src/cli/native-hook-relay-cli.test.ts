@@ -119,15 +119,7 @@ describe("native hook relay CLI", () => {
     },
     {
       event: "permission_request",
-      stdout: {
-        hookSpecificOutput: {
-          hookEventName: "PermissionRequest",
-          decision: {
-            behavior: "deny",
-            message: "Native hook relay unavailable",
-          },
-        },
-      },
+      stdout: null,
     },
     {
       event: "post_tool_use",
@@ -229,7 +221,7 @@ describe("native hook relay CLI", () => {
     expect(stderr.text()).toContain("native hook relay unavailable");
   });
 
-  it("fails closed for PermissionRequest when the gateway relay is unavailable", async () => {
+  it("defers PermissionRequest to the provider approval path when the gateway relay is unavailable", async () => {
     const callGateway = vi.fn(async () => {
       throw new Error("gateway closed");
     });
@@ -252,15 +244,7 @@ describe("native hook relay CLI", () => {
     );
 
     expect(exitCode).toBe(0);
-    expect(JSON.parse(stdout.text())).toEqual({
-      hookSpecificOutput: {
-        hookEventName: "PermissionRequest",
-        decision: {
-          behavior: "deny",
-          message: "Native hook relay unavailable",
-        },
-      },
-    });
+    expect(stdout.text()).toBe("");
   });
 
   it("keeps PostToolUse unavailable handling observational", async () => {

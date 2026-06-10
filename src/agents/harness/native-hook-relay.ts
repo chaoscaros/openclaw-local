@@ -659,12 +659,8 @@ export function renderNativeHookRelayUnavailableResponse(params: {
   const provider = readNativeHookRelayProvider(params.provider);
   const event = readNativeHookRelayEvent(params.event);
   const adapter = getNativeHookRelayProviderAdapter(provider);
-  const message = params.message?.trim() || "Native hook relay unavailable";
-  if (event === "pre_tool_use") {
+  if (event === "pre_tool_use" || event === "permission_request") {
     return adapter.renderNoopResponse(event);
-  }
-  if (event === "permission_request") {
-    return adapter.renderPermissionDecisionResponse("deny", message);
   }
   return adapter.renderNoopResponse(event);
 }
