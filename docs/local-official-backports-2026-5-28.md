@@ -648,6 +648,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     metadata returned by Gateway session lists.
   - Added decode coverage for `thinkingLevels`, legacy `thinkingOptions`, and
     `thinkingDefault` so later picker UI can consume the contract safely.
+- `f6e51ff99a` shared Chat thinking-options ViewModel subset:
+  - Added ViewModel `thinkingLevelOptions` derived from current session metadata,
+    matching defaults, or baseline levels while keeping the current level visible.
+  - Added coverage for session-specific thinking levels and fallback legacy
+    thinking options that preserve unsupported current levels such as `xhigh`.
 
 ## Validation Plan
 
