@@ -366,6 +366,11 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   omits an explicit model. The local equivalent also preserves `traceLevel`
   and model fallback origin metadata, covering the follow-up noted in the
   official commit message.
+- `f6e51ff99a` backend Talk relay subset: provider-direct realtime sessions now
+  leave assistant audio responses to provider/server VAD by default, forced
+  consult mode still disables provider auto-response, final transcripts are
+  recorded for echo detection, and assistant echo/control-like transcripts are
+  no longer duplicated back into the realtime model.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
