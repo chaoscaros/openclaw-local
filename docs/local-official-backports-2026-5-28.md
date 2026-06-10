@@ -618,6 +618,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     paths cannot enqueue a second main chat request.
   - Added ViewModel coverage that the second input stays in the composer and no
     additional transport send occurs while the first run remains pending.
+- `f6e51ff99a` shared Chat final-event render subset:
+  - Added a lightweight final-event text extractor so assistant text carried on
+    `chat` final events can render before the next history refresh catches up.
+  - Added ViewModel coverage that a stale history response does not hide the
+    final event's assistant reply.
 
 ## Validation Plan
 

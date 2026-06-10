@@ -580,6 +580,39 @@ extension TestChatTransportState {
         #expect(await MainActor.run { vm.pendingToolCalls.isEmpty })
     }
 
+    @Test func rendersFinalChatEventMessageWhenHistoryIsStale() async throws {
+        let sessionId = "sess-main"
+        let history = historyPayload(sessionId: sessionId)
+        let (transport, vm) = await makeViewModel(historyResponses: [history, history])
+        try await loadAndWaitBootstrap(vm: vm, sessionId: sessionId)
+
+        await sendUserMessage(vm, text: "hello")
+        try await waitUntil("pending run starts") { await MainActor.run { vm.pendingRunCount == 1 } }
+        let runId = try #require(await transport.lastSentRunId())
+
+        transport.emit(
+            .chat(
+                OpenClawChatEventPayload(
+                    runId: runId,
+                    sessionKey: "main",
+                    state: "final",
+                    message: chatTextMessage(
+                        role: "assistant",
+                        text: "reply from final event",
+                        timestamp: Date().timeIntervalSince1970 * 1000),
+                    errorMessage: nil)))
+
+        try await waitUntil("final event message visible") {
+            await MainActor.run {
+                vm.pendingRunCount == 0 &&
+                    vm.messages.contains { message in
+                        message.role == "assistant" &&
+                            message.content.contains { $0.text == "reply from final event" }
+                    }
+            }
+        }
+    }
+
     @Test func keepsOptimisticUserMessageWhenFinalRefreshReturnsOnlyAssistantHistory() async throws {
         let sessionId = "sess-main"
         let now = Date().timeIntervalSince1970 * 1000

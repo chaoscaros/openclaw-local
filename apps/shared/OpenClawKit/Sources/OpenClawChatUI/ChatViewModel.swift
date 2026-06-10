@@ -1065,6 +1065,7 @@ public final class OpenClawChatViewModel {
             case "final", "aborted", "error":
                 self.streamingAssistantText = nil
                 self.pendingToolCallsById = [:]
+                self.appendFinalChatMessageIfPresent(chat)
                 Task { await self.refreshHistoryAfterRun() }
             default:
                 break
@@ -1084,10 +1085,63 @@ public final class OpenClawChatViewModel {
             }
             self.pendingToolCallsById = [:]
             self.streamingAssistantText = nil
+            self.appendFinalChatMessageIfPresent(chat)
             Task { await self.refreshHistoryAfterRun() }
         default:
             break
         }
+    }
+
+    private func appendFinalChatMessageIfPresent(_ chat: OpenClawChatEventPayload) {
+        guard chat.state == "final" else { return }
+        guard let text = OpenClawChatEventText.assistantText(from: chat) else { return }
+
+        let decoded = chat.message.flatMap {
+            try? ChatPayloadDecoding.decode($0, as: OpenClawChatMessage.self)
+        }
+        let message: OpenClawChatMessage = if let decoded,
+                                              Self.isAssistantMessage(decoded)
+        {
+            Self.messageWithTimestampIfNeeded(decoded)
+        } else {
+            OpenClawChatMessage(
+                role: "assistant",
+                content: [
+                    OpenClawChatMessageContent(
+                        type: "text",
+                        text: text,
+                        thinking: nil,
+                        thinkingSignature: nil,
+                        mimeType: nil,
+                        fileName: nil,
+                        content: nil,
+                        id: nil,
+                        name: nil,
+                        arguments: nil),
+                ],
+                timestamp: Date().timeIntervalSince1970 * 1000,
+                stopReason: "stop")
+        }
+
+        let reconciled = Self.reconcileMessageIDs(previous: self.messages, incoming: self.messages + [message])
+        self.messages = Self.dedupeMessages(reconciled)
+    }
+
+    private static func isAssistantMessage(_ message: OpenClawChatMessage) -> Bool {
+        message.role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "assistant"
+    }
+
+    private static func messageWithTimestampIfNeeded(_ message: OpenClawChatMessage) -> OpenClawChatMessage {
+        guard message.timestamp == nil else { return message }
+        return OpenClawChatMessage(
+            id: message.id,
+            role: message.role,
+            content: message.content,
+            timestamp: Date().timeIntervalSince1970 * 1000,
+            toolCallId: message.toolCallId,
+            toolName: message.toolName,
+            usage: message.usage,
+            stopReason: message.stopReason)
     }
 
     private func matchesCurrentSessionKey(incoming: String, current: String) -> Bool {
