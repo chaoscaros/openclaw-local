@@ -335,6 +335,9 @@ false`, and avoid touching unrelated package/lock or workflow sync residue
   The local port keeps dependency metadata inside
   `extensions/codex-supervisor/package.json` and aligns the plugin version with
   the current local package version instead of bumping the tree to `2026.5.28`.
+- `bac13419a6` local equivalent: Codex Supervisor release-lint cleanup is
+  absorbed by normalizing WebSocket raw data in the close-path test and removing
+  the non-null assertion from endpoint-id resolution.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
