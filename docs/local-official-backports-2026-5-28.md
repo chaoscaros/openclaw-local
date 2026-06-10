@@ -663,6 +663,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     ViewModel-provided thinking options, with a baseline fallback.
   - Kept this as a wiring-only UI slice; the broader Pro composer redesign is
     still deferred to the larger visual refresh lane.
+- `f6e51ff99a` shared Chat draft-state subset:
+  - Split ViewModel draft detection from send eligibility via `hasDraftToSend`
+    and `canSendDraft`, preserving `canSend` as the pending-aware gate.
+  - This prepares the clean composer/talk-control UI without changing current
+    send button behavior.
 
 ## Validation Plan
 

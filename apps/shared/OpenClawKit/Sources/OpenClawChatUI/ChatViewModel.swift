@@ -227,8 +227,16 @@ public final class OpenClawChatViewModel {
     }
 
     public var canSend: Bool {
+        !self.isSending && self.pendingRunCount == 0 && self.hasDraftToSend
+    }
+
+    public var hasDraftToSend: Bool {
         let trimmed = self.input.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !self.isSending && self.pendingRunCount == 0 && (!trimmed.isEmpty || !self.attachments.isEmpty)
+        return !trimmed.isEmpty || !self.attachments.isEmpty
+    }
+
+    public var canSendDraft: Bool {
+        !self.isSending && self.hasDraftToSend
     }
 
     // MARK: - Internals
