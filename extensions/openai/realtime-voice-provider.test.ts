@@ -1776,6 +1776,7 @@ describe("buildOpenAIRealtimeVoiceProvider", () => {
         JSON.stringify({
           type: "response.audio.delta",
           item_id: "item_1",
+          response_id: "resp_1",
           delta: Buffer.from("assistant audio").toString("base64"),
         }),
       ),
@@ -1786,6 +1787,12 @@ describe("buildOpenAIRealtimeVoiceProvider", () => {
     bridge.handleBargeIn?.({ audioPlaybackActive: true });
 
     expect(parseSent(socket).filter((event) => event.type === "response.cancel")).toHaveLength(1);
+    expect(onEvent).toHaveBeenCalledWith({
+      direction: "server",
+      type: "response.audio.delta",
+      itemId: "item_1",
+      responseId: "resp_1",
+    });
     expect(onEvent).toHaveBeenCalledWith({
       direction: "client",
       type: "response.cancel",

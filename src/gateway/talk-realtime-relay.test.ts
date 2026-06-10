@@ -173,7 +173,19 @@ describe("talk realtime gateway relay", () => {
       supportsToolResultContinuation: true,
       connect: vi.fn(async () => {
         bridgeRequest?.onReady?.();
+        bridgeRequest?.onEvent?.({
+          direction: "server",
+          type: "response.audio.delta",
+          itemId: "item-audio-1",
+          responseId: "resp-audio-1",
+        });
         bridgeRequest?.onAudio(Buffer.from("audio-out"));
+        bridgeRequest?.onEvent?.({
+          direction: "server",
+          type: "response.audio.done",
+          itemId: "item-audio-1",
+          responseId: "resp-audio-1",
+        });
         bridgeRequest?.onTranscript?.("user", "hello", true);
         bridgeRequest?.onTranscript?.("assistant", "hi there", true);
         bridgeRequest?.onToolCall?.({
@@ -263,8 +275,18 @@ describe("talk realtime gateway relay", () => {
       relaySessionId: session.relaySessionId,
       type: "audio",
       audioBase64: Buffer.from("audio-out").toString("base64"),
+      itemId: "item-audio-1",
+      responseId: "resp-audio-1",
     });
     expectRecordFields(audioPayload.talkEvent, { type: "output.audio.delta" });
+
+    const audioDonePayload = findEventPayload(events, (payload) => payload.type === "audioDone");
+    expectRecordFields(audioDonePayload, {
+      relaySessionId: session.relaySessionId,
+      type: "audioDone",
+      itemId: "item-audio-1",
+      responseId: "resp-audio-1",
+    });
 
     const userTranscript = findEventPayload(
       events,

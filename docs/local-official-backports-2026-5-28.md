@@ -93,11 +93,10 @@ scoped verification.
 
 ## Next Slice Queue
 
-1. **Split iOS Talk Tab Realtime Playback**: handle `6897711d19` in two
-   slices. First absorb the Gateway/OpenAI realtime metadata contract
-   (`itemId`, `responseId`, and relay `audioDone`) with focused TypeScript
-   tests. Then separately decide the native iOS Talk UI and playback work,
-   which may require Xcode/Swift verification.
+1. **iOS Talk Tab Realtime Playback UI**: the `6897711d19` Gateway/OpenAI
+   realtime metadata contract is absorbed. Next, decide the native iOS Talk UI
+   and playback files separately, because they add a large `TalkProTab.swift`
+   surface and may require Xcode/Swift verification.
 2. **Audit iOS Pro UI / Gateway Flow Bulk Commit**: keep `f6e51ff99a` as a
    large native/mobile feature lane. Do not cherry-pick it wholesale; identify
    protected gateway/task/talk behaviors first and split into sub-30-minute
@@ -348,6 +347,12 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   marked optional, config help/placeholders point at the hosted relay, the beta
   preparation script defaults to the hosted relay, and node-event relay
   registrations preserve the reported `relayOrigin`.
+- `6897711d19` backend subset: realtime voice bridge events can now carry
+  `itemId` and `responseId`, the bundled OpenAI realtime provider forwards
+  those identifiers from server events, and the Gateway Talk realtime relay
+  attaches them to audio deltas plus emits `audioDone` when provider output
+  completes or is cancelled. The native iOS Talk tab UI/playback files remain
+  a separate slice.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
