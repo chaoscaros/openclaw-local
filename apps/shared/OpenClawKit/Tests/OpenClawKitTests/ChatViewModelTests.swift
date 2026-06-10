@@ -656,6 +656,71 @@ extension TestChatTransportState {
         #expect(await MainActor.run { vm.errorText } == nil)
     }
 
+    @Test func appendsExternalSessionUserMessageForActiveSession() async throws {
+        let now = Date().timeIntervalSince1970 * 1000
+        let (transport, vm) = await makeViewModel(
+            sessionKey: "agent:aiden:main",
+            historyResponses: [historyPayload(sessionKey: "agent:aiden:main")])
+
+        await MainActor.run { vm.load() }
+        try await waitUntil("bootstrap history loaded") { await MainActor.run { vm.messages.isEmpty } }
+
+        transport.emit(
+            .sessionMessage(
+                OpenClawSessionMessageEventPayload(
+                    sessionKey: "agent:aiden:main",
+                    message: OpenClawChatMessage(
+                        role: "user",
+                        content: [
+                            OpenClawChatMessageContent(
+                                type: "text",
+                                text: "spoken transcript",
+                                mimeType: nil,
+                                fileName: nil,
+                                content: nil),
+                        ],
+                        timestamp: now),
+                    messageId: "msg-1",
+                    messageSeq: 1)))
+
+        try await waitUntil("external transcript visible") {
+            await MainActor.run {
+                vm.messages.count == 1 &&
+                    vm.messages.first?.role == "user" &&
+                    vm.messages.first?.content.first?.text == "spoken transcript"
+            }
+        }
+    }
+
+    @Test func ignoresExternalSessionUserMessageForOtherSession() async throws {
+        let now = Date().timeIntervalSince1970 * 1000
+        let (transport, vm) = await makeViewModel(historyResponses: [historyPayload()])
+
+        await MainActor.run { vm.load() }
+        try await waitUntil("bootstrap history loaded") { await MainActor.run { vm.messages.isEmpty } }
+
+        transport.emit(
+            .sessionMessage(
+                OpenClawSessionMessageEventPayload(
+                    sessionKey: "other",
+                    message: OpenClawChatMessage(
+                        role: "user",
+                        content: [
+                            OpenClawChatMessageContent(
+                                type: "text",
+                                text: "other transcript",
+                                mimeType: nil,
+                                fileName: nil,
+                                content: nil),
+                        ],
+                        timestamp: now),
+                    messageId: "msg-2",
+                    messageSeq: 2)))
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+        #expect(await MainActor.run { vm.messages.isEmpty })
+    }
+
     @Test func keepsOptimisticUserMessageWhenFinalRefreshReturnsOnlyAssistantHistory() async throws {
         let sessionId = "sess-main"
         let now = Date().timeIntervalSince1970 * 1000

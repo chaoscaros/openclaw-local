@@ -628,6 +628,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     fail-closing on a cached unhealthy status.
   - Added ViewModel coverage that a stale `healthOK == false` cache does not
     prevent the message from reaching the transport.
+- `f6e51ff99a` shared Chat session-message subset:
+  - Added shared transport support for `session.message` events and appending
+    external user messages for the active session when no run is pending.
+  - Added coverage for active-session transcript append and other-session
+    filtering so cross-client/mobile transcripts do not bleed between sessions.
 
 ## Validation Plan
 
