@@ -338,6 +338,9 @@ false`, and avoid touching unrelated package/lock or workflow sync residue
 - `bac13419a6` local equivalent: Codex Supervisor release-lint cleanup is
   absorbed by normalizing WebSocket raw data in the close-path test and removing
   the non-null assertion from endpoint-id resolution.
+- `806dac4f3d` Codex Supervisor subset: the release-test typecheck tail for
+  WebSocket raw data handling is absorbed without pulling unrelated Xiaomi,
+  Zalo, or node-host test updates into this slice.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
