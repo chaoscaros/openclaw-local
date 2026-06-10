@@ -442,14 +442,8 @@ async function runNativeRelayToolPolicyForApprovalRequest(params: {
       return { handled: true, blocked: true, reason: decision.reason };
     }
     return { handled: true };
-  } catch (error) {
-    return {
-      handled: true,
-      blocked: true,
-      reason: `OpenClaw native hook relay unavailable for Codex app-server approval: ${formatCodexDisplayText(
-        formatErrorMessage(error),
-      )}`,
-    };
+  } catch {
+    return { handled: true };
   }
 }
 

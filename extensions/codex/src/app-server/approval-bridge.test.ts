@@ -556,9 +556,12 @@ describe("Codex app-server approval bridge", () => {
     });
   });
 
-  it("fails closed when the expected native hook relay cannot be invoked", async () => {
+  it("falls through to plugin approval when the expected native hook relay cannot be invoked", async () => {
     const params = createParams();
     mockInvokeNativeHookRelay.mockRejectedValueOnce(new Error("native hook relay not found"));
+    mockCallGatewayTool
+      .mockResolvedValueOnce({ id: "plugin:approval-native-unavailable", status: "accepted" })
+      .mockResolvedValueOnce({ id: "plugin:approval-native-unavailable", decision: "allow-once" });
 
     const result = await handleCodexAppServerApprovalRequest({
       method: "item/commandExecution/requestApproval",
@@ -578,14 +581,20 @@ describe("Codex app-server approval bridge", () => {
       },
     });
 
-    expect(result).toEqual({ decision: "decline" });
+    expect(result).toEqual({ decision: "accept" });
     expect(mockRunBeforeToolCallHook).not.toHaveBeenCalled();
     expect(mockInvokeNativeHookRelay).toHaveBeenCalledTimes(1);
-    expect(mockCallGatewayTool).not.toHaveBeenCalled();
+    expect(mockCallGatewayTool.mock.calls.map(([method]) => method)).toEqual([
+      "plugin.approval.request",
+      "plugin.approval.waitDecision",
+    ]);
     findApprovalEvent(params, {
-      status: "denied",
-      message:
-        "OpenClaw native hook relay unavailable for Codex app-server approval: native hook relay not found",
+      status: "pending",
+      approvalId: "plugin:approval-native-unavailable",
+    });
+    findApprovalEvent(params, {
+      status: "approved",
+      approvalId: "plugin:approval-native-unavailable",
     });
   });
 
