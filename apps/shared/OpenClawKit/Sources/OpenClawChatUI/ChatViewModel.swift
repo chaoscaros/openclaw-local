@@ -41,6 +41,7 @@ public final class OpenClawChatViewModel {
     private let prefersExplicitThinkingLevel: Bool
     private let onSessionChanged: (@MainActor (String) -> Void)?
     private let onThinkingLevelChanged: (@MainActor @Sendable (String) -> Void)?
+    private let diagnosticsLog: (@MainActor @Sendable (String) -> Void)?
 
     @ObservationIgnored
     private nonisolated(unsafe) var eventTask: Task<Void, Never>?
@@ -80,7 +81,8 @@ public final class OpenClawChatViewModel {
         transport: any OpenClawChatTransport,
         initialThinkingLevel: String? = nil,
         onSessionChanged: (@MainActor (String) -> Void)? = nil,
-        onThinkingLevelChanged: (@MainActor @Sendable (String) -> Void)? = nil)
+        onThinkingLevelChanged: (@MainActor @Sendable (String) -> Void)? = nil,
+        diagnosticsLog: (@MainActor @Sendable (String) -> Void)? = nil)
     {
         self.sessionKey = sessionKey
         self.transport = transport
@@ -93,6 +95,7 @@ public final class OpenClawChatViewModel {
         self.prefersExplicitThinkingLevel = normalizedThinkingLevel != nil
         self.onSessionChanged = onSessionChanged
         self.onThinkingLevelChanged = onThinkingLevelChanged
+        self.diagnosticsLog = diagnosticsLog
 
         self.eventTask = Task { [weak self] in
             guard let self else { return }
@@ -126,6 +129,11 @@ public final class OpenClawChatViewModel {
     }
 
     public func send() {
+        self.logDiagnostic(
+            "chat.ui send invoked sessionKey=\(self.sessionKey) "
+                + "inputLen=\(self.input.count) attachments=\(self.attachments.count) "
+                + "pending=\(self.pendingRunCount) sending=\(self.isSending) "
+                + "health=\(self.healthOK)")
         Task { await self.performSend() }
     }
 
@@ -244,6 +252,10 @@ public final class OpenClawChatViewModel {
 
     // MARK: - Internals
 
+    private func logDiagnostic(_ message: String) {
+        self.diagnosticsLog?(message)
+    }
+
     private func bootstrap() async {
         self.isLoading = true
         self.errorText = nil
@@ -291,6 +303,9 @@ public final class OpenClawChatViewModel {
 
     private func refreshPendingRunAfterForeground() async {
         guard self.pendingRunCount > 0 else { return }
+        self.logDiagnostic(
+            "chat.ui foreground refresh sessionKey=\(self.sessionKey) "
+                + "pending=\(self.pendingRunCount)")
         await self.refreshHistoryAfterRun()
         await self.pollHealthIfNeeded(force: true)
         if self.hasAssistantMessageAfterLatestUser() {
@@ -530,10 +545,21 @@ public final class OpenClawChatViewModel {
     private static let compactTriggers: Set<String> = ["/compact"]
 
     private func performSend() async {
-        guard !self.isSending else { return }
-        guard self.pendingRuns.isEmpty else { return }
+        guard !self.isSending else {
+            self.logDiagnostic("chat.ui send ignored reason=sending sessionKey=\(self.sessionKey)")
+            return
+        }
+        guard self.pendingRuns.isEmpty else {
+            self.logDiagnostic(
+                "chat.ui send ignored reason=pending sessionKey=\(self.sessionKey) "
+                    + "pending=\(self.pendingRunCount)")
+            return
+        }
         let trimmed = self.input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty || !self.attachments.isEmpty else { return }
+        guard !trimmed.isEmpty || !self.attachments.isEmpty else {
+            self.logDiagnostic("chat.ui send ignored reason=empty sessionKey=\(self.sessionKey)")
+            return
+        }
 
         if Self.newSessionTriggers.contains(trimmed.lowercased()) {
             self.input = ""
@@ -564,6 +590,9 @@ public final class OpenClawChatViewModel {
         let thinkingLevel = self.thinkingLevel
         self.pendingRuns.insert(runId)
         self.armPendingRunTimeout(runId: runId)
+        self.logDiagnostic(
+            "chat.ui send queued sessionKey=\(sessionKey) "
+                + "localRunId=\(runId) pending=\(self.pendingRunCount)")
         self.pendingToolCallsById = [:]
         self.streamingAssistantText = nil
 
@@ -616,12 +645,18 @@ public final class OpenClawChatViewModel {
 
         do {
             await self.waitForPendingModelPatches(in: sessionKey)
+            self.logDiagnostic(
+                "chat.ui transport send start sessionKey=\(sessionKey) "
+                    + "localRunId=\(runId)")
             let response = try await self.transport.sendMessage(
                 sessionKey: sessionKey,
                 message: messageText,
                 thinking: thinkingLevel,
                 idempotencyKey: runId,
                 attachments: encodedAttachments)
+            self.logDiagnostic(
+                "chat.ui transport send accepted sessionKey=\(sessionKey) "
+                    + "localRunId=\(runId) remoteRunId=\(response.runId)")
             var activeRunId = runId
             if response.runId != runId {
                 self.clearPendingRun(runId)
@@ -636,6 +671,9 @@ public final class OpenClawChatViewModel {
         } catch {
             self.clearPendingRun(runId)
             self.errorText = error.localizedDescription
+            self.logDiagnostic(
+                "chat.ui send failed sessionKey=\(sessionKey) "
+                    + "localRunId=\(runId) error=\(error.localizedDescription)")
             chatUILogger.error("chat.send failed \(error.localizedDescription, privacy: .public)")
         }
 
@@ -1249,6 +1287,11 @@ public final class OpenClawChatViewModel {
 
     private func handleChatEvent(_ chat: OpenClawChatEventPayload) {
         let isOurRun = chat.runId.flatMap { self.pendingRuns.contains($0) } ?? false
+        if let runId = chat.runId {
+            self.logDiagnostic(
+                "chat.ui event chat state=\(chat.state ?? "unknown") "
+                    + "runId=\(runId) ours=\(isOurRun) pending=\(self.pendingRunCount)")
+        }
 
         // Gateway may publish canonical session keys (for example "agent:main:main")
         // even when this view currently uses an alias key (for example "main").
@@ -1390,6 +1433,9 @@ public final class OpenClawChatViewModel {
         if !isPendingRun, !isLegacySessionStream {
             return
         }
+        self.logDiagnostic(
+            "chat.ui event agent stream=\(evt.stream) "
+                + "runId=\(evt.runId) pending=\(self.pendingRunCount)")
 
         switch evt.stream {
         case "assistant":
@@ -1545,6 +1591,9 @@ public final class OpenClawChatViewModel {
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 guard self.pendingRuns.contains(runId) else { return }
+                self.logDiagnostic(
+                    "chat.ui pending timeout sessionKey=\(self.sessionKey) "
+                        + "runId=\(runId)")
                 self.clearPendingRun(runId)
                 self.errorText = "Timed out waiting for a reply; try again or refresh."
             }
@@ -1552,12 +1601,19 @@ public final class OpenClawChatViewModel {
     }
 
     private func clearPendingRun(_ runId: String) {
+        let wasPending = self.pendingRuns.contains(runId)
         self.pendingRuns.remove(runId)
         self.pendingRunTimeoutTasks[runId]?.cancel()
         self.pendingRunTimeoutTasks[runId] = nil
+        if wasPending {
+            self.logDiagnostic(
+                "chat.ui pending cleared sessionKey=\(self.sessionKey) "
+                    + "runId=\(runId)")
+        }
     }
 
     private func clearPendingRuns(reason: String?) {
+        let runIds = Array(self.pendingRuns)
         for runId in self.pendingRuns {
             self.pendingRunTimeoutTasks[runId]?.cancel()
         }
@@ -1565,6 +1621,11 @@ public final class OpenClawChatViewModel {
         self.pendingRuns.removeAll()
         if let reason, !reason.isEmpty {
             self.errorText = reason
+            for runId in runIds {
+                self.logDiagnostic(
+                    "chat.ui pending cleared sessionKey=\(self.sessionKey) "
+                        + "runId=\(runId) reason=\(reason)")
+            }
         }
     }
 

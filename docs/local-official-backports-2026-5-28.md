@@ -673,6 +673,12 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     switching sessions or creating a fresh `/new` session.
   - Existing callers keep the same behavior because the callback defaults to
     nil; later embedded chat surfaces can track session-key changes explicitly.
+- `f6e51ff99a` shared Chat diagnostics callback subset:
+  - Added an optional ViewModel diagnostics callback for send attempts,
+    transport acceptance/failure, foreground recovery, run events, timeouts, and
+    pending-run cleanup.
+  - Kept the callback defaulted to nil so existing Chat surfaces behave the
+    same while mobile/debug hosts can observe stuck-run state transitions.
 
 ## Validation Plan
 
