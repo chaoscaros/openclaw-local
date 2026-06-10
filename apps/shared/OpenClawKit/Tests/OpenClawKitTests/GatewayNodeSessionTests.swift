@@ -48,11 +48,17 @@ private final class DoubleCallbackPingWebSocketTask: WebSocketTasking, @unchecke
 }
 
 private final class FakeGatewayWebSocketTask: WebSocketTasking, @unchecked Sendable {
+    struct SentRequest: @unchecked Sendable {
+        let method: String
+        let params: [String: Any]?
+    }
+
     private let lock = NSLock()
     private let helloAuth: [String: Any]?
     private var _state: URLSessionTask.State = .suspended
     private var connectRequestId: String?
     private var connectAuth: [String: Any]?
+    private var sentRequests: [SentRequest] = []
     private var receivePhase = 0
     private var pendingReceiveHandler:
         (@Sendable (Result<URLSessionWebSocketTask.Message, Error>) -> Void)?
@@ -87,11 +93,17 @@ private final class FakeGatewayWebSocketTask: WebSocketTasking, @unchecked Senda
         @unknown default: nil
         }
         guard let data else { return }
-        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           obj["type"] as? String == "req",
-           obj["method"] as? String == "connect",
-           let id = obj["id"] as? String
-        {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              obj["type"] as? String == "req",
+              let method = obj["method"] as? String
+        else {
+            return
+        }
+        let params = obj["params"] as? [String: Any]
+        self.lock.withLock {
+            self.sentRequests.append(SentRequest(method: method, params: params))
+        }
+        if method == "connect", let id = obj["id"] as? String {
             let auth = ((obj["params"] as? [String: Any])?["auth"] as? [String: Any]) ?? [:]
             self.lock.withLock {
                 self.connectRequestId = id
@@ -102,6 +114,10 @@ private final class FakeGatewayWebSocketTask: WebSocketTasking, @unchecked Senda
 
     func latestConnectAuth() -> [String: Any]? {
         self.lock.withLock { self.connectAuth }
+    }
+
+    func latestSentRequest(method: String) -> SentRequest? {
+        self.lock.withLock { self.sentRequests.last { $0.method == method } }
     }
 
     func sendPing(pongReceiveHandler: @escaping @Sendable (Error?) -> Void) {
@@ -573,6 +589,45 @@ struct GatewayNodeSessionTests {
 
         #expect(response.ok == true)
         #expect(response.error == nil)
+    }
+
+    @Test
+    func sendForwardsDecodedParamsWithoutWaitingForResponse() async throws {
+        let session = FakeGatewayWebSocketSession()
+        let gateway = GatewayNodeSession()
+        let options = GatewayConnectOptions(
+            role: "operator",
+            scopes: ["operator.read"],
+            caps: [],
+            commands: [],
+            permissions: [:],
+            clientId: "openclaw-ios-test",
+            clientMode: "ui",
+            clientDisplayName: "iOS Test",
+            includeDeviceIdentity: false)
+
+        try await gateway.connect(
+            url: URL(string: "ws://example.invalid")!,
+            token: nil,
+            bootstrapToken: nil,
+            password: nil,
+            connectOptions: options,
+            sessionBox: WebSocketSessionBox(session: session),
+            onConnected: {},
+            onDisconnected: { _ in },
+            onInvoke: { req in
+                BridgeInvokeResponse(id: req.id, ok: true, payloadJSON: nil, error: nil)
+            })
+
+        try await gateway.send(
+            method: "node.event",
+            paramsJSON: #"{"event":"mobile.ready","payloadJSON":"{\"ok\":true}"}"#)
+
+        let sent = try #require(session.latestTask()?.latestSentRequest(method: "node.event"))
+        #expect(sent.params?["event"] as? String == "mobile.ready")
+        #expect(sent.params?["payloadJSON"] as? String == #"{"ok":true}"#)
+
+        await gateway.disconnect()
     }
 
     @Test

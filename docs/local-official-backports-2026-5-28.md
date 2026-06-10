@@ -562,6 +562,26 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   because a new workspace package was added, then aborts without a TTY before
   tests start; do not treat that as a plugin test failure.
 
+## Absorbed In This Iteration
+
+- `f6e51ff99a` shared mobile support subset:
+  - Increased shared Gateway connect timeout to tolerate slower remote
+    challenge delivery.
+  - Added `GatewayNodeSession.send(method:paramsJSON:)` so native callers can
+    forward fire-and-forget gateway methods through the same JSON decoding path
+    as request calls.
+  - Removed the share-extension fallback instruction so empty shared content no
+    longer opens an agent task with a synthetic "help me" message.
+  - Added OpenClawKit regression tests for empty share deeplinks, explicit share
+    instructions, and decoded fire-and-forget node sends.
+- Deferred from this slice:
+  - The Swift protocol generator / generated `GatewayModels.swift` cleanup from
+    `f6e51ff99a` is intentionally left for a separate generated-file slice
+    because those files already have broader local sync drift.
+  - The large iOS Pro UI refresh remains split out; it depends on local design
+    modules and chat/session surfaces that are not safe to absorb as a narrow
+    support patch.
+
 ## Validation Plan
 
 - For documentation-only tracker updates, run no build or service restart.

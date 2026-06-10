@@ -350,6 +350,17 @@ public actor GatewayNodeSession {
             timeoutMs: Double(timeoutSeconds * 1000))
     }
 
+    public func send(method: String, paramsJSON: String?) async throws {
+        guard let channel = self.channel else {
+            throw NSError(domain: "Gateway", code: 11, userInfo: [
+                NSLocalizedDescriptionKey: "not connected",
+            ])
+        }
+
+        let params = try self.decodeParamsJSON(paramsJSON)
+        try await channel.send(method: method, params: params)
+    }
+
     public func subscribeServerEvents(bufferingNewest: Int = 200) -> AsyncStream<EventFrame> {
         let id = UUID()
         let session = self
