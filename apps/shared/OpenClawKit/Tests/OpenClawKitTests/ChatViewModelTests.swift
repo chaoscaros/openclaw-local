@@ -87,6 +87,7 @@ private func makeViewModel(
     compactSessionHook: (@Sendable (String) async throws -> Void)? = nil,
     setSessionModelHook: (@Sendable (String?) async throws -> Void)? = nil,
     setSessionThinkingHook: (@Sendable (String) async throws -> Void)? = nil,
+    waitForRunCompletionHook: (@Sendable (String, Int) async -> Bool)? = nil,
     initialThinkingLevel: String? = nil,
     onThinkingLevelChanged: (@MainActor @Sendable (String) -> Void)? = nil) async
     -> (TestChatTransport, OpenClawChatViewModel)
@@ -98,7 +99,8 @@ private func makeViewModel(
         resetSessionHook: resetSessionHook,
         compactSessionHook: compactSessionHook,
         setSessionModelHook: setSessionModelHook,
-        setSessionThinkingHook: setSessionThinkingHook)
+        setSessionThinkingHook: setSessionThinkingHook,
+        waitForRunCompletionHook: waitForRunCompletionHook)
     let vm = await MainActor.run {
         OpenClawChatViewModel(
             sessionKey: sessionKey,
@@ -243,6 +245,7 @@ private actor TestChatTransportState {
     var sentRunIds: [String] = []
     var sentThinkingLevels: [String] = []
     var abortedRunIds: [String] = []
+    var waitCompletionRunIds: [String] = []
     var patchedModels: [String?] = []
     var patchedThinkingLevels: [String] = []
 }
@@ -256,6 +259,7 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
     private let compactSessionHook: (@Sendable (String) async throws -> Void)?
     private let setSessionModelHook: (@Sendable (String?) async throws -> Void)?
     private let setSessionThinkingHook: (@Sendable (String) async throws -> Void)?
+    private let waitForRunCompletionHook: (@Sendable (String, Int) async -> Bool)?
 
     private let stream: AsyncStream<OpenClawChatTransportEvent>
     private let continuation: AsyncStream<OpenClawChatTransportEvent>.Continuation
@@ -267,7 +271,8 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
         resetSessionHook: (@Sendable (String) async throws -> Void)? = nil,
         compactSessionHook: (@Sendable (String) async throws -> Void)? = nil,
         setSessionModelHook: (@Sendable (String?) async throws -> Void)? = nil,
-        setSessionThinkingHook: (@Sendable (String) async throws -> Void)? = nil)
+        setSessionThinkingHook: (@Sendable (String) async throws -> Void)? = nil,
+        waitForRunCompletionHook: (@Sendable (String, Int) async -> Bool)? = nil)
     {
         self.historyResponses = historyResponses
         self.sessionsResponses = sessionsResponses
@@ -276,6 +281,7 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
         self.compactSessionHook = compactSessionHook
         self.setSessionModelHook = setSessionModelHook
         self.setSessionThinkingHook = setSessionThinkingHook
+        self.waitForRunCompletionHook = waitForRunCompletionHook
         var cont: AsyncStream<OpenClawChatTransportEvent>.Continuation!
         self.stream = AsyncStream { c in
             cont = c
@@ -373,6 +379,11 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
         true
     }
 
+    func waitForRunCompletion(runId: String, timeoutMs: Int) async -> Bool {
+        await self.state.waitCompletionRunIdsAppend(runId)
+        return await self.waitForRunCompletionHook?(runId, timeoutMs) ?? false
+    }
+
     func emit(_ evt: OpenClawChatTransportEvent) {
         self.continuation.yield(evt)
     }
@@ -384,6 +395,10 @@ private final class TestChatTransport: @unchecked Sendable, OpenClawChatTranspor
 
     func abortedRunIds() async -> [String] {
         await self.state.abortedRunIds
+    }
+
+    func waitCompletionRunIds() async -> [String] {
+        await self.state.waitCompletionRunIds
     }
 
     func sentThinkingLevels() async -> [String] {
@@ -426,6 +441,10 @@ extension TestChatTransportState {
 
     fileprivate func abortedRunIdsAppend(_ v: String) {
         self.abortedRunIds.append(v)
+    }
+
+    fileprivate func waitCompletionRunIdsAppend(_ v: String) {
+        self.waitCompletionRunIds.append(v)
     }
 
     fileprivate func sentThinkingLevelsAppend(_ v: String) {
@@ -729,6 +748,37 @@ extension TestChatTransportState {
 
         try await waitUntil("history refresh after resolved-main external event") {
             await MainActor.run { vm.messages.count == 2 }
+        }
+    }
+
+    @Test func runCompletionWaitRefreshesAndClearsPendingRun() async throws {
+        let now = Date().timeIntervalSince1970 * 1000
+        let history1 = historyPayload(messages: [])
+        let history2 = historyPayload(
+            messages: [
+                chatTextMessage(role: "user", text: "hello", timestamp: now),
+                chatTextMessage(role: "assistant", text: "completed after wait", timestamp: now + 1),
+            ])
+        let (transport, vm) = await makeViewModel(
+            historyResponses: [history1, history2],
+            waitForRunCompletionHook: { _, _ in true })
+        try await loadAndWaitBootstrap(vm: vm)
+
+        await sendUserMessage(vm, text: "hello")
+        try await waitUntil("agent wait called") {
+            !(await transport.waitCompletionRunIds()).isEmpty
+        }
+        let runId = try #require(await transport.lastSentRunId())
+        #expect(await transport.waitCompletionRunIds() == [runId])
+
+        try await waitUntil("completion wait refresh clears pending run") {
+            await MainActor.run {
+                vm.pendingRunCount == 0 &&
+                    vm.messages.contains { message in
+                        message.role == "assistant" &&
+                            message.content.contains { $0.text == "completed after wait" }
+                    }
+            }
         }
     }
 

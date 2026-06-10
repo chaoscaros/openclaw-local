@@ -557,11 +557,14 @@ public final class OpenClawChatViewModel {
                 thinking: thinkingLevel,
                 idempotencyKey: runId,
                 attachments: encodedAttachments)
+            var activeRunId = runId
             if response.runId != runId {
                 self.clearPendingRun(runId)
                 self.pendingRuns.insert(response.runId)
                 self.armPendingRunTimeout(runId: response.runId)
+                activeRunId = response.runId
             }
+            self.armRunCompletionRefresh(runId: activeRunId, sessionKey: sessionKey)
         } catch {
             self.clearPendingRun(runId)
             self.errorText = error.localizedDescription
@@ -1084,6 +1087,27 @@ public final class OpenClawChatViewModel {
         } catch {
             chatUILogger.error("refresh history failed \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    private func armRunCompletionRefresh(runId: String, sessionKey: String) {
+        let timeoutMs = Int(self.pendingRunTimeoutMs)
+        let transport = self.transport
+        Task { [weak self, transport] in
+            let observedCompletion = await transport.waitForRunCompletion(runId: runId, timeoutMs: timeoutMs)
+            guard observedCompletion else { return }
+            await self?.refreshAfterObservedRunCompletion(runId: runId, sessionKey: sessionKey)
+        }
+    }
+
+    private func refreshAfterObservedRunCompletion(runId: String, sessionKey: String) async {
+        guard self.sessionKey == sessionKey, self.pendingRuns.contains(runId) else {
+            return
+        }
+        await self.refreshHistoryAfterRun()
+        guard self.sessionKey == sessionKey, self.pendingRuns.contains(runId) else {
+            return
+        }
+        self.clearPendingRun(runId)
     }
 
     private func armPendingRunTimeout(runId: String) {

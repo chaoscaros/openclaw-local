@@ -596,6 +596,12 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Added iOS transport unit coverage for create-session params, agent-wait
     timeout sizing, completion status parsing, and disconnected create-session
     failure.
+- `f6e51ff99a` shared Chat pending-run subset:
+  - After `chat.send` accepts a run, ChatViewModel now uses the transport's
+    run-completion observer as a non-event fallback to refresh history and clear
+    pending state when Gateway chat events are missed.
+  - Added shared ChatViewModel coverage for the completion-observer fallback so
+    mobile chat does not remain stuck in a pending state after a completed run.
 
 ## Validation Plan
 
