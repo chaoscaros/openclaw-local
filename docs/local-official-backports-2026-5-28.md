@@ -633,6 +633,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     external user messages for the active session when no run is pending.
   - Added coverage for active-session transcript append and other-session
     filtering so cross-client/mobile transcripts do not bleed between sessions.
+- `f6e51ff99a` shared Chat assistant-error display subset:
+  - Preserved decoded assistant `errorMessage` values and rendered them when
+    the assistant error turn has no meaningful text body.
+  - Added coverage so provider errors replace empty/fallback text without
+    overriding partial assistant content or non-error stops.
 
 ## Validation Plan
 

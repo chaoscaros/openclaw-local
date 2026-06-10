@@ -395,7 +395,8 @@ public struct OpenClawChatView: View {
                 toolCallId: last.toolCallId,
                 toolName: last.toolName,
                 usage: last.usage,
-                stopReason: last.stopReason)
+                stopReason: last.stopReason,
+                errorMessage: last.errorMessage)
             result[result.count - 1] = merged
         }
 
