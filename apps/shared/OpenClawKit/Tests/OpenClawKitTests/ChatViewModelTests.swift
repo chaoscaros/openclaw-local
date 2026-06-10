@@ -689,6 +689,49 @@ extension TestChatTransportState {
         }
     }
 
+    @Test func acceptsResolvedMainSessionKeyEventsForExternalRuns() async throws {
+        let now = Date().timeIntervalSince1970 * 1000
+        let history1 = historyPayload(messages: [chatTextMessage(role: "user", text: "first", timestamp: now)])
+        let history2 = historyPayload(
+            messages: [
+                chatTextMessage(role: "user", text: "first", timestamp: now),
+                chatTextMessage(role: "assistant", text: "from resolved main", timestamp: now + 1),
+            ])
+        let sessions = OpenClawChatSessionsListResponse(
+            ts: now,
+            path: nil,
+            count: 1,
+            defaults: OpenClawChatSessionsDefaults(
+                model: nil,
+                contextTokens: nil,
+                mainSessionKey: "agent:aiden:main"),
+            sessions: [
+                sessionEntry(key: "agent:aiden:main", updatedAt: now),
+            ])
+
+        let (transport, vm) = await makeViewModel(
+            sessionKey: "main",
+            historyResponses: [history1, history2],
+            sessionsResponses: [sessions])
+
+        await MainActor.run { vm.load() }
+        try await waitUntil("bootstrap history loaded") { await MainActor.run { vm.messages.count == 1 } }
+        try await waitUntil("sessions defaults loaded") { await MainActor.run { !vm.sessions.isEmpty } }
+
+        transport.emit(
+            .chat(
+                OpenClawChatEventPayload(
+                    runId: "external-run",
+                    sessionKey: "agent:aiden:main",
+                    state: "final",
+                    message: nil,
+                    errorMessage: nil)))
+
+        try await waitUntil("history refresh after resolved-main external event") {
+            await MainActor.run { vm.messages.count == 2 }
+        }
+    }
+
     @Test func preservesMessageIDsAcrossHistoryRefreshes() async throws {
         let now = Date().timeIntervalSince1970 * 1000
         let history1 = historyPayload(messages: [chatTextMessage(role: "user", text: "hello", timestamp: now)])

@@ -965,7 +965,7 @@ public final class OpenClawChatViewModel {
         // Never drop events for our own pending run on key mismatch, or the UI can stay
         // stuck at "thinking" until the user reopens and forces a history reload.
         if let sessionKey = chat.sessionKey,
-           !Self.matchesCurrentSessionKey(incoming: sessionKey, current: self.sessionKey),
+           !self.matchesCurrentSessionKey(incoming: sessionKey, current: self.sessionKey),
            !isOurRun
         {
             return
@@ -1001,19 +1001,42 @@ public final class OpenClawChatViewModel {
         }
     }
 
-    private static func matchesCurrentSessionKey(incoming: String, current: String) -> Bool {
+    private func matchesCurrentSessionKey(incoming: String, current: String) -> Bool {
+        Self.matchesCurrentSessionKey(
+            incoming: incoming,
+            current: current,
+            mainSessionKey: self.resolvedMainSessionKey)
+    }
+
+    private static func matchesCurrentSessionKey(incoming: String, current: String, mainSessionKey: String) -> Bool {
         let incomingNormalized = incoming.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let currentNormalized = current.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if incomingNormalized == currentNormalized {
             return true
         }
-        // Common alias pair in operator clients: UI uses "main" while gateway emits canonical.
-        if (incomingNormalized == "agent:main:main" && currentNormalized == "main") ||
-            (incomingNormalized == "main" && currentNormalized == "agent:main:main")
+
+        let mainNormalized = mainSessionKey.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if Self.matchesMainAlias(
+            incoming: incomingNormalized,
+            current: currentNormalized,
+            mainSessionKey: mainNormalized)
         {
             return true
         }
+
         return false
+    }
+
+    private static func matchesMainAlias(incoming: String, current: String, mainSessionKey: String) -> Bool {
+        if current == "main", incoming == mainSessionKey, mainSessionKey != "main" {
+            return true
+        }
+        if incoming == "main", current == mainSessionKey, mainSessionKey != "main" {
+            return true
+        }
+        // Common alias pair in operator clients: UI uses "main" while gateway emits canonical.
+        return (current == "main" && incoming == "agent:main:main") ||
+            (incoming == "main" && current == "agent:main:main")
     }
 
     private func handleAgentEvent(_ evt: OpenClawAgentEventPayload) {

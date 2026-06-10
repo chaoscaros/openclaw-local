@@ -581,6 +581,13 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - The large iOS Pro UI refresh remains split out; it depends on local design
     modules and chat/session surfaces that are not safe to absorb as a narrow
     support patch.
+- `f6e51ff99a` shared Chat session-key subset:
+  - Extended ChatViewModel event filtering so a UI currently using the `main`
+    alias also accepts the configured resolved main session key, such as
+    `agent:<id>:main`.
+  - Added a regression test for external run completion events emitted under a
+    resolved main session key, preventing the mobile/chat UI from missing
+    canonical Gateway events.
 
 ## Validation Plan
 
