@@ -718,6 +718,50 @@ extension TestChatTransportState {
         }
     }
 
+    @Test func decodesGatewayThinkingMetadataFromSessionList() throws {
+        let json = """
+        {
+          "defaults": {
+            "modelProvider": "anthropic",
+            "model": "claude-opus-4-7",
+            "thinkingLevels": [
+              { "id": "off", "label": "off" },
+              { "id": "adaptive", "label": "adaptive" },
+              { "id": "max", "label": "maximum" }
+            ],
+            "thinkingOptions": ["off", "adaptive", "maximum"],
+            "thinkingDefault": "adaptive"
+          },
+          "sessions": [
+            {
+              "key": "main",
+              "modelProvider": "openrouter",
+              "model": "deepseek/deepseek-v4",
+              "thinkingLevel": "max",
+              "thinkingLevels": [
+                { "id": "off", "label": "off" },
+                { "id": "xhigh", "label": "xhigh" },
+                { "id": "max", "label": "max" }
+              ],
+              "thinkingOptions": ["off", "xhigh", "max"],
+              "thinkingDefault": "max"
+            }
+          ]
+        }
+        """
+
+        let decoded = try JSONDecoder().decode(
+            OpenClawChatSessionsListResponse.self,
+            from: Data(json.utf8))
+
+        #expect(decoded.defaults?.modelProvider == "anthropic")
+        #expect(decoded.defaults?.thinkingLevels?.map(\.id) == ["off", "adaptive", "max"])
+        #expect(decoded.defaults?.thinkingLevels?.last?.label == "maximum")
+        #expect(decoded.defaults?.thinkingDefault == "adaptive")
+        #expect(decoded.sessions.first?.thinkingLevels?.map(\.id) == ["off", "xhigh", "max"])
+        #expect(decoded.sessions.first?.thinkingDefault == "max")
+    }
+
     @Test func rendersFinalChatEventMessageWhenHistoryIsStale() async throws {
         let sessionId = "sess-main"
         let history = historyPayload(sessionId: sessionId)

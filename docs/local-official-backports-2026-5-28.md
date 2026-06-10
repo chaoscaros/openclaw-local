@@ -643,6 +643,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     retaining the older session-id stream compatibility path.
   - Added lifecycle-end coverage so pending runs clear, tool/streaming state is
     reset, and history refreshes when Gateway emits a terminal run event.
+- `f6e51ff99a` shared Chat thinking-metadata model subset:
+  - Added Codable session/default fields for provider and thinking option
+    metadata returned by Gateway session lists.
+  - Added decode coverage for `thinkingLevels`, legacy `thinkingOptions`, and
+    `thinkingDefault` so later picker UI can consume the contract safely.
 
 ## Validation Plan
 
