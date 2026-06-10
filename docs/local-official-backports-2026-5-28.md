@@ -93,24 +93,25 @@ scoped verification.
 
 ## Next Slice Queue
 
-1. **Codex Supervisor Base + Stability Decision**: decide whether to absorb
-   the `9dd3bce549` codex-supervisor extension as a local feature package. If
-   accepted, port it directly with the `69c3b56bde` safeguards: loaded-session
-   listing should use `thread/loaded/list`; stored-session listing should be
-   opt-in, bounded, and state-DB-only; endpoint resolution should avoid broad
-   stored-history scans when an exact `thread/read` can answer.
-2. **Codex Supervisor Port Slice**: if accepted, add the plugin against the
-   current local plugin/runtime layout. Keep dependency ownership inside
-   `extensions/codex-supervisor/package.json`, preserve `activation.onStartup:
-false`, and avoid touching unrelated package/lock or workflow sync residue
-   unless the current build/test contract requires it.
-3. **Codex Supervisor WebSocket Close**: if the port grows beyond 30
-   minutes, split WebSocket intentional-close cleanup from stored-session
-   pagination. Validate with the smallest supervisor/json-rpc-client tests.
-4. **iOS Gateway/Talk Flow**: compare `f6e51ff99a`, `0167f0a6df`,
-   `6897711d19`, and `7965644da0`. Treat this as native/mobile work that may
-   require build verification; tell the user if a restart or app rebuild is
-   needed.
+1. **Finish iOS Hosted Push Relay Default Audit**: the safety-critical
+   `0167f0a6df` relay-origin subset is absorbed. Next, compare the remaining
+   docs, config help/hints, beta-prepare script, and node-event defaults before
+   marking the official commit fully absorbed.
+2. **Split iOS Talk Tab Realtime Playback**: handle `6897711d19` in two
+   slices. First absorb the Gateway/OpenAI realtime metadata contract
+   (`itemId`, `responseId`, and relay `audioDone`) with focused TypeScript
+   tests. Then separately decide the native iOS Talk UI and playback work,
+   which may require Xcode/Swift verification.
+3. **Audit iOS Pro UI / Gateway Flow Bulk Commit**: keep `f6e51ff99a` as a
+   large native/mobile feature lane. Do not cherry-pick it wholesale; identify
+   protected gateway/task/talk behaviors first and split into sub-30-minute
+   slices.
+4. **Codex Supervisor Package/Workspace Reconciliation**: the plugin feature
+   and close/type cleanup are absorbed and pushed. Remaining work is to decide
+   whether root workspace metadata, generated plugin inventory, or lockfile
+   updates are truly required, because plain `pnpm test
+extensions/codex-supervisor` currently stops before tests while pnpm tries
+   to reconcile the new workspace package without a TTY.
 5. **Workboard / Control UI**: keep `86ed25af34..61031d1b1c` as a separate
    feature lane. Before implementation, inspect local task-mode, archive, and
    mobile entry behavior so the workboard plugin does not mask or regress
@@ -496,17 +497,22 @@ Local check before editing this lane:
 ## Resume Order After Hook Relay Interruption
 
 The hook relay interruption is a closed protection fix, not a reason to change
-the official-tag execution order. Resume the 2026.5.28 audit in this order:
+the official-tag execution order. Codex Supervisor is now absorbed through its
+first stability/type-cleanup slices, so resume the 2026.5.28 audit in this
+order:
 
 1. Reconfirm `codex/dev` is at or beyond the hook relay protection commit and
    that task-related files are not carrying accidental uncommitted edits.
-2. Decide the Codex Supervisor base-plugin slice (`9dd3bce549`) before any
-   session-listing stabilization work.
-3. If the base plugin is accepted, split supervisor follow-up into
-   session-listing stability (`69c3b56bde`) and WebSocket close cleanup.
-4. After supervisor scope is resolved or explicitly deferred by the user,
-   continue to the remaining iOS gateway/talk flow.
-5. Keep Workboard/Control UI and broad release/CI/generated-baseline changes as
+2. Finish the remaining `0167f0a6df` hosted push relay default audit without
+   reopening the already-absorbed relay-origin safety subset.
+3. Split `6897711d19` into a backend realtime metadata slice and a native iOS
+   Talk UI/playback slice.
+4. Keep the large `f6e51ff99a` iOS pro UI/gateway-flow commit as its own
+   multi-slice native/mobile lane.
+5. Revisit Codex Supervisor only for workspace/package metadata, generated
+   plugin inventory, or lockfile reconciliation after deciding whether those
+   surfaces are required locally.
+6. Keep Workboard/Control UI and broad release/CI/generated-baseline changes as
    later lanes unless the user explicitly pulls one forward.
 
 ## Codex Supervisor Absorption Notes
@@ -530,7 +536,7 @@ the official-tag execution order. Resume the 2026.5.28 audit in this order:
   build or plugin inventory generation if the touched files affect build output
   or generated plugin docs.
 - First-slice validation: `OPENCLAW_LOCAL_CHECK=0 node scripts/test-projects.mjs
-  extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
+extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   `pnpm test extensions/codex-supervisor` currently tries to run `pnpm install`
   because a new workspace package was added, then aborts without a TTY before
   tests start; do not treat that as a plugin test failure.
