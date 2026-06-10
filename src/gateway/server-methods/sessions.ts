@@ -152,6 +152,50 @@ function filterSessionStoreToConfiguredAgents(
   );
 }
 
+function inheritSessionRuntimeSelection(
+  parentEntry: SessionEntry | undefined,
+): Partial<SessionEntry> {
+  if (!parentEntry) {
+    return {};
+  }
+  return {
+    ...(parentEntry.providerOverride ? { providerOverride: parentEntry.providerOverride } : {}),
+    ...(parentEntry.modelOverride ? { modelOverride: parentEntry.modelOverride } : {}),
+    ...(parentEntry.modelOverrideSource
+      ? { modelOverrideSource: parentEntry.modelOverrideSource }
+      : {}),
+    ...(parentEntry.modelOverrideFallbackOriginProvider
+      ? { modelOverrideFallbackOriginProvider: parentEntry.modelOverrideFallbackOriginProvider }
+      : {}),
+    ...(parentEntry.modelOverrideFallbackOriginModel
+      ? { modelOverrideFallbackOriginModel: parentEntry.modelOverrideFallbackOriginModel }
+      : {}),
+    ...(parentEntry.agentRuntimeOverride
+      ? { agentRuntimeOverride: parentEntry.agentRuntimeOverride }
+      : {}),
+    ...(parentEntry.modelProvider ? { modelProvider: parentEntry.modelProvider } : {}),
+    ...(parentEntry.model ? { model: parentEntry.model } : {}),
+    ...(typeof parentEntry.contextTokens === "number"
+      ? { contextTokens: parentEntry.contextTokens }
+      : {}),
+    ...(parentEntry.thinkingLevel ? { thinkingLevel: parentEntry.thinkingLevel } : {}),
+    ...(typeof parentEntry.fastMode === "boolean" ? { fastMode: parentEntry.fastMode } : {}),
+    ...(parentEntry.verboseLevel ? { verboseLevel: parentEntry.verboseLevel } : {}),
+    ...(parentEntry.traceLevel ? { traceLevel: parentEntry.traceLevel } : {}),
+    ...(parentEntry.reasoningLevel ? { reasoningLevel: parentEntry.reasoningLevel } : {}),
+    ...(parentEntry.elevatedLevel ? { elevatedLevel: parentEntry.elevatedLevel } : {}),
+    ...(parentEntry.authProfileOverride
+      ? { authProfileOverride: parentEntry.authProfileOverride }
+      : {}),
+    ...(parentEntry.authProfileOverrideSource
+      ? { authProfileOverrideSource: parentEntry.authProfileOverrideSource }
+      : {}),
+    ...(typeof parentEntry.authProfileOverrideCompactionCount === "number"
+      ? { authProfileOverrideCompactionCount: parentEntry.authProfileOverrideCompactionCount }
+      : {}),
+  };
+}
+
 type SessionsRuntimeModule = typeof import("./sessions.runtime.js");
 
 let sessionsRuntimeModulePromise: Promise<SessionsRuntimeModule> | undefined;
@@ -1293,6 +1337,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     }
     const parentSessionKey = normalizeOptionalString(p.parentSessionKey);
     let canonicalParentSessionKey: string | undefined;
+    let parentSessionEntry: SessionEntry | undefined;
     if (parentSessionKey) {
       const parent = loadSessionEntry(parentSessionKey);
       if (!parent.entry?.sessionId) {
@@ -1304,6 +1349,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         return;
       }
       canonicalParentSessionKey = parent.canonicalKey;
+      parentSessionEntry = parent.entry;
     }
     if (
       canonicalParentSessionKey &&
@@ -1402,8 +1448,12 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       if (!patched.ok || !canonicalParentSessionKey) {
         return patched;
       }
+      const inheritedSelection = normalizeOptionalString(p.model)
+        ? {}
+        : inheritSessionRuntimeSelection(parentSessionEntry);
       const nextEntry: SessionEntry = {
         ...patched.entry,
+        ...inheritedSelection,
         parentSessionKey: canonicalParentSessionKey,
       };
       store[target.canonicalKey] = nextEntry;

@@ -361,6 +361,11 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   on that commit's RootTabs rewrite, and uses Talk permission/runtime state
   that is absent from the current branch. Resume by splitting `f6e51ff99a`
   first, then return to the native Talk tab.
+- `f6e51ff99a` backend sessions subset: `sessions.create` now inherits the
+  parent session runtime/model/auth/level selection when a new child session
+  omits an explicit model. The local equivalent also preserves `traceLevel`
+  and model fallback origin metadata, covering the follow-up noted in the
+  official commit message.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

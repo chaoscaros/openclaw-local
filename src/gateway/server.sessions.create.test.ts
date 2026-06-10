@@ -84,6 +84,134 @@ test("sessions.create stores dashboard session model and parent linkage, and cre
   expect(header.id).toBe(created.payload?.sessionId);
 });
 
+test("sessions.create inherits parent runtime selection when model is omitted", async () => {
+  const { storePath } = await createSessionStoreDir();
+  await writeSessionStore({
+    entries: {
+      main: sessionStoreEntry("sess-parent", {
+        providerOverride: "codex",
+        modelOverride: "gpt-5.5",
+        modelOverrideSource: "user",
+        modelOverrideFallbackOriginProvider: "openai",
+        modelOverrideFallbackOriginModel: "gpt-5.4",
+        agentRuntimeOverride: "codex",
+        modelProvider: "codex",
+        model: "gpt-5.5",
+        contextTokens: 272000,
+        thinkingLevel: "off",
+        fastMode: true,
+        verboseLevel: "high",
+        traceLevel: "raw",
+        reasoningLevel: "on",
+        elevatedLevel: "on",
+        authProfileOverride: "codex-oauth",
+        authProfileOverrideSource: "user",
+        authProfileOverrideCompactionCount: 2,
+      }),
+    },
+  });
+
+  const created = await directSessionReq<{
+    key?: string;
+    entry?: {
+      providerOverride?: string;
+      modelOverride?: string;
+      modelOverrideSource?: string;
+      modelOverrideFallbackOriginProvider?: string;
+      modelOverrideFallbackOriginModel?: string;
+      agentRuntimeOverride?: string;
+      modelProvider?: string;
+      model?: string;
+      contextTokens?: number;
+      thinkingLevel?: string;
+      fastMode?: boolean;
+      verboseLevel?: string;
+      traceLevel?: string;
+      reasoningLevel?: string;
+      elevatedLevel?: string;
+      authProfileOverride?: string;
+      authProfileOverrideSource?: string;
+      authProfileOverrideCompactionCount?: number;
+      parentSessionKey?: string;
+    };
+  }>("sessions.create", {
+    agentId: "main",
+    label: "Fresh Chat",
+    parentSessionKey: "main",
+  });
+
+  expect(created.ok).toBe(true);
+  expect(created.payload?.entry?.parentSessionKey).toBe("agent:main:main");
+  expect(created.payload?.entry?.providerOverride).toBe("codex");
+  expect(created.payload?.entry?.modelOverride).toBe("gpt-5.5");
+  expect(created.payload?.entry?.modelOverrideSource).toBe("user");
+  expect(created.payload?.entry?.modelOverrideFallbackOriginProvider).toBe("openai");
+  expect(created.payload?.entry?.modelOverrideFallbackOriginModel).toBe("gpt-5.4");
+  expect(created.payload?.entry?.agentRuntimeOverride).toBe("codex");
+  expect(created.payload?.entry?.modelProvider).toBe("codex");
+  expect(created.payload?.entry?.model).toBe("gpt-5.5");
+  expect(created.payload?.entry?.contextTokens).toBe(272000);
+  expect(created.payload?.entry?.thinkingLevel).toBe("off");
+  expect(created.payload?.entry?.fastMode).toBe(true);
+  expect(created.payload?.entry?.verboseLevel).toBe("high");
+  expect(created.payload?.entry?.traceLevel).toBe("raw");
+  expect(created.payload?.entry?.reasoningLevel).toBe("on");
+  expect(created.payload?.entry?.elevatedLevel).toBe("on");
+  expect(created.payload?.entry?.authProfileOverride).toBe("codex-oauth");
+  expect(created.payload?.entry?.authProfileOverrideSource).toBe("user");
+  expect(created.payload?.entry?.authProfileOverrideCompactionCount).toBe(2);
+
+  const rawStore = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
+    string,
+    {
+      providerOverride?: string;
+      modelOverride?: string;
+      traceLevel?: string;
+      parentSessionKey?: string;
+    }
+  >;
+  const key = created.payload?.key as string;
+  expect(rawStore[key]?.providerOverride).toBe("codex");
+  expect(rawStore[key]?.modelOverride).toBe("gpt-5.5");
+  expect(rawStore[key]?.traceLevel).toBe("raw");
+  expect(rawStore[key]?.parentSessionKey).toBe("agent:main:main");
+});
+
+test("sessions.create does not inherit parent runtime selection when model is explicit", async () => {
+  await createSessionStoreDir();
+  piSdkMock.enabled = true;
+  piSdkMock.models = [{ id: "gpt-test-b", name: "B", provider: "openai" }];
+  await writeSessionStore({
+    entries: {
+      main: sessionStoreEntry("sess-parent", {
+        providerOverride: "codex",
+        modelOverride: "gpt-5.5",
+        traceLevel: "raw",
+      }),
+    },
+  });
+
+  const created = await directSessionReq<{
+    entry?: {
+      providerOverride?: string;
+      modelOverride?: string;
+      traceLevel?: string;
+      parentSessionKey?: string;
+    };
+  }>("sessions.create", {
+    agentId: "main",
+    label: "Fresh Chat",
+    parentSessionKey: "main",
+    model: "openai/gpt-test-b",
+  });
+
+  expect(created.ok).toBe(true);
+  expect(created.payload?.entry?.parentSessionKey).toBe("agent:main:main");
+  expect(created.payload?.entry?.providerOverride).toBe("openai");
+  expect(created.payload?.entry?.modelOverride).toBe("gpt-test-b");
+  expect(created.payload?.entry?.traceLevel).toBeUndefined();
+});
+
 test("sessions.create accepts an explicit key for persistent dashboard sessions", async () => {
   await createSessionStoreDir();
 
