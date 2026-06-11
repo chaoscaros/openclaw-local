@@ -108,6 +108,7 @@ public struct OpenClawChatView: View {
                     viewModel: self.viewModel,
                     style: self.style,
                     showsSessionSwitcher: self.showsSessionSwitcher,
+                    composerChrome: self.composerChrome,
                     messagePlaceholder: self.messagePlaceholder,
                     talkControl: self.talkControl)
                     .padding(.horizontal, Layout.composerPaddingHorizontal)

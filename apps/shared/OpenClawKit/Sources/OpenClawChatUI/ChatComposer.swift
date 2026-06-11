@@ -40,6 +40,7 @@ struct OpenClawChatComposer: View {
     @Bindable var viewModel: OpenClawChatViewModel
     let style: OpenClawChatView.Style
     let showsSessionSwitcher: Bool
+    let composerChrome: OpenClawChatView.ComposerChrome
     let messagePlaceholder: String?
     let talkControl: OpenClawChatTalkControl?
 
@@ -76,35 +77,37 @@ struct OpenClawChatComposer: View {
         }
         .padding(self.composerPadding)
         .background {
-            let cornerRadius: CGFloat = 18
+            if self.composerChrome == .full {
+                let cornerRadius: CGFloat = 18
 
-            #if os(macOS)
-            if self.style == .standard {
-                let shape = UnevenRoundedRectangle(
-                    cornerRadii: RectangleCornerRadii(
-                        topLeading: 0,
-                        bottomLeading: cornerRadius,
-                        bottomTrailing: cornerRadius,
-                        topTrailing: 0),
-                    style: .continuous)
-                shape
-                    .fill(OpenClawChatTheme.composerBackground)
-                    .overlay(shape.strokeBorder(OpenClawChatTheme.composerBorder, lineWidth: 1))
-                    .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
-            } else {
+                #if os(macOS)
+                if self.style == .standard {
+                    let shape = UnevenRoundedRectangle(
+                        cornerRadii: RectangleCornerRadii(
+                            topLeading: 0,
+                            bottomLeading: cornerRadius,
+                            bottomTrailing: cornerRadius,
+                            topTrailing: 0),
+                        style: .continuous)
+                    shape
+                        .fill(OpenClawChatTheme.composerBackground)
+                        .overlay(shape.strokeBorder(OpenClawChatTheme.composerBorder, lineWidth: 1))
+                        .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
+                } else {
+                    let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    shape
+                        .fill(OpenClawChatTheme.composerBackground)
+                        .overlay(shape.strokeBorder(OpenClawChatTheme.composerBorder, lineWidth: 1))
+                        .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
+                }
+                #else
                 let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 shape
                     .fill(OpenClawChatTheme.composerBackground)
                     .overlay(shape.strokeBorder(OpenClawChatTheme.composerBorder, lineWidth: 1))
                     .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
+                #endif
             }
-            #else
-            let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            shape
-                .fill(OpenClawChatTheme.composerBackground)
-                .overlay(shape.strokeBorder(OpenClawChatTheme.composerBorder, lineWidth: 1))
-                .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
-            #endif
         }
         #if os(macOS)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in

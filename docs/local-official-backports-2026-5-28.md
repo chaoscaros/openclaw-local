@@ -745,6 +745,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Chat talk-control plumbing subset:
   - Threaded the optional `OpenClawChatTalkControl` from `OpenClawChatView` into
     the composer as inert plumbing so later Talk UI slices can remain scoped.
+- `f6e51ff99a` shared Chat composer chrome subset:
+  - Passed `OpenClawChatView.ComposerChrome` into the composer and made the
+    existing outer composer background conditional on the default `.full`
+    chrome, preparing clean composer rendering without changing current callers.
 
 ## Validation Plan
 
