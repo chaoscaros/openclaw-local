@@ -716,6 +716,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Added a `drawsBackground` ChatView option, defaulting to the current
     behavior, so embedded hosts can provide their own backdrop in later UI
     slices without duplicating the Control Chat background.
+- `f6e51ff99a` shared Chat composer undo subset:
+  - Centralized macOS composer text-view defaults behind a factory and enabled
+    native undo support for the chat input.
+  - Added focused macOS coverage so future composer refactors keep undo enabled.
 
 ## Validation Plan
 
