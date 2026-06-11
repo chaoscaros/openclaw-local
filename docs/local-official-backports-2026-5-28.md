@@ -724,6 +724,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Reused `OpenClawChatMessage.displayText(...)` when deriving visible text in
     `ChatView`, keeping message-list visibility aligned with assistant error and
     stop-reason rendering rules.
+- `f6e51ff99a` shared Chat clean intro subset:
+  - Added the `OpenClawChatView.ComposerChrome` entry point and optional clean
+    empty-state assistant intro without changing the default full composer
+    behavior.
 
 ## Validation Plan
 

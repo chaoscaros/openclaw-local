@@ -10,6 +10,11 @@ public struct OpenClawChatView: View {
         case onboarding
     }
 
+    public enum ComposerChrome {
+        case full
+        case clean
+    }
+
     @State private var viewModel: OpenClawChatViewModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var scrollerBottomID = UUID()
@@ -28,6 +33,8 @@ public struct OpenClawChatView: View {
     private let assistantAvatarText: String?
     private let assistantAvatarTint: Color?
     private let showsAssistantAvatars: Bool
+    private let composerChrome: ComposerChrome
+    private let emptyAssistantIntro: String?
 
     private enum Layout {
         #if os(macOS)
@@ -62,7 +69,9 @@ public struct OpenClawChatView: View {
         assistantName: String? = nil,
         assistantAvatarText: String? = nil,
         assistantAvatarTint: Color? = nil,
-        showsAssistantAvatars: Bool = false)
+        showsAssistantAvatars: Bool = false,
+        composerChrome: ComposerChrome = .full,
+        emptyAssistantIntro: String? = nil)
     {
         self._viewModel = State(initialValue: viewModel)
         self.drawsBackground = drawsBackground
@@ -75,6 +84,8 @@ public struct OpenClawChatView: View {
         self.assistantAvatarText = assistantAvatarText
         self.assistantAvatarTint = assistantAvatarTint
         self.showsAssistantAvatars = showsAssistantAvatars
+        self.composerChrome = composerChrome
+        self.emptyAssistantIntro = emptyAssistantIntro
     }
 
     public var body: some View {
@@ -208,6 +219,11 @@ public struct OpenClawChatView: View {
 
     @ViewBuilder
     private var messageListRows: some View {
+        if let introText = self.visibleEmptyAssistantIntro {
+            ChatAssistantIntroCard(text: introText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+
         ForEach(self.visibleMessages) { msg in
             ChatMessageBubble(
                 message: msg,
@@ -270,6 +286,8 @@ public struct OpenClawChatView: View {
     @ViewBuilder
     private var messageListOverlay: some View {
         if self.viewModel.isLoading {
+            EmptyView()
+        } else if self.visibleEmptyAssistantIntro != nil {
             EmptyView()
         } else if let error = self.activeErrorText {
             let presentation = self.errorPresentation(for: error)
@@ -346,6 +364,16 @@ public struct OpenClawChatView: View {
             } ?? false) &&
             self.viewModel.pendingRunCount == 0 &&
             self.viewModel.pendingToolCalls.isEmpty
+    }
+
+    private var visibleEmptyAssistantIntro: String? {
+        guard self.composerChrome == .clean, self.showsEmptyState else { return nil }
+        guard let text = self.emptyAssistantIntro?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty
+        else {
+            return nil
+        }
+        return text
     }
 
     private var emptyStateTitle: String {
@@ -525,6 +553,29 @@ public struct OpenClawChatView: View {
             from: nil,
             for: nil)
         #endif
+    }
+}
+
+private struct ChatAssistantIntroCard: View {
+    let text: String
+
+    var body: some View {
+        Text(self.text)
+            .font(.system(size: 15))
+            .lineSpacing(4)
+            .foregroundStyle(OpenClawChatTheme.assistantText)
+            .multilineTextAlignment(.leading)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(OpenClawChatTheme.assistantBubble)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)))
+            .frame(maxWidth: 280, alignment: .leading)
+            .padding(.top, 4)
+            .padding(.leading, 10)
     }
 }
 
