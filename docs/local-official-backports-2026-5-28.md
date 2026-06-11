@@ -768,6 +768,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Chat notice card subset:
   - Updated shared chat notice cards to the compact horizontal presentation used
     by the refreshed mobile chat surfaces.
+- `f6e51ff99a` shared Chat clean attachment subset:
+  - Switched the composer attachment picker to plain button styling only when
+    `composerChrome == .clean`, preserving the default full composer controls.
 
 ## Validation Plan
 

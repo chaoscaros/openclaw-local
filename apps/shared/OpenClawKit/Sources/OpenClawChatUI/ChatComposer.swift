@@ -187,23 +187,46 @@ struct OpenClawChatComposer: View {
     @ViewBuilder
     private var attachmentPicker: some View {
         #if os(macOS)
-        Button {
-            self.pickFilesMac()
-        } label: {
-            Image(systemName: "paperclip")
+        if self.composerChrome == .clean {
+            Button {
+                self.pickFilesMac()
+            } label: {
+                Image(systemName: "paperclip")
+            }
+            .help("Add Image")
+            .buttonStyle(.plain)
+            .controlSize(.small)
+        } else {
+            Button {
+                self.pickFilesMac()
+            } label: {
+                Image(systemName: "paperclip")
+            }
+            .help("Add Image")
+            .buttonStyle(.bordered)
+            .controlSize(.small)
         }
-        .help("Add Image")
-        .buttonStyle(.bordered)
-        .controlSize(.small)
         #else
-        PhotosPicker(selection: self.$pickerItems, maxSelectionCount: 8, matching: .images) {
-            Image(systemName: "paperclip")
-        }
-        .help("Add Image")
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .onChange(of: self.pickerItems) { _, newItems in
-            Task { await self.loadPhotosPickerItems(newItems) }
+        if self.composerChrome == .clean {
+            PhotosPicker(selection: self.$pickerItems, maxSelectionCount: 8, matching: .images) {
+                Image(systemName: "paperclip")
+            }
+            .help("Add Image")
+            .buttonStyle(.plain)
+            .controlSize(.small)
+            .onChange(of: self.pickerItems) { _, newItems in
+                Task { await self.loadPhotosPickerItems(newItems) }
+            }
+        } else {
+            PhotosPicker(selection: self.$pickerItems, maxSelectionCount: 8, matching: .images) {
+                Image(systemName: "paperclip")
+            }
+            .help("Add Image")
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .onChange(of: self.pickerItems) { _, newItems in
+                Task { await self.loadPhotosPickerItems(newItems) }
+            }
         }
         #endif
     }
