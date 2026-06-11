@@ -19,6 +19,7 @@ public struct OpenClawChatView: View {
     @State private var isPinnedToBottom = true
     @State private var lastUserMessageID: UUID?
     private let showsSessionSwitcher: Bool
+    private let drawsBackground: Bool
     private let style: Style
     private let markdownVariant: ChatMarkdownVariant
     private let userAccent: Color?
@@ -52,6 +53,7 @@ public struct OpenClawChatView: View {
 
     public init(
         viewModel: OpenClawChatViewModel,
+        drawsBackground: Bool = true,
         showsSessionSwitcher: Bool = false,
         style: Style = .standard,
         markdownVariant: ChatMarkdownVariant = .standard,
@@ -63,6 +65,7 @@ public struct OpenClawChatView: View {
         showsAssistantAvatars: Bool = false)
     {
         self._viewModel = State(initialValue: viewModel)
+        self.drawsBackground = drawsBackground
         self.showsSessionSwitcher = showsSessionSwitcher
         self.style = style
         self.markdownVariant = markdownVariant
@@ -76,7 +79,7 @@ public struct OpenClawChatView: View {
 
     public var body: some View {
         ZStack {
-            if self.style == .standard {
+            if self.drawsBackground, self.style == .standard {
                 OpenClawChatTheme.background
                     .ignoresSafeArea()
             }

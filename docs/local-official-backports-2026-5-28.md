@@ -712,6 +712,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Wired assistant messages, pending typing, and streaming assistant bubbles to
     the avatar parameters while keeping avatars disabled by default for the
     current desktop Control Chat surface.
+- `f6e51ff99a` shared Chat embeddable background subset:
+  - Added a `drawsBackground` ChatView option, defaulting to the current
+    behavior, so embedded hosts can provide their own backdrop in later UI
+    slices without duplicating the Control Chat background.
 
 ## Validation Plan
 
