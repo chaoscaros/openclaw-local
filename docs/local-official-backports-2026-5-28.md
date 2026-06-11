@@ -696,6 +696,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     ignoring user messages, and handling plain string content.
   - Kept the existing `Foundation` import because this local implementation
     still uses whitespace trimming helpers.
+- `f6e51ff99a` shared Talk locale parsing subset:
+  - Added speech locale normalization plus supported-locale fallback selection
+    helpers used by the iOS talk flow.
+  - Added focused parsing coverage, while leaving the contract fixture path
+    change out because this local tree currently does not contain the fixture.
 
 ## Validation Plan
 
