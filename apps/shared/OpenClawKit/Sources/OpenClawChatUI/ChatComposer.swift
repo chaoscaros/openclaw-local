@@ -54,19 +54,7 @@ struct OpenClawChatComposer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if self.showsToolbar {
-                HStack(spacing: 6) {
-                    if self.showsSessionSwitcher {
-                        self.sessionPicker
-                    }
-                    if self.viewModel.showsModelPicker {
-                        self.modelPicker
-                    }
-                    self.thinkingPicker
-                    Spacer()
-                    self.refreshButton
-                    self.attachmentPicker
-                }
-                .padding(.horizontal, 10)
+                self.composerToolbar
             }
 
             if self.showsAttachments, !self.viewModel.attachments.isEmpty {
@@ -117,6 +105,22 @@ struct OpenClawChatComposer: View {
             self.shouldFocusTextView = true
         }
         #endif
+    }
+
+    private var composerToolbar: some View {
+        HStack(spacing: 6) {
+            if self.showsSessionSwitcher {
+                self.sessionPicker
+            }
+            if self.viewModel.showsModelPicker {
+                self.modelPicker
+            }
+            self.thinkingPicker
+            Spacer()
+            self.refreshButton
+            self.attachmentPicker
+        }
+        .padding(.horizontal, 10)
     }
 
     private var thinkingPicker: some View {

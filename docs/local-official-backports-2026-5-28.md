@@ -749,6 +749,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Passed `OpenClawChatView.ComposerChrome` into the composer and made the
     existing outer composer background conditional on the default `.full`
     chrome, preparing clean composer rendering without changing current callers.
+- `f6e51ff99a` shared Chat composer toolbar extraction subset:
+  - Extracted the existing composer toolbar into `composerToolbar` with the same
+    full-mode ordering, reducing noise before clean toolbar layout changes.
 
 ## Validation Plan
 
