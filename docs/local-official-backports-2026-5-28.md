@@ -781,6 +781,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Added the first compact `composerChrome == .clean` editor branch with a
     horizontal attachment, input, and send layout while leaving `.full`
     rendering untouched.
+- `f6e51ff99a` shared Chat clean editor overlay subset:
+  - Added clean-mode editor overlay alignment and inset helpers so placeholder
+    text sits correctly in the compact field while full-mode padding stays
+    unchanged.
 
 ## Validation Plan
 

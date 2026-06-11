@@ -361,12 +361,12 @@ struct OpenClawChatComposer: View {
     }
 
     private var editorOverlay: some View {
-        ZStack(alignment: .topLeading) {
+        ZStack(alignment: self.editorOverlayAlignment) {
             if self.viewModel.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(self.placeholderText)
                     .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, self.cleanFieldTextInset)
+                    .padding(.vertical, self.composerChrome == .clean ? 0 : 4)
             }
 
             #if os(macOS)
@@ -476,6 +476,14 @@ struct OpenClawChatComposer: View {
 
     private var cleanControlHeight: CGFloat {
         40
+    }
+
+    private var cleanFieldTextInset: CGFloat {
+        self.composerChrome == .clean ? 0 : 4
+    }
+
+    private var editorOverlayAlignment: Alignment {
+        self.composerChrome == .clean ? .leading : .topLeading
     }
 
     private var placeholderText: String {
