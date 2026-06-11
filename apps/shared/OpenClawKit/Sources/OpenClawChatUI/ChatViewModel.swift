@@ -752,7 +752,13 @@ public final class OpenClawChatViewModel {
             next = createdKey.isEmpty ? requested : createdKey
             nextSessionId = created.sessionId
         } catch {
-            await self.performReset()
+            if Self.isUnsupportedCreateSessionError(error) {
+                chatUILogger.info("sessions.create unsupported; falling back to sessions.reset")
+                await self.performReset()
+                return
+            }
+            chatUILogger.error("sessions.create failed \(error.localizedDescription, privacy: .public)")
+            self.errorText = error.localizedDescription
             return
         }
 
@@ -764,7 +770,14 @@ public final class OpenClawChatViewModel {
         self.streamingAssistantText = nil
         self.pendingToolCallsById = [:]
         self.clearPendingRuns(reason: nil)
+        self.errorText = nil
         await self.bootstrap()
+    }
+
+    private static func isUnsupportedCreateSessionError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == "OpenClawChatTransport"
+            && nsError.localizedDescription == "sessions.create not supported by this transport"
     }
 
     private func generatedNewSessionKey() -> String {

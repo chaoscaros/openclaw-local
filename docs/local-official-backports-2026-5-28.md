@@ -807,6 +807,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Chat pending-run foreground subset:
   - Tightened foreground pending-run cleanup to require a non-empty assistant
     reply after the latest user message before clearing pending state.
+- `f6e51ff99a` shared Chat new-session error subset:
+  - Limited `/new` fallback-to-reset behavior to transports that do not support
+    `sessions.create`, while surfacing other create-session errors to the user.
 
 ## Validation Plan
 
