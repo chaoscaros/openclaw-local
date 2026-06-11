@@ -273,6 +273,10 @@ struct OpenClawChatComposer: View {
     }
 
     private var editor: some View {
+        self.fullEditor
+    }
+
+    private var fullEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
             self.editorOverlay
 

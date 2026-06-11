@@ -774,6 +774,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Chat composer identity plumbing subset:
   - Threaded chat accent and assistant identity values into the composer as
     inert plumbing for upcoming clean send and talk controls.
+- `f6e51ff99a` shared Chat full editor extraction subset:
+  - Extracted the existing composer editor body into `fullEditor` without
+    changing layout, preparing a separate clean editor branch.
 
 ## Validation Plan
 
