@@ -153,6 +153,13 @@ function ensureControllerOwnsRun(params: {
   return "Subagents can only control runs spawned from their own session.";
 }
 
+function isFinishedForSteerControl(
+  entry: SubagentRunRecord,
+  hasPendingDescendants: boolean,
+): boolean {
+  return Boolean(entry.endedAt) && entry.pauseReason !== "sessions_yield" && !hasPendingDescendants;
+}
+
 async function killSubagentRun(params: {
   cfg: OpenClawConfig;
   entry: SubagentRunRecord;
@@ -469,7 +476,7 @@ export async function steerControlledSubagentRun(params: {
     };
   }
   const targetHasPendingDescendants = countPendingDescendantRuns(params.entry.childSessionKey) > 0;
-  if (params.entry.endedAt && !targetHasPendingDescendants) {
+  if (isFinishedForSteerControl(params.entry, targetHasPendingDescendants)) {
     return {
       status: "done",
       runId: params.entry.runId,
@@ -486,12 +493,13 @@ export async function steerControlledSubagentRun(params: {
     };
   }
   const currentEntry = getLatestSubagentRunByChildSessionKey(params.entry.childSessionKey);
-  const currentHasPendingDescendants =
-    currentEntry && countPendingDescendantRuns(currentEntry.childSessionKey) > 0;
+  const currentHasPendingDescendants = currentEntry
+    ? countPendingDescendantRuns(currentEntry.childSessionKey) > 0
+    : false;
   if (
     !currentEntry ||
     currentEntry.runId !== params.entry.runId ||
-    (currentEntry.endedAt && !currentHasPendingDescendants)
+    isFinishedForSteerControl(currentEntry, currentHasPendingDescendants)
   ) {
     return {
       status: "done",

@@ -898,6 +898,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Text slash command detection now treats command names case-insensitively
     for `/new`, `/reset`, registry aliases, and control-command detection while
     preserving the original argument casing.
+- `28a719f3da` local equivalent:
+  - Subagent steering now treats `sessions_yield` paused attempts as restartable
+    even when the paused run has an `endedAt` timestamp, instead of reporting
+    the yielded subagent as already finished.
 
 ## Validation Plan
 
