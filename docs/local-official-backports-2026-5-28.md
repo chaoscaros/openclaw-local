@@ -735,6 +735,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Rendered initial clean-mode errors as inline notice rows so embedded chat
     hosts can keep the conversation surface anchored instead of showing the
     full overlay card.
+- `f6e51ff99a` shared Chat placeholder subset:
+  - Threaded an optional message placeholder from `OpenClawChatView` into the
+    composer while preserving the existing default `Message OpenClaw…` copy.
 
 ## Validation Plan
 

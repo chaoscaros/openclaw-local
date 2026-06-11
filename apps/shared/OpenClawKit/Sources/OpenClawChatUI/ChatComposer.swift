@@ -12,6 +12,7 @@ struct OpenClawChatComposer: View {
     @Bindable var viewModel: OpenClawChatViewModel
     let style: OpenClawChatView.Style
     let showsSessionSwitcher: Bool
+    let messagePlaceholder: String?
 
     #if !os(macOS)
     @State private var pickerItems: [PhotosPickerItem] = []
@@ -272,7 +273,7 @@ struct OpenClawChatComposer: View {
     private var editorOverlay: some View {
         ZStack(alignment: .topLeading) {
             if self.viewModel.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text("Message OpenClaw…")
+                Text(self.placeholderText)
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 4)
@@ -381,6 +382,11 @@ struct OpenClawChatComposer: View {
 
     private var textMaxHeight: CGFloat {
         self.style == .onboarding ? 52 : 64
+    }
+
+    private var placeholderText: String {
+        let trimmed = self.messagePlaceholder?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "Message OpenClaw…" : trimmed
     }
 
     private var isComposerCompacted: Bool {

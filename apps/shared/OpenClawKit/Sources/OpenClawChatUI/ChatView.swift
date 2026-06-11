@@ -34,6 +34,7 @@ public struct OpenClawChatView: View {
     private let assistantAvatarTint: Color?
     private let showsAssistantAvatars: Bool
     private let composerChrome: ComposerChrome
+    private let messagePlaceholder: String?
     private let emptyAssistantIntro: String?
 
     private enum Layout {
@@ -71,6 +72,7 @@ public struct OpenClawChatView: View {
         assistantAvatarTint: Color? = nil,
         showsAssistantAvatars: Bool = false,
         composerChrome: ComposerChrome = .full,
+        messagePlaceholder: String? = nil,
         emptyAssistantIntro: String? = nil)
     {
         self._viewModel = State(initialValue: viewModel)
@@ -85,6 +87,7 @@ public struct OpenClawChatView: View {
         self.assistantAvatarTint = assistantAvatarTint
         self.showsAssistantAvatars = showsAssistantAvatars
         self.composerChrome = composerChrome
+        self.messagePlaceholder = messagePlaceholder
         self.emptyAssistantIntro = emptyAssistantIntro
     }
 
@@ -101,7 +104,8 @@ public struct OpenClawChatView: View {
                 OpenClawChatComposer(
                     viewModel: self.viewModel,
                     style: self.style,
-                    showsSessionSwitcher: self.showsSessionSwitcher)
+                    showsSessionSwitcher: self.showsSessionSwitcher,
+                    messagePlaceholder: self.messagePlaceholder)
                     .padding(.horizontal, Layout.composerPaddingHorizontal)
             }
             .padding(.vertical, Layout.outerPaddingVertical)
