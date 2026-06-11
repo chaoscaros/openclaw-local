@@ -686,6 +686,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Split ViewModel attachment staging into a dedicated extension and added
     coverage for processed attachment filenames, MIME type, payload budget, and
     longest-edge limits.
+- `f6e51ff99a` shared Chat session-key helper split subset:
+  - Moved current-session alias matching into a dedicated ViewModel extension
+    without changing the accepted `main`/resolved-main/`agent:main:main` cases.
+  - This keeps the main ViewModel smaller before the larger Chat UI refresh and
+    leaves the matching helper callable by follow-up tests.
 
 ## Validation Plan
 
