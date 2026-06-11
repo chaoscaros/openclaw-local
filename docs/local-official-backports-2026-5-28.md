@@ -738,6 +738,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Chat placeholder subset:
   - Threaded an optional message placeholder from `OpenClawChatView` into the
     composer while preserving the existing default `Message OpenClaw…` copy.
+- `f6e51ff99a` shared Chat talk-control model subset:
+  - Added the public `OpenClawChatTalkControl` value type as the narrow UI
+    contract for later realtime talk composer controls, without wiring it into
+    the default composer yet.
 
 ## Validation Plan
 
