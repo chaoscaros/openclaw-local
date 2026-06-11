@@ -932,6 +932,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `8ba71e4aff` local equivalent:
   - Shared process command execution now bounds captured stdout and stderr,
     keeping the newest output and reporting truncated byte counts.
+- `93577ad587` local equivalent:
+  - Memory host SDK remote JSON and batch upload errors now read bounded
+    response snippets and cancel truncated response streams before formatting
+    error messages.
 
 ## Validation Plan
 
