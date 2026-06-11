@@ -916,6 +916,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `c841218ace` local equivalent:
   - Native PDF provider API errors now read bounded response-body snippets and
     cancel truncated error bodies before surfacing Anthropic/Gemini failures.
+- `4f26cc9090` local equivalent:
+  - MiniMax VLM provider errors now read bounded response-body snippets and
+    cancel truncated error bodies while preserving Trace-Id diagnostics.
 
 ## Validation Plan
 
