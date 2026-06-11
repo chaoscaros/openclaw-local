@@ -691,6 +691,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     without changing the accepted `main`/resolved-main/`agent:main:main` cases.
   - This keeps the main ViewModel smaller before the larger Chat UI refresh and
     leaves the matching helper callable by follow-up tests.
+- `f6e51ff99a` shared Chat final-event text coverage subset:
+  - Added focused coverage for extracting assistant text from final chat events,
+    ignoring user messages, and handling plain string content.
+  - Kept the existing `Foundation` import because this local implementation
+    still uses whitespace trimming helpers.
 
 ## Validation Plan
 
