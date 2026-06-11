@@ -706,6 +706,12 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     assistant bubbles, composer surfaces, and composer borders.
   - Kept macOS theme behavior unchanged; this prepares the larger clean
     composer and Pro ChatView visual refresh.
+- `f6e51ff99a` shared Chat assistant avatar bubble subset:
+  - Added reusable assistant avatar rendering plus optional ChatView parameters
+    for assistant name, avatar text, tint, and avatar visibility.
+  - Wired assistant messages, pending typing, and streaming assistant bubbles to
+    the avatar parameters while keeping avatars disabled by default for the
+    current desktop Control Chat surface.
 
 ## Validation Plan
 

@@ -23,6 +23,10 @@ public struct OpenClawChatView: View {
     private let markdownVariant: ChatMarkdownVariant
     private let userAccent: Color?
     private let showsAssistantTrace: Bool
+    private let assistantName: String?
+    private let assistantAvatarText: String?
+    private let assistantAvatarTint: Color?
+    private let showsAssistantAvatars: Bool
 
     private enum Layout {
         #if os(macOS)
@@ -52,7 +56,11 @@ public struct OpenClawChatView: View {
         style: Style = .standard,
         markdownVariant: ChatMarkdownVariant = .standard,
         userAccent: Color? = nil,
-        showsAssistantTrace: Bool = false)
+        showsAssistantTrace: Bool = false,
+        assistantName: String? = nil,
+        assistantAvatarText: String? = nil,
+        assistantAvatarTint: Color? = nil,
+        showsAssistantAvatars: Bool = false)
     {
         self._viewModel = State(initialValue: viewModel)
         self.showsSessionSwitcher = showsSessionSwitcher
@@ -60,6 +68,10 @@ public struct OpenClawChatView: View {
         self.markdownVariant = markdownVariant
         self.userAccent = userAccent
         self.showsAssistantTrace = showsAssistantTrace
+        self.assistantName = assistantName
+        self.assistantAvatarText = assistantAvatarText
+        self.assistantAvatarTint = assistantAvatarTint
+        self.showsAssistantAvatars = showsAssistantAvatars
     }
 
     public var body: some View {
@@ -199,18 +211,24 @@ public struct OpenClawChatView: View {
                 style: self.style,
                 markdownVariant: self.markdownVariant,
                 userAccent: self.userAccent,
-                showsAssistantTrace: self.showsAssistantTrace)
+                showsAssistantTrace: self.showsAssistantTrace,
+                assistantName: self.assistantName,
+                assistantAvatarText: self.assistantAvatarText,
+                assistantAvatarTint: self.assistantAvatarTint,
+                showsAssistantAvatar: self.showsAssistantAvatars)
                 .frame(
                     maxWidth: .infinity,
                     alignment: msg.role.lowercased() == "user" ? .trailing : .leading)
         }
 
         if self.viewModel.pendingRunCount > 0 {
-            HStack {
-                ChatTypingIndicatorBubble(style: self.style)
-                    .equatable()
-                Spacer(minLength: 0)
-            }
+            ChatTypingIndicatorBubble(
+                style: self.style,
+                assistantName: self.assistantName,
+                assistantAvatarText: self.assistantAvatarText,
+                assistantAvatarTint: self.assistantAvatarTint,
+                showsAssistantAvatar: self.showsAssistantAvatars)
+                .equatable()
         }
 
         if !self.viewModel.pendingToolCalls.isEmpty {
@@ -225,7 +243,11 @@ public struct OpenClawChatView: View {
             ChatStreamingAssistantBubble(
                 text: text,
                 markdownVariant: self.markdownVariant,
-                showsAssistantTrace: self.showsAssistantTrace)
+                showsAssistantTrace: self.showsAssistantTrace,
+                assistantName: self.assistantName,
+                assistantAvatarText: self.assistantAvatarText,
+                assistantAvatarTint: self.assistantAvatarTint,
+                showsAssistantAvatar: self.showsAssistantAvatars)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
