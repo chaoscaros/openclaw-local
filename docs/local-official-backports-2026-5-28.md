@@ -851,6 +851,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     raw websocket URLs, and `.local`/private LAN plaintext endpoints.
   - Narrowed local-network plaintext checks so tailnet and public hosts still
     require TLS, preserving the manual Gateway TLS guardrails.
+- `f6e51ff99a` legacy iOS setup decoder compatibility subset:
+  - Kept the older `GatewaySetupCode` decoder used by existing onboarding and
+    settings forms, but taught it to extract setup-code candidates from copied
+    setup messages.
 
 ## Validation Plan
 

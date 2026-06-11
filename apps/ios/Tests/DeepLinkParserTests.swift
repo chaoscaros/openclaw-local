@@ -224,4 +224,17 @@ private func agentAction(
             token: nil,
             password: nil))
     }
+
+    @Test func legacyGatewaySetupCodeParsesFullCopiedSetupMessage() {
+        let payload = #"{"url":"wss://gateway.example.com","bootstrapToken":"tok"}"#
+        let decoded = GatewaySetupCode.decode(raw: """
+        Pairing setup code generated.
+
+        Setup code:
+        \(setupCode(from: payload))
+        """)
+
+        #expect(decoded?.url == "wss://gateway.example.com")
+        #expect(decoded?.bootstrapToken == "tok")
+    }
 }

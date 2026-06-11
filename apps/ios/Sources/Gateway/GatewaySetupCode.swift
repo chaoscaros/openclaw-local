@@ -20,6 +20,13 @@ enum GatewaySetupCode {
         {
             return payload
         }
+        for candidate in setupCodeCandidates(in: raw) where candidate != raw.trimmingCharacters(in: .whitespacesAndNewlines) {
+            if let decoded = decodeBase64Payload(candidate),
+               let payload = decodeFromJSON(decoded)
+            {
+                return payload
+            }
+        }
         return nil
     }
 
@@ -38,5 +45,18 @@ enum GatewaySetupCode {
         let padded = padding == 0 ? normalized : normalized + String(repeating: "=", count: 4 - padding)
         guard let data = Data(base64Encoded: padded) else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+
+    private static func setupCodeCandidates(in input: String) -> [String] {
+        let surroundingPunctuation = CharacterSet(charactersIn: "`'\"“”‘’()[]{}<>.,;:")
+        return input
+            .components(separatedBy: .whitespacesAndNewlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines.union(surroundingPunctuation)) }
+            .filter { candidate in
+                guard candidate.count >= 24 else { return false }
+                return candidate.allSatisfy { ch in
+                    ch.isLetter || ch.isNumber || ch == "-" || ch == "_" || ch == "="
+                }
+            }
     }
 }
