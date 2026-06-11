@@ -96,6 +96,7 @@ public struct WebSocketSessionBox: @unchecked Sendable {
 public struct GatewayConnectOptions: Sendable {
     public var role: String
     public var scopes: [String]
+    public var scopesAreExplicit: Bool
     public var caps: [String]
     public var commands: [String]
     public var permissions: [String: Bool]
@@ -110,6 +111,7 @@ public struct GatewayConnectOptions: Sendable {
     public init(
         role: String,
         scopes: [String],
+        scopesAreExplicit: Bool = false,
         caps: [String],
         commands: [String],
         permissions: [String: Bool],
@@ -120,6 +122,7 @@ public struct GatewayConnectOptions: Sendable {
     {
         self.role = role
         self.scopes = scopes
+        self.scopesAreExplicit = scopesAreExplicit
         self.caps = caps
         self.commands = commands
         self.permissions = permissions

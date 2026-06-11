@@ -2404,7 +2404,8 @@ private extension NodeAppModel {
     func makeOperatorConnectOptions(
         clientId: String,
         displayName: String?,
-        includeApprovalScope: Bool
+        includeApprovalScope: Bool,
+        forceExplicitScopes: Bool = false
     ) -> GatewayConnectOptions {
         var scopes = ["operator.read", "operator.write", "operator.talk.secrets"]
         // Preserve reconnect compatibility for older paired operator tokens that were
@@ -2415,6 +2416,7 @@ private extension NodeAppModel {
         return GatewayConnectOptions(
             role: "operator",
             scopes: scopes,
+            scopesAreExplicit: forceExplicitScopes,
             caps: [],
             commands: [],
             permissions: [:],
@@ -4154,12 +4156,14 @@ extension NodeAppModel {
     func _test_makeOperatorConnectOptions(
         clientId: String,
         displayName: String?,
-        includeApprovalScope: Bool
+        includeApprovalScope: Bool,
+        forceExplicitScopes: Bool = false
     ) -> GatewayConnectOptions {
         self.makeOperatorConnectOptions(
             clientId: clientId,
             displayName: displayName,
-            includeApprovalScope: includeApprovalScope)
+            includeApprovalScope: includeApprovalScope,
+            forceExplicitScopes: forceExplicitScopes)
     }
 
     func _test_presentExecApprovalPrompt(_ prompt: ExecApprovalPrompt) {
