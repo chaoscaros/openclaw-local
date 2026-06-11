@@ -785,6 +785,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Added clean-mode editor overlay alignment and inset helpers so placeholder
     text sits correctly in the compact field while full-mode padding stays
     unchanged.
+- `f6e51ff99a` shared Chat talk and send controls subset:
+  - Wired the existing optional Talk control into full and clean composer
+    layouts, added compact Talk/accessory styling, and restored refreshed
+    send/stop button sizing while keeping the default composer mode unchanged.
 
 ## Validation Plan
 

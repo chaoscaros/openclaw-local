@@ -293,6 +293,9 @@ struct OpenClawChatComposer: View {
             }
 
             HStack(alignment: .center, spacing: 8) {
+                if let talkControl {
+                    self.talkButton(talkControl)
+                }
                 if self.showsConnectionPill {
                     self.connectionPill
                 }
@@ -313,21 +316,25 @@ struct OpenClawChatComposer: View {
 
     private var cleanEditor: some View {
         HStack(alignment: .center, spacing: 8) {
-            self.attachmentPicker
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: self.cleanControlHeight, height: self.cleanControlHeight)
+            self.compactAccessory(self.attachmentPicker)
 
-            self.editorOverlay
-                .padding(.leading, 14)
-                .padding(.trailing, 6)
-                .frame(height: self.cleanControlHeight)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(OpenClawChatTheme.composerField)
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .strokeBorder(OpenClawChatTheme.composerBorder)))
+            HStack(alignment: .center, spacing: 8) {
+                self.editorOverlay
+                    .frame(minHeight: self.cleanControlHeight)
+
+                if let talkControl {
+                    self.compactTalkButton(talkControl)
+                }
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 6)
+            .frame(height: self.cleanControlHeight)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(OpenClawChatTheme.composerField)
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(OpenClawChatTheme.composerBorder)))
 
             self.sendButton
                 .frame(width: self.cleanControlHeight, height: self.cleanControlHeight)
@@ -337,21 +344,115 @@ struct OpenClawChatComposer: View {
         .padding(.vertical, 4)
     }
 
+    private func talkButton(_ talkControl: OpenClawChatTalkControl) -> some View {
+        Button {
+            talkControl.toggle(self.viewModel.sessionKey)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: talkControl.isEnabled ? "stop.fill" : "waveform")
+                    .font(.caption.weight(.semibold))
+                Text(talkControl.isEnabled ? "Stop" : "Talk")
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(talkControl.isEnabled ? .white : .primary)
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .background {
+                Capsule()
+                    .fill(self.talkButtonFill(talkControl))
+            }
+            .overlay {
+                Capsule()
+                    .strokeBorder(self.talkButtonStroke(talkControl), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!talkControl.isGatewayConnected && !talkControl.isEnabled)
+        .accessibilityLabel(talkControl.isEnabled ? "Stop realtime chat" : "Start realtime chat")
+        .accessibilityValue(self.talkAccessibilityValue(talkControl))
+        .help(self.talkHelpText(talkControl))
+    }
+
+    private func compactTalkButton(_ talkControl: OpenClawChatTalkControl) -> some View {
+        Button {
+            talkControl.toggle(self.viewModel.sessionKey)
+        } label: {
+            Image(systemName: talkControl.isEnabled ? "stop.fill" : "waveform")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(talkControl.isEnabled ? .white : .secondary)
+                .frame(width: self.cleanIconControlSize, height: self.cleanIconControlSize)
+                .background {
+                    Circle()
+                        .fill(self.talkButtonFill(talkControl))
+                }
+                .overlay {
+                    Circle()
+                        .strokeBorder(self.talkButtonStroke(talkControl), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .disabled(!talkControl.isGatewayConnected && !talkControl.isEnabled)
+        .accessibilityLabel(talkControl.isEnabled ? "Stop realtime chat" : "Start realtime chat")
+        .accessibilityValue(self.talkAccessibilityValue(talkControl))
+        .help(self.talkHelpText(talkControl))
+    }
+
+    private func compactAccessory(_ content: some View) -> some View {
+        content
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: self.cleanControlHeight, height: self.cleanControlHeight)
+    }
+
+    private func talkButtonFill(_ talkControl: OpenClawChatTalkControl) -> AnyShapeStyle {
+        if talkControl.isEnabled {
+            return AnyShapeStyle(OpenClawChatTheme.userBubble)
+        }
+        if !talkControl.isGatewayConnected {
+            return AnyShapeStyle(Color.secondary.opacity(0.12))
+        }
+        return OpenClawChatTheme.subtleCard
+    }
+
+    private func talkButtonStroke(_ talkControl: OpenClawChatTalkControl) -> Color {
+        if talkControl.isEnabled {
+            return Color.white.opacity(0.18)
+        }
+        return OpenClawChatTheme.composerBorder
+    }
+
+    private func talkAccessibilityValue(_ talkControl: OpenClawChatTalkControl) -> String {
+        let status = talkControl.statusText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let provider = talkControl.providerLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return [status, provider].filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+
+    private func talkHelpText(_ talkControl: OpenClawChatTalkControl) -> String {
+        if !talkControl.isGatewayConnected, !talkControl.isEnabled {
+            return "Connect the gateway before starting realtime chat"
+        }
+        let action = talkControl.isEnabled ? "Stop" : "Start"
+        return "\(action) realtime chat for \(self.activeSessionLabel)"
+    }
+
     private var connectionPill: some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(self.viewModel.healthOK ? .green : .orange)
+                .fill(self.connectionOK ? .green : .orange)
                 .frame(width: 7, height: 7)
-            Text(self.activeSessionLabel)
-                .font(.caption2.weight(.semibold))
-            Text(self.viewModel.healthOK ? "Connected" : "Connecting…")
+            Text(self.connectionStatusText)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(OpenClawChatTheme.subtleCard)
-        .clipShape(Capsule())
+        .padding(.horizontal, self.composerChrome == .clean ? 0 : 8)
+        .padding(.vertical, self.composerChrome == .clean ? 0 : 4)
+        .background {
+            if self.composerChrome == .full {
+                Capsule()
+                    .fill(OpenClawChatTheme.subtleCard)
+            }
+        }
     }
 
     private var activeSessionLabel: String {
@@ -412,8 +513,12 @@ struct OpenClawChatComposer: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white)
-                .padding(6)
-                .background(Circle().fill(Color.red))
+                .frame(width: self.sendButtonSize, height: self.sendButtonSize)
+                .background(
+                    RoundedRectangle(cornerRadius: self.sendButtonCornerRadius, style: .continuous)
+                        .fill(Color.red))
+                .contentShape(RoundedRectangle(cornerRadius: self.sendButtonCornerRadius, style: .continuous))
+                .accessibilityLabel("Stop response")
                 .disabled(self.viewModel.isAborting)
             } else {
                 Button {
@@ -428,8 +533,16 @@ struct OpenClawChatComposer: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white)
-                .padding(6)
-                .background(Circle().fill(Color.accentColor))
+                .frame(width: self.sendButtonSize, height: self.sendButtonSize)
+                .background(
+                    RoundedRectangle(cornerRadius: self.sendButtonCornerRadius, style: .continuous)
+                        .fill(self.viewModel.canSend ? self.sendButtonFill : Color.secondary
+                            .opacity(0.32)))
+                .overlay(
+                    RoundedRectangle(cornerRadius: self.sendButtonCornerRadius, style: .continuous)
+                        .strokeBorder(Color.white.opacity(self.viewModel.canSend ? 0.18 : 0.08), lineWidth: 1))
+                .contentShape(RoundedRectangle(cornerRadius: self.sendButtonCornerRadius, style: .continuous))
+                .accessibilityLabel("Send message")
                 .disabled(!self.viewModel.canSend)
             }
         }
@@ -478,12 +591,36 @@ struct OpenClawChatComposer: View {
         40
     }
 
+    private var cleanIconControlSize: CGFloat {
+        32
+    }
+
     private var cleanFieldTextInset: CGFloat {
         self.composerChrome == .clean ? 0 : 4
     }
 
     private var editorOverlayAlignment: Alignment {
         self.composerChrome == .clean ? .leading : .topLeading
+    }
+
+    private var sendButtonSize: CGFloat {
+        self.composerChrome == .clean ? self.cleanControlHeight : 44
+    }
+
+    private var sendButtonCornerRadius: CGFloat {
+        self.composerChrome == .clean ? self.cleanControlHeight / 2 : 12
+    }
+
+    private var sendButtonFill: Color {
+        self.userAccent ?? OpenClawChatTheme.userBubble
+    }
+
+    private var connectionStatusText: String {
+        self.connectionOK ? "Gateway connected" : "Connecting..."
+    }
+
+    private var connectionOK: Bool {
+        self.viewModel.healthOK || (self.talkControl?.isGatewayConnected ?? false)
     }
 
     private var placeholderText: String {
