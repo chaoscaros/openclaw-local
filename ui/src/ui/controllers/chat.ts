@@ -725,6 +725,27 @@ function normalizeFinalAssistantMessage(message: unknown): Record<string, unknow
   });
 }
 
+function buildErrorAssistantMessage(payload: ChatEventPayload): Record<string, unknown> | null {
+  const normalized = normalizeFinalAssistantMessage(payload.message);
+  if (normalized && !isAssistantSilentReply(normalized)) {
+    return normalized;
+  }
+  const error = payload.errorMessage?.trim();
+  if (!error || isToolExecutionFailureErrorMessage(error)) {
+    return null;
+  }
+  return {
+    role: "assistant",
+    content: [
+      {
+        type: "text",
+        text: error.startsWith("Error:") ? error : `Error: ${error}`,
+      },
+    ],
+    timestamp: Date.now(),
+  };
+}
+
 export async function sendChatMessage(
   state: ChatState,
   message: string,
@@ -865,6 +886,7 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
   if (!payload) {
     return null;
   }
+  const hadActiveRunBeforeEvent = state.chatRunId !== null;
   if (!doSessionKeysMatch(payload.sessionKey, state.sessionKey)) {
     return null;
   }
@@ -934,6 +956,12 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
     state.dreamingAssistReason = null;
     state.lastError = null;
   } else if (payload.state === "error") {
+    const assistantErrorMessage = hadActiveRunBeforeEvent
+      ? buildErrorAssistantMessage(payload)
+      : null;
+    if (assistantErrorMessage) {
+      state.chatMessages = [...state.chatMessages, assistantErrorMessage];
+    }
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;

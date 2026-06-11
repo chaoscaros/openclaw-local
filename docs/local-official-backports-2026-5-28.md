@@ -883,6 +883,12 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Added focused coverage for OpenAI realtime payloads, single-provider
     inference, default realtime model fallback, redacted config payloads, and
     managed-room native fallback.
+- `31a46638ad` local equivalent:
+  - Gateway chat error broadcasts now include assistant-shaped visible error
+    messages for both `chat.send` setup failures and agent lifecycle errors.
+  - Control UI appends a visible assistant error bubble for active chat runs,
+    while preserving the local suppression for command-shaped tool failures so
+    tool errors do not duplicate as global chat errors.
 
 ## Validation Plan
 

@@ -191,6 +191,7 @@ describe("handleChatEvent", () => {
     expect(handleChatEvent(state, payload)).toBe("error");
     expect(state.chatRunId).toBeNull();
     expect(state.lastError).toBeNull();
+    expect(state.chatMessages).toEqual([]);
   });
 
   it("does not show command-shaped tool failures as global chat errors", () => {
@@ -214,6 +215,7 @@ describe("handleChatEvent", () => {
       expect(handleChatEvent(state, payload)).toBe("error");
       expect(state.chatRunId).toBeNull();
       expect(state.lastError).toBeNull();
+      expect(state.chatMessages).toEqual([]);
     }
   });
 
@@ -221,6 +223,13 @@ describe("handleChatEvent", () => {
     const state = createState({
       sessionKey: "main",
       chatRunId: "run-1",
+      chatMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "Ping" }],
+          timestamp: 1,
+        },
+      ],
       lastError: null,
     });
     const payload: ChatEventPayload = {
@@ -232,6 +241,56 @@ describe("handleChatEvent", () => {
 
     expect(handleChatEvent(state, payload)).toBe("error");
     expect(state.lastError).toBe("gateway unavailable");
+    expect(state.chatMessages).toHaveLength(2);
+    expect(state.chatMessages[1]?.role).toBe("assistant");
+    expect(extractText(state.chatMessages[1])).toBe("Error: gateway unavailable");
+  });
+
+  it("prefers server-provided assistant error messages", () => {
+    const state = createState({
+      sessionKey: "main",
+      chatRunId: "run-1",
+    });
+    const message = {
+      role: "assistant",
+      content: [{ type: "text", text: "Configure provider auth, then try again." }],
+      timestamp: 10,
+    };
+    const payload: ChatEventPayload = {
+      runId: "run-1",
+      sessionKey: "main",
+      state: "error",
+      errorMessage: "raw gateway error",
+      message,
+    };
+
+    expect(handleChatEvent(state, payload)).toBe("error");
+    expect(state.chatMessages).toEqual([message]);
+    expect(state.lastError).toBe("raw gateway error");
+  });
+
+  it("does not append an orphan error bubble when no run was active", () => {
+    const existingMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "Error: request failed before start" }],
+      timestamp: 1,
+    };
+    const state = createState({
+      sessionKey: "main",
+      chatRunId: null,
+      chatMessages: [existingMessage],
+    });
+    const payload: ChatEventPayload = {
+      runId: "run-failed-before-start",
+      sessionKey: "main",
+      state: "error",
+      errorMessage: "request failed before start",
+    };
+
+    expect(handleChatEvent(state, payload)).toBe("error");
+    expect(state.chatMessages).toEqual([existingMessage]);
+    expect(state.chatRunId).toBeNull();
+    expect(state.lastError).toBe("request failed before start");
   });
 
   it("returns null for delta from another run", () => {

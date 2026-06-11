@@ -176,6 +176,18 @@ function readChatErrorKind(value: unknown): ErrorKind | undefined {
     : undefined;
 }
 
+function buildChatErrorMessage(error: unknown): Record<string, unknown> | undefined {
+  const raw = error ? formatForLog(error).trim() : "";
+  if (!raw) {
+    return undefined;
+  }
+  return {
+    role: "assistant",
+    content: [{ type: "text", text: raw.startsWith("Error:") ? raw : `Error: ${raw}` }],
+    timestamp: Date.now(),
+  };
+}
+
 function excludeConnIds(
   connIds: ReadonlySet<string>,
   excludedConnIds: ReadonlySet<string> | undefined,
@@ -688,6 +700,7 @@ export function createAgentEventHandler({
       seq,
       state: "error" as const,
       errorMessage: error ? formatForLog(error) : undefined,
+      message: buildChatErrorMessage(error),
       ...(errorKind && { errorKind }),
     };
     sendChatPayload(sessionKey, payload, opts);
