@@ -910,6 +910,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Input-file URL fetches now cancel ignored HTTP error bodies and oversized
     content-length bodies before returning errors, while still releasing the
     SSRF guard handle.
+- `a0ba9f2b72` local equivalent:
+  - Remote media buffer reads and saved-response media writes now cancel
+    oversized content-length response bodies before surfacing max-byte errors.
 
 ## Validation Plan
 
