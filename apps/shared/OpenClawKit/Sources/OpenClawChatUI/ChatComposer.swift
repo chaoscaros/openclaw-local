@@ -491,15 +491,23 @@ struct OpenClawChatComposer: View {
             .padding(.horizontal, 4)
             .padding(.vertical, 3)
             #else
-            TextEditor(text: self.$viewModel.input)
+            TextField(
+                "",
+                text: self.$viewModel.input,
+                axis: .vertical)
                 .font(.system(size: 15))
-                .scrollContentBackground(.hidden)
+                .lineLimit(1...4)
+                .submitLabel(.send)
+                .onSubmit {
+                    self.viewModel.send()
+                }
                 .frame(
                     minHeight: self.textMinHeight,
                     idealHeight: self.textMinHeight,
-                    maxHeight: self.textMaxHeight)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 4)
+                    maxHeight: self.textMaxHeight,
+                    alignment: self.editorTextAlignment)
+                .padding(.horizontal, self.cleanFieldTextInset)
+                .padding(.vertical, self.composerChrome == .clean ? 0 : 6)
                 .focused(self.$isFocused)
             #endif
         }
@@ -587,11 +595,13 @@ struct OpenClawChatComposer: View {
     }
 
     private var textMinHeight: CGFloat {
-        self.style == .onboarding ? 24 : 28
+        if self.style == .onboarding { return 24 }
+        return self.composerChrome == .clean ? 24 : 28
     }
 
     private var textMaxHeight: CGFloat {
-        self.style == .onboarding ? 52 : 64
+        if self.style == .onboarding { return 52 }
+        return self.composerChrome == .clean ? 48 : 64
     }
 
     private var cleanControlHeight: CGFloat {
@@ -608,6 +618,10 @@ struct OpenClawChatComposer: View {
 
     private var editorOverlayAlignment: Alignment {
         self.composerChrome == .clean ? .leading : .topLeading
+    }
+
+    private var editorTextAlignment: Alignment {
+        self.composerChrome == .clean ? .leading : .top
     }
 
     private var sendButtonSize: CGFloat {

@@ -792,6 +792,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Chat clean connection pill subset:
   - Restored the clean composer connection-status row below the compact input
     controls so embedded chat hosts keep gateway status visible.
+- `f6e51ff99a` shared Chat mobile input subset:
+  - Restored the non-macOS vertical `TextField` composer path with clean-mode
+    text metrics and alignment while leaving the macOS text-view bridge
+    untouched.
 
 ## Validation Plan
 
