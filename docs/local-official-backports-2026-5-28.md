@@ -742,6 +742,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Added the public `OpenClawChatTalkControl` value type as the narrow UI
     contract for later realtime talk composer controls, without wiring it into
     the default composer yet.
+- `f6e51ff99a` shared Chat talk-control plumbing subset:
+  - Threaded the optional `OpenClawChatTalkControl` from `OpenClawChatView` into
+    the composer as inert plumbing so later Talk UI slices can remain scoped.
 
 ## Validation Plan
 

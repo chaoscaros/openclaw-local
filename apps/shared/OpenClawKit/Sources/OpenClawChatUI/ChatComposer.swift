@@ -41,6 +41,7 @@ struct OpenClawChatComposer: View {
     let style: OpenClawChatView.Style
     let showsSessionSwitcher: Bool
     let messagePlaceholder: String?
+    let talkControl: OpenClawChatTalkControl?
 
     #if !os(macOS)
     @State private var pickerItems: [PhotosPickerItem] = []
