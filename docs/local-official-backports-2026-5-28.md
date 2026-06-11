@@ -868,6 +868,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` iOS Talk speakerphone default subset:
   - Added a testable Talk speakerphone preference helper that defaults to
     enabled until explicitly configured.
+- `f6e51ff99a` shared Talk speech locale test subset:
+  - Added coverage for trimming and preserving configured Talk speech locale
+    IDs from gateway config payloads.
 
 ## Validation Plan
 
