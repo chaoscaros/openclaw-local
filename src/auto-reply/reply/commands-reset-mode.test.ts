@@ -8,6 +8,10 @@ describe("parseSoftResetCommand", () => {
       matched: true,
       tail: "re-read persona files",
     });
+    expect(parseSoftResetCommand("/RESET soft re-read persona files")).toEqual({
+      matched: true,
+      tail: "re-read persona files",
+    });
     expect(parseSoftResetCommand("/reset soft\tre-read persona files")).toEqual({
       matched: true,
       tail: "re-read persona files",

@@ -894,6 +894,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     shared duration parser instead of multiplying raw hours locally, rejecting
     unsafe oversized `/session idle` and `/session max-age` values before
     persistence.
+- `30c1ca5c7b` local equivalent:
+  - Text slash command detection now treats command names case-insensitively
+    for `/new`, `/reset`, registry aliases, and control-command detection while
+    preserving the original argument casing.
 
 ## Validation Plan
 
