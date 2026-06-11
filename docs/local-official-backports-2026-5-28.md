@@ -871,6 +871,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Talk speech locale test subset:
   - Added coverage for trimming and preserving configured Talk speech locale
     IDs from gateway config payloads.
+- `f6e51ff99a` iOS Talk voice descriptor subset:
+  - Added Talk provider and realtime voice selection helpers plus a testable
+    voice-mode descriptor builder for realtime, relay, ElevenLabs, and iOS
+    system voice labels without changing the existing gateway config parser
+    call sites.
 
 ## Validation Plan
 
