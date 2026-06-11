@@ -101,15 +101,7 @@ public struct OpenClawChatView: View {
                     .ignoresSafeArea()
             }
 
-            VStack(spacing: Layout.stackSpacing) {
-                self.messageList
-                    .padding(.horizontal, Layout.outerPaddingHorizontal)
-                self.composer
-                    .padding(.horizontal, Layout.composerPaddingHorizontal)
-            }
-            .padding(.vertical, Layout.outerPaddingVertical)
-            .frame(maxWidth: .infinity)
-            .frame(maxHeight: .infinity, alignment: .top)
+            self.content
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear { self.viewModel.load() }
@@ -130,6 +122,35 @@ public struct OpenClawChatView: View {
             composerChrome: self.composerChrome,
             messagePlaceholder: self.messagePlaceholder,
             talkControl: self.talkControl)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        #if os(macOS)
+        VStack(spacing: Layout.stackSpacing) {
+            self.messageList
+                .padding(.horizontal, Layout.outerPaddingHorizontal)
+            self.composer
+                .padding(.horizontal, Layout.composerPaddingHorizontal)
+        }
+        .padding(.vertical, Layout.outerPaddingVertical)
+        .frame(maxWidth: .infinity)
+        .frame(maxHeight: .infinity, alignment: .top)
+        #else
+        VStack(spacing: 0) {
+            self.messageList
+                .padding(.horizontal, Layout.outerPaddingHorizontal)
+        }
+        .padding(.top, Layout.outerPaddingVertical)
+        .frame(maxWidth: .infinity)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            self.composer
+                .padding(.horizontal, Layout.composerPaddingHorizontal)
+                .padding(.top, Layout.stackSpacing)
+                .padding(.bottom, Layout.outerPaddingVertical)
+        }
+        #endif
     }
 
     private var messageList: some View {

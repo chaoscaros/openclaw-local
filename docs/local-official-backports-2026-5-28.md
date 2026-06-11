@@ -761,6 +761,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Chat composer view extraction subset:
   - Extracted `OpenClawChatView`'s composer construction into a dedicated
     computed view before the mobile safe-area layout slice.
+- `f6e51ff99a` shared Chat mobile safe-area composer subset:
+  - Kept the macOS chat layout unchanged while moving the non-macOS composer
+    into a bottom `safeAreaInset` so mobile chat input is not part of the
+    scroll stack.
 
 ## Validation Plan
 
