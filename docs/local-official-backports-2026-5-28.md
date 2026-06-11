@@ -765,6 +765,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Kept the macOS chat layout unchanged while moving the non-macOS composer
     into a bottom `safeAreaInset` so mobile chat input is not part of the
     scroll stack.
+- `f6e51ff99a` shared Chat notice card subset:
+  - Updated shared chat notice cards to the compact horizontal presentation used
+    by the refreshed mobile chat surfaces.
 
 ## Validation Plan
 
