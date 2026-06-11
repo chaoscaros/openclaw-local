@@ -728,6 +728,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Added the `OpenClawChatView.ComposerChrome` entry point and optional clean
     empty-state assistant intro without changing the default full composer
     behavior.
+- `f6e51ff99a` shared Chat clean loading subset:
+  - Added an inline clean-mode loading bubble while keeping the default full
+    composer spinner behavior unchanged.
 
 ## Validation Plan
 

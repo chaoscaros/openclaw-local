@@ -148,7 +148,7 @@ public struct OpenClawChatView: View {
                 self.isPinnedToBottom = position == self.scrollerBottomID
             }
 
-            if self.viewModel.isLoading {
+            if self.viewModel.isLoading, self.composerChrome == .full {
                 ProgressView()
                     .controlSize(.large)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -224,6 +224,11 @@ public struct OpenClawChatView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
 
+        if self.showsCleanLoadingPlaceholder {
+            ChatLoadingBubble()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+
         ForEach(self.visibleMessages) { msg in
             ChatMessageBubble(
                 message: msg,
@@ -289,6 +294,8 @@ public struct OpenClawChatView: View {
             EmptyView()
         } else if self.visibleEmptyAssistantIntro != nil {
             EmptyView()
+        } else if self.showsCleanLoadingPlaceholder {
+            EmptyView()
         } else if let error = self.activeErrorText {
             let presentation = self.errorPresentation(for: error)
             if self.hasVisibleMessageListContent {
@@ -337,6 +344,14 @@ public struct OpenClawChatView: View {
             return nil
         }
         return text
+    }
+
+    private var showsCleanLoadingPlaceholder: Bool {
+        self.composerChrome == .clean &&
+            self.viewModel.isLoading &&
+            self.visibleEmptyAssistantIntro == nil &&
+            self.activeErrorText == nil &&
+            !self.hasVisibleMessageListContent
     }
 
     private var hasVisibleMessageListContent: Bool {
@@ -576,6 +591,24 @@ private struct ChatAssistantIntroCard: View {
             .frame(maxWidth: 280, alignment: .leading)
             .padding(.top, 4)
             .padding(.leading, 10)
+    }
+}
+
+private struct ChatLoadingBubble: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Loading chat")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 9)
+        .padding(.horizontal, 12)
+        .background(
+            Capsule()
+                .fill(OpenClawChatTheme.subtleCard))
+        .padding(.leading, 10)
     }
 }
 
