@@ -925,6 +925,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `b6e354f6ca` local equivalent:
   - File-transfer tar listing and unpacking now handle late stdin pipe errors
     without overwriting an already settled archive validation result.
+- `9a7f808953` local equivalent:
+  - File-transfer directory fetch validation now streams tar listing output,
+    caps entry lists at 5000 items, and keeps bounded stderr tails for tar
+    diagnostics.
 
 ## Validation Plan
 
