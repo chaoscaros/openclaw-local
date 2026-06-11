@@ -796,6 +796,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Restored the non-macOS vertical `TextField` composer path with clean-mode
     text metrics and alignment while leaving the macOS text-view bridge
     untouched.
+- `f6e51ff99a` shared Chat draft-send subset:
+  - Kept the send button available while a run is pending when the user has a
+    draft, matching the refreshed composer behavior without changing abort
+    handling for empty drafts.
 
 ## Validation Plan
 

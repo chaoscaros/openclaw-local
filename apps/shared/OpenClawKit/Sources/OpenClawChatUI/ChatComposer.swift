@@ -515,7 +515,7 @@ struct OpenClawChatComposer: View {
 
     private var sendButton: some View {
         Group {
-            if self.viewModel.pendingRunCount > 0 {
+            if self.viewModel.pendingRunCount > 0, !self.viewModel.hasDraftToSend {
                 Button {
                     self.viewModel.abort()
                 } label: {
