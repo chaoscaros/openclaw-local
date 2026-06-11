@@ -830,6 +830,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Added a testable location permission helper so gateway registration only
     advertises location access when both global services and app authorization
     are available.
+- `f6e51ff99a` iOS saved manual endpoint fallback subset:
+  - Added a testable saved-manual-endpoint fallback so auto-connect can recover
+    to the configured manual gateway after discovery candidates fail, while
+    requiring both auto-connect and manual gateway mode to be enabled.
 
 ## Validation Plan
 
