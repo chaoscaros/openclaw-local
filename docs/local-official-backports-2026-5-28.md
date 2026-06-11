@@ -731,6 +731,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Chat clean loading subset:
   - Added an inline clean-mode loading bubble while keeping the default full
     composer spinner behavior unchanged.
+- `f6e51ff99a` shared Chat clean error subset:
+  - Rendered initial clean-mode errors as inline notice rows so embedded chat
+    hosts can keep the conversation surface anchored instead of showing the
+    full overlay card.
 
 ## Validation Plan
 

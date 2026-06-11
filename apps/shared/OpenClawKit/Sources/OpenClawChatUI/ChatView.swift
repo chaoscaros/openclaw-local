@@ -229,6 +229,18 @@ public struct OpenClawChatView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
 
+        if self.composerChrome == .clean, let error = self.activeErrorText, !self.hasVisibleMessageListContent {
+            let presentation = self.errorPresentation(for: error)
+            ChatNoticeCard(
+                systemImage: presentation.systemImage,
+                title: presentation.title,
+                message: error,
+                tint: presentation.tint,
+                actionTitle: "Refresh",
+                action: { self.viewModel.refresh() })
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+
         ForEach(self.visibleMessages) { msg in
             ChatMessageBubble(
                 message: msg,
@@ -295,6 +307,8 @@ public struct OpenClawChatView: View {
         } else if self.visibleEmptyAssistantIntro != nil {
             EmptyView()
         } else if self.showsCleanLoadingPlaceholder {
+            EmptyView()
+        } else if self.composerChrome == .clean, self.activeErrorText != nil, !self.hasVisibleMessageListContent {
             EmptyView()
         } else if let error = self.activeErrorText {
             let presentation = self.errorPresentation(for: error)
