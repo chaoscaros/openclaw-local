@@ -679,6 +679,13 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     pending-run cleanup.
   - Kept the callback defaulted to nil so existing Chat surfaces behave the
     same while mobile/debug hosts can observe stuck-run state transitions.
+- `f6e51ff99a` shared Chat attachment processing subset:
+  - Added a shared `ChatImageProcessor` that transcodes chat image attachments
+    to bounded JPEG payloads, strips source metadata, and flattens transparent
+    sources before upload.
+  - Split ViewModel attachment staging into a dedicated extension and added
+    coverage for processed attachment filenames, MIME type, payload budget, and
+    longest-edge limits.
 
 ## Validation Plan
 
