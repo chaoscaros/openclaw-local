@@ -922,6 +922,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `00fb15253c` local equivalent:
   - Skill install downloads now cancel failed response bodies before returning
     download errors, while still releasing the guarded fetch handle.
+- `b6e354f6ca` local equivalent:
+  - File-transfer tar listing and unpacking now handle late stdin pipe errors
+    without overwriting an already settled archive validation result.
 
 ## Validation Plan
 

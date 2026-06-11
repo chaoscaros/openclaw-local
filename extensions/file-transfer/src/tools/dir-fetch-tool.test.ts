@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { validateTarUncompressedBudget } from "./dir-fetch-tool.js";
 
 let tmpRoot: string;
@@ -56,4 +57,52 @@ describe("validateTarUncompressedBudget", () => {
       });
     },
   );
+});
+
+describe("dir.fetch tar validation", () => {
+  it("ignores late stdin EPIPE after tar listing has already settled", async () => {
+    vi.resetModules();
+    vi.doMock("node:child_process", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:child_process")>();
+      return {
+        ...actual,
+        spawn: vi.fn(() => {
+          const child = new EventEmitter() as EventEmitter & {
+            stdout: EventEmitter;
+            stderr: EventEmitter;
+            stdin: EventEmitter & { end: (buffer: Buffer) => void };
+            kill: (signal?: NodeJS.Signals | number) => boolean;
+          };
+          child.stdout = new EventEmitter();
+          child.stderr = new EventEmitter();
+          child.stdin = Object.assign(new EventEmitter(), {
+            end: () => {
+              queueMicrotask(() => {
+                child.stderr.emit("data", Buffer.from("invalid archive"));
+                child.emit("close", 2);
+                child.stdin.emit(
+                  "error",
+                  Object.assign(new Error("write EPIPE"), { code: "EPIPE" }),
+                );
+              });
+            },
+          });
+          child.kill = vi.fn(() => true);
+          return child;
+        }),
+      };
+    });
+
+    try {
+      const { testing } = await import("./dir-fetch-tool.js");
+
+      await expect(testing.preValidateTarball(Buffer.from("x"))).resolves.toEqual({
+        ok: false,
+        reason: "tar -tzf exited 2: invalid archive",
+      });
+    } finally {
+      vi.doUnmock("node:child_process");
+      vi.resetModules();
+    }
+  });
 });
