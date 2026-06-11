@@ -272,8 +272,13 @@ struct OpenClawChatComposer: View {
         }
     }
 
+    @ViewBuilder
     private var editor: some View {
-        self.fullEditor
+        if self.composerChrome == .clean {
+            self.cleanEditor
+        } else {
+            self.fullEditor
+        }
     }
 
     private var fullEditor: some View {
@@ -304,6 +309,32 @@ struct OpenClawChatComposer: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(OpenClawChatTheme.composerBorder)))
         .padding(self.editorPadding)
+    }
+
+    private var cleanEditor: some View {
+        HStack(alignment: .center, spacing: 8) {
+            self.attachmentPicker
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: self.cleanControlHeight, height: self.cleanControlHeight)
+
+            self.editorOverlay
+                .padding(.leading, 14)
+                .padding(.trailing, 6)
+                .frame(height: self.cleanControlHeight)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(OpenClawChatTheme.composerField)
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(OpenClawChatTheme.composerBorder)))
+
+            self.sendButton
+                .frame(width: self.cleanControlHeight, height: self.cleanControlHeight)
+        }
+        .frame(height: self.cleanControlHeight)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 4)
     }
 
     private var connectionPill: some View {
@@ -441,6 +472,10 @@ struct OpenClawChatComposer: View {
 
     private var textMaxHeight: CGFloat {
         self.style == .onboarding ? 52 : 64
+    }
+
+    private var cleanControlHeight: CGFloat {
+        40
     }
 
     private var placeholderText: String {

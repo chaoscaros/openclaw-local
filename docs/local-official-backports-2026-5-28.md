@@ -777,6 +777,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Chat full editor extraction subset:
   - Extracted the existing composer editor body into `fullEditor` without
     changing layout, preparing a separate clean editor branch.
+- `f6e51ff99a` shared Chat clean editor subset:
+  - Added the first compact `composerChrome == .clean` editor branch with a
+    horizontal attachment, input, and send layout while leaving `.full`
+    rendering untouched.
 
 ## Validation Plan
 
