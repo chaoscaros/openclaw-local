@@ -814,6 +814,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Restored typed JSON helper coverage for `sessions.list` and `chat.send`,
     and re-added chat-send Gateway diagnostics around start, success, and
     failure.
+- `f6e51ff99a` iOS gateway config comparison subset:
+  - Added reusable `GatewayConnectConfig` connection-input comparison with
+    normalized scope/capability/command arrays to prepare safer reconnect
+    decisions.
 
 ## Validation Plan
 
