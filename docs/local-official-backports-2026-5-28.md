@@ -902,6 +902,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Subagent steering now treats `sessions_yield` paused attempts as restartable
     even when the paused run has an `endedAt` timestamp, instead of reporting
     the yielded subagent as already finished.
+- `736e04cb90` local equivalent:
+  - Media downloads now drain ignored redirect and HTTP error response bodies
+    before following a redirect or failing the request, so unused bodies do not
+    leave sockets/backpressure hanging around.
 
 ## Validation Plan
 
