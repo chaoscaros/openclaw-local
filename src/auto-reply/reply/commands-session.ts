@@ -21,6 +21,7 @@ import {
 } from "../../infra/restart-sentinel.js";
 import { scheduleGatewaySigusr1Restart, triggerOpenClawRestart } from "../../infra/restart.js";
 import { loadCostUsageSummary, loadSessionCostSummary } from "../../infra/session-cost-usage.js";
+import { MAX_TIMER_TIMEOUT_MS } from "../../shared/number-coercion.js";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalLowercaseString,
@@ -83,14 +84,11 @@ function parseSessionDurationMs(raw: string): number {
   if (SESSION_DURATION_OFF_VALUES.has(normalized)) {
     return 0;
   }
-  if (/^\d+(?:\.\d+)?$/.test(normalized)) {
-    const hours = Number(normalized);
-    if (!Number.isFinite(hours) || hours < 0) {
-      throw new Error("invalid duration");
-    }
-    return Math.round(hours * 60 * 60 * 1000);
+  const durationMs = parseDurationMs(normalized, { defaultUnit: "h" });
+  if (durationMs > MAX_TIMER_TIMEOUT_MS) {
+    throw new Error("duration exceeds timer-safe maximum");
   }
-  return parseDurationMs(normalized, { defaultUnit: "h" });
+  return durationMs;
 }
 
 function formatSessionExpiry(expiresAt: number) {

@@ -889,6 +889,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Control UI appends a visible assistant error bubble for active chat runs,
     while preserving the local suppression for command-shaped tool failures so
     tool errors do not duplicate as global chat errors.
+- `274a8116af` local equivalent:
+  - Session lifecycle commands now route bare numeric durations through the
+    shared duration parser instead of multiplying raw hours locally, rejecting
+    unsafe oversized `/session idle` and `/session max-age` values before
+    persistence.
 
 ## Validation Plan
 
