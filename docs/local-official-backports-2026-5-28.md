@@ -862,6 +862,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Reuse stored device-token scopes on reconnect unless the caller marks the
     requested scope set as explicit, preserving older paired operator tokens
     while allowing deliberate scope upgrades.
+- `f6e51ff99a` shared gateway password auth subset:
+  - Prefer explicit password auth over stale bootstrap tokens when both are
+    present on a connect attempt.
 
 ## Validation Plan
 
