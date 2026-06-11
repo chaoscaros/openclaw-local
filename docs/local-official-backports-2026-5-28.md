@@ -906,6 +906,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Media downloads now drain ignored redirect and HTTP error response bodies
     before following a redirect or failing the request, so unused bodies do not
     leave sockets/backpressure hanging around.
+- `96b8df75d5` local equivalent:
+  - Input-file URL fetches now cancel ignored HTTP error bodies and oversized
+    content-length bodies before returning errors, while still releasing the
+    SSRF guard handle.
 
 ## Validation Plan
 
