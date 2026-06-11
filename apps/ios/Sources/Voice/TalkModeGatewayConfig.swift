@@ -1,7 +1,7 @@
 import Foundation
 import OpenClawKit
 
-enum TalkModeExecutionMode {
+enum TalkModeExecutionMode: Equatable {
     case native
     case realtimeClient
     case realtimeRelay
@@ -162,13 +162,18 @@ struct TalkModeGatewayConfigState {
     let activeProvider: String
     let normalizedPayload: Bool
     let missingResolvedPayload: Bool
+    let executionMode: TalkModeExecutionMode
     let defaultVoiceId: String?
     let voiceAliases: [String: String]
     let defaultModelId: String
     let defaultOutputFormat: String?
+    let realtimeProvider: String?
+    let realtimeModelId: String?
+    let realtimeVoiceId: String?
     let rawConfigApiKey: String?
     let interruptOnSpeech: Bool?
     let silenceTimeoutMs: Int
+    let speechLocaleID: String?
 }
 
 enum TalkModeGatewayConfigParser {
@@ -176,6 +181,7 @@ enum TalkModeGatewayConfigParser {
         config: [String: Any],
         defaultProvider: String,
         defaultModelIdFallback: String,
+        defaultRealtimeModelIdFallback: String = "gpt-realtime-2",
         defaultSilenceTimeoutMs: Int
     ) -> TalkModeGatewayConfigState {
         let talk = TalkConfigParsing.bridgeFoundationDictionary(config["talk"] as? [String: Any])
@@ -185,8 +191,6 @@ enum TalkModeGatewayConfigParser {
             allowLegacyFallback: false)
         let activeProvider = selection?.provider ?? defaultProvider
         let activeConfig = selection?.config
-        let defaultVoiceId = activeConfig?["voiceId"]?.stringValue?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
         let voiceAliases: [String: String]
         if let aliases = activeConfig?["voiceAliases"]?.dictionaryValue {
             var resolved: [String: String] = [:]
@@ -201,26 +205,93 @@ enum TalkModeGatewayConfigParser {
         } else {
             voiceAliases = [:]
         }
-        let model = activeConfig?["modelId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let model = Self.firstString(activeConfig, keys: ["modelId", "model"])
         let defaultModelId = (model?.isEmpty == false) ? model! : defaultModelIdFallback
-        let defaultOutputFormat = activeConfig?["outputFormat"]?.stringValue?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let defaultVoiceId = Self.firstString(activeConfig, keys: ["voiceId", "voice"])
+        let defaultOutputFormat = Self.firstString(activeConfig, keys: ["outputFormat"])
+        let realtime = talk?["realtime"]?.dictionaryValue
+        let realtimeProviders = realtime?["providers"]?.dictionaryValue
+        let realtimeProvider = Self.firstString(realtime, keys: ["provider"])
+            ?? Self.singleRealtimeProviderId(realtimeProviders)
+        let realtimeProviderConfig = Self.realtimeProviderConfig(
+            providers: realtimeProviders,
+            provider: realtimeProvider)
+        let realtimeModel = Self.firstString(realtime, keys: ["model"])
+            ?? Self.firstString(realtimeProviderConfig, keys: ["model"])
+        let realtimeModelId = realtimeModel ?? defaultRealtimeModelIdFallback
+        let realtimeVoiceId = Self.firstString(realtime, keys: ["voice"])
+            ?? Self.firstString(realtimeProviderConfig, keys: ["voice"])
+        let executionMode = Self.resolvedExecutionMode(realtime)
         let rawConfigApiKey = activeConfig?["apiKey"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
         let interruptOnSpeech = talk?["interruptOnSpeech"]?.boolValue
         let silenceTimeoutMs = TalkConfigParsing.resolvedSilenceTimeoutMs(
             talk,
             fallback: defaultSilenceTimeoutMs)
+        let speechLocaleID = TalkConfigParsing.resolvedSpeechLocaleID(talk)
 
         return TalkModeGatewayConfigState(
             activeProvider: activeProvider,
             normalizedPayload: selection?.normalizedPayload == true,
             missingResolvedPayload: talk != nil && selection == nil,
+            executionMode: executionMode,
             defaultVoiceId: defaultVoiceId,
             voiceAliases: voiceAliases,
             defaultModelId: defaultModelId,
             defaultOutputFormat: defaultOutputFormat,
+            realtimeProvider: realtimeProvider,
+            realtimeModelId: realtimeModelId,
+            realtimeVoiceId: realtimeVoiceId,
             rawConfigApiKey: rawConfigApiKey,
             interruptOnSpeech: interruptOnSpeech,
-            silenceTimeoutMs: silenceTimeoutMs)
+            silenceTimeoutMs: silenceTimeoutMs,
+            speechLocaleID: speechLocaleID)
+    }
+
+    private static func firstString(_ config: [String: AnyCodable]?, keys: [String]) -> String? {
+        guard let config else { return nil }
+        for key in keys {
+            let value = config[key]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if value?.isEmpty == false {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private static func resolvedExecutionMode(_ realtime: [String: AnyCodable]?) -> TalkModeExecutionMode {
+        guard let realtime else { return .native }
+        let mode = Self.firstString(realtime, keys: ["mode"])?.lowercased()
+        let transport = Self.firstString(realtime, keys: ["transport"])?.lowercased()
+        let brain = Self.firstString(realtime, keys: ["brain"])?.lowercased()
+        guard mode == "realtime" else {
+            return .native
+        }
+        if transport == "managed-room" {
+            return .native
+        }
+        if brain != nil, brain != "agent-consult" {
+            return .native
+        }
+        return .realtimeRelay
+    }
+
+    private static func singleRealtimeProviderId(_ providers: [String: AnyCodable]?) -> String? {
+        guard let providers, providers.count == 1 else { return nil }
+        let provider = providers.keys.first?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return provider?.isEmpty == false ? provider : nil
+    }
+
+    private static func realtimeProviderConfig(
+        providers: [String: AnyCodable]?,
+        provider: String?
+    ) -> [String: AnyCodable]? {
+        guard let providers else { return nil }
+        if let provider {
+            return providers[provider]?.dictionaryValue
+        }
+        if providers.count == 1 {
+            return providers.values.first?.dictionaryValue
+        }
+        return nil
     }
 }

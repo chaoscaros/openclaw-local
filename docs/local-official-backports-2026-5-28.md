@@ -876,6 +876,13 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     voice-mode descriptor builder for realtime, relay, ElevenLabs, and iOS
     system voice labels without changing the existing gateway config parser
     call sites.
+- `f6e51ff99a` iOS Talk realtime config parsing subset:
+  - Extended the Talk gateway config parser to expose realtime execution mode,
+    provider, model, voice, and speech-locale fields while keeping the existing
+    manager call site compatible through a default realtime model fallback.
+  - Added focused coverage for OpenAI realtime payloads, single-provider
+    inference, default realtime model fallback, redacted config payloads, and
+    managed-room native fallback.
 
 ## Validation Plan
 
