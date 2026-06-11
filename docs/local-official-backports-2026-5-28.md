@@ -858,6 +858,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Share-to-Agent empty payload subset:
   - Avoid treating empty URL/text fields as shared content, and isolate default
     instruction state in the deep-link tests so empty payloads stay nil.
+- `f6e51ff99a` shared gateway stored-scope subset:
+  - Reuse stored device-token scopes on reconnect unless the caller marks the
+    requested scope set as explicit, preserving older paired operator tokens
+    while allowing deliberate scope upgrades.
 
 ## Validation Plan
 
