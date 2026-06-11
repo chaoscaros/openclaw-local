@@ -789,6 +789,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Wired the existing optional Talk control into full and clean composer
     layouts, added compact Talk/accessory styling, and restored refreshed
     send/stop button sizing while keeping the default composer mode unchanged.
+- `f6e51ff99a` shared Chat clean connection pill subset:
+  - Restored the clean composer connection-status row below the compact input
+    controls so embedded chat hosts keep gateway status visible.
 
 ## Validation Plan
 

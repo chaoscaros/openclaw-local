@@ -315,31 +315,38 @@ struct OpenClawChatComposer: View {
     }
 
     private var cleanEditor: some View {
-        HStack(alignment: .center, spacing: 8) {
-            self.compactAccessory(self.attachmentPicker)
-
+        VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
-                self.editorOverlay
-                    .frame(minHeight: self.cleanControlHeight)
+                self.compactAccessory(self.attachmentPicker)
 
-                if let talkControl {
-                    self.compactTalkButton(talkControl)
+                HStack(alignment: .center, spacing: 8) {
+                    self.editorOverlay
+                        .frame(minHeight: self.cleanControlHeight)
+
+                    if let talkControl {
+                        self.compactTalkButton(talkControl)
+                    }
                 }
-            }
-            .padding(.leading, 14)
-            .padding(.trailing, 6)
-            .frame(height: self.cleanControlHeight)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(OpenClawChatTheme.composerField)
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(OpenClawChatTheme.composerBorder)))
+                .padding(.leading, 14)
+                .padding(.trailing, 6)
+                .frame(height: self.cleanControlHeight)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(OpenClawChatTheme.composerField)
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(OpenClawChatTheme.composerBorder)))
 
-            self.sendButton
-                .frame(width: self.cleanControlHeight, height: self.cleanControlHeight)
+                self.sendButton
+                    .frame(width: self.cleanControlHeight, height: self.cleanControlHeight)
+            }
+            .frame(height: self.cleanControlHeight)
+
+            if self.showsConnectionPill {
+                self.connectionPill
+                    .padding(.leading, 52)
+            }
         }
-        .frame(height: self.cleanControlHeight)
         .padding(.horizontal, 18)
         .padding(.vertical, 4)
     }
