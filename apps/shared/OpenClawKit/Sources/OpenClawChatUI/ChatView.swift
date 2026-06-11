@@ -104,13 +104,7 @@ public struct OpenClawChatView: View {
             VStack(spacing: Layout.stackSpacing) {
                 self.messageList
                     .padding(.horizontal, Layout.outerPaddingHorizontal)
-                OpenClawChatComposer(
-                    viewModel: self.viewModel,
-                    style: self.style,
-                    showsSessionSwitcher: self.showsSessionSwitcher,
-                    composerChrome: self.composerChrome,
-                    messagePlaceholder: self.messagePlaceholder,
-                    talkControl: self.talkControl)
+                self.composer
                     .padding(.horizontal, Layout.composerPaddingHorizontal)
             }
             .padding(.vertical, Layout.outerPaddingVertical)
@@ -126,6 +120,16 @@ public struct OpenClawChatView: View {
                 EmptyView()
             }
         }
+    }
+
+    private var composer: some View {
+        OpenClawChatComposer(
+            viewModel: self.viewModel,
+            style: self.style,
+            showsSessionSwitcher: self.showsSessionSwitcher,
+            composerChrome: self.composerChrome,
+            messagePlaceholder: self.messagePlaceholder,
+            talkControl: self.talkControl)
     }
 
     private var messageList: some View {

@@ -758,6 +758,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Chat thinking picker subset:
   - Let the composer render `viewModel.thinkingLevelOptions` directly, relying
     on the ViewModel's default and session-derived option normalization.
+- `f6e51ff99a` shared Chat composer view extraction subset:
+  - Extracted `OpenClawChatView`'s composer construction into a dedicated
+    computed view before the mobile safe-area layout slice.
 
 ## Validation Plan
 
