@@ -929,6 +929,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - File-transfer directory fetch validation now streams tar listing output,
     caps entry lists at 5000 items, and keeps bounded stderr tails for tar
     diagnostics.
+- `8ba71e4aff` local equivalent:
+  - Shared process command execution now bounds captured stdout and stderr,
+    keeping the newest output and reporting truncated byte counts.
 
 ## Validation Plan
 
