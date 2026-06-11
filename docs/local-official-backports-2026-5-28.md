@@ -840,6 +840,12 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Added the shared `GatewayConnectOptions.scopesAreExplicit` field and
     operator helper plumbing so later Talk permission upgrades can request an
     explicit scope set without changing existing reconnect defaults.
+- `f6e51ff99a` iOS gateway credentials storage subset:
+  - Added a keychain-backed `currentInstanceID()` helper and routed gateway
+    credential reads through it so reconnects keep working after defaults are
+    restored from keychain.
+  - Trim gateway token, bootstrap token, and password saves, deleting existing
+    keychain entries when the saved value is blank.
 
 ## Validation Plan
 

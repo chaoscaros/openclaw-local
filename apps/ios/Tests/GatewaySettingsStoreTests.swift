@@ -13,6 +13,9 @@ private let talkService = "ai.openclaw.talk"
 private let instanceIdEntry = KeychainEntry(service: nodeService, account: "instanceId")
 private let preferredGatewayEntry = KeychainEntry(service: gatewayService, account: "preferredStableID")
 private let lastGatewayEntry = KeychainEntry(service: gatewayService, account: "lastDiscoveredStableID")
+private let gatewayTokenEntry = KeychainEntry(service: gatewayService, account: "gateway-token.ios-test")
+private let gatewayBootstrapTokenEntry = KeychainEntry(service: gatewayService, account: "gateway-bootstrap-token.ios-test")
+private let gatewayPasswordEntry = KeychainEntry(service: gatewayService, account: "gateway-password.ios-test")
 private let talkAcmeProviderEntry = KeychainEntry(service: talkService, account: "provider.apiKey.acme")
 private let bootstrapDefaultsKeys = [
     "node.instanceId",
@@ -95,6 +98,18 @@ private func withLastGatewaySnapshot(_ body: () -> Void) {
     body()
 }
 
+private func withGatewayCredentialSnapshot(_ body: () -> Void) {
+    let keychainSnapshot = snapshotKeychain([
+        gatewayTokenEntry,
+        gatewayBootstrapTokenEntry,
+        gatewayPasswordEntry,
+    ])
+    defer {
+        restoreKeychain(keychainSnapshot)
+    }
+    body()
+}
+
 @Suite(.serialized) struct GatewaySettingsStoreTests {
     @Test func bootstrapCopiesDefaultsToKeychainWhenMissing() {
         withBootstrapSnapshots {
@@ -136,6 +151,53 @@ private func withLastGatewaySnapshot(_ body: () -> Void) {
             #expect(defaults.string(forKey: "node.instanceId") == "node-from-keychain")
             #expect(defaults.string(forKey: "gateway.preferredStableID") == "preferred-from-keychain")
             #expect(defaults.string(forKey: "gateway.lastDiscoveredStableID") == "last-from-keychain")
+        }
+    }
+
+    @Test func currentInstanceIDFallsBackToStableKeychainValue() {
+        withBootstrapSnapshots {
+            applyDefaults([
+                "node.instanceId": nil,
+                "gateway.preferredStableID": nil,
+                "gateway.lastDiscoveredStableID": nil,
+            ])
+            applyKeychain([
+                instanceIdEntry: "node-from-keychain",
+                preferredGatewayEntry: nil,
+                lastGatewayEntry: nil,
+            ])
+
+            #expect(GatewaySettingsStore.currentInstanceID() == "node-from-keychain")
+        }
+    }
+
+    @Test func gatewayCredentialsTrimAndDeleteEmptyValues() {
+        withGatewayCredentialSnapshot {
+            applyKeychain([
+                gatewayTokenEntry: nil,
+                gatewayBootstrapTokenEntry: nil,
+                gatewayPasswordEntry: nil,
+            ])
+
+            GatewaySettingsStore.saveGatewayToken("  token-value  ", instanceId: "ios-test")
+            GatewaySettingsStore.saveGatewayBootstrapToken("  bootstrap-value  ", instanceId: "ios-test")
+            GatewaySettingsStore.saveGatewayPassword("  password-value  ", instanceId: "ios-test")
+
+            #expect(KeychainStore.loadString(service: gatewayService, account: gatewayTokenEntry.account) == "token-value")
+            #expect(
+                KeychainStore.loadString(service: gatewayService, account: gatewayBootstrapTokenEntry.account)
+                    == "bootstrap-value")
+            #expect(
+                KeychainStore.loadString(service: gatewayService, account: gatewayPasswordEntry.account)
+                    == "password-value")
+
+            GatewaySettingsStore.saveGatewayToken("  ", instanceId: "ios-test")
+            GatewaySettingsStore.saveGatewayBootstrapToken("", instanceId: "ios-test")
+            GatewaySettingsStore.saveGatewayPassword("\n\t", instanceId: "ios-test")
+
+            #expect(KeychainStore.loadString(service: gatewayService, account: gatewayTokenEntry.account) == nil)
+            #expect(KeychainStore.loadString(service: gatewayService, account: gatewayBootstrapTokenEntry.account) == nil)
+            #expect(KeychainStore.loadString(service: gatewayService, account: gatewayPasswordEntry.account) == nil)
         }
     }
 

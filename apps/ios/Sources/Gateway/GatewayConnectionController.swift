@@ -101,8 +101,7 @@ final class GatewayConnectionController {
     private func connectDiscoveredGateway(
         _ gateway: GatewayDiscoveryModel.DiscoveredGateway) async -> String?
     {
-        let instanceId = UserDefaults.standard.string(forKey: "node.instanceId")?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let instanceId = GatewaySettingsStore.currentInstanceID()
         if instanceId.isEmpty {
             return "Missing instanceId (node.instanceId). Try restarting the app."
         }
@@ -168,8 +167,7 @@ final class GatewayConnectionController {
     }
 
     func connectManual(host: String, port: Int, useTLS: Bool) async {
-        let instanceId = UserDefaults.standard.string(forKey: "node.instanceId")?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let instanceId = GatewaySettingsStore.currentInstanceID()
         let token = GatewaySettingsStore.loadGatewayToken(instanceId: instanceId)
         let bootstrapToken = GatewaySettingsStore.loadGatewayBootstrapToken(instanceId: instanceId)
         let password = GatewaySettingsStore.loadGatewayPassword(instanceId: instanceId)
@@ -277,8 +275,7 @@ final class GatewayConnectionController {
             GatewaySettingsStore.saveLastGatewayConnectionDiscovered(stableID: pending.stableID, useTLS: true)
         }
 
-        let instanceId = UserDefaults.standard.string(forKey: "node.instanceId")?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let instanceId = GatewaySettingsStore.currentInstanceID()
         let token = GatewaySettingsStore.loadGatewayToken(instanceId: instanceId)
         let bootstrapToken = GatewaySettingsStore.loadGatewayBootstrapToken(instanceId: instanceId)
         let password = GatewaySettingsStore.loadGatewayPassword(instanceId: instanceId)
@@ -335,8 +332,7 @@ final class GatewayConnectionController {
         guard defaults.bool(forKey: "gateway.autoconnect") else { return }
         let manualEnabled = defaults.bool(forKey: "gateway.manual.enabled")
 
-        let instanceId = defaults.string(forKey: "node.instanceId")?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let instanceId = GatewaySettingsStore.currentInstanceID(defaults: defaults)
         guard !instanceId.isEmpty else { return }
 
         let token = GatewaySettingsStore.loadGatewayToken(instanceId: instanceId)
