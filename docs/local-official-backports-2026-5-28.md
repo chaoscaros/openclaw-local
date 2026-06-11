@@ -810,6 +810,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Chat new-session error subset:
   - Limited `/new` fallback-to-reset behavior to transports that do not support
     `sessions.create`, while surfacing other create-session errors to the user.
+- `f6e51ff99a` iOS chat transport params subset:
+  - Restored typed JSON helper coverage for `sessions.list` and `chat.send`,
+    and re-added chat-send Gateway diagnostics around start, success, and
+    failure.
 
 ## Validation Plan
 

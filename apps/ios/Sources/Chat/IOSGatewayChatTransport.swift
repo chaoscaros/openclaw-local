@@ -15,6 +15,30 @@ struct IOSGatewayChatTransport: OpenClawChatTransport, Sendable {
         var parentSessionKey: String?
     }
 
+    private struct RunParams: Codable {
+        var sessionKey: String
+        var runId: String
+    }
+
+    private struct ListSessionsParams: Codable {
+        var includeGlobal: Bool
+        var includeUnknown: Bool
+        var limit: Int?
+    }
+
+    private struct SessionKeyParams: Codable {
+        var key: String
+    }
+
+    private struct ChatSendParams: Codable {
+        var sessionKey: String
+        var message: String
+        var thinking: String
+        var attachments: [OpenClawChatAttachmentPayload]?
+        var timeoutMs: Int
+        var idempotencyKey: String
+    }
+
     private struct AgentWaitParams: Codable {
         var runId: String
         var timeoutMs: Int
@@ -60,6 +84,27 @@ struct IOSGatewayChatTransport: OpenClawChatTransport, Sendable {
             parentSessionKey: parentSessionKey))
     }
 
+    static func makeListSessionsParamsJSON(limit: Int?) throws -> String {
+        try self.encodeParams(ListSessionsParams(includeGlobal: true, includeUnknown: false, limit: limit))
+    }
+
+    static func makeChatSendParamsJSON(
+        sessionKey: String,
+        message: String,
+        thinking: String,
+        idempotencyKey: String,
+        attachments: [OpenClawChatAttachmentPayload]) throws -> String
+    {
+        let params = ChatSendParams(
+            sessionKey: sessionKey,
+            message: message,
+            thinking: thinking,
+            attachments: attachments.isEmpty ? nil : attachments,
+            timeoutMs: self.defaultChatSendTimeoutMs,
+            idempotencyKey: idempotencyKey)
+        return try self.encodeParams(params)
+    }
+
     static func makeAgentWaitParamsJSON(runId: String, timeoutMs: Int) throws -> String {
         try self.encodeParams(AgentWaitParams(runId: runId, timeoutMs: timeoutMs))
     }
@@ -83,6 +128,19 @@ struct IOSGatewayChatTransport: OpenClawChatTransport, Sendable {
         return json
     }
 
+    private static func makeRunParamsJSON(sessionKey: String, runId: String) throws -> String {
+        try self.encodeParams(RunParams(sessionKey: sessionKey, runId: runId))
+    }
+
+    private static func makeSessionKeyParamsJSON(_ sessionKey: String) throws -> String {
+        try self.encodeParams(SessionKeyParams(key: sessionKey))
+    }
+
+    private static func makeHistoryParamsJSON(sessionKey: String) throws -> String {
+        struct Params: Codable { var sessionKey: String }
+        return try self.encodeParams(Params(sessionKey: sessionKey))
+    }
+
     func createSession(
         key: String,
         label: String?,
@@ -97,23 +155,12 @@ struct IOSGatewayChatTransport: OpenClawChatTransport, Sendable {
     }
 
     func abortRun(sessionKey: String, runId: String) async throws {
-        struct Params: Codable {
-            var sessionKey: String
-            var runId: String
-        }
-        let data = try JSONEncoder().encode(Params(sessionKey: sessionKey, runId: runId))
-        let json = String(data: data, encoding: .utf8)
+        let json = try Self.makeRunParamsJSON(sessionKey: sessionKey, runId: runId)
         _ = try await self.gateway.request(method: "chat.abort", paramsJSON: json, timeoutSeconds: 10)
     }
 
     func listSessions(limit: Int?) async throws -> OpenClawChatSessionsListResponse {
-        struct Params: Codable {
-            var includeGlobal: Bool
-            var includeUnknown: Bool
-            var limit: Int?
-        }
-        let data = try JSONEncoder().encode(Params(includeGlobal: true, includeUnknown: false, limit: limit))
-        let json = String(data: data, encoding: .utf8)
+        let json = try Self.makeListSessionsParamsJSON(limit: limit)
         let res = try await self.gateway.request(method: "sessions.list", paramsJSON: json, timeoutSeconds: 15)
         return try JSONDecoder().decode(OpenClawChatSessionsListResponse.self, from: res)
     }
@@ -124,23 +171,17 @@ struct IOSGatewayChatTransport: OpenClawChatTransport, Sendable {
     }
 
     func resetSession(sessionKey: String) async throws {
-        struct Params: Codable { var key: String }
-        let data = try JSONEncoder().encode(Params(key: sessionKey))
-        let json = String(data: data, encoding: .utf8)
+        let json = try Self.makeSessionKeyParamsJSON(sessionKey)
         _ = try await self.gateway.request(method: "sessions.reset", paramsJSON: json, timeoutSeconds: 10)
     }
 
     func compactSession(sessionKey: String) async throws {
-        struct Params: Codable { var key: String }
-        let data = try JSONEncoder().encode(Params(key: sessionKey))
-        let json = String(data: data, encoding: .utf8)
+        let json = try Self.makeSessionKeyParamsJSON(sessionKey)
         _ = try await self.gateway.request(method: "sessions.compact", paramsJSON: json, timeoutSeconds: 10)
     }
 
     func requestHistory(sessionKey: String) async throws -> OpenClawChatHistoryPayload {
-        struct Params: Codable { var sessionKey: String }
-        let data = try JSONEncoder().encode(Params(sessionKey: sessionKey))
-        let json = String(data: data, encoding: .utf8)
+        let json = try Self.makeHistoryParamsJSON(sessionKey: sessionKey)
         let res = try await self.gateway.request(method: "chat.history", paramsJSON: json, timeoutSeconds: 15)
         return try JSONDecoder().decode(OpenClawChatHistoryPayload.self, from: res)
     }
@@ -158,31 +199,22 @@ struct IOSGatewayChatTransport: OpenClawChatTransport, Sendable {
         Self.logger.info(
             "\(startLogMessage, privacy: .public)"
         )
-        struct Params: Codable {
-            var sessionKey: String
-            var message: String
-            var thinking: String
-            var attachments: [OpenClawChatAttachmentPayload]?
-            var timeoutMs: Int
-            var idempotencyKey: String
-        }
-
-        let params = Params(
+        GatewayDiagnostics.log(startLogMessage)
+        let json = try Self.makeChatSendParamsJSON(
             sessionKey: sessionKey,
             message: message,
             thinking: thinking,
-            attachments: attachments.isEmpty ? nil : attachments,
-            timeoutMs: Self.defaultChatSendTimeoutMs,
-            idempotencyKey: idempotencyKey)
-        let data = try JSONEncoder().encode(params)
-        let json = String(data: data, encoding: .utf8)
+            idempotencyKey: idempotencyKey,
+            attachments: attachments)
         do {
             let res = try await self.gateway.request(method: "chat.send", paramsJSON: json, timeoutSeconds: 35)
             let decoded = try JSONDecoder().decode(OpenClawChatSendResponse.self, from: res)
             Self.logger.info("chat.send ok runId=\(decoded.runId, privacy: .public)")
+            GatewayDiagnostics.log("chat.send ok runId=\(decoded.runId) status=\(decoded.status)")
             return decoded
         } catch {
             Self.logger.error("chat.send failed \(error.localizedDescription, privacy: .public)")
+            GatewayDiagnostics.log("chat.send failed error=\(error.localizedDescription)")
             throw error
         }
     }
