@@ -4,6 +4,21 @@ import Testing
 
 @MainActor
 @Suite struct TalkModeManagerTests {
+    @Test func speakerphoneDefaultsToEnabledUntilConfigured() {
+        let defaults = UserDefaults.standard
+        withUserDefaults([
+            TalkDefaults.speakerphoneEnabledKey: nil,
+        ]) {
+            #expect(TalkDefaults.speakerphoneEnabled(defaults: defaults))
+
+            defaults.set(false, forKey: TalkDefaults.speakerphoneEnabledKey)
+            #expect(!TalkDefaults.speakerphoneEnabled(defaults: defaults))
+
+            defaults.set(true, forKey: TalkDefaults.speakerphoneEnabledKey)
+            #expect(TalkDefaults.speakerphoneEnabled(defaults: defaults))
+        }
+    }
+
     @Test func detectsPCMFormatRejectionFromElevenLabsError() {
         let error = NSError(
             domain: "ElevenLabsTTS",
