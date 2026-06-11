@@ -688,7 +688,8 @@ final class GatewayConnectionController {
     }
 
     private func shouldRequireTLS(host: String) -> Bool {
-        !Self.isLoopbackHost(host)
+        if self.shouldForceTLS(host: host) { return true }
+        return !Self.isLoopbackHost(host) && !Self.isPrivateLANHost(host)
     }
 
     private func shouldForceTLS(host: String) -> Bool {
@@ -719,6 +720,26 @@ final class GatewayConnectionController {
         return Self.isLoopbackIPv4(host) || Self.isLoopbackIPv6(host)
     }
 
+    private static func isPrivateLANHost(_ rawHost: String) -> Bool {
+        var host = rawHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !host.isEmpty else { return false }
+
+        if host.hasPrefix("[") && host.hasSuffix("]") {
+            host.removeFirst()
+            host.removeLast()
+        }
+        if host.hasSuffix(".") {
+            host.removeLast()
+        }
+        if let zoneIndex = host.firstIndex(of: "%") {
+            host = String(host[..<zoneIndex])
+        }
+        if host.hasSuffix(".local") {
+            return true
+        }
+        return Self.isPrivateLANIPv4(host) || Self.isPrivateLANIPv6(host)
+    }
+
     private static func isLoopbackIPv4(_ host: String) -> Bool {
         var addr = in_addr()
         let parsed = host.withCString { inet_pton(AF_INET, $0, &addr) == 1 }
@@ -739,6 +760,30 @@ final class GatewayConnectionController {
 
             let isMappedV4 = bytes[0..<10].allSatisfy { $0 == 0 } && bytes[10] == 0xFF && bytes[11] == 0xFF
             return isMappedV4 && bytes[12] == 127
+        }
+    }
+
+    private static func isPrivateLANIPv4(_ host: String) -> Bool {
+        var addr = in_addr()
+        let parsed = host.withCString { inet_pton(AF_INET, $0, &addr) == 1 }
+        guard parsed else { return false }
+        let value = UInt32(bigEndian: addr.s_addr)
+        let firstOctet = UInt8((value >> 24) & 0xFF)
+        let secondOctet = UInt8((value >> 16) & 0xFF)
+        if firstOctet == 10 { return true }
+        if firstOctet == 172 && (16...31).contains(secondOctet) { return true }
+        if firstOctet == 192 && secondOctet == 168 { return true }
+        if firstOctet == 169 && secondOctet == 254 { return true }
+        return false
+    }
+
+    private static func isPrivateLANIPv6(_ host: String) -> Bool {
+        var addr = in6_addr()
+        let parsed = host.withCString { inet_pton(AF_INET6, $0, &addr) == 1 }
+        guard parsed else { return false }
+        return withUnsafeBytes(of: &addr) { rawBytes in
+            let bytes = rawBytes.bindMemory(to: UInt8.self)
+            return (bytes[0] & 0xFE) == 0xFC
         }
     }
 

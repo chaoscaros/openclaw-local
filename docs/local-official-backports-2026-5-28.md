@@ -822,6 +822,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Skipped restarting active gateway loops when the next connect request uses
     identical inputs, while preserving explicit force reconnect and different
     gateway handoff behavior.
+- `f6e51ff99a` iOS manual LAN gateway TLS subset:
+  - Allowed manual `.local` and private-LAN gateway hosts to stay plaintext
+    while preserving forced TLS for public hosts, tailnet DNS, and CGNAT-like
+    remote addresses.
 
 ## Validation Plan
 
