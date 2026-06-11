@@ -46,6 +46,14 @@ public final class OpenClawChatViewModel {
     @ObservationIgnored
     private nonisolated(unsafe) var pendingRunTimeoutTasks: [String: Task<Void, Never>] = [:]
     private let pendingRunTimeoutMs: UInt64 = 120_000
+    private static let postSendRefreshDelaysMs: [UInt64] = [
+        1500,
+        4000,
+        9000,
+        20000,
+        45000,
+        90000,
+    ]
     // Session switches can overlap in-flight picker patches, so stale completions
     // must compare against the latest request and latest desired value for that session.
     private var nextModelSelectionRequestID: UInt64 = 0
@@ -658,10 +666,20 @@ public final class OpenClawChatViewModel {
                 self.armPendingRunTimeout(runId: response.runId)
                 activeRunId = response.runId
             }
-            self.armRunCompletionRefresh(
+            await self.refreshHistoryAfterRun()
+            if !self.clearPendingRunIfAssistantMessagePresent(
                 runId: activeRunId,
-                sessionKey: sessionKey,
-                userMessageTimestamp: userMessageTimestamp)
+                after: userMessageTimestamp)
+            {
+                self.armPostSendRefreshFallback(
+                    runId: activeRunId,
+                    sessionKey: sessionKey,
+                    userMessageTimestamp: userMessageTimestamp)
+                self.armRunCompletionRefresh(
+                    runId: activeRunId,
+                    sessionKey: sessionKey,
+                    userMessageTimestamp: userMessageTimestamp)
+            }
         } catch {
             self.clearPendingRun(runId)
             self.errorText = error.localizedDescription
@@ -1494,37 +1512,65 @@ public final class OpenClawChatViewModel {
         }
     }
 
+    private func armPostSendRefreshFallback(runId: String, sessionKey: String, userMessageTimestamp: Double) {
+        Task { [weak self] in
+            for delayMs in Self.postSendRefreshDelaysMs {
+                try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
+                let shouldContinue = await self?.refreshIfPending(
+                    runId: runId,
+                    sessionKey: sessionKey,
+                    after: userMessageTimestamp,
+                    diagnostic: "chat.ui refresh fallback sessionKey=\(sessionKey) "
+                        + "runId=\(runId) delayMs=\(delayMs)")
+                guard shouldContinue == true else {
+                    return
+                }
+            }
+        }
+    }
+
     private func armRunCompletionRefresh(runId: String, sessionKey: String, userMessageTimestamp: Double) {
         let timeoutMs = Int(self.pendingRunTimeoutMs)
         let transport = self.transport
         Task { [weak self, transport] in
             let observedCompletion = await transport.waitForRunCompletion(runId: runId, timeoutMs: timeoutMs)
             guard observedCompletion else { return }
-            await self?.refreshAfterObservedRunCompletion(
+            _ = await self?.refreshIfPending(
                 runId: runId,
                 sessionKey: sessionKey,
-                userMessageTimestamp: userMessageTimestamp)
+                after: userMessageTimestamp,
+                diagnostic: "chat.ui run completion refresh sessionKey=\(sessionKey) "
+                    + "runId=\(runId)")
         }
     }
 
-    private func refreshAfterObservedRunCompletion(
+    private func refreshIfPending(
         runId: String,
         sessionKey: String,
-        userMessageTimestamp: Double) async
+        after timestamp: Double,
+        diagnostic: String) async -> Bool
     {
         guard self.sessionKey == sessionKey, self.pendingRuns.contains(runId) else {
-            return
+            return false
         }
+        guard !self.clearPendingRunIfAssistantMessagePresent(runId: runId, after: timestamp) else {
+            return false
+        }
+        self.logDiagnostic(diagnostic)
         await self.refreshHistoryAfterRun()
         guard self.sessionKey == sessionKey, self.pendingRuns.contains(runId) else {
-            return
+            return false
         }
-        guard self.hasAssistantMessage(after: userMessageTimestamp) else {
-            return
-        }
+        return !self.clearPendingRunIfAssistantMessagePresent(runId: runId, after: timestamp)
+    }
+
+    @discardableResult
+    private func clearPendingRunIfAssistantMessagePresent(runId: String, after timestamp: Double) -> Bool {
+        guard self.hasAssistantMessage(after: timestamp) else { return false }
         self.clearPendingRun(runId)
         self.pendingToolCallsById = [:]
         self.streamingAssistantText = nil
+        return true
     }
 
     private func hasAssistantMessage(after timestamp: Double) -> Bool {

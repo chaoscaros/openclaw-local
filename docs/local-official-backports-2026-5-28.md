@@ -800,6 +800,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Kept the send button available while a run is pending when the user has a
     draft, matching the refreshed composer behavior without changing abort
     handling for empty drafts.
+- `f6e51ff99a` shared Chat send-refresh fallback subset:
+  - Added the native Chat post-send history refresh fallback sequence so
+    accepted sends still reconcile assistant replies when completion events are
+    delayed or missed.
 
 ## Validation Plan
 
