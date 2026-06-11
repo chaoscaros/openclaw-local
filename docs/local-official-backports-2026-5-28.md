@@ -720,6 +720,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Centralized macOS composer text-view defaults behind a factory and enabled
     native undo support for the chat input.
   - Added focused macOS coverage so future composer refactors keep undo enabled.
+- `f6e51ff99a` shared Chat display-text subset:
+  - Reused `OpenClawChatMessage.displayText(...)` when deriving visible text in
+    `ChatView`, keeping message-list visibility aligned with assistant error and
+    stop-reason rendering rules.
 
 ## Validation Plan
 
