@@ -701,6 +701,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     helpers used by the iOS talk flow.
   - Added focused parsing coverage, while leaving the contract fixture path
     change out because this local tree currently does not contain the fixture.
+- `f6e51ff99a` shared Chat iOS theme palette subset:
+  - Added adaptive iOS light/dark palette colors for chat canvas, panels,
+    assistant bubbles, composer surfaces, and composer borders.
+  - Kept macOS theme behavior unchanged; this prepares the larger clean
+    composer and Pro ChatView visual refresh.
 
 ## Validation Plan
 
