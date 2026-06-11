@@ -182,6 +182,22 @@ import UIKit
         #expect(lhs.hasSameConnectionInputs(as: rhs))
     }
 
+    @Test @MainActor func applyingDifferentGatewayConfigReconnectsActiveTasks() {
+        let appModel = NodeAppModel()
+        defer { appModel.disconnectGateway() }
+        let first = Self.makeGatewayConnectConfig(
+            url: URL(string: "wss://first.gateway.example.com")!,
+            stableID: "manual|first.gateway.example.com|443")
+        let second = Self.makeGatewayConnectConfig(
+            url: URL(string: "wss://second.gateway.example.com")!,
+            stableID: "manual|second.gateway.example.com|443")
+
+        appModel.applyGatewayConnectConfig(first)
+        appModel.applyGatewayConnectConfig(second)
+
+        #expect(appModel.connectedGatewayID == second.stableID)
+    }
+
     private static func makeGatewayConnectConfig(
         url: URL = URL(string: "wss://gateway.example.com")!,
         stableID: String = "manual|gateway.example.com|443") -> GatewayConnectConfig

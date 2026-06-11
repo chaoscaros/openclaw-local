@@ -1763,7 +1763,7 @@ extension NodeAppModel {
         let effectiveStableID = stableID.isEmpty ? url.absoluteString : stableID
         let sessionBox = tls.map { WebSocketSessionBox(session: GatewayTLSPinningSession(params: $0)) }
 
-        self.activeGatewayConnectConfig = GatewayConnectConfig(
+        let nextConfig = GatewayConnectConfig(
             url: url,
             stableID: stableID,
             tls: tls,
@@ -1771,13 +1771,23 @@ extension NodeAppModel {
             bootstrapToken: bootstrapToken,
             password: password,
             nodeOptions: connectOptions)
-        self.prepareForGatewayConnect(url: url, stableID: effectiveStableID)
-        if self.shouldStartOperatorGatewayLoop(
+        let operatorLoopRequired = self.shouldStartOperatorGatewayLoop(
             token: token,
             bootstrapToken: bootstrapToken,
             password: password,
             stableID: effectiveStableID)
+        if let activeConfig = self.activeGatewayConnectConfig,
+           activeConfig.hasSameConnectionInputs(as: nextConfig),
+           self.nodeGatewayTask != nil,
+           self.operatorGatewayTask != nil || !operatorLoopRequired
         {
+            self.gatewayAutoReconnectEnabled = true
+            return
+        }
+
+        self.activeGatewayConnectConfig = nextConfig
+        self.prepareForGatewayConnect(url: url, stableID: effectiveStableID)
+        if operatorLoopRequired {
             self.startOperatorGatewayLoop(
                 url: url,
                 stableID: effectiveStableID,
@@ -1801,8 +1811,10 @@ extension NodeAppModel {
     }
 
     /// Preferred entry-point: apply a single config object and start both sessions.
-    func applyGatewayConnectConfig(_ cfg: GatewayConnectConfig) {
-        self.activeGatewayConnectConfig = cfg
+    func applyGatewayConnectConfig(_ cfg: GatewayConnectConfig, forceReconnect: Bool = false) {
+        if forceReconnect {
+            self.activeGatewayConnectConfig = nil
+        }
         self.connectToGateway(
             url: cfg.url,
             // Preserve the caller-provided stableID (may be empty) and let connectToGateway

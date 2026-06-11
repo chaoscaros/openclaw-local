@@ -818,6 +818,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Added reusable `GatewayConnectConfig` connection-input comparison with
     normalized scope/capability/command arrays to prepare safer reconnect
     decisions.
+- `f6e51ff99a` iOS gateway same-config reconnect subset:
+  - Skipped restarting active gateway loops when the next connect request uses
+    identical inputs, while preserving explicit force reconnect and different
+    gateway handoff behavior.
 
 ## Validation Plan
 
