@@ -834,6 +834,8 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Added a testable saved-manual-endpoint fallback so auto-connect can recover
     to the configured manual gateway after discovery candidates fail, while
     requiring both auto-connect and manual gateway mode to be enabled.
+  - Also routes `connectLastKnown()` through the same fallback when the saved
+    discovered gateway is not present in the current discovery list.
 - `f6e51ff99a` iOS operator explicit scopes subset:
   - Added the shared `GatewayConnectOptions.scopesAreExplicit` field and
     operator helper plumbing so later Talk permission upgrades can request an

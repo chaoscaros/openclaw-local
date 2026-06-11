@@ -227,7 +227,10 @@ final class GatewayConnectionController {
         case let .manual(host, port, useTLS, _):
             await self.connectManual(host: host, port: port, useTLS: useTLS)
         case let .discovered(stableID, _):
-            guard let gateway = self.gateways.first(where: { $0.stableID == stableID }) else { return }
+            guard let gateway = self.gateways.first(where: { $0.stableID == stableID }) else {
+                _ = await self.connectSavedManualEndpointFallback()
+                return
+            }
             _ = await self.connectDiscoveredGateway(gateway)
         }
     }
@@ -497,6 +500,15 @@ final class GatewayConnectionController {
                 port: endpoint.port,
                 useTLS: endpoint.useTLS)
         }
+        return true
+    }
+
+    private func connectSavedManualEndpointFallback() async -> Bool {
+        guard let endpoint = self.savedManualEndpointFallback() else { return false }
+        await self.connectManual(
+            host: endpoint.host,
+            port: endpoint.port,
+            useTLS: endpoint.useTLS)
         return true
     }
 
