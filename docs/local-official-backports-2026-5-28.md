@@ -846,6 +846,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     restored from keychain.
   - Trim gateway token, bootstrap token, and password saves, deleting existing
     keychain entries when the saved value is blank.
+- `f6e51ff99a` shared gateway setup input subset:
+  - Expanded gateway setup parsing to accept raw JSON, copied setup messages,
+    raw websocket URLs, and `.local`/private LAN plaintext endpoints.
+  - Narrowed local-network plaintext checks so tailnet and public hosts still
+    require TLS, preserving the manual Gateway TLS guardrails.
 
 ## Validation Plan
 
