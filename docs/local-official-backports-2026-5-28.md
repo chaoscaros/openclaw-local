@@ -752,6 +752,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Chat composer toolbar extraction subset:
   - Extracted the existing composer toolbar into `composerToolbar` with the same
     full-mode ordering, reducing noise before clean toolbar layout changes.
+- `f6e51ff99a` shared Chat composer toolbar layout subset:
+  - Put the full composer selector group in a horizontal scroll container so
+    compact widths do not squeeze refresh and attachment controls.
 
 ## Validation Plan
 

@@ -108,15 +108,20 @@ struct OpenClawChatComposer: View {
     }
 
     private var composerToolbar: some View {
-        HStack(spacing: 6) {
-            if self.showsSessionSwitcher {
-                self.sessionPicker
+        HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 5) {
+                    if self.showsSessionSwitcher {
+                        self.sessionPicker
+                    }
+                    if self.viewModel.showsModelPicker {
+                        self.modelPicker
+                    }
+                    self.thinkingPicker
+                }
             }
-            if self.viewModel.showsModelPicker {
-                self.modelPicker
-            }
-            self.thinkingPicker
-            Spacer()
+
+            Spacer(minLength: 4)
             self.refreshButton
             self.attachmentPicker
         }
