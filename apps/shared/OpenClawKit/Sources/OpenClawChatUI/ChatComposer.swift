@@ -40,6 +40,10 @@ struct OpenClawChatComposer: View {
     @Bindable var viewModel: OpenClawChatViewModel
     let style: OpenClawChatView.Style
     let showsSessionSwitcher: Bool
+    let userAccent: Color?
+    let assistantName: String?
+    let assistantAvatarText: String?
+    let assistantAvatarTint: Color?
     let composerChrome: OpenClawChatView.ComposerChrome
     let messagePlaceholder: String?
     let talkControl: OpenClawChatTalkControl?

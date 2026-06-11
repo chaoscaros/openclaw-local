@@ -119,6 +119,10 @@ public struct OpenClawChatView: View {
             viewModel: self.viewModel,
             style: self.style,
             showsSessionSwitcher: self.showsSessionSwitcher,
+            userAccent: self.userAccent,
+            assistantName: self.assistantName,
+            assistantAvatarText: self.assistantAvatarText,
+            assistantAvatarTint: self.assistantAvatarTint,
             composerChrome: self.composerChrome,
             messagePlaceholder: self.messagePlaceholder,
             talkControl: self.talkControl)

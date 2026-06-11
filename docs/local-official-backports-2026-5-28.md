@@ -771,6 +771,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Chat clean attachment subset:
   - Switched the composer attachment picker to plain button styling only when
     `composerChrome == .clean`, preserving the default full composer controls.
+- `f6e51ff99a` shared Chat composer identity plumbing subset:
+  - Threaded chat accent and assistant identity values into the composer as
+    inert plumbing for upcoming clean send and talk controls.
 
 ## Validation Plan
 
