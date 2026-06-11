@@ -135,27 +135,14 @@ struct OpenClawChatComposer: View {
                 get: { self.viewModel.thinkingLevel },
                 set: { next in self.viewModel.selectThinkingLevel(next) }))
         {
-            ForEach(self.thinkingOptions) { option in
-                Text(option.label.capitalized).tag(option.id)
+            ForEach(self.viewModel.thinkingLevelOptions) { option in
+                Text(option.label).tag(option.id)
             }
         }
         .labelsHidden()
         .pickerStyle(.menu)
         .controlSize(.small)
-        .frame(maxWidth: 160, alignment: .leading)
-    }
-
-    private var thinkingOptions: [OpenClawChatThinkingLevelOption] {
-        let options = self.viewModel.thinkingLevelOptions
-        if options.isEmpty {
-            return [
-                OpenClawChatThinkingLevelOption(id: "off", label: "off"),
-                OpenClawChatThinkingLevelOption(id: "low", label: "low"),
-                OpenClawChatThinkingLevelOption(id: "medium", label: "medium"),
-                OpenClawChatThinkingLevelOption(id: "high", label: "high"),
-            ]
-        }
-        return options
+        .frame(maxWidth: 140, alignment: .leading)
     }
 
     private var modelPicker: some View {

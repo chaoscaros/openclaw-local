@@ -755,6 +755,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `f6e51ff99a` shared Chat composer toolbar layout subset:
   - Put the full composer selector group in a horizontal scroll container so
     compact widths do not squeeze refresh and attachment controls.
+- `f6e51ff99a` shared Chat thinking picker subset:
+  - Let the composer render `viewModel.thinkingLevelOptions` directly, relying
+    on the ViewModel's default and session-derived option normalization.
 
 ## Validation Plan
 
