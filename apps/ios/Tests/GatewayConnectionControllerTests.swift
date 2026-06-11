@@ -51,6 +51,22 @@ import UIKit
             #expect(commands.contains(OpenClawLocationCommand.get.rawValue))
         }
     }
+
+    @Test @MainActor func locationPermissionRequiresGlobalServicesAndAppAuthorization() {
+        #expect(GatewayConnectionController._test_isLocationAvailable(
+            servicesEnabled: true,
+            status: .authorizedWhenInUse))
+        #expect(GatewayConnectionController._test_isLocationAvailable(
+            servicesEnabled: true,
+            status: .authorizedAlways))
+        #expect(!GatewayConnectionController._test_isLocationAvailable(
+            servicesEnabled: false,
+            status: .authorizedAlways))
+        #expect(!GatewayConnectionController._test_isLocationAvailable(
+            servicesEnabled: true,
+            status: .denied))
+    }
+
     @Test @MainActor func currentCommandsExcludeDangerousSystemExecCommands() {
         withUserDefaults([
             "node.instanceId": "ios-test",

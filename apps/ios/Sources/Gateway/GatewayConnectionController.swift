@@ -942,9 +942,9 @@ final class GatewayConnectionController {
         permissions["camera"] = AVCaptureDevice.authorizationStatus(for: .video) == .authorized
         permissions["microphone"] = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
         permissions["speechRecognition"] = SFSpeechRecognizer.authorizationStatus() == .authorized
-        permissions["location"] = Self.isLocationAuthorized(
+        permissions["location"] = Self.isLocationAvailable(
+            servicesEnabled: CLLocationManager.locationServicesEnabled(),
             status: CLLocationManager().authorizationStatus)
-            && CLLocationManager.locationServicesEnabled()
         permissions["screenRecording"] = RPScreenRecorder.shared().isAvailable
 
         let photoStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
@@ -971,7 +971,8 @@ final class GatewayConnectionController {
         return permissions
     }
 
-    private static func isLocationAuthorized(status: CLAuthorizationStatus) -> Bool {
+    private static func isLocationAvailable(servicesEnabled: Bool, status: CLAuthorizationStatus) -> Bool {
+        guard servicesEnabled else { return false }
         switch status {
         case .authorizedAlways, .authorizedWhenInUse:
             return true
@@ -1005,6 +1006,10 @@ extension GatewayConnectionController {
 
     func _test_currentPermissions() -> [String: Bool] {
         self.currentPermissions()
+    }
+
+    static func _test_isLocationAvailable(servicesEnabled: Bool, status: CLAuthorizationStatus) -> Bool {
+        self.isLocationAvailable(servicesEnabled: servicesEnabled, status: status)
     }
 
     func _test_platformString() -> String {

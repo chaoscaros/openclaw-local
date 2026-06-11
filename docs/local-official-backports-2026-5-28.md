@@ -826,6 +826,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Allowed manual `.local` and private-LAN gateway hosts to stay plaintext
     while preserving forced TLS for public hosts, tailnet DNS, and CGNAT-like
     remote addresses.
+- `f6e51ff99a` iOS location permission subset:
+  - Added a testable location permission helper so gateway registration only
+    advertises location access when both global services and app authorization
+    are available.
 
 ## Validation Plan
 
