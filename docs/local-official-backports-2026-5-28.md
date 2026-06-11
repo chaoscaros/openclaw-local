@@ -913,6 +913,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `a0ba9f2b72` local equivalent:
   - Remote media buffer reads and saved-response media writes now cancel
     oversized content-length response bodies before surfacing max-byte errors.
+- `c841218ace` local equivalent:
+  - Native PDF provider API errors now read bounded response-body snippets and
+    cancel truncated error bodies before surfacing Anthropic/Gemini failures.
 
 ## Validation Plan
 
