@@ -804,6 +804,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Added the native Chat post-send history refresh fallback sequence so
     accepted sends still reconcile assistant replies when completion events are
     delayed or missed.
+- `f6e51ff99a` shared Chat pending-run foreground subset:
+  - Tightened foreground pending-run cleanup to require a non-empty assistant
+    reply after the latest user message before clearing pending state.
 
 ## Validation Plan
 

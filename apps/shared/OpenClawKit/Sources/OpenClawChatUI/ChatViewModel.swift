@@ -527,18 +527,17 @@ public final class OpenClawChatViewModel {
     }
 
     private func hasAssistantMessageAfterLatestUser() -> Bool {
-        let latestUserTimestamp = self.messages
-            .filter { $0.role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "user" }
-            .compactMap(\.timestamp)
-            .max()
-        guard let latestUserTimestamp else {
-            return self.messages.contains {
-                $0.role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "assistant"
-            }
+        guard let lastUserIndex = self.messages.lastIndex(where: { $0.role.lowercased() == "user" }) else {
+            return false
         }
-        return self.messages.contains { message in
-            message.role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "assistant" &&
-                (message.timestamp ?? 0) >= latestUserTimestamp
+        guard lastUserIndex < self.messages.index(before: self.messages.endIndex) else {
+            return false
+        }
+        return self.messages[self.messages.index(after: lastUserIndex)...].contains { message in
+            guard message.role.lowercased() == "assistant" else { return false }
+            let text = message.content.compactMap(\.text).joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return !text.isEmpty || message.errorMessage != nil
         }
     }
 
