@@ -855,6 +855,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Kept the older `GatewaySetupCode` decoder used by existing onboarding and
     settings forms, but taught it to extract setup-code candidates from copied
     setup messages.
+- `f6e51ff99a` shared Share-to-Agent empty payload subset:
+  - Avoid treating empty URL/text fields as shared content, and isolate default
+    instruction state in the deep-link tests so empty payloads stay nil.
 
 ## Validation Plan
 
