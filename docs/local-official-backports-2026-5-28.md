@@ -919,6 +919,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `4f26cc9090` local equivalent:
   - MiniMax VLM provider errors now read bounded response-body snippets and
     cancel truncated error bodies while preserving Trace-Id diagnostics.
+- `00fb15253c` local equivalent:
+  - Skill install downloads now cancel failed response bodies before returning
+    download errors, while still releasing the guarded fetch handle.
 
 ## Validation Plan
 
