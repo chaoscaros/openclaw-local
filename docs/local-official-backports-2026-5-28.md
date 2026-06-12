@@ -387,6 +387,11 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   inbound reply context `From`/`To`, and direct handle sends that rely on an SMS
   account default. This keeps SMS approval replies on the originating SMS
   conversation instead of falling back to `imessage:<phone>`.
+- `139b52ad9c` local equivalent: WhatsApp QR login now retries one initial
+  status-408 timeout with a fresh socket while keeping the separate post-pairing
+  515 restart allowance. QR update waiters are notified when the replacement
+  socket emits a new QR, so web login can return the replacement QR instead of
+  timing out on the original socket.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
