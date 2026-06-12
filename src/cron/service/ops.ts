@@ -320,6 +320,8 @@ export async function listPage(state: CronServiceState, opts?: CronListPageOptio
     await ensureLoadedForRead(state);
     const query = normalizeLowercaseStringOrEmpty(opts?.query);
     const enabledFilter = resolveEnabledFilter(opts);
+    const scheduleKindFilter = opts?.scheduleKind ?? "all";
+    const lastRunStatusFilter = opts?.lastRunStatus ?? "all";
     const sortBy = opts?.sortBy ?? "nextRunAtMs";
     const sortDir = opts?.sortDir ?? "asc";
     const requestedAgentId = normalizeOptionalAgentId(opts?.agentId);
@@ -336,6 +338,15 @@ export async function listPage(state: CronServiceState, opts?: CronListPageOptio
         resolveEffectiveJobAgentId(job, state.deps.defaultAgentId) !== requestedAgentId
       ) {
         return false;
+      }
+      if (scheduleKindFilter !== "all" && job.schedule.kind !== scheduleKindFilter) {
+        return false;
+      }
+      if (lastRunStatusFilter !== "all") {
+        const status = job.state.lastRunStatus ?? job.state.lastStatus;
+        if (status !== lastRunStatusFilter) {
+          return false;
+        }
       }
       if (!query) {
         return true;

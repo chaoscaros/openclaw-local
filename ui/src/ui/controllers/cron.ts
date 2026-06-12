@@ -61,6 +61,7 @@ export type CronState = {
   connected: boolean;
   cronLoading: boolean;
   cronJobsLoadingMore: boolean;
+  cronJobsReloadPending: boolean;
   cronJobs: CronJob[];
   cronJobsTotal: number;
   cronJobsHasMore: boolean;
@@ -291,10 +292,13 @@ export async function loadCronJobsPage(state: CronState, opts?: { append?: boole
   if (!state.client || !state.connected) {
     return;
   }
+  const append = opts?.append === true;
   if (state.cronLoading || state.cronJobsLoadingMore) {
+    if (!append) {
+      state.cronJobsReloadPending = true;
+    }
     return;
   }
-  const append = opts?.append === true;
   if (append && !state.cronJobsHasMore) {
     return;
   }
@@ -312,6 +316,8 @@ export async function loadCronJobsPage(state: CronState, opts?: { append?: boole
       offset,
       query: state.cronJobsQuery.trim() || undefined,
       enabled: state.cronJobsEnabledFilter,
+      scheduleKind: state.cronJobsScheduleKindFilter,
+      lastRunStatus: state.cronJobsLastStatusFilter,
       sortBy: state.cronJobsSortBy,
       sortDir: state.cronJobsSortDir,
     });
@@ -340,6 +346,10 @@ export async function loadCronJobsPage(state: CronState, opts?: { append?: boole
       state.cronJobsLoadingMore = false;
     } else {
       state.cronLoading = false;
+    }
+    if (state.cronJobsReloadPending) {
+      state.cronJobsReloadPending = false;
+      await loadCronJobsPage(state);
     }
   }
 }

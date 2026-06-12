@@ -491,8 +491,6 @@ Local check before editing this lane:
 
 High-priority official changes to compare:
 
-- `99bd275359`: usage scoped by agent filter.
-- `8bd4736f03`: replay pending cron filter reloads.
 - `e9655b9fdc`: preserve session picker on empty search blur.
 - `13c1aa7fb9`: cron table filter e2e coverage.
 - `86ed25af34` through `61031d1b1c`: workboard dashboard plugin, session-card
@@ -1102,6 +1100,14 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - The UI keeps legacy gateway fallbacks for `agentId` and `agentScope`
     params, and the protocol docs/schema/Swift model include the new scope
     field.
+- `8bd4736f03` local equivalent:
+  - Cron job table reloads requested while a list or append request is already
+    in flight are queued and replayed after the active request finishes, so
+    rapid filter changes do not get dropped by the loading guard.
+  - Cron job list requests now include schedule-kind and last-run-status table
+    filters, and filter changes for those fields trigger a list reload.
+  - Control UI dev/e2e Vite setup pre-optimizes highlight.js CommonJS language
+    modules used by markdown rendering.
 
 ## Validation Plan
 

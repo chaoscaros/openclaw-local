@@ -4,6 +4,23 @@ import { defineConfig } from "vite";
 import { controlUiManualChunk } from "./config/control-ui-chunking.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const commonJsOptimizeDeps = [
+  "highlight.js/lib/core",
+  "highlight.js/lib/languages/bash",
+  "highlight.js/lib/languages/cpp",
+  "highlight.js/lib/languages/css",
+  "highlight.js/lib/languages/diff",
+  "highlight.js/lib/languages/go",
+  "highlight.js/lib/languages/java",
+  "highlight.js/lib/languages/javascript",
+  "highlight.js/lib/languages/json",
+  "highlight.js/lib/languages/markdown",
+  "highlight.js/lib/languages/python",
+  "highlight.js/lib/languages/rust",
+  "highlight.js/lib/languages/typescript",
+  "highlight.js/lib/languages/xml",
+  "highlight.js/lib/languages/yaml",
+] as const;
 
 function normalizeBase(input: string): string {
   const trimmed = input.trim();
@@ -26,7 +43,7 @@ export default defineConfig(() => {
     base,
     publicDir: path.resolve(here, "public"),
     optimizeDeps: {
-      include: ["lit/directives/repeat.js"],
+      include: ["lit/directives/repeat.js", ...commonJsOptimizeDeps],
     },
     build: {
       outDir: path.resolve(here, "../dist/control-ui"),

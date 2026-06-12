@@ -551,6 +551,7 @@ export class OpenClawApp extends LitElement {
 
   @state() cronLoading = false;
   @state() cronJobsLoadingMore = false;
+  cronJobsReloadPending = false;
   @state() cronJobs: CronJob[] = [];
   @state() cronJobsTotal = 0;
   @state() cronJobsHasMore = false;

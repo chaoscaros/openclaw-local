@@ -386,6 +386,7 @@ export type AppViewState = {
   CronState,
   | "cronLoading"
   | "cronJobsLoadingMore"
+  | "cronJobsReloadPending"
   | "cronJobs"
   | "cronJobsTotal"
   | "cronJobsHasMore"

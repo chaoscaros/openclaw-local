@@ -2053,6 +2053,8 @@ export function renderApp(state: AppViewState) {
                   const shouldReload =
                     typeof patch.cronJobsQuery === "string" ||
                     Boolean(patch.cronJobsEnabledFilter) ||
+                    Boolean(patch.cronJobsScheduleKindFilter) ||
+                    Boolean(patch.cronJobsLastStatusFilter) ||
                     Boolean(patch.cronJobsSortBy) ||
                     Boolean(patch.cronJobsSortDir);
                   if (shouldReload) {

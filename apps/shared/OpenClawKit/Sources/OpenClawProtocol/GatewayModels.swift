@@ -3468,6 +3468,8 @@ public struct CronListParams: Codable, Sendable {
     public let offset: Int?
     public let query: String?
     public let enabled: AnyCodable?
+    public let schedulekind: AnyCodable?
+    public let lastrunstatus: AnyCodable?
     public let sortby: AnyCodable?
     public let sortdir: AnyCodable?
 
@@ -3477,6 +3479,8 @@ public struct CronListParams: Codable, Sendable {
         offset: Int?,
         query: String?,
         enabled: AnyCodable?,
+        schedulekind: AnyCodable?,
+        lastrunstatus: AnyCodable?,
         sortby: AnyCodable?,
         sortdir: AnyCodable?)
     {
@@ -3485,6 +3489,8 @@ public struct CronListParams: Codable, Sendable {
         self.offset = offset
         self.query = query
         self.enabled = enabled
+        self.schedulekind = schedulekind
+        self.lastrunstatus = lastrunstatus
         self.sortby = sortby
         self.sortdir = sortdir
     }
@@ -3495,6 +3501,8 @@ public struct CronListParams: Codable, Sendable {
         case offset
         case query
         case enabled
+        case schedulekind = "scheduleKind"
+        case lastrunstatus = "lastRunStatus"
         case sortby = "sortBy"
         case sortdir = "sortDir"
     }

@@ -404,7 +404,9 @@ implemented in `src/gateway/server-methods/*.ts`.
 - automation:
   - `wake` schedules an immediate or next-heartbeat wake text injection
   - `cron.list`, `cron.status`, `cron.add`, `cron.update`, `cron.remove`,
-    `cron.run`, `cron.runs`
+    `cron.run`, `cron.runs`; `cron.list` accepts pagination plus
+    `enabled`, `scheduleKind`, `lastRunStatus`, sort, query, and `agentId`
+    filters.
 - skills/tools: `commands.list`, `skills.*`, `tools.catalog`, `tools.effective`
 
 ### Common event families

@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createMockCronStateForJobs } from "./service.test-harness.js";
 import { listPage } from "./service/ops.js";
@@ -20,6 +23,8 @@ function createBaseJob(overrides?: Partial<CronJob>): CronJob {
 }
 
 describe("cron listPage sort guards", () => {
+  const futureNextRunAtMs = Date.parse("2036-02-27T15:30:00.000Z");
+
   it("keeps malformed name fields sortable", async () => {
     const jobs = [
       createBaseJob({ id: "job-a", name: undefined as unknown as string }),
@@ -101,5 +106,37 @@ describe("cron listPage sort guards", () => {
     const page = await listPage(state);
 
     expect(page.jobs.map((job) => job.id)).toEqual(["job-main", "job-ops"]);
+  });
+
+  it("filters by schedule kind and last run status before paging", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-cron-list-page-"));
+    const jobs = [
+      createBaseJob({
+        id: "cron-error",
+        schedule: { kind: "cron", expr: "0 * * * *" },
+        state: { nextRunAtMs: futureNextRunAtMs, lastRunStatus: "error" },
+      }),
+      createBaseJob({
+        id: "cron-ok",
+        schedule: { kind: "cron", expr: "15 * * * *" },
+        state: { nextRunAtMs: futureNextRunAtMs, lastRunStatus: "ok" },
+      }),
+      createBaseJob({
+        id: "every-error",
+        schedule: { kind: "every", everyMs: 60_000 },
+        state: { nextRunAtMs: futureNextRunAtMs, lastRunStatus: "error" },
+      }),
+    ];
+    const state = createMockCronStateForJobs({ jobs });
+    state.deps.storePath = path.join(tmpDir, "cron", "jobs.json");
+
+    try {
+      const page = await listPage(state, { scheduleKind: "cron", lastRunStatus: "error" });
+
+      expect(page.jobs.map((job) => job.id)).toEqual(["cron-error"]);
+      expect(page.total).toBe(1);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });

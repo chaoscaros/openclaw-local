@@ -12,9 +12,17 @@ import {
   runCronJob,
   startCronEdit,
   startCronClone,
+  updateCronJobsFilter,
   validateCronForm,
   type CronState,
 } from "./cron.ts";
+
+type EmptyCronListResponse = {
+  jobs: [];
+  total: number;
+  hasMore: boolean;
+  nextOffset: null;
+};
 
 function createState(overrides: Partial<CronState> = {}): CronState {
   return {
@@ -22,6 +30,7 @@ function createState(overrides: Partial<CronState> = {}): CronState {
     connected: true,
     cronLoading: false,
     cronJobsLoadingMore: false,
+    cronJobsReloadPending: false,
     cronJobs: [],
     cronJobsTotal: 0,
     cronJobsHasMore: false,
@@ -978,6 +987,8 @@ describe("cron controller", () => {
           offset: 0,
           query: "daily",
           enabled: "enabled",
+          scheduleKind: "cron",
+          lastRunStatus: "error",
           sortBy: "updatedAtMs",
           sortDir: "desc",
         });
@@ -994,6 +1005,8 @@ describe("cron controller", () => {
       client: { request } as unknown as CronState["client"],
       cronJobsQuery: "daily",
       cronJobsEnabledFilter: "enabled",
+      cronJobsScheduleKindFilter: "cron",
+      cronJobsLastStatusFilter: "error",
       cronJobsSortBy: "updatedAtMs",
       cronJobsSortDir: "desc",
     });
@@ -1003,6 +1016,94 @@ describe("cron controller", () => {
     expect(state.cronJobs).toHaveLength(1);
     expect(state.cronJobsTotal).toBe(1);
     expect(state.cronJobsHasMore).toBe(false);
+  });
+
+  it("reloads cron jobs after filters change during an in-flight table load", async () => {
+    let resolveFirst!: (value: EmptyCronListResponse) => void;
+    const firstResponse = new Promise<EmptyCronListResponse>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const request = vi.fn(async (method: string, payload?: unknown) => {
+      if (method !== "cron.list") {
+        return {};
+      }
+      if (request.mock.calls.length === 1) {
+        return firstResponse;
+      }
+      expect(payload).toMatchObject({
+        offset: 0,
+        scheduleKind: "cron",
+        lastRunStatus: "error",
+      });
+      return { jobs: [], total: 0, hasMore: false, nextOffset: null };
+    });
+    const state = createState({
+      client: { request } as unknown as CronState["client"],
+    });
+
+    const firstLoad = loadCronJobsPage(state);
+    updateCronJobsFilter(state, {
+      cronJobsScheduleKindFilter: "cron",
+      cronJobsLastStatusFilter: "error",
+    });
+    await loadCronJobsPage(state);
+    resolveFirst({ jobs: [], total: 0, hasMore: false, nextOffset: null });
+    await firstLoad;
+
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(state.cronJobsReloadPending).toBe(false);
+  });
+
+  it("reloads cron jobs after filters change during an in-flight append load", async () => {
+    let resolveAppend!: (value: EmptyCronListResponse) => void;
+    const appendResponse = new Promise<EmptyCronListResponse>((resolve) => {
+      resolveAppend = resolve;
+    });
+    const request = vi.fn(async (method: string, payload?: unknown) => {
+      if (method !== "cron.list") {
+        return {};
+      }
+      if (request.mock.calls.length === 1) {
+        expect(payload).toMatchObject({ offset: 1 });
+        return appendResponse;
+      }
+      expect(payload).toMatchObject({
+        offset: 0,
+        scheduleKind: "cron",
+        lastRunStatus: "error",
+      });
+      return { jobs: [], total: 0, hasMore: false, nextOffset: null };
+    });
+    const state = createState({
+      client: { request } as unknown as CronState["client"],
+      cronJobs: [
+        {
+          id: "existing",
+          name: "Existing",
+          enabled: true,
+          createdAtMs: 0,
+          updatedAtMs: 0,
+          schedule: { kind: "every", everyMs: 60_000 },
+          sessionTarget: "main",
+          wakeMode: "next-heartbeat",
+          payload: { kind: "systemEvent", text: "ping" },
+        },
+      ],
+      cronJobsHasMore: true,
+      cronJobsNextOffset: 1,
+    });
+
+    const appendLoad = loadCronJobsPage(state, { append: true });
+    updateCronJobsFilter(state, {
+      cronJobsScheduleKindFilter: "cron",
+      cronJobsLastStatusFilter: "error",
+    });
+    await loadCronJobsPage(state);
+    resolveAppend({ jobs: [], total: 0, hasMore: false, nextOffset: null });
+    await appendLoad;
+
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(state.cronJobsReloadPending).toBe(false);
   });
 
   it("loads and appends paged run history", async () => {
