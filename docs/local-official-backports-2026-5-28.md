@@ -203,6 +203,12 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   contamination checks continue to use the full normalized snippet before
   truncation. Audit/repair now reports overflow recall-store entries and
   doctor/CLI summaries include invalid plus overflow cleanup counts.
+- `3029326a56` local equivalent: promoted short-term recall entries are now
+  compacted before being written into `MEMORY.md`, while the recall store keeps
+  full rehydrated snippets for provenance and ranking. The deep dreaming config
+  exposes `maxPromotedSnippetTokens`, docs/schema/UI status parsing are aligned,
+  and promotion markers now handle source paths containing spaces without
+  duplicate appends.
 - `a7d2d9c6df` local equivalent: `openclaw doctor --fix` now migrates legacy
   `memorySearch.provider: "auto"` values to explicit `openai` after moving
   top-level memory search config into agent defaults.
@@ -458,7 +464,6 @@ Local check before editing this lane:
 
 High-priority official changes to compare:
 
-- `3029326a56`: compact short-term promotion entries.
 - `d93524d1cc`: route Codex workspace memory through tools.
 
 Local check before editing this lane:

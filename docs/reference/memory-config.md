@@ -489,10 +489,11 @@ For conceptual behavior and slash commands, see [Dreaming](/concepts/dreaming).
 
 ### User settings
 
-| Key         | Type      | Default     | Description                                       |
-| ----------- | --------- | ----------- | ------------------------------------------------- |
-| `enabled`   | `boolean` | `false`     | Enable or disable dreaming entirely               |
-| `frequency` | `string`  | `0 3 * * *` | Optional cron cadence for the full dreaming sweep |
+| Key                                    | Type      | Default     | Description                                                                                                                      |
+| -------------------------------------- | --------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`                              | `boolean` | `false`     | Enable or disable dreaming entirely                                                                                              |
+| `frequency`                            | `string`  | `0 3 * * *` | Optional cron cadence for the full dreaming sweep                                                                                |
+| `phases.deep.maxPromotedSnippetTokens` | `number`  | `160`       | Maximum estimated tokens kept from each short-term recall snippet promoted into `MEMORY.md`; provenance metadata remains visible |
 
 ### Example
 
@@ -517,4 +518,4 @@ Notes:
 
 - Dreaming writes machine state to `memory/.dreams/`.
 - Dreaming writes human-readable narrative output to `DREAMS.md` (or existing `dreams.md`).
-- The light/deep/REM phase policy and thresholds are internal behavior, not user-facing config.
+- Most light/deep/REM phase policy and thresholds are internal behavior, not user-facing config.

@@ -209,13 +209,16 @@ openclaw memory rem-harness --json
 
 All settings live under `plugins.entries.memory-core.config.dreaming`.
 
-| Key         | Default     |
-| ----------- | ----------- |
-| `enabled`   | `false`     |
-| `frequency` | `0 3 * * *` |
+| Key                                    | Default     |
+| -------------------------------------- | ----------- |
+| `enabled`                              | `false`     |
+| `frequency`                            | `0 3 * * *` |
+| `phases.deep.maxPromotedSnippetTokens` | `160`       |
 
-Phase policy, thresholds, and storage behavior are internal implementation
-details (not user-facing config).
+Most phase policy, thresholds, and storage behavior are internal
+implementation details. `phases.deep.maxPromotedSnippetTokens` bounds the
+estimated tokens copied from each promoted short-term recall snippet into
+`MEMORY.md`; ranking provenance remains visible.
 
 See [Memory configuration reference](/reference/memory-config#dreaming-experimental)
 for the full key list.

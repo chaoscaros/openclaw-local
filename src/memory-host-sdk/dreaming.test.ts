@@ -30,6 +30,7 @@ describe("memory dreaming host helpers", () => {
               minUniqueQueries: "2",
               recencyHalfLifeDays: "21",
               maxAgeDays: "30",
+              maxPromotedSnippetTokens: "222",
             },
           },
         },
@@ -54,6 +55,7 @@ describe("memory dreaming host helpers", () => {
     expect(resolved.phases.deep.minUniqueQueries).toBe(2);
     expect(resolved.phases.deep.recencyHalfLifeDays).toBe(21);
     expect(resolved.phases.deep.maxAgeDays).toBe(30);
+    expect(resolved.phases.deep.maxPromotedSnippetTokens).toBe(222);
   });
 
   it("lets execution defaults and phase execution override the top-level dreaming model", () => {
@@ -105,6 +107,7 @@ describe("memory dreaming host helpers", () => {
     expect(resolved.phases.deep.minScore).toBe(0.8);
     expect(resolved.phases.deep.recencyHalfLifeDays).toBe(14);
     expect(resolved.phases.deep.maxAgeDays).toBe(30);
+    expect(resolved.phases.deep.maxPromotedSnippetTokens).toBe(160);
   });
 
   it("defaults storage mode to separate so phase blocks do not pollute daily memory files", () => {
