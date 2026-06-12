@@ -220,6 +220,10 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   as visible assistant error messages in Control UI while avoiding orphan error
   bubbles when no run was active. The local branch already had the main UI and
   gateway behavior; this slice aligned warning-prefixed error formatting.
+- `7d0347b6de` reviewed as a local no-op: the official patch only shares
+  duplicated `sendDetachedChatMessage`/`sendSteerChatMessage` UI send logic.
+  Local `codex/dev` already has `requestChatSend` as the shared wrapper and no
+  longer has a separate `sendSteerChatMessage` branch to consolidate.
 - `a7d2d9c6df` local equivalent: `openclaw doctor --fix` now migrates legacy
   `memorySearch.provider: "auto"` values to explicit `openai` after moving
   top-level memory search config into agent defaults.
@@ -487,7 +491,6 @@ Local check before editing this lane:
 
 High-priority official changes to compare:
 
-- `7d0347b6de`: shared UI chat send wrapper.
 - `99bd275359`: usage scoped by agent filter.
 - `8bd4736f03`: replay pending cron filter reloads.
 - `e9655b9fdc`: preserve session picker on empty search blur.
