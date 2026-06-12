@@ -1221,6 +1221,13 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     dispatch.
   - Generated plugin inventory, docs, and the broader official diagnostics
     model remain pending Workboard sub-slices.
+- local Workboard generated inventory subset:
+  - The generated plugin inventory and plugin reference pages now reflect the
+    Workboard tool contract metadata added in the local Workboard slices.
+  - `pnpm plugins:inventory:check` is the focused validation for this generated
+    docs slice.
+  - The broader official diagnostics model remains pending for a later
+    Workboard/diagnostics slice.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips
