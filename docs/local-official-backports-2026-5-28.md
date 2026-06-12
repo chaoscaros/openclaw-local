@@ -442,14 +442,6 @@ Local check before editing this lane:
 High-priority official changes to compare:
 
 - `5f68291f4f`: move session write lock into owned session runtime.
-- `0dbdaf98ea`: release session lock before runtime teardown.
-- `65fb56513f`: release session lock on timeout abort.
-- `d8641a661b`: avoid stale restart continuation reuse.
-- `5f88932806`: recover empty preflight compaction.
-- `960117259d`: preserve rotated compaction session identity.
-- `6950e85605`: allow hyphenated subagent task names.
-- `5518ac998f`: add CLI turn output digests.
-- `689e8ec893`: forward ACP spawn attachments.
 - `8b7a4826a1`: keep hook context prompt-local.
 - `73cf516def`: preserve embedded base system prompts.
 
@@ -1030,6 +1022,13 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Embedded attempt cleanup now releases the session write lock before
     disposing session and MCP/LSP runtimes, so a hung teardown cannot hold the
     transcript lock.
+- `65fb56513f` local equivalent:
+  - Timeout abort now asks the embedded attempt session lock controller to
+    release the retained transcript lock, matching the existing sessions-yield
+    abort cleanup path.
+  - The local session lock controller now drains in-flight retained lock users
+    before releasing, reacquiring, cleanup handoff, or dispose, preventing
+    timeout cleanup from racing transcript writes.
 - `d8641a661b` local equivalent:
   - Restart continuation queue entries now record the session id they were
     created for and fall back to a wake if the session rotated before delivery,

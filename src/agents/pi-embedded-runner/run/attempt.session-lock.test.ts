@@ -128,6 +128,68 @@ describe("embedded attempt session lock lifecycle", () => {
     expect(events).toEqual(["prep-release", "yield-cleanup-write", "cleanup-release"]);
   });
 
+  it("waits for retained held-lock writes before releasing for timeout abort", async () => {
+    const events: string[] = [];
+    let finishWrite!: () => void;
+    const release = vi.fn(async () => {
+      events.push("held-release");
+    });
+    const acquireSessionWriteLock = vi.fn(async () => ({ release }));
+    const controller = await createEmbeddedAttemptSessionLockController({
+      acquireSessionWriteLock,
+      lockOptions,
+    });
+
+    const write = controller.withSessionWriteLock(async () => {
+      events.push("write-start");
+      await new Promise<void>((resolve) => {
+        finishWrite = resolve;
+      });
+      events.push("write-end");
+    });
+    await vi.waitFor(() => {
+      expect(events).toEqual(["write-start"]);
+    });
+
+    const abortRelease = controller.releaseHeldLockForAbort().then(() => {
+      events.push("abort-release-done");
+    });
+    await Promise.resolve();
+
+    expect(release).not.toHaveBeenCalled();
+    expect(events).toEqual(["write-start"]);
+
+    finishWrite();
+    await Promise.all([write, abortRelease]);
+
+    expect(acquireSessionWriteLock).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(events).toEqual(["write-start", "write-end", "held-release", "abort-release-done"]);
+  });
+
+  it("does not deadlock when abort release is requested inside a retained lock", async () => {
+    const events: string[] = [];
+    const release = vi.fn(async () => {
+      events.push("held-release");
+    });
+    const acquireSessionWriteLock = vi.fn(async () => ({ release }));
+    const controller = await createEmbeddedAttemptSessionLockController({
+      acquireSessionWriteLock,
+      lockOptions,
+    });
+
+    await controller.withSessionWriteLock(async () => {
+      events.push("write-start");
+      await controller.releaseHeldLockForAbort();
+      events.push("abort-release-returned");
+    });
+    await controller.dispose();
+
+    expect(acquireSessionWriteLock).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(events).toEqual(["write-start", "abort-release-returned", "held-release"]);
+  });
+
   it("keeps the session fence active after releasing for sessions_yield abort cleanup", async () => {
     const sessionFile = await createTempSessionFile();
     const release = vi.fn(async () => {});
