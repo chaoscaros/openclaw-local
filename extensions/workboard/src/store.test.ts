@@ -96,6 +96,59 @@ describe("WorkboardStore", () => {
     expect(edited.events?.[0]?.kind).toBe("edited");
   });
 
+  it("adds comments, proof, and artifacts as bounded metadata", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const card = await store.create({ title: "Track proof" });
+
+    const commented = await store.addComment(card.id, {
+      body: "Reviewer asked for screenshots.",
+    });
+    expect(commented.metadata?.comments?.[0]).toMatchObject({
+      body: "Reviewer asked for screenshots.",
+    });
+    expect(commented.events?.at(-1)).toMatchObject({ kind: "comment_added" });
+
+    const proven = await store.addProof(card.id, {
+      status: "passed",
+      command: "pnpm test extensions/workboard",
+    });
+    expect(proven.metadata?.proof?.[0]).toMatchObject({
+      status: "passed",
+      command: "pnpm test extensions/workboard",
+    });
+    expect(proven.events?.at(-1)).toMatchObject({ kind: "proof_added" });
+
+    const artifacted = await store.addArtifact(card.id, {
+      label: "Screenshot",
+      path: "/tmp/workboard.png",
+      mimeType: "image/png",
+    });
+    expect(artifacted.metadata?.artifacts?.[0]).toMatchObject({
+      label: "Screenshot",
+      path: "/tmp/workboard.png",
+    });
+    expect(artifacted.events?.at(-1)).toMatchObject({ kind: "artifact_added" });
+  });
+
+  it("caps retained comments and rejects incomplete artifacts atomically", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const card = await store.create({ title: "Retain metadata" });
+
+    let updated = card;
+    for (let index = 0; index < 55; index += 1) {
+      updated = await store.addComment(card.id, { body: `Note ${index}` });
+    }
+
+    expect(updated.metadata?.comments).toHaveLength(50);
+    expect(updated.metadata?.comments?.[0]?.body).toBe("Note 5");
+    await expect(store.addArtifact(card.id, { label: "missing target" })).rejects.toThrow(
+      /artifact url or path/,
+    );
+    await expect(store.get(card.id)).resolves.not.toMatchObject({
+      metadata: { artifacts: [expect.objectContaining({ label: "missing target" })] },
+    });
+  });
+
   it("rejects invalid status values", async () => {
     const store = new WorkboardStore(createMemoryStore());
     await expect(store.create({ title: "Bad card", status: "later" })).rejects.toThrow(

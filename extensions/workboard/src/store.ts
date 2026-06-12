@@ -1,17 +1,26 @@
 import { randomUUID } from "node:crypto";
 import {
   WORKBOARD_PRIORITIES,
+  WORKBOARD_PROOF_STATUSES,
   WORKBOARD_STATUSES,
   type WorkboardCard,
+  type WorkboardArtifact,
+  type WorkboardComment,
   type WorkboardEvent,
   type WorkboardEventKind,
+  type WorkboardMetadata,
   type WorkboardPriority,
+  type WorkboardProof,
+  type WorkboardProofStatus,
   type WorkboardStatus,
 } from "./types.js";
 
 const POSITION_STEP = 1000;
 const MAX_CARDS = 2000;
 const MAX_CARD_EVENTS = 50;
+const MAX_CARD_COMMENTS = 50;
+const MAX_CARD_PROOF = 40;
+const MAX_CARD_ARTIFACTS = 40;
 
 export type PersistedWorkboardCard = {
   version: 1;
@@ -40,6 +49,20 @@ export type WorkboardCardInput = {
 };
 
 export type WorkboardCardPatch = Partial<WorkboardCardInput>;
+export type WorkboardCommentInput = { body?: unknown };
+export type WorkboardProofInput = {
+  status?: unknown;
+  label?: unknown;
+  command?: unknown;
+  url?: unknown;
+  note?: unknown;
+};
+export type WorkboardArtifactInput = {
+  label?: unknown;
+  url?: unknown;
+  path?: unknown;
+  mimeType?: unknown;
+};
 
 function normalizeOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -67,6 +90,22 @@ function normalizeNotes(value: unknown): string | undefined {
   return notes;
 }
 
+function normalizeBoundedString(
+  value: unknown,
+  fallback: string | undefined,
+  maxLength: number,
+  fieldName: string,
+): string | undefined {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return fallback;
+  }
+  if (normalized.length > maxLength) {
+    throw new Error(`${fieldName} must be ${maxLength} characters or fewer.`);
+  }
+  return normalized;
+}
+
 function normalizeStatus(value: unknown, fallback: WorkboardStatus): WorkboardStatus {
   if (typeof value !== "string" || !value.trim()) {
     return fallback;
@@ -85,6 +124,19 @@ function normalizePriority(value: unknown, fallback: WorkboardPriority): Workboa
     return value as WorkboardPriority;
   }
   throw new Error(`priority must be one of: ${WORKBOARD_PRIORITIES.join(", ")}.`);
+}
+
+function normalizeProofStatus(
+  value: unknown,
+  fallback: WorkboardProofStatus,
+): WorkboardProofStatus {
+  if (typeof value !== "string" || !value.trim()) {
+    return fallback;
+  }
+  if ((WORKBOARD_PROOF_STATUSES as readonly string[]).includes(value)) {
+    return value as WorkboardProofStatus;
+  }
+  throw new Error(`proof status must be one of: ${WORKBOARD_PROOF_STATUSES.join(", ")}.`);
 }
 
 function normalizeLabels(value: unknown, fallback: string[] = []): string[] {
@@ -146,12 +198,70 @@ function removeUndefinedCardFields(card: WorkboardCard): WorkboardCard {
     "sourceUrl",
     "startedAt",
     "completedAt",
+    "metadata",
   ] as const) {
     if (next[key] === undefined) {
       delete next[key];
     }
   }
   return next;
+}
+
+function removeUndefinedMetadataFields(metadata: WorkboardMetadata): WorkboardMetadata {
+  const next = { ...metadata };
+  for (const key of ["comments", "proof", "artifacts"] as const) {
+    if (!next[key]?.length) {
+      delete next[key];
+    }
+  }
+  return next;
+}
+
+function omitEmptyMetadata(metadata: WorkboardMetadata): WorkboardMetadata | undefined {
+  const next = removeUndefinedMetadataFields(metadata);
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+function normalizeCommentInput(input: WorkboardCommentInput, now: number): WorkboardComment {
+  const body = normalizeBoundedString(input.body, undefined, 4000, "comment body");
+  if (!body) {
+    throw new Error("comment body is required.");
+  }
+  return { id: randomUUID(), body, createdAt: now };
+}
+
+function normalizeProofInput(input: WorkboardProofInput, now: number): WorkboardProof {
+  const label = normalizeBoundedString(input.label, undefined, 160, "proof label");
+  const command = normalizeBoundedString(input.command, undefined, 1000, "proof command");
+  const url = normalizeBoundedString(input.url, undefined, 2000, "proof URL");
+  const note = normalizeBoundedString(input.note, undefined, 2000, "proof note");
+  return {
+    id: randomUUID(),
+    status: normalizeProofStatus(input.status, "unknown"),
+    createdAt: now,
+    ...(label ? { label } : {}),
+    ...(command ? { command } : {}),
+    ...(url ? { url } : {}),
+    ...(note ? { note } : {}),
+  };
+}
+
+function normalizeArtifactInput(input: WorkboardArtifactInput, now: number): WorkboardArtifact {
+  const label = normalizeBoundedString(input.label, undefined, 160, "artifact label");
+  const url = normalizeBoundedString(input.url, undefined, 2000, "artifact URL");
+  const artifactPath = normalizeBoundedString(input.path, undefined, 2000, "artifact path");
+  const mimeType = normalizeBoundedString(input.mimeType, undefined, 160, "artifact MIME type");
+  if (!url && !artifactPath) {
+    throw new Error("artifact url or path is required.");
+  }
+  return {
+    id: randomUUID(),
+    createdAt: now,
+    ...(label ? { label } : {}),
+    ...(url ? { url } : {}),
+    ...(artifactPath ? { path: artifactPath } : {}),
+    ...(mimeType ? { mimeType } : {}),
+  };
 }
 
 function createEvent(
@@ -343,6 +453,64 @@ export class WorkboardStore {
 
   async delete(id: string): Promise<{ deleted: boolean }> {
     return { deleted: await this.store.delete(id.trim()) };
+  }
+
+  private async updateMetadata(
+    id: string,
+    updater: (existing: WorkboardCard) => WorkboardMetadata,
+    event: WorkboardEvent,
+  ): Promise<WorkboardCard> {
+    const existing = await this.get(id);
+    if (!existing) {
+      throw new Error(`card not found: ${id}`);
+    }
+    const next = removeUndefinedCardFields({
+      ...existing,
+      updatedAt: event.at,
+      metadata: omitEmptyMetadata(updater(existing)),
+      events: appendEvent(existing.events, event),
+    });
+    await this.store.register(next.id, { version: 1, card: next });
+    return next;
+  }
+
+  async addComment(id: string, input: WorkboardCommentInput): Promise<WorkboardCard> {
+    const now = Date.now();
+    const comment = normalizeCommentInput(input, now);
+    return await this.updateMetadata(
+      id,
+      (existing) => ({
+        ...existing.metadata,
+        comments: [...(existing.metadata?.comments ?? []), comment].slice(-MAX_CARD_COMMENTS),
+      }),
+      createEvent("comment_added", now),
+    );
+  }
+
+  async addProof(id: string, input: WorkboardProofInput): Promise<WorkboardCard> {
+    const now = Date.now();
+    const proof = normalizeProofInput(input, now);
+    return await this.updateMetadata(
+      id,
+      (existing) => ({
+        ...existing.metadata,
+        proof: [...(existing.metadata?.proof ?? []), proof].slice(-MAX_CARD_PROOF),
+      }),
+      createEvent("proof_added", now),
+    );
+  }
+
+  async addArtifact(id: string, input: WorkboardArtifactInput): Promise<WorkboardCard> {
+    const now = Date.now();
+    const artifact = normalizeArtifactInput(input, now);
+    return await this.updateMetadata(
+      id,
+      (existing) => ({
+        ...existing.metadata,
+        artifacts: [...(existing.metadata?.artifacts ?? []), artifact].slice(-MAX_CARD_ARTIFACTS),
+      }),
+      createEvent("artifact_added", now),
+    );
   }
 
   static open(

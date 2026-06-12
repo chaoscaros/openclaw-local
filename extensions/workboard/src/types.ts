@@ -8,11 +8,21 @@ export const WORKBOARD_STATUSES = [
 ] as const;
 
 export const WORKBOARD_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
-export const WORKBOARD_EVENT_KINDS = ["created", "edited", "moved", "linked"] as const;
+export const WORKBOARD_EVENT_KINDS = [
+  "created",
+  "edited",
+  "moved",
+  "linked",
+  "comment_added",
+  "proof_added",
+  "artifact_added",
+] as const;
+export const WORKBOARD_PROOF_STATUSES = ["passed", "failed", "skipped", "unknown"] as const;
 
 export type WorkboardStatus = (typeof WORKBOARD_STATUSES)[number];
 export type WorkboardPriority = (typeof WORKBOARD_PRIORITIES)[number];
 export type WorkboardEventKind = (typeof WORKBOARD_EVENT_KINDS)[number];
+export type WorkboardProofStatus = (typeof WORKBOARD_PROOF_STATUSES)[number];
 
 export type WorkboardEvent = {
   id: string;
@@ -22,6 +32,37 @@ export type WorkboardEvent = {
   toStatus?: WorkboardStatus;
   sessionKey?: string;
   runId?: string;
+};
+
+export type WorkboardComment = {
+  id: string;
+  body: string;
+  createdAt: number;
+};
+
+export type WorkboardProof = {
+  id: string;
+  status: WorkboardProofStatus;
+  createdAt: number;
+  label?: string;
+  command?: string;
+  url?: string;
+  note?: string;
+};
+
+export type WorkboardArtifact = {
+  id: string;
+  createdAt: number;
+  label?: string;
+  url?: string;
+  path?: string;
+  mimeType?: string;
+};
+
+export type WorkboardMetadata = {
+  comments?: WorkboardComment[];
+  proof?: WorkboardProof[];
+  artifacts?: WorkboardArtifact[];
 };
 
 export type WorkboardCard = {
@@ -42,6 +83,7 @@ export type WorkboardCard = {
   startedAt?: number;
   completedAt?: number;
   events?: WorkboardEvent[];
+  metadata?: WorkboardMetadata;
 };
 
 export type WorkboardListResult = {

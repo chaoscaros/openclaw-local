@@ -1157,6 +1157,15 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     diagnostics slice.
   - Broader orchestration metadata, agent coordination tools, generated plugin
     inventory, and docs remain pending Workboard sub-slices.
+- `a341ae27ec` local Workboard comment/proof metadata subset:
+  - Workboard card storage now supports bounded comments, proof entries, and
+    artifact metadata with matching append events for future details panels and
+    agent coordination tools.
+  - The slice intentionally does not register new gateway methods or agent
+    tools yet, so existing Control UI card creation, session linking, and task
+    mode behavior are unchanged.
+  - Broader orchestration metadata, dependency links, coordination tools,
+    generated plugin inventory, and docs remain pending Workboard sub-slices.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips
