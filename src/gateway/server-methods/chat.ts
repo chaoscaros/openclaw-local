@@ -2022,7 +2022,10 @@ function broadcastChatError(params: {
             content: [
               {
                 type: "text",
-                text: errorText.startsWith("Error:") ? errorText : `Error: ${errorText}`,
+                text:
+                  errorText.startsWith("⚠️") || errorText.startsWith("Error:")
+                    ? errorText
+                    : `Error: ${errorText}`,
               },
             ],
             timestamp: Date.now(),

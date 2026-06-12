@@ -739,7 +739,7 @@ function buildErrorAssistantMessage(payload: ChatEventPayload): Record<string, u
     content: [
       {
         type: "text",
-        text: error.startsWith("Error:") ? error : `Error: ${error}`,
+        text: error.startsWith("⚠️") || error.startsWith("Error:") ? error : `Error: ${error}`,
       },
     ],
     timestamp: Date.now(),

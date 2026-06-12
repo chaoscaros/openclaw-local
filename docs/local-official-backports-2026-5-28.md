@@ -216,6 +216,10 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   injection when tools are unavailable or the active workspace is not the agent
   memory workspace, and prompt diagnostics report routed memory as raw but not
   injected.
+- `31a46638ad` local equivalent: chat send and agent lifecycle failures surface
+  as visible assistant error messages in Control UI while avoiding orphan error
+  bubbles when no run was active. The local branch already had the main UI and
+  gateway behavior; this slice aligned warning-prefixed error formatting.
 - `a7d2d9c6df` local equivalent: `openclaw doctor --fix` now migrates legacy
   `memorySearch.provider: "auto"` values to explicit `openai` after moving
   top-level memory search config into agent defaults.
@@ -483,7 +487,6 @@ Local check before editing this lane:
 
 High-priority official changes to compare:
 
-- `31a46638ad`: show chat errors as visible messages.
 - `7d0347b6de`: shared UI chat send wrapper.
 - `99bd275359`: usage scoped by agent filter.
 - `8bd4736f03`: replay pending cron filter reloads.

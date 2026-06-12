@@ -183,7 +183,12 @@ function buildChatErrorMessage(error: unknown): Record<string, unknown> | undefi
   }
   return {
     role: "assistant",
-    content: [{ type: "text", text: raw.startsWith("Error:") ? raw : `Error: ${raw}` }],
+    content: [
+      {
+        type: "text",
+        text: raw.startsWith("⚠️") || raw.startsWith("Error:") ? raw : `Error: ${raw}`,
+      },
+    ],
     timestamp: Date.now(),
   };
 }
