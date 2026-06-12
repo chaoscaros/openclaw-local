@@ -1092,6 +1092,16 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Gateway image attachment capability checks now bypass only confirmed ACP
     sessions with ACP metadata, preventing ordinary sessions from spoofing
     `acpTurnSource`.
+- `99bd275359` local equivalent:
+  - Usage tab requests all configured agents by default with
+    `agentScope: "all"` and sends the selected `agentId` consistently to both
+    session usage and cost usage calls.
+  - Gateway session usage supports explicit all-agent list queries, cost usage
+    aggregates all configured agents, and cost cache entries are scoped by
+    agent selection.
+  - The UI keeps legacy gateway fallbacks for `agentId` and `agentScope`
+    params, and the protocol docs/schema/Swift model include the new scope
+    field.
 
 ## Validation Plan
 

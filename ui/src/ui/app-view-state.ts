@@ -355,6 +355,7 @@ export type AppViewState = {
   usageSelectedSessions: string[];
   usageSelectedDays: string[];
   usageSelectedHours: number[];
+  usageAgentId: string | null;
   usageChartMode: "tokens" | "cost";
   usageDailyChartMode: "total" | "by-type";
   usageTimeSeriesMode: "cumulative" | "per-turn";

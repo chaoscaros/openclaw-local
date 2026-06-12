@@ -241,10 +241,13 @@ implemented in `src/gateway/server-methods/*.ts`.
 
 - `models.list` returns the runtime-allowed model catalog.
 - `usage.status` returns provider usage windows/remaining quota summaries.
-- `usage.cost` returns aggregated cost usage summaries for a date range.
+- `usage.cost` returns aggregated cost usage summaries for a date range. It
+  accepts `agentId` for one agent or `agentScope: "all"` to aggregate all
+  configured agents.
 - `doctor.memory.status` returns vector-memory / embedding readiness for the
   active default agent workspace.
-- `sessions.usage` returns per-session usage summaries.
+- `sessions.usage` returns per-session usage summaries. It accepts `agentId`
+  for one agent or `agentScope: "all"` for list-style all-agent usage queries.
 - `sessions.usage.timeseries` returns timeseries usage for one session.
 - `sessions.usage.logs` returns usage log entries for one session.
 

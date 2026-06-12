@@ -155,10 +155,16 @@ export function renderUsage(props: UsageProps) {
     return valB - valA;
   });
 
+  const agentScopedSessions = filters.agentId
+    ? sortedSessions.filter(
+        (s) => normalizeQueryText(s.agentId ?? "") === normalizeQueryText(filters.agentId ?? ""),
+      )
+    : sortedSessions;
+
   // Filter sessions by selected days
   const dayFilteredSessions =
     filters.selectedDays.length > 0
-      ? sortedSessions.filter((s) => {
+      ? agentScopedSessions.filter((s) => {
           if (s.usage?.activityDates?.length) {
             return s.usage.activityDates.some((d) => filters.selectedDays.includes(d));
           }
@@ -169,7 +175,7 @@ export function renderUsage(props: UsageProps) {
           const sessionDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
           return filters.selectedDays.includes(sessionDate);
         })
-      : sortedSessions;
+      : agentScopedSessions;
 
   const sessionTouchesHours = (session: UsageSessionEntry, hours: number[]): boolean => {
     if (hours.length === 0) {
@@ -208,7 +214,7 @@ export function renderUsage(props: UsageProps) {
   const queryWarnings = queryResult.warnings;
   const querySuggestions = buildQuerySuggestions(
     filters.queryDraft,
-    sortedSessions,
+    agentScopedSessions,
     data.aggregates,
   );
   const queryTerms = extractQueryTerms(filters.query);
@@ -228,15 +234,18 @@ export function renderUsage(props: UsageProps) {
     }
     return Array.from(set);
   };
-  const agentOptions = unique(sortedSessions.map((s) => s.agentId)).slice(0, 12);
-  const channelOptions = unique(sortedSessions.map((s) => s.channel)).slice(0, 12);
+  const agentOptions = unique([...data.agents, ...sortedSessions.map((s) => s.agentId)]).slice(
+    0,
+    12,
+  );
+  const channelOptions = unique(agentScopedSessions.map((s) => s.channel)).slice(0, 12);
   const providerOptions = unique([
-    ...sortedSessions.map((s) => s.modelProvider),
-    ...sortedSessions.map((s) => s.providerOverride),
+    ...agentScopedSessions.map((s) => s.modelProvider),
+    ...agentScopedSessions.map((s) => s.providerOverride),
     ...(data.aggregates?.byProvider.map((entry) => entry.provider) ?? []),
   ]).slice(0, 12);
   const modelOptions = unique([
-    ...sortedSessions.map((s) => s.model),
+    ...agentScopedSessions.map((s) => s.model),
     ...(data.aggregates?.byModel.map((entry) => entry.model) ?? []),
   ]).slice(0, 12);
   const toolOptions = unique(data.aggregates?.tools.tools.map((tool) => tool.name) ?? []).slice(
@@ -268,7 +277,7 @@ export function renderUsage(props: UsageProps) {
   // Compute display totals and count based on filters
   let displayTotals: UsageTotals | null;
   let displaySessionCount: number;
-  const totalSessions = sortedSessions.length;
+  const totalSessions = agentScopedSessions.length;
 
   if (filters.selectedSessions.length > 0) {
     // Sessions selected - compute totals from selected sessions
@@ -287,6 +296,9 @@ export function renderUsage(props: UsageProps) {
   } else if (hasQuery) {
     displayTotals = computeSessionTotals(filteredSessions);
     displaySessionCount = filteredSessions.length;
+  } else if (filters.agentId) {
+    displayTotals = computeSessionTotals(agentScopedSessions);
+    displaySessionCount = totalSessions;
   } else {
     // No filters - show all
     displayTotals = data.totals;
@@ -300,7 +312,7 @@ export function renderUsage(props: UsageProps) {
         ? filteredSessions
         : filters.selectedDays.length > 0
           ? dayFilteredSessions
-          : sortedSessions;
+          : agentScopedSessions;
   const activeAggregates = buildAggregatesFromSessions(aggregateSessions, data.aggregates);
 
   // Filter daily chart data if sessions are selected
@@ -432,6 +444,27 @@ export function renderUsage(props: UsageProps) {
           </div>
         </div>
       </details>
+    `;
+  };
+  const renderAgentScopeSelect = () => {
+    if (agentOptions.length === 0) {
+      return nothing;
+    }
+    const selected = filters.agentId ?? "";
+    return html`
+      <select
+        class="usage-select"
+        title=${t("usage.filters.agent")}
+        aria-label=${t("usage.filters.agent")}
+        .value=${selected}
+        @change=${(e: Event) => {
+          const value = (e.target as HTMLSelectElement).value;
+          filterActions.onAgentChange(value || null);
+        }}
+      >
+        <option value="">${t("usage.filters.allAgents")}</option>
+        ${agentOptions.map((agentId) => html`<option value=${agentId}>${agentId}</option>`)}
+      </select>
     `;
   };
   const exportStamp = formatIsoDate(new Date());
@@ -588,6 +621,7 @@ export function renderUsage(props: UsageProps) {
                   filterActions.onEndDateChange((e.target as HTMLInputElement).value)}
               />
             </div>
+            ${renderAgentScopeSelect()}
             <select
               class="usage-select"
               title=${t("usage.filters.timeZone")}
@@ -667,7 +701,6 @@ export function renderUsage(props: UsageProps) {
             </div>
           </div>
           <div class="usage-filter-row">
-            ${renderFilterSelect("agent", t("usage.filters.agent"), agentOptions)}
             ${renderFilterSelect("channel", t("usage.filters.channel"), channelOptions)}
             ${renderFilterSelect("provider", t("usage.filters.provider"), providerOptions)}
             ${renderFilterSelect("model", t("usage.filters.model"), modelOptions)}

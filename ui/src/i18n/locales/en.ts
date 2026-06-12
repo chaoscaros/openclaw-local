@@ -1149,6 +1149,7 @@ export const en: TranslationMap = {
       clearAll: "Clear All",
       remove: "Remove filter",
       all: "All",
+      allAgents: "All agents",
       days: "Days",
       hours: "Hours",
       session: "Session",

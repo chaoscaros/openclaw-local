@@ -13,6 +13,7 @@ function createUsageProps(overrides: Partial<UsageProps> = {}): UsageProps {
       loading: false,
       error: null,
       sessions: [],
+      agents: [],
       sessionsLimitReached: false,
       totals: null,
       aggregates: null,
@@ -24,6 +25,7 @@ function createUsageProps(overrides: Partial<UsageProps> = {}): UsageProps {
       selectedSessions: [],
       selectedDays: [],
       selectedHours: [],
+      agentId: null,
       query: "",
       queryDraft: "",
       timeZone: "local",
@@ -60,6 +62,7 @@ function createUsageProps(overrides: Partial<UsageProps> = {}): UsageProps {
       filters: {
         onStartDateChange: noop,
         onEndDateChange: noop,
+        onAgentChange: noop,
         onRefresh: noop,
         onTimeZoneChange: noop,
         onToggleHeaderPinned: noop,
@@ -108,5 +111,93 @@ describe("renderUsage", () => {
     expect(container.querySelector(".usage-page-header")).toBeNull();
     expect(container.querySelector(".usage-page-title")).toBeNull();
     expect(container.querySelector(".usage-header")).not.toBeNull();
+  });
+
+  it("shows configured agents in the agent scope filter before usage sessions load", () => {
+    const container = document.createElement("div");
+
+    render(
+      renderUsage(
+        createUsageProps({
+          data: {
+            ...createUsageProps().data,
+            agents: ["main", "research"],
+            sessions: [
+              {
+                key: "agent:main:main",
+                agentId: "main",
+                updatedAt: Date.now(),
+                usage: null,
+              } as UsageProps["data"]["sessions"][number],
+            ],
+          },
+        }),
+      ),
+      container,
+    );
+
+    expect(container.querySelector(".usage-select")?.textContent).toContain("main");
+    expect(container.querySelector(".usage-select")?.textContent).toContain("research");
+  });
+
+  it("filters visible sessions when an agent scope is selected", () => {
+    const container = document.createElement("div");
+
+    render(
+      renderUsage(
+        createUsageProps({
+          data: {
+            ...createUsageProps().data,
+            agents: ["main", "research"],
+            sessions: [
+              {
+                key: "agent:main:main",
+                agentId: "main",
+                updatedAt: Date.now(),
+                usage: {
+                  input: 10,
+                  output: 0,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  totalTokens: 10,
+                  totalCost: 0,
+                  inputCost: 0,
+                  outputCost: 0,
+                  cacheReadCost: 0,
+                  cacheWriteCost: 0,
+                  missingCostEntries: 0,
+                } as UsageProps["data"]["sessions"][number]["usage"],
+              } as UsageProps["data"]["sessions"][number],
+              {
+                key: "agent:research:main",
+                agentId: "research",
+                updatedAt: Date.now(),
+                usage: {
+                  input: 20,
+                  output: 0,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  totalTokens: 20,
+                  totalCost: 0,
+                  inputCost: 0,
+                  outputCost: 0,
+                  cacheReadCost: 0,
+                  cacheWriteCost: 0,
+                  missingCostEntries: 0,
+                } as UsageProps["data"]["sessions"][number]["usage"],
+              } as UsageProps["data"]["sessions"][number],
+            ],
+          },
+          filters: {
+            ...createUsageProps().filters,
+            agentId: "research",
+          },
+        }),
+      ),
+      container,
+    );
+
+    expect(container.textContent).toContain("agent:research:main");
+    expect(container.textContent).not.toContain("agent:main:main");
   });
 });

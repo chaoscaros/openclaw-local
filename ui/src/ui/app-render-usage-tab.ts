@@ -23,6 +23,7 @@ export function renderUsageTab(state: AppViewState) {
       loading: state.usageLoading,
       error: state.usageError,
       sessions: state.usageResult?.sessions ?? [],
+      agents: state.agentsList?.agents.map((entry) => entry.id).filter(Boolean) ?? [],
       sessionsLimitReached: (state.usageResult?.sessions?.length ?? 0) >= 1000,
       totals: state.usageResult?.totals ?? null,
       aggregates: state.usageResult?.aggregates ?? null,
@@ -34,6 +35,7 @@ export function renderUsageTab(state: AppViewState) {
       selectedSessions: state.usageSelectedSessions,
       selectedDays: state.usageSelectedDays,
       selectedHours: state.usageSelectedHours,
+      agentId: state.usageAgentId,
       query: state.usageQuery,
       queryDraft: state.usageQueryDraft,
       timeZone: state.usageTimeZone,
@@ -81,6 +83,15 @@ export function renderUsageTab(state: AppViewState) {
           state.usageSelectedHours = [];
           state.usageSelectedSessions = [];
           debouncedLoadUsage(state);
+        },
+        onAgentChange: (agentId) => {
+          state.usageAgentId = agentId;
+          state.usageSelectedDays = [];
+          state.usageSelectedHours = [];
+          state.usageSelectedSessions = [];
+          state.usageTimeSeries = null;
+          state.usageSessionLogs = null;
+          void loadUsage(state);
         },
         onRefresh: () => loadUsage(state),
         onTimeZoneChange: (zone) => {
