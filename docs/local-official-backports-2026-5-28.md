@@ -88,8 +88,11 @@ scoped verification.
   `PreToolUse` commands and write/approval-style `PermissionRequest` commands:
   when the relay is unavailable, OpenClaw now defers to the provider approval
   path instead of returning a stale deny.
-- Workboard remains unabsorbed as a large optional dashboard/plugin feature
-  lane. Do not pull it into a task-mode or Control UI fix opportunistically.
+- Workboard is absorbed through the optional dashboard/plugin lane: backend
+  store/gateway methods, Control UI tab/component wiring, session sync,
+  metadata, events, coordination tools, generated plugin inventory, and focused
+  validation are in place. The broader official diagnostics model remains
+  deferred as a separate non-blocking diagnostics lane.
 
 ## Next Slice Queue
 
@@ -109,14 +112,15 @@ scoped verification.
    updates are truly required, because plain `pnpm test
 extensions/codex-supervisor` currently stops before tests while pnpm tries
    to reconcile the new workspace package without a TTY.
-4. **Workboard / Control UI**: keep `86ed25af34..61031d1b1c` as a separate
-   feature lane. Before implementation, inspect local task-mode, archive, and
-   mobile entry behavior so the workboard plugin does not mask or regress
-   existing task workflows.
-5. **Release / CI / Generated Baselines**: leave broad release workflow churn,
-   `49d6efc65b`, `ea8c052bcf`, and `420bfad613` until product/runtime slices
-   are stable. These may require broader build/check gates and should not be
-   bundled with user-facing runtime fixes.
+4. **Workboard / Control UI**: the local Workboard feature lane is absorbed
+   through dispatch, coordination tools, generated inventory, and build
+   validation. Keep future diagnostics UI/model work as a separate explicit
+   lane.
+5. **Release / CI / Generated Baselines**: `ea8c052bcf` gateway-server test
+   serialization and generated config/plugin-SDK baseline refreshes are
+   absorbed locally. Keep the broad `49d6efc65b` root `sharp` dependency and
+   lock/shrinkwrap cleanup deferred unless the user explicitly wants a
+   dependency-maintenance slice.
 
 ## Absorbed In This Iteration
 
@@ -1228,6 +1232,14 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     docs slice.
   - The broader official diagnostics model remains pending for a later
     Workboard/diagnostics slice.
+- `ea8c052bcf` local equivalent:
+  - Gateway-server Vitest project execution now disables file parallelism,
+    matching the official serialization guard for gateway server tests.
+- `420bfad613` local generated-baseline equivalent:
+  - Config docs and Plugin SDK API baseline hash files are regenerated for the
+    current local 2026.5.28 absorption state.
+  - `pnpm config:docs:check` and `pnpm plugin-sdk:api:check` are the focused
+    validation gates for this generated baseline slice.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips
