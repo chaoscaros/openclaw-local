@@ -135,6 +135,7 @@ function resetMemoryRecallMocks() {
   repairShortTermPromotionArtifacts.mockResolvedValue({
     changed: false,
     removedInvalidEntries: 0,
+    removedOverflowEntries: 0,
     rewroteStore: false,
     removedStaleLock: false,
   });
@@ -922,6 +923,7 @@ describe("memory recall doctor integration", () => {
     repairShortTermPromotionArtifacts.mockResolvedValueOnce({
       changed: true,
       removedInvalidEntries: 1,
+      removedOverflowEntries: 2,
       rewroteStore: true,
       removedStaleLock: true,
     });
@@ -937,7 +939,7 @@ describe("memory recall doctor integration", () => {
     expect(note).toHaveBeenCalledTimes(1);
     const message = firstNoteMessage();
     expect(message).toContain("Memory recall artifacts repaired:");
-    expect(message).toContain("rewrote recall store");
+    expect(message).toContain("rewrote recall store (-1 invalid entries, -2 overflow entries)");
     expect(message).toContain("removed stale promotion lock");
   });
 

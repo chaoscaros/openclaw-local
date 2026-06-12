@@ -198,6 +198,11 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
 - `c36ba9ea7a` local equivalent: QMD backend numeric overrides now clamp
   positive sub-unit values to 1 and fall back for non-finite session, timeout,
   and result-limit overrides.
+- `6fbdae1c51` local equivalent: Dreaming short-term recall stores are now
+  bounded by entry count and persisted snippet length, while claim identity and
+  contamination checks continue to use the full normalized snippet before
+  truncation. Audit/repair now reports overflow recall-store entries and
+  doctor/CLI summaries include invalid plus overflow cleanup counts.
 - `a7d2d9c6df` local equivalent: `openclaw doctor --fix` now migrates legacy
   `memorySearch.provider: "auto"` values to explicit `openai` after moving
   top-level memory search config into agent defaults.
@@ -453,15 +458,8 @@ Local check before editing this lane:
 
 High-priority official changes to compare:
 
-- `6fbdae1c51`: cap Dreaming short-term recall growth.
 - `3029326a56`: compact short-term promotion entries.
-- `b5bc752a48`: isolate active-memory recall lane.
 - `d93524d1cc`: route Codex workspace memory through tools.
-- `a7d2d9c6df`: migrate legacy memory auto provider.
-- `61c538e2fc`, `361753908e`, `e9cca2d1ef`, and `30de7874cf`: strict numeric
-  parsing for memory recall/get/search/wiki parameters.
-- `27cd18748f`, `25a5cb3270`, `9596b7bd7a`, `fd643139b1`, and `c36ba9ea7a`:
-  non-finite and positive-bound memory option handling.
 
 Local check before editing this lane:
 
