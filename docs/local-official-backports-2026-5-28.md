@@ -392,6 +392,11 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   515 restart allowance. QR update waiters are notified when the replacement
   socket emits a new QR, so web login can return the replacement QR instead of
   timing out on the original socket.
+- `116f084169` local equivalent: plugin raw-config loads can opt into the same
+  single environment-substitution pass used by config IO, including variables
+  declared under `config.env`. Raw substitution mode bypasses active/cache
+  registry reuse and redacts plugin entry config from cache keys so resolved
+  secrets do not leak into loader keys or reentry diagnostics.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
