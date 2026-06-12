@@ -401,6 +401,10 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   slim per-config identity cache for the common no-explicit-env reuse path,
   while preserving the local guard that still validates fingerprints when a
   caller supplies an explicit env.
+- `d2a1f62d23` local equivalent: Matrix channel runtime metadata now declares
+  markdown rendering support, and markdown-capable fallback mutating-tool
+  warnings wrap mention-looking tool labels in code spans so Matrix room/user
+  identifiers stay inert.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

@@ -92,6 +92,7 @@ const meta = {
   docsLabel: "matrix",
   blurb: "open protocol; configure a homeserver + access token.",
   order: 70,
+  markdownCapable: true,
   quickstartAllowFrom: true,
 };
 
