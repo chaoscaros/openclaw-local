@@ -936,6 +936,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Memory host SDK remote JSON and batch upload errors now read bounded
     response snippets and cancel truncated response streams before formatting
     error messages.
+- `eb273a8a4a` local equivalent:
+  - Brave web search and LLM-context API errors now use the shared bounded
+    provider error-body reader instead of reading unbounded response text.
 
 ## Validation Plan
 
