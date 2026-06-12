@@ -9,6 +9,7 @@ import {
   resolveProviderHttpRequestConfig,
   waitProviderOperationPollInterval,
 } from "openclaw/plugin-sdk/provider-http";
+import { readResponseWithLimit } from "openclaw/plugin-sdk/response-limit-runtime";
 import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
@@ -20,6 +21,9 @@ export const DEFAULT_VYDRA_VIDEO_MODEL = "veo3";
 export const DEFAULT_VYDRA_SPEECH_MODEL = "elevenlabs/tts";
 export const DEFAULT_VYDRA_VOICE_ID = "21m00Tcm4TlvDq8ikWAM";
 const DEFAULT_HTTP_TIMEOUT_MS = 120_000;
+const DEFAULT_GENERATED_IMAGE_MAX_BYTES = 6 * 1024 * 1024;
+const DEFAULT_GENERATED_AUDIO_MAX_BYTES = 16 * 1024 * 1024;
+const DEFAULT_GENERATED_VIDEO_MAX_BYTES = 16 * 1024 * 1024;
 const POLL_INTERVAL_MS = 2_500;
 const MAX_POLL_ATTEMPTS = 120;
 type VydraAuthStore = Parameters<typeof resolveApiKeyForProvider>[0]["store"];
@@ -200,27 +204,47 @@ function resolveVydraFileExtension(kind: VydraMediaKind, mimeType: string): stri
   );
 }
 
+export function resolveVydraGeneratedMediaMaxBytes(params: {
+  cfg: { agents?: { defaults?: { mediaMaxMb?: number } } };
+  kind: VydraMediaKind;
+}): number {
+  const configured = params.cfg.agents?.defaults?.mediaMaxMb;
+  if (typeof configured === "number" && Number.isFinite(configured) && configured > 0) {
+    return Math.floor(configured * 1024 * 1024);
+  }
+  if (params.kind === "image") {
+    return DEFAULT_GENERATED_IMAGE_MAX_BYTES;
+  }
+  if (params.kind === "audio") {
+    return DEFAULT_GENERATED_AUDIO_MAX_BYTES;
+  }
+  return DEFAULT_GENERATED_VIDEO_MAX_BYTES;
+}
+
 export async function downloadVydraAsset(params: {
   url: string;
   kind: VydraMediaKind;
   timeoutMs?: number;
   fetchFn: typeof fetch;
+  maxBytes: number;
 }): Promise<{ buffer: Buffer; mimeType: string; fileName: string }> {
-  const response = await fetchWithTimeout(
-    params.url,
-    { method: "GET" },
-    params.timeoutMs ?? DEFAULT_HTTP_TIMEOUT_MS,
-    params.fetchFn,
-  );
+  const timeoutMs = params.timeoutMs ?? DEFAULT_HTTP_TIMEOUT_MS;
+  const response = await fetchWithTimeout(params.url, { method: "GET" }, timeoutMs, params.fetchFn);
   await assertOkOrThrowHttpError(response, `Vydra ${params.kind} download failed`);
   const mimeType =
     response.headers.get("content-type")?.trim() ||
     (params.kind === "image" ? "image/png" : params.kind === "audio" ? "audio/mpeg" : "video/mp4");
-  const arrayBuffer = await response.arrayBuffer();
+  const buffer = await readResponseWithLimit(response, params.maxBytes, {
+    chunkTimeoutMs: timeoutMs,
+    onOverflow: ({ maxBytes }) =>
+      new Error(`Vydra ${params.kind} download exceeds ${maxBytes} bytes`),
+    onIdleTimeout: ({ chunkTimeoutMs }) =>
+      new Error(`Vydra ${params.kind} download stalled after ${chunkTimeoutMs}ms`),
+  });
   const extension = resolveVydraFileExtension(params.kind, mimeType);
   const fileStem = params.kind === "image" ? "image" : params.kind === "audio" ? "audio" : "video";
   return {
-    buffer: Buffer.from(arrayBuffer),
+    buffer,
     mimeType,
     fileName: `${fileStem}-1.${extension}`,
   };

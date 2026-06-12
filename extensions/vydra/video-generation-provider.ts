@@ -11,6 +11,7 @@ import {
   downloadVydraAsset,
   extractVydraResultUrls,
   resolveCompletedVydraPayload,
+  resolveVydraGeneratedMediaMaxBytes,
   resolveVydraResponseJobId,
   resolveVydraResponseStatus,
   resolveVydraRequestContext,
@@ -132,6 +133,7 @@ export function buildVydraVideoGenerationProvider(): VideoGenerationProvider {
             defaultTimeoutMs: 120_000,
           }),
           fetchFn,
+          maxBytes: resolveVydraGeneratedMediaMaxBytes({ cfg: req.cfg, kind: "video" }),
         });
         return {
           videos: [

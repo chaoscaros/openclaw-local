@@ -948,10 +948,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `4438be7f05` local equivalent:
   - OpenAI, Gradium, and xAI generated speech downloads now honor configured
     media byte caps for TTS and speech-provider synthesis paths.
-- `0902ee723b` partial local equivalent:
-  - Comfy generated image, music, and video workflow output downloads now honor
-    configured media byte caps; Vydra media download caps remain in the next
-    slice of the same official change.
+- `0902ee723b` local equivalent:
+  - Comfy generated image, music, and video workflow outputs plus Vydra image,
+    audio, and video assets now honor configured media byte caps during
+    downloads.
 
 ## Validation Plan
 
