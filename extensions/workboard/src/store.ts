@@ -86,6 +86,14 @@ export type WorkboardHeartbeatInput = {
   note?: unknown;
   status?: unknown;
 };
+export type WorkboardCompleteInput = WorkboardHeartbeatInput & {
+  summary?: unknown;
+  proof?: unknown;
+  artifacts?: unknown;
+};
+export type WorkboardBlockInput = WorkboardHeartbeatInput & {
+  reason?: unknown;
+};
 
 function normalizeOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -363,6 +371,16 @@ function assertCanMutateClaimedCard(card: WorkboardCard, ownerId: string, token?
   if (!canMutateClaimedCard(card, ownerId, token)) {
     throw new Error(`card is claimed by ${card.metadata?.claim?.ownerId ?? "another owner"}.`);
   }
+}
+
+function assertClaimScopeIfNeeded(card: WorkboardCard, input: WorkboardHeartbeatInput) {
+  const claim = card.metadata?.claim;
+  if (!claim) {
+    return;
+  }
+  const ownerId = normalizeClaimOwner(input.ownerId);
+  const token = normalizeBoundedString(input.token, undefined, 160, "claim token");
+  assertCanMutateClaimedCard(card, ownerId, token);
 }
 
 function createEvent(
@@ -763,6 +781,78 @@ export class WorkboardStore {
       updatedAt: now,
       metadata: omitEmptyMetadata(metadata),
       events: appendEvent(existing.events, createEvent("released", now)),
+    });
+    await this.store.register(next.id, { version: 1, card: next });
+    return next;
+  }
+
+  async complete(id: string, input: WorkboardCompleteInput = {}): Promise<WorkboardCard> {
+    const existing = await this.get(id);
+    if (!existing) {
+      throw new Error(`card not found: ${id}`);
+    }
+    assertClaimScopeIfNeeded(existing, input);
+    const now = Date.now();
+    const summary = normalizeBoundedString(input.summary, undefined, 2000, "summary");
+    const proof =
+      input.proof && typeof input.proof === "object" && !Array.isArray(input.proof)
+        ? normalizeProofInput(input.proof as WorkboardProofInput, now)
+        : undefined;
+    const artifacts = Array.isArray(input.artifacts)
+      ? input.artifacts.map((artifact) =>
+          normalizeArtifactInput(artifact as WorkboardArtifactInput, now),
+        )
+      : [];
+    const metadata = { ...existing.metadata };
+    delete metadata.claim;
+    const next = removeUndefinedCardFields({
+      ...existing,
+      status: "done",
+      completedAt: existing.completedAt ?? now,
+      updatedAt: now,
+      metadata: omitEmptyMetadata({
+        ...metadata,
+        comments: summary
+          ? [
+              ...(metadata.comments ?? []),
+              { id: randomUUID(), body: summary, createdAt: now },
+            ].slice(-MAX_CARD_COMMENTS)
+          : metadata.comments,
+        proof: proof ? [...(metadata.proof ?? []), proof].slice(-MAX_CARD_PROOF) : metadata.proof,
+        artifacts: artifacts.length
+          ? [...(metadata.artifacts ?? []), ...artifacts].slice(-MAX_CARD_ARTIFACTS)
+          : metadata.artifacts,
+      }),
+      events: appendEvent(existing.events, createEvent("completed", now)),
+    });
+    await this.store.register(next.id, { version: 1, card: next });
+    return next;
+  }
+
+  async block(id: string, input: WorkboardBlockInput = {}): Promise<WorkboardCard> {
+    const existing = await this.get(id);
+    if (!existing) {
+      throw new Error(`card not found: ${id}`);
+    }
+    assertClaimScopeIfNeeded(existing, input);
+    const now = Date.now();
+    const reason =
+      normalizeBoundedString(input.reason, undefined, 2000, "block reason") ??
+      "Workboard card blocked.";
+    const metadata = { ...existing.metadata };
+    delete metadata.claim;
+    const next = removeUndefinedCardFields({
+      ...existing,
+      status: "blocked",
+      updatedAt: now,
+      metadata: omitEmptyMetadata({
+        ...metadata,
+        comments: [
+          ...(metadata.comments ?? []),
+          { id: randomUUID(), body: reason, createdAt: now },
+        ].slice(-MAX_CARD_COMMENTS),
+      }),
+      events: appendEvent(existing.events, createEvent("blocked", now)),
     });
     await this.store.register(next.id, { version: 1, card: next });
     return next;

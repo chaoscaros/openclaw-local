@@ -274,6 +274,53 @@ describe("WorkboardStore", () => {
     });
   });
 
+  it("completes cards with summary, proof, and artifacts", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const card = await store.create({ title: "Complete me" });
+    await store.claim(card.id, { ownerId: "agent-main", token: "token-1" });
+
+    const completed = await store.complete(card.id, {
+      ownerId: "agent-main",
+      token: "token-1",
+      summary: "Implemented and verified.",
+      proof: { status: "passed", command: "pnpm test extensions/workboard" },
+      artifacts: [{ path: "/tmp/workboard.log", label: "log" }],
+    });
+
+    expect(completed).toMatchObject({
+      status: "done",
+      completedAt: expect.any(Number),
+      metadata: {
+        comments: [expect.objectContaining({ body: "Implemented and verified." })],
+        proof: [expect.objectContaining({ status: "passed" })],
+        artifacts: [expect.objectContaining({ path: "/tmp/workboard.log" })],
+      },
+    });
+    expect(completed.metadata?.claim).toBeUndefined();
+    expect(completed.events?.at(-1)).toMatchObject({ kind: "completed" });
+  });
+
+  it("blocks claimed cards with a durable reason", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const card = await store.create({ title: "Block me" });
+    await store.claim(card.id, { ownerId: "agent-main", token: "token-1" });
+
+    await expect(store.block(card.id, { ownerId: "other", reason: "wrong owner" })).rejects.toThrow(
+      /claimed by agent-main/,
+    );
+
+    const blocked = await store.block(card.id, {
+      ownerId: "agent-main",
+      reason: "Waiting on upstream API.",
+    });
+    expect(blocked.status).toBe("blocked");
+    expect(blocked.metadata?.comments?.at(-1)).toMatchObject({
+      body: "Waiting on upstream API.",
+    });
+    expect(blocked.metadata?.claim).toBeUndefined();
+    expect(blocked.events?.at(-1)).toMatchObject({ kind: "blocked" });
+  });
+
   it("rejects invalid status values", async () => {
     const store = new WorkboardStore(createMemoryStore());
     await expect(store.create({ title: "Bad card", status: "later" })).rejects.toThrow(

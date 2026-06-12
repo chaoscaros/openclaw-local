@@ -57,6 +57,8 @@ describe("workboard gateway methods", () => {
       "workboard.cards.claim",
       "workboard.cards.heartbeat",
       "workboard.cards.release",
+      "workboard.cards.complete",
+      "workboard.cards.block",
     ]);
     expect(methods.get("workboard.cards.list")?.opts).toEqual({ scope: "operator.read" });
     expect(methods.get("workboard.cards.create")?.opts).toEqual({ scope: "operator.write" });
@@ -251,5 +253,65 @@ describe("workboard gateway methods", () => {
       card: { status: "review" },
     });
     expect(releaseRespond.mock.calls[0]?.[1]?.card.metadata?.claim).toBeUndefined();
+  });
+
+  it("completes and blocks cards through gateway methods", async () => {
+    type RegisteredMethod = {
+      handler: Parameters<OpenClawPluginApi["registerGatewayMethod"]>[1];
+      opts: Parameters<OpenClawPluginApi["registerGatewayMethod"]>[2];
+    };
+    const methods = new Map<string, RegisteredMethod>();
+    const api = {
+      runtime: {
+        state: {
+          openKeyedStore: vi.fn(() => createMemoryStore()),
+        },
+      },
+      registerGatewayMethod: vi.fn(
+        (method: string, handler: RegisteredMethod["handler"], opts: RegisteredMethod["opts"]) => {
+          methods.set(method, { handler, opts });
+        },
+      ),
+    } as unknown as OpenClawPluginApi;
+
+    registerWorkboardGatewayMethods({ api });
+
+    const createDoneRespond = vi.fn();
+    await methods.get("workboard.cards.create")?.handler({
+      params: { title: "Complete me" },
+      respond: createDoneRespond,
+    } as never);
+    const doneCardId = createDoneRespond.mock.calls[0]?.[1]?.card.id;
+
+    const completeRespond = vi.fn();
+    await methods.get("workboard.cards.complete")?.handler({
+      params: { id: doneCardId, summary: "Verified." },
+      respond: completeRespond,
+    } as never);
+    expect(completeRespond.mock.calls[0]?.[1]).toMatchObject({
+      card: {
+        status: "done",
+        metadata: { comments: [expect.objectContaining({ body: "Verified." })] },
+      },
+    });
+
+    const createBlockedRespond = vi.fn();
+    await methods.get("workboard.cards.create")?.handler({
+      params: { title: "Block me" },
+      respond: createBlockedRespond,
+    } as never);
+    const blockedCardId = createBlockedRespond.mock.calls[0]?.[1]?.card.id;
+
+    const blockRespond = vi.fn();
+    await methods.get("workboard.cards.block")?.handler({
+      params: { id: blockedCardId, reason: "Waiting." },
+      respond: blockRespond,
+    } as never);
+    expect(blockRespond.mock.calls[0]?.[1]).toMatchObject({
+      card: {
+        status: "blocked",
+        metadata: { comments: [expect.objectContaining({ body: "Waiting." })] },
+      },
+    });
   });
 });

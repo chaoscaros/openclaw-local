@@ -213,4 +213,28 @@ export function registerWorkboardGatewayMethods(params: {
     },
     { scope: WRITE_SCOPE },
   );
+
+  api.registerGatewayMethod(
+    "workboard.cards.complete",
+    async ({ params: requestParams, respond }) => {
+      try {
+        respond(true, { card: await store.complete(readId(requestParams), requestParams) });
+      } catch (error) {
+        respondError(respond, error);
+      }
+    },
+    { scope: WRITE_SCOPE },
+  );
+
+  api.registerGatewayMethod(
+    "workboard.cards.block",
+    async ({ params: requestParams, respond }) => {
+      try {
+        respond(true, { card: await store.block(readId(requestParams), requestParams) });
+      } catch (error) {
+        respondError(respond, error);
+      }
+    },
+    { scope: WRITE_SCOPE },
+  );
 }

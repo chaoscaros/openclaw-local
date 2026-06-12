@@ -1206,6 +1206,13 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     this slice.
   - Complete/block/dispatch flows, generated plugin inventory, and docs remain
     pending Workboard sub-slices.
+- `61031d1b1c` local Workboard completion/block subset:
+  - Workboard storage now supports marking cards done or blocked, clears active
+    claims, and records optional summaries, reasons, proof, and artifacts.
+  - Matching gateway methods and optional agent tools are registered for
+    complete and block.
+  - Dispatch flows, generated plugin inventory, and docs remain pending
+    Workboard sub-slices.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips

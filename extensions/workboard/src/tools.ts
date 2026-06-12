@@ -72,6 +72,51 @@ const ReleaseParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const CompleteParamsSchema = Type.Object(
+  {
+    id: Type.String(),
+    ownerId: Type.Optional(Type.String()),
+    token: Type.Optional(Type.String()),
+    summary: Type.Optional(Type.String()),
+    proof: Type.Optional(
+      Type.Object(
+        {
+          status: Type.Optional(Type.String()),
+          label: Type.Optional(Type.String()),
+          command: Type.Optional(Type.String()),
+          url: Type.Optional(Type.String()),
+          note: Type.Optional(Type.String()),
+        },
+        { additionalProperties: false },
+      ),
+    ),
+    artifacts: Type.Optional(
+      Type.Array(
+        Type.Object(
+          {
+            label: Type.Optional(Type.String()),
+            url: Type.Optional(Type.String()),
+            path: Type.Optional(Type.String()),
+            mimeType: Type.Optional(Type.String()),
+          },
+          { additionalProperties: false },
+        ),
+      ),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+const BlockParamsSchema = Type.Object(
+  {
+    id: Type.String(),
+    ownerId: Type.Optional(Type.String()),
+    token: Type.Optional(Type.String()),
+    reason: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
 function asRecord(params: unknown): Record<string, unknown> {
   return params && typeof params === "object" && !Array.isArray(params)
     ? (params as Record<string, unknown>)
@@ -201,6 +246,28 @@ export function createWorkboardTools(params: {
         const record = asRecord(rawParams);
         const id = readStringParam(record, "id", { required: true });
         return jsonResult({ card: await store.releaseClaim(id, record) });
+      },
+    },
+    {
+      name: "workboard_complete",
+      label: "Workboard Complete",
+      description: "Mark a Workboard card done with optional summary, proof, and artifacts.",
+      parameters: CompleteParamsSchema,
+      execute: async (_toolCallId, rawParams) => {
+        const record = asRecord(rawParams);
+        const id = readStringParam(record, "id", { required: true });
+        return jsonResult({ card: await store.complete(id, record) });
+      },
+    },
+    {
+      name: "workboard_block",
+      label: "Workboard Block",
+      description: "Mark a Workboard card blocked with an optional durable reason.",
+      parameters: BlockParamsSchema,
+      execute: async (_toolCallId, rawParams) => {
+        const record = asRecord(rawParams);
+        const id = readStringParam(record, "id", { required: true });
+        return jsonResult({ card: await store.block(id, record) });
       },
     },
   ];

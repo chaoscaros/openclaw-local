@@ -119,6 +119,41 @@ describe("createWorkboardTools", () => {
     expect(released.details.card.metadata?.claim).toBeUndefined();
   });
 
+  it("completes and blocks cards through tools", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const doneCard = await store.create({ title: "Finish me" });
+    const blockedCard = await store.create({ title: "Block me" });
+    const tools = createWorkboardTools({ api: {} as OpenClawPluginApi, store });
+
+    const completed = await toolByName(tools, "workboard_complete").execute("call-1", {
+      id: doneCard.id,
+      summary: "Shipped.",
+      proof: { status: "passed", command: "pnpm test extensions/workboard" },
+    });
+    expect(completed.details).toMatchObject({
+      card: {
+        status: "done",
+        metadata: {
+          comments: [expect.objectContaining({ body: "Shipped." })],
+          proof: [expect.objectContaining({ status: "passed" })],
+        },
+      },
+    });
+
+    const blocked = await toolByName(tools, "workboard_block").execute("call-2", {
+      id: blockedCard.id,
+      reason: "Needs product decision.",
+    });
+    expect(blocked.details).toMatchObject({
+      card: {
+        status: "blocked",
+        metadata: {
+          comments: [expect.objectContaining({ body: "Needs product decision." })],
+        },
+      },
+    });
+  });
+
   it("reports missing cards from read tools", async () => {
     const store = new WorkboardStore(createMemoryStore());
     const tools = createWorkboardTools({ api: {} as OpenClawPluginApi, store });

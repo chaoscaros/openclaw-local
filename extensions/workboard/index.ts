@@ -21,6 +21,8 @@ export default definePluginEntry({
         "workboard_claim",
         "workboard_heartbeat",
         "workboard_release",
+        "workboard_complete",
+        "workboard_block",
       ],
       optional: true,
     });
