@@ -1,3 +1,5 @@
+import { parseStrictPositiveInteger } from "../infra/parse-finite-number.js";
+
 export function parseTimeoutMs(raw: unknown): number | undefined {
   if (raw === undefined || raw === null) {
     return undefined;
@@ -12,10 +14,7 @@ export function parseTimeoutMs(raw: unknown): number | undefined {
     if (!trimmed) {
       return undefined;
     }
-    if (!/^\d+$/u.test(trimmed)) {
-      return undefined;
-    }
-    value = Number(trimmed);
+    return parseStrictPositiveInteger(trimmed);
   }
   return Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
@@ -53,14 +52,14 @@ export function parseTimeoutMsWithFallback(
   }
 
   if (!value) {
+    if (options.invalidType === "error") {
+      throw invalidTimeout();
+    }
     return fallbackMs;
   }
 
-  if (!/^\d+$/u.test(value)) {
-    throw invalidTimeout(value);
-  }
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+  const parsed = parseStrictPositiveInteger(value);
+  if (parsed === undefined) {
     throw invalidTimeout(value);
   }
   return parsed;

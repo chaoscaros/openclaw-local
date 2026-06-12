@@ -234,6 +234,7 @@ describe("channelsStatusCommand SecretRef fallback flow", () => {
       channelsStatusCommand({ json: true, probe: true, timeout: "3000ms" }, runtime as never),
     ).rejects.toThrow("Invalid --timeout");
     expect(mocks.callGateway).not.toHaveBeenCalled();
+    expect(mocks.requireValidConfigSnapshot).not.toHaveBeenCalled();
   });
 
   it("keeps read-only fallback output when SecretRefs are unresolved", async () => {

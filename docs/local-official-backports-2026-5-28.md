@@ -991,6 +991,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     numeric values instead of accepting truncated values, including native hook
     relay timeout, channel status/capabilities timeout, media capability
     `--timeout-ms`, and `sessions --active`.
+- `99d0bdc23a` local equivalent:
+  - Gateway RPC timeout parsing now rejects malformed explicit values before
+    opening Gateway calls, keeps shared Gateway RPC defaults aligned with the
+    CLI 30000 ms default, and validates `cron add --timeout-seconds` at the CLI
+    boundary.
 
 ## Validation Plan
 

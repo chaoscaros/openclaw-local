@@ -1,6 +1,7 @@
 import { callGateway } from "../gateway/call.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../gateway/protocol/client-info.js";
 import type { GatewayRpcOpts } from "./gateway-rpc.types.js";
+import { parseTimeoutMsWithFallback } from "./parse-timeout.js";
 import { withProgress } from "./progress.js";
 
 type CallGatewayFromCliRuntimeExtra = {
@@ -12,6 +13,8 @@ type CallGatewayFromCliRuntimeExtra = {
   scopes?: Parameters<typeof callGateway>[0]["scopes"];
 };
 
+const DEFAULT_GATEWAY_RPC_TIMEOUT_MS = 30_000;
+
 export async function callGatewayFromCliRuntime(
   method: string,
   opts: GatewayRpcOpts,
@@ -19,6 +22,9 @@ export async function callGatewayFromCliRuntime(
   extra?: CallGatewayFromCliRuntimeExtra,
 ) {
   const showProgress = extra?.progress ?? opts.json !== true;
+  const timeoutMs = parseTimeoutMsWithFallback(opts.timeout, DEFAULT_GATEWAY_RPC_TIMEOUT_MS, {
+    invalidType: "error",
+  });
   return await withProgress(
     {
       label: `Gateway ${method}`,
@@ -34,7 +40,7 @@ export async function callGatewayFromCliRuntime(
         deviceIdentity: extra?.deviceIdentity,
         expectFinal: extra?.expectFinal ?? Boolean(opts.expectFinal),
         scopes: extra?.scopes,
-        timeoutMs: Number(opts.timeout ?? 10_000),
+        timeoutMs,
         clientName: extra?.clientName ?? GATEWAY_CLIENT_NAMES.CLI,
         mode: extra?.mode ?? GATEWAY_CLIENT_MODES.CLI,
       }),

@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { callGateway } from "../../gateway/call.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../../gateway/protocol/client-info.js";
+import { parseTimeoutMsWithFallback } from "../parse-timeout.js";
 import { withProgress } from "../progress.js";
 
 export type GatewayRpcOpts = {
@@ -14,6 +15,8 @@ export type GatewayRpcOpts = {
   json?: boolean;
 };
 
+const DEFAULT_GATEWAY_RPC_TIMEOUT_MS = 10_000;
+
 export const gatewayCallOpts = (cmd: Command) =>
   cmd
     .option("--url <url>", "Gateway WebSocket URL (defaults to gateway.remote.url when configured)")
@@ -23,8 +26,11 @@ export const gatewayCallOpts = (cmd: Command) =>
     .option("--expect-final", "Wait for final response (agent)", false)
     .option("--json", "Output JSON", false);
 
-export const callGatewayCli = async (method: string, opts: GatewayRpcOpts, params?: unknown) =>
-  withProgress(
+export const callGatewayCli = async (method: string, opts: GatewayRpcOpts, params?: unknown) => {
+  const timeoutMs = parseTimeoutMsWithFallback(opts.timeout, DEFAULT_GATEWAY_RPC_TIMEOUT_MS, {
+    invalidType: "error",
+  });
+  return await withProgress(
     {
       label: `Gateway ${method}`,
       indeterminate: true,
@@ -39,8 +45,9 @@ export const callGatewayCli = async (method: string, opts: GatewayRpcOpts, param
         method,
         params,
         expectFinal: Boolean(opts.expectFinal),
-        timeoutMs: Number(opts.timeout ?? 10_000),
+        timeoutMs,
         clientName: GATEWAY_CLIENT_NAMES.CLI,
         mode: GATEWAY_CLIENT_MODES.CLI,
       }),
   );
+};

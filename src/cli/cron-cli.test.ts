@@ -378,6 +378,26 @@ describe("cron cli", () => {
     expect(params?.payload?.thinking).toBe("low");
   });
 
+  it("rejects invalid cron add timeout seconds before enqueueing", async () => {
+    await expectCronCommandExit([
+      "cron",
+      "add",
+      "--name",
+      "Daily",
+      "--cron",
+      "* * * * *",
+      "--session",
+      "isolated",
+      "--message",
+      "hello",
+      "--timeout-seconds",
+      "30s",
+    ]);
+
+    expectRuntimeErrorContaining("Invalid --timeout-seconds");
+    expect(callGatewayFromCli.mock.calls.some((call) => call[0] === "cron.add")).toBe(false);
+  });
+
   it("defaults isolated cron add to announce delivery", async () => {
     await runCronCommand([
       "cron",

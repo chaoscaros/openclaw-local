@@ -158,7 +158,13 @@ export function registerCronAddCommand(cron: Command) {
             if (systemEvent) {
               return { kind: "systemEvent" as const, text: systemEvent };
             }
-            const timeoutSeconds = parsePositiveIntOrUndefined(opts.timeoutSeconds);
+            const timeoutSecondsOption = opts.timeoutSeconds as string | undefined;
+            const rawTimeoutSeconds =
+              timeoutSecondsOption === undefined ? undefined : timeoutSecondsOption.trim();
+            const timeoutSeconds = parsePositiveIntOrUndefined(rawTimeoutSeconds);
+            if (rawTimeoutSeconds !== undefined && timeoutSeconds === undefined) {
+              throw new Error("Invalid --timeout-seconds (must be a positive integer).");
+            }
             return {
               kind: "agentTurn" as const,
               message,
