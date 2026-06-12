@@ -1037,6 +1037,14 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - New-session initialization now clears stale subagent lifecycle fields
     (`startedAt`, `endedAt`, `runtimeMs`, and `status`) along with prompt and
     usage caches.
+- `5f88932806` partial local equivalent:
+  - Session usage persistence now forwards `compactionTokensAfter` from reply
+    and follow-up runs, prefers fresh final usage when present, and clears stale
+    usage/cache/context-budget snapshots when a compaction token snapshot is
+    the only fresh context signal.
+  - Remaining official pieces still need separate review: empty preflight
+    compaction recovery in the embedded runner and header-only transcript
+    cleanup semantics.
 
 ## Validation Plan
 
