@@ -50,6 +50,141 @@ describe("runtime context prompt submission", () => {
     });
   });
 
+  it("keeps prompt-local additions in the model prompt", () => {
+    expect(
+      resolveRuntimeContextPromptParts({
+        effectivePrompt: ["runtime prefix", "", "visible ask", "", "retry instruction"].join("\n"),
+        transcriptPrompt: "visible ask",
+        modelPrompt: ["runtime prefix", "", "visible ask", "", "retry instruction"].join("\n"),
+      }),
+    ).toEqual({
+      prompt: "visible ask",
+      modelPrompt: "runtime prefix\n\nvisible ask\n\nretry instruction",
+    });
+  });
+
+  it("preserves unsplit prompt whitespace", () => {
+    expect(
+      resolveRuntimeContextPromptParts({
+        effectivePrompt: "  keep literal whitespace  ",
+      }),
+    ).toEqual({
+      prompt: "  keep literal whitespace  ",
+    });
+  });
+
+  it("keeps no-transcript prompt-local additions in the model prompt", () => {
+    expect(
+      resolveRuntimeContextPromptParts({
+        effectivePrompt: "visible ask",
+        modelPrompt: ["runtime prefix", "", "visible ask", "", "retry instruction"].join("\n"),
+      }),
+    ).toEqual({
+      prompt: "visible ask",
+      modelPrompt: "runtime prefix\n\nvisible ask\n\nretry instruction",
+    });
+  });
+
+  it("keeps hidden runtime context separate from prompt-local additions", () => {
+    const prompt = ["runtime prefix", "", "visible ask", "", "retry instruction"].join("\n");
+    const effectivePrompt = [
+      prompt,
+      "",
+      "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>",
+      "secret runtime context",
+      "<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+    ].join("\n");
+
+    expect(
+      resolveRuntimeContextPromptParts({
+        effectivePrompt,
+        transcriptPrompt: "visible ask",
+        modelPrompt: effectivePrompt,
+      }),
+    ).toEqual({
+      prompt: "visible ask",
+      modelPrompt: prompt,
+      runtimeContext:
+        "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nsecret runtime context\n<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+    });
+  });
+
+  it("does not extract no-transcript delimiter text", () => {
+    const effectivePrompt = [
+      "visible ask",
+      "",
+      "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>",
+      "secret runtime context",
+      "<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+    ].join("\n");
+
+    expect(resolveRuntimeContextPromptParts({ effectivePrompt })).toEqual({
+      prompt: effectivePrompt,
+    });
+  });
+
+  it("extracts multiple hidden runtime context blocks", () => {
+    const effectivePrompt = [
+      "runtime prefix",
+      "",
+      "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>",
+      "first secret",
+      "<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+      "",
+      "visible ask",
+      "",
+      "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>",
+      "second secret",
+      "<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+      "",
+      "retry instruction",
+    ].join("\n");
+
+    expect(
+      resolveRuntimeContextPromptParts({
+        effectivePrompt,
+        transcriptPrompt: "visible ask",
+        modelPrompt: effectivePrompt,
+      }),
+    ).toEqual({
+      prompt: "visible ask",
+      modelPrompt: "runtime prefix\n\nvisible ask\n\nretry instruction",
+      runtimeContext: [
+        "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nfirst secret\n<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+        "",
+        "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nsecond secret\n<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+      ].join("\n"),
+    });
+  });
+
+  it("ignores repeated inline marker mentions without recursive stack growth", () => {
+    const inlineMarkers = Array.from(
+      { length: 250 },
+      () => "inline <<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>> marker",
+    ).join("\n");
+    const effectivePrompt = [
+      inlineMarkers,
+      "",
+      "visible ask",
+      "",
+      "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>",
+      "secret runtime context",
+      "<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+    ].join("\n");
+
+    const parts = resolveRuntimeContextPromptParts({
+      effectivePrompt,
+      transcriptPrompt: "visible ask",
+      modelPrompt: effectivePrompt,
+    });
+
+    expect(parts.prompt).toContain("visible ask");
+    expect(parts.modelPrompt).toContain("inline <<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>> marker");
+    expect(parts.modelPrompt).toContain("visible ask");
+    expect(parts.modelPrompt).not.toContain("secret runtime context");
+    expect(parts.prompt).not.toContain("secret runtime context");
+  });
+
   it("uses a marker prompt for runtime-only events", () => {
     const parts = resolveRuntimeContextPromptParts({
       effectivePrompt: "internal event",
@@ -78,6 +213,26 @@ describe("runtime context prompt submission", () => {
       }),
     ).toEqual({
       prompt: "[OpenClaw room event]",
+    });
+  });
+
+  it("keeps suppressed empty-transcript hook context model-only", () => {
+    expect(
+      resolveRuntimeContextPromptParts({
+        effectivePrompt: "[OpenClaw room event]",
+        transcriptPrompt: "",
+        modelPrompt: [
+          "dynamic hook context",
+          "",
+          "[OpenClaw room event]",
+          "",
+          "dynamic hook tail",
+        ].join("\n"),
+        emptyTranscriptMode: "model-prompt",
+      }),
+    ).toEqual({
+      prompt: "[OpenClaw room event]",
+      modelPrompt: "dynamic hook context\n\n[OpenClaw room event]\n\ndynamic hook tail",
     });
   });
 

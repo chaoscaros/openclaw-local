@@ -441,8 +441,6 @@ Local check before editing this lane:
 
 High-priority official changes to compare:
 
-- `5f68291f4f`: move session write lock into owned session runtime.
-- `8b7a4826a1`: keep hook context prompt-local.
 - `73cf516def`: preserve embedded base system prompts.
 
 Local check before editing this lane:
@@ -1029,6 +1027,23 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - The local session lock controller now drains in-flight retained lock users
     before releasing, reacquiring, cleanup handoff, or dispose, preventing
     timeout cleanup from racing transcript writes.
+- `5f68291f4f` reviewed, not directly applied:
+  - The official patch moves the write-lock seam into the owned
+    `src/agents/sessions` runtime. This local branch uses
+    `@earendil-works/pi-coding-agent` 0.75.5 for session runtime, whose public
+    declarations do not expose `withSessionWriteLock` on `createAgentSession`.
+  - Keep the local `installSessionEventWriteLock` and
+    `installSessionExternalHookWriteLock` wrappers until the Pi SDK exposes a
+    compatible session-runtime lock seam; the timeout/cleanup race in that
+    wrapper controller is covered by the local `65fb56513f` equivalent above.
+- `8b7a4826a1` local equivalent:
+  - Runtime context prompt splitting now separates transcript prompt, model
+    prompt, and hidden runtime context so before-prompt-build prepend/append
+    context stays prompt-local instead of being written to visible transcript
+    history.
+  - Context-engine loop ingestion projects marked model prompts back to the
+    transcript text while provider assembly keeps the model-only context, and
+    strips internal transcript markers before messages leave the guard.
 - `d8641a661b` local equivalent:
   - Restart continuation queue entries now record the session id they were
     created for and fall back to a wake if the session rotated before delivery,
