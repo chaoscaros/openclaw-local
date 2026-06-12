@@ -48,6 +48,10 @@ OpenClaw has three public release lanes:
   own lane so they do not stall or block publish
 - Release checks must be dispatched from the `main` workflow ref so the
   workflow logic and secrets stay canonical
+- Focused `npm-telegram` reruns require `release_package_spec` or
+  `npm_telegram_package_spec`; otherwise the full profile uses the
+  `release-package-under-test` artifact prepared by the parent full-release
+  validation run
 - That workflow accepts either an existing release tag or the current full
   40-character `main` commit SHA
 - In commit-SHA mode it only accepts the current `origin/main` HEAD; use a
