@@ -1147,6 +1147,16 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     different run in the same session.
   - Generated plugin inventory, docs, execution actions, metadata/events, and
     coordination tools remain pending Workboard sub-slices.
+- `a341ae27ec` local Workboard event-history subset:
+  - Workboard cards now persist a bounded event trail for creation, edits,
+    status moves, and session/run link changes, giving later execution actions
+    and coordination tools a durable timeline without changing the current
+    Control UI layout.
+  - The Control UI Workboard controller now preserves event history from
+    gateway responses while keeping it non-rendered until a later details or
+    diagnostics slice.
+  - Broader orchestration metadata, agent coordination tools, generated plugin
+    inventory, and docs remain pending Workboard sub-slices.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips

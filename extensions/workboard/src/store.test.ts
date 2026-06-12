@@ -34,6 +34,7 @@ describe("WorkboardStore", () => {
     expect((await store.list()).map((card) => card.id)).toEqual([todo.id, review.id]);
     expect(review.labels).toEqual(["release", "docs"]);
     expect(review.priority).toBe("high");
+    expect(review.events?.[0]).toMatchObject({ kind: "created", toStatus: "review" });
   });
 
   it("keeps initial session, run, and task links when creating cards", async () => {
@@ -61,9 +62,38 @@ describe("WorkboardStore", () => {
     expect(running.status).toBe("running");
     expect(running.position).toBe(500);
     expect(running.startedAt).toBeGreaterThanOrEqual(card.createdAt);
+    expect(running.events?.at(-1)).toMatchObject({
+      kind: "moved",
+      fromStatus: "todo",
+      toStatus: "running",
+    });
 
     const done = await store.update(card.id, { status: "done" });
     expect(done.completedAt).toBeGreaterThanOrEqual(done.startedAt ?? 0);
+  });
+
+  it("records link and edit events without growing the event log forever", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const card = await store.create({ title: "Trace card" });
+
+    const linked = await store.update(card.id, {
+      sessionKey: "agent:main:dashboard:1",
+      runId: "run-1",
+    });
+    expect(linked.events?.at(-1)).toMatchObject({
+      kind: "linked",
+      sessionKey: "agent:main:dashboard:1",
+      runId: "run-1",
+    });
+
+    let edited = linked;
+    for (let index = 0; index < 60; index += 1) {
+      edited = await store.update(card.id, { notes: `note ${index}` });
+    }
+
+    expect(edited.events).toHaveLength(50);
+    expect(edited.events?.at(-1)).toMatchObject({ kind: "edited" });
+    expect(edited.events?.[0]?.kind).toBe("edited");
   });
 
   it("rejects invalid status values", async () => {

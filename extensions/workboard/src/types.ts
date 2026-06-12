@@ -8,9 +8,21 @@ export const WORKBOARD_STATUSES = [
 ] as const;
 
 export const WORKBOARD_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+export const WORKBOARD_EVENT_KINDS = ["created", "edited", "moved", "linked"] as const;
 
 export type WorkboardStatus = (typeof WORKBOARD_STATUSES)[number];
 export type WorkboardPriority = (typeof WORKBOARD_PRIORITIES)[number];
+export type WorkboardEventKind = (typeof WORKBOARD_EVENT_KINDS)[number];
+
+export type WorkboardEvent = {
+  id: string;
+  kind: WorkboardEventKind;
+  at: number;
+  fromStatus?: WorkboardStatus;
+  toStatus?: WorkboardStatus;
+  sessionKey?: string;
+  runId?: string;
+};
 
 export type WorkboardCard = {
   id: string;
@@ -29,6 +41,7 @@ export type WorkboardCard = {
   updatedAt: number;
   startedAt?: number;
   completedAt?: number;
+  events?: WorkboardEvent[];
 };
 
 export type WorkboardListResult = {

@@ -15,6 +15,16 @@ export const WORKBOARD_PRIORITIES = ["low", "normal", "high", "urgent"] as const
 export type WorkboardStatus = (typeof WORKBOARD_STATUSES)[number];
 export type WorkboardPriority = (typeof WORKBOARD_PRIORITIES)[number];
 
+export type WorkboardEvent = {
+  id: string;
+  kind: "created" | "edited" | "moved" | "linked";
+  at: number;
+  fromStatus?: WorkboardStatus;
+  toStatus?: WorkboardStatus;
+  sessionKey?: string;
+  runId?: string;
+};
+
 export type WorkboardCard = {
   id: string;
   title: string;
@@ -32,6 +42,7 @@ export type WorkboardCard = {
   updatedAt: number;
   startedAt?: number;
   completedAt?: number;
+  events?: WorkboardEvent[];
 };
 
 export type WorkboardLifecycleState =
@@ -154,7 +165,41 @@ function normalizeCard(value: unknown): WorkboardCard | null {
     ...(typeof value.sourceUrl === "string" ? { sourceUrl: value.sourceUrl } : {}),
     ...(typeof value.startedAt === "number" ? { startedAt: value.startedAt } : {}),
     ...(typeof value.completedAt === "number" ? { completedAt: value.completedAt } : {}),
+    ...(Array.isArray(value.events) ? { events: normalizeCardEvents(value.events) } : {}),
   };
+}
+
+function normalizeCardEvents(events: unknown[]): WorkboardEvent[] {
+  return events
+    .map((event): WorkboardEvent | null => {
+      if (!isRecord(event) || typeof event.id !== "string" || typeof event.at !== "number") {
+        return null;
+      }
+      const kind =
+        event.kind === "created" ||
+        event.kind === "edited" ||
+        event.kind === "moved" ||
+        event.kind === "linked"
+          ? event.kind
+          : null;
+      if (!kind) {
+        return null;
+      }
+      return {
+        id: event.id,
+        kind,
+        at: event.at,
+        ...(WORKBOARD_STATUSES.includes(event.fromStatus as WorkboardStatus)
+          ? { fromStatus: event.fromStatus as WorkboardStatus }
+          : {}),
+        ...(WORKBOARD_STATUSES.includes(event.toStatus as WorkboardStatus)
+          ? { toStatus: event.toStatus as WorkboardStatus }
+          : {}),
+        ...(typeof event.sessionKey === "string" ? { sessionKey: event.sessionKey } : {}),
+        ...(typeof event.runId === "string" ? { runId: event.runId } : {}),
+      };
+    })
+    .filter((event): event is WorkboardEvent => event !== null);
 }
 
 function normalizeCardsPayload(payload: unknown): {

@@ -3,12 +3,15 @@ import {
   WORKBOARD_PRIORITIES,
   WORKBOARD_STATUSES,
   type WorkboardCard,
+  type WorkboardEvent,
+  type WorkboardEventKind,
   type WorkboardPriority,
   type WorkboardStatus,
 } from "./types.js";
 
 const POSITION_STEP = 1000;
 const MAX_CARDS = 2000;
+const MAX_CARD_EVENTS = 50;
 
 export type PersistedWorkboardCard = {
   version: 1;
@@ -151,6 +154,84 @@ function removeUndefinedCardFields(card: WorkboardCard): WorkboardCard {
   return next;
 }
 
+function createEvent(
+  kind: WorkboardEventKind,
+  at: number,
+  fields: Omit<WorkboardEvent, "id" | "kind" | "at"> = {},
+): WorkboardEvent {
+  return removeUndefinedEventFields({
+    id: randomUUID(),
+    kind,
+    at,
+    ...fields,
+  });
+}
+
+function removeUndefinedEventFields(event: WorkboardEvent): WorkboardEvent {
+  const next = { ...event };
+  for (const key of ["fromStatus", "toStatus", "sessionKey", "runId"] as const) {
+    if (next[key] === undefined) {
+      delete next[key];
+    }
+  }
+  return next;
+}
+
+function appendEvent(
+  events: readonly WorkboardEvent[] | undefined,
+  event: WorkboardEvent,
+): WorkboardEvent[] {
+  return [...(events ?? []), event].slice(-MAX_CARD_EVENTS);
+}
+
+function updateEventsForPatch(
+  existing: WorkboardCard,
+  patch: WorkboardCardPatch,
+  status: WorkboardStatus,
+  now: number,
+): WorkboardEvent[] | undefined {
+  const events = existing.events ?? [];
+  const statusChanged = status !== existing.status;
+  const sessionChanged = patch.sessionKey !== undefined;
+  const runChanged = patch.runId !== undefined;
+  if (statusChanged) {
+    return appendEvent(
+      events,
+      createEvent("moved", now, {
+        fromStatus: existing.status,
+        toStatus: status,
+        sessionKey: existing.sessionKey,
+        runId: existing.runId,
+      }),
+    );
+  }
+  if (sessionChanged || runChanged) {
+    return appendEvent(
+      events,
+      createEvent("linked", now, {
+        sessionKey:
+          patch.sessionKey === undefined
+            ? existing.sessionKey
+            : normalizeOptionalString(patch.sessionKey),
+        runId: patch.runId === undefined ? existing.runId : normalizeOptionalString(patch.runId),
+      }),
+    );
+  }
+  if (
+    patch.title !== undefined ||
+    patch.notes !== undefined ||
+    patch.priority !== undefined ||
+    patch.labels !== undefined ||
+    patch.agentId !== undefined ||
+    patch.taskId !== undefined ||
+    patch.sourceUrl !== undefined ||
+    patch.position !== undefined
+  ) {
+    return appendEvent(events, createEvent("edited", now));
+  }
+  return existing.events;
+}
+
 export class WorkboardStore {
   constructor(private readonly store: WorkboardKeyedStore) {}
 
@@ -193,6 +274,7 @@ export class WorkboardStore {
       position,
       createdAt: now,
       updatedAt: now,
+      events: [createEvent("created", now, { toStatus: status, sessionKey, runId })],
       ...(notes ? { notes } : {}),
       ...(agentId ? { agentId } : {}),
       ...(sessionKey ? { sessionKey } : {}),
@@ -213,6 +295,7 @@ export class WorkboardStore {
     const now = Date.now();
     const completedAt = status === "done" ? (existing.completedAt ?? now) : undefined;
     const startedAt = status === "running" ? (existing.startedAt ?? now) : existing.startedAt;
+    const events = updateEventsForPatch(existing, patch, status, now);
     const next = removeUndefinedCardFields({
       ...existing,
       title: patch.title === undefined ? existing.title : normalizeTitle(patch.title),
@@ -240,6 +323,7 @@ export class WorkboardStore {
           ? existing.position
           : normalizePosition(patch.position, existing.position),
       updatedAt: now,
+      ...(events ? { events } : {}),
       ...(startedAt ? { startedAt } : {}),
       ...(completedAt ? { completedAt } : {}),
     });
