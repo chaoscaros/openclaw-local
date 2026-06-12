@@ -214,6 +214,66 @@ describe("WorkboardStore", () => {
     await expect(store.linkCards(card.id, card.id)).rejects.toThrow(/cannot depend on itself/);
   });
 
+  it("claims, heartbeats, and releases cards", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const card = await store.create({ title: "Claim me" });
+
+    const claimed = await store.claim(card.id, { ownerId: "agent-main", ttlSeconds: 120 });
+    expect(claimed.token).toEqual(expect.any(String));
+    expect(claimed.card).toMatchObject({
+      status: "running",
+      metadata: {
+        claim: {
+          ownerId: "agent-main",
+          token: claimed.token,
+          claimedAt: expect.any(Number),
+          lastHeartbeatAt: expect.any(Number),
+          expiresAt: expect.any(Number),
+        },
+      },
+    });
+    expect(claimed.card.events?.at(-1)).toMatchObject({ kind: "claimed" });
+
+    const heartbeat = await store.heartbeat(claimed.card.id, {
+      ownerId: "agent-main",
+      note: "Still working.",
+    });
+    expect(heartbeat.metadata?.comments?.at(-1)).toMatchObject({ body: "Still working." });
+    expect(heartbeat.events?.at(-1)).toMatchObject({ kind: "heartbeat" });
+
+    const released = await store.releaseClaim(claimed.card.id, {
+      ownerId: "agent-main",
+      status: "review",
+    });
+    expect(released.status).toBe("review");
+    expect(released.metadata?.claim).toBeUndefined();
+    expect(released.events?.at(-1)).toMatchObject({ kind: "released" });
+  });
+
+  it("guards claimed cards from other owners", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const card = await store.create({ title: "Claim guard" });
+    const claimed = await store.claim(card.id, { ownerId: "agent-main", token: "token-1" });
+
+    await expect(store.claim(card.id, { ownerId: "other" })).rejects.toThrow(
+      /claimed by agent-main/,
+    );
+    await expect(store.heartbeat(card.id, { ownerId: "other" })).rejects.toThrow(
+      /claimed by agent-main/,
+    );
+    const released = await store.releaseClaim(card.id, {
+      ownerId: "other",
+      token: "token-1",
+      status: "todo",
+    });
+    expect(released.status).toBe("todo");
+    expect(released.metadata?.claim).toBeUndefined();
+    await expect(store.get(card.id)).resolves.toMatchObject({
+      id: claimed.card.id,
+      status: "todo",
+    });
+  });
+
   it("rejects invalid status values", async () => {
     const store = new WorkboardStore(createMemoryStore());
     await expect(store.create({ title: "Bad card", status: "later" })).rejects.toThrow(

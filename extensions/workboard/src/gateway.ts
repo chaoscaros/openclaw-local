@@ -177,4 +177,40 @@ export function registerWorkboardGatewayMethods(params: {
     },
     { scope: WRITE_SCOPE },
   );
+
+  api.registerGatewayMethod(
+    "workboard.cards.claim",
+    async ({ params: requestParams, respond }) => {
+      try {
+        respond(true, await store.claim(readId(requestParams), requestParams));
+      } catch (error) {
+        respondError(respond, error);
+      }
+    },
+    { scope: WRITE_SCOPE },
+  );
+
+  api.registerGatewayMethod(
+    "workboard.cards.heartbeat",
+    async ({ params: requestParams, respond }) => {
+      try {
+        respond(true, { card: await store.heartbeat(readId(requestParams), requestParams) });
+      } catch (error) {
+        respondError(respond, error);
+      }
+    },
+    { scope: WRITE_SCOPE },
+  );
+
+  api.registerGatewayMethod(
+    "workboard.cards.release",
+    async ({ params: requestParams, respond }) => {
+      try {
+        respond(true, { card: await store.releaseClaim(readId(requestParams), requestParams) });
+      } catch (error) {
+        respondError(respond, error);
+      }
+    },
+    { scope: WRITE_SCOPE },
+  );
 }

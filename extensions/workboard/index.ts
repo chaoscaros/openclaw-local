@@ -13,7 +13,15 @@ export default definePluginEntry({
     );
     registerWorkboardGatewayMethods({ api, store });
     api.registerTool(() => createWorkboardTools({ api, store }), {
-      names: ["workboard_list", "workboard_read", "workboard_comment", "workboard_proof"],
+      names: [
+        "workboard_list",
+        "workboard_read",
+        "workboard_comment",
+        "workboard_proof",
+        "workboard_claim",
+        "workboard_heartbeat",
+        "workboard_release",
+      ],
       optional: true,
     });
   },

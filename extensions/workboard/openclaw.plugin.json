@@ -11,7 +11,10 @@
       "workboard_list",
       "workboard_read",
       "workboard_comment",
-      "workboard_proof"
+      "workboard_proof",
+      "workboard_claim",
+      "workboard_heartbeat",
+      "workboard_release"
     ]
   },
   "toolMetadata": {
@@ -25,6 +28,15 @@
       "optional": true
     },
     "workboard_proof": {
+      "optional": true
+    },
+    "workboard_claim": {
+      "optional": true
+    },
+    "workboard_heartbeat": {
+      "optional": true
+    },
+    "workboard_release": {
       "optional": true
     }
   },

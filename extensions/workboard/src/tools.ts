@@ -42,6 +42,36 @@ const ProofParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const ClaimParamsSchema = Type.Object(
+  {
+    id: Type.String(),
+    ownerId: Type.String(),
+    token: Type.Optional(Type.String()),
+    ttlSeconds: Type.Optional(Type.Number()),
+  },
+  { additionalProperties: false },
+);
+
+const HeartbeatParamsSchema = Type.Object(
+  {
+    id: Type.String(),
+    ownerId: Type.String(),
+    token: Type.Optional(Type.String()),
+    note: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+const ReleaseParamsSchema = Type.Object(
+  {
+    id: Type.String(),
+    ownerId: Type.Optional(Type.String()),
+    token: Type.Optional(Type.String()),
+    status: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
 function asRecord(params: unknown): Record<string, unknown> {
   return params && typeof params === "object" && !Array.isArray(params)
     ? (params as Record<string, unknown>)
@@ -136,6 +166,41 @@ export function createWorkboardTools(params: {
         const record = asRecord(rawParams);
         const id = readStringParam(record, "id", { required: true });
         return jsonResult({ card: await store.addProof(id, record) });
+      },
+    },
+    {
+      name: "workboard_claim",
+      label: "Workboard Claim",
+      description: "Claim a Workboard card for an agent and move todo/backlog cards to running.",
+      parameters: ClaimParamsSchema,
+      execute: async (_toolCallId, rawParams) => {
+        const record = asRecord(rawParams);
+        const id = readStringParam(record, "id", { required: true });
+        const ownerId = readStringParam(record, "ownerId", { required: true });
+        return jsonResult(await store.claim(id, { ...record, ownerId }));
+      },
+    },
+    {
+      name: "workboard_heartbeat",
+      label: "Workboard Heartbeat",
+      description: "Refresh a Workboard claim heartbeat and optionally append a progress note.",
+      parameters: HeartbeatParamsSchema,
+      execute: async (_toolCallId, rawParams) => {
+        const record = asRecord(rawParams);
+        const id = readStringParam(record, "id", { required: true });
+        const ownerId = readStringParam(record, "ownerId", { required: true });
+        return jsonResult({ card: await store.heartbeat(id, { ...record, ownerId }) });
+      },
+    },
+    {
+      name: "workboard_release",
+      label: "Workboard Release",
+      description: "Release a Workboard claim, optionally moving the card to another status.",
+      parameters: ReleaseParamsSchema,
+      execute: async (_toolCallId, rawParams) => {
+        const record = asRecord(rawParams);
+        const id = readStringParam(record, "id", { required: true });
+        return jsonResult({ card: await store.releaseClaim(id, record) });
       },
     },
   ];

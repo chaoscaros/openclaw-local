@@ -54,6 +54,9 @@ describe("workboard gateway methods", () => {
       "workboard.cards.linkDependency",
       "workboard.cards.proof",
       "workboard.cards.artifact",
+      "workboard.cards.claim",
+      "workboard.cards.heartbeat",
+      "workboard.cards.release",
     ]);
     expect(methods.get("workboard.cards.list")?.opts).toEqual({ scope: "operator.read" });
     expect(methods.get("workboard.cards.create")?.opts).toEqual({ scope: "operator.write" });
@@ -190,5 +193,63 @@ describe("workboard gateway methods", () => {
       code: "workboard_error",
       message: "parentId and childId are required.",
     });
+  });
+
+  it("claims, heartbeats, and releases cards through gateway methods", async () => {
+    type RegisteredMethod = {
+      handler: Parameters<OpenClawPluginApi["registerGatewayMethod"]>[1];
+      opts: Parameters<OpenClawPluginApi["registerGatewayMethod"]>[2];
+    };
+    const methods = new Map<string, RegisteredMethod>();
+    const api = {
+      runtime: {
+        state: {
+          openKeyedStore: vi.fn(() => createMemoryStore()),
+        },
+      },
+      registerGatewayMethod: vi.fn(
+        (method: string, handler: RegisteredMethod["handler"], opts: RegisteredMethod["opts"]) => {
+          methods.set(method, { handler, opts });
+        },
+      ),
+    } as unknown as OpenClawPluginApi;
+
+    registerWorkboardGatewayMethods({ api });
+
+    const createRespond = vi.fn();
+    await methods.get("workboard.cards.create")?.handler({
+      params: { title: "Claim me" },
+      respond: createRespond,
+    } as never);
+    const cardId = createRespond.mock.calls[0]?.[1]?.card.id;
+
+    const claimRespond = vi.fn();
+    await methods.get("workboard.cards.claim")?.handler({
+      params: { id: cardId, ownerId: "agent-main", token: "token-1" },
+      respond: claimRespond,
+    } as never);
+    expect(claimRespond.mock.calls[0]?.[1]).toMatchObject({
+      token: "token-1",
+      card: { status: "running", metadata: { claim: { ownerId: "agent-main" } } },
+    });
+
+    const heartbeatRespond = vi.fn();
+    await methods.get("workboard.cards.heartbeat")?.handler({
+      params: { id: cardId, ownerId: "agent-main", note: "still alive" },
+      respond: heartbeatRespond,
+    } as never);
+    expect(heartbeatRespond.mock.calls[0]?.[1]).toMatchObject({
+      card: { metadata: { comments: [expect.objectContaining({ body: "still alive" })] } },
+    });
+
+    const releaseRespond = vi.fn();
+    await methods.get("workboard.cards.release")?.handler({
+      params: { id: cardId, ownerId: "agent-main", status: "review" },
+      respond: releaseRespond,
+    } as never);
+    expect(releaseRespond.mock.calls[0]?.[1]).toMatchObject({
+      card: { status: "review" },
+    });
+    expect(releaseRespond.mock.calls[0]?.[1]?.card.metadata?.claim).toBeUndefined();
   });
 });

@@ -81,6 +81,44 @@ describe("createWorkboardTools", () => {
     });
   });
 
+  it("claims, heartbeats, and releases cards through tools", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const card = await store.create({ title: "Coordinate me" });
+    const tools = createWorkboardTools({ api: {} as OpenClawPluginApi, store });
+
+    const claimed = await toolByName(tools, "workboard_claim").execute("call-1", {
+      id: card.id,
+      ownerId: "agent-main",
+      token: "token-1",
+    });
+    expect(claimed.details).toMatchObject({
+      token: "token-1",
+      card: {
+        status: "running",
+        metadata: { claim: { ownerId: "agent-main" } },
+      },
+    });
+
+    const heartbeat = await toolByName(tools, "workboard_heartbeat").execute("call-2", {
+      id: card.id,
+      ownerId: "agent-main",
+      note: "still alive",
+    });
+    expect(heartbeat.details).toMatchObject({
+      card: {
+        metadata: { comments: [expect.objectContaining({ body: "still alive" })] },
+      },
+    });
+
+    const released = await toolByName(tools, "workboard_release").execute("call-3", {
+      id: card.id,
+      ownerId: "agent-main",
+      status: "review",
+    });
+    expect(released.details).toMatchObject({ card: { status: "review" } });
+    expect(released.details.card.metadata?.claim).toBeUndefined();
+  });
+
   it("reports missing cards from read tools", async () => {
     const store = new WorkboardStore(createMemoryStore());
     const tools = createWorkboardTools({ api: {} as OpenClawPluginApi, store });

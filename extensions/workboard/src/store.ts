@@ -6,6 +6,7 @@ import {
   WORKBOARD_STATUSES,
   type WorkboardCard,
   type WorkboardArtifact,
+  type WorkboardClaim,
   type WorkboardComment,
   type WorkboardEvent,
   type WorkboardEventKind,
@@ -25,6 +26,7 @@ const MAX_CARD_COMMENTS = 50;
 const MAX_CARD_LINKS = 50;
 const MAX_CARD_PROOF = 40;
 const MAX_CARD_ARTIFACTS = 40;
+const DEFAULT_CLAIM_TTL_MS = 30 * 60 * 1000;
 
 export type PersistedWorkboardCard = {
   version: 1;
@@ -72,6 +74,17 @@ export type WorkboardArtifactInput = {
   url?: unknown;
   path?: unknown;
   mimeType?: unknown;
+};
+export type WorkboardClaimInput = {
+  ownerId?: unknown;
+  token?: unknown;
+  ttlSeconds?: unknown;
+};
+export type WorkboardHeartbeatInput = {
+  ownerId?: unknown;
+  token?: unknown;
+  note?: unknown;
+  status?: unknown;
 };
 
 function normalizeOptionalString(value: unknown): string | undefined {
@@ -231,6 +244,9 @@ function removeUndefinedMetadataFields(metadata: WorkboardMetadata): WorkboardMe
       delete next[key];
     }
   }
+  if (!next.claim) {
+    delete next.claim;
+  }
   return next;
 }
 
@@ -318,6 +334,35 @@ function normalizeArtifactInput(input: WorkboardArtifactInput, now: number): Wor
     ...(artifactPath ? { path: artifactPath } : {}),
     ...(mimeType ? { mimeType } : {}),
   };
+}
+
+function normalizeClaimTtlMs(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_CLAIM_TTL_MS;
+  }
+  return Math.max(60, Math.min(24 * 60 * 60, Math.trunc(value))) * 1000;
+}
+
+function normalizeClaimOwner(value: unknown): string {
+  const ownerId = normalizeBoundedString(value, undefined, 120, "claim owner");
+  if (!ownerId) {
+    throw new Error("claim ownerId is required.");
+  }
+  return ownerId;
+}
+
+function canMutateClaimedCard(card: WorkboardCard, ownerId: string, token?: string): boolean {
+  const claim = card.metadata?.claim;
+  if (!claim) {
+    return true;
+  }
+  return claim.ownerId === ownerId || (Boolean(token) && claim.token === token);
+}
+
+function assertCanMutateClaimedCard(card: WorkboardCard, ownerId: string, token?: string) {
+  if (!canMutateClaimedCard(card, ownerId, token)) {
+    throw new Error(`card is claimed by ${card.metadata?.claim?.ownerId ?? "another owner"}.`);
+  }
 }
 
 function createEvent(
@@ -621,6 +666,106 @@ export class WorkboardStore {
       }),
       createEvent("artifact_added", now),
     );
+  }
+
+  async claim(
+    id: string,
+    input: WorkboardClaimInput,
+  ): Promise<{ card: WorkboardCard; token: string }> {
+    const ownerId = normalizeClaimOwner(input.ownerId);
+    const token =
+      normalizeBoundedString(input.token, undefined, 160, "claim token") ?? randomUUID();
+    const now = Date.now();
+    const existing = await this.get(id);
+    if (!existing) {
+      throw new Error(`card not found: ${id}`);
+    }
+    assertCanMutateClaimedCard(existing, ownerId, token);
+    const claim: WorkboardClaim = {
+      ownerId,
+      token,
+      claimedAt: existing.metadata?.claim?.claimedAt ?? now,
+      lastHeartbeatAt: now,
+      expiresAt: now + normalizeClaimTtlMs(input.ttlSeconds),
+    };
+    const next = removeUndefinedCardFields({
+      ...existing,
+      status:
+        existing.status === "backlog" || existing.status === "todo" ? "running" : existing.status,
+      startedAt: existing.startedAt ?? now,
+      updatedAt: now,
+      metadata: omitEmptyMetadata({ ...existing.metadata, claim }),
+      events: appendEvent(existing.events, createEvent("claimed", now)),
+    });
+    await this.store.register(next.id, { version: 1, card: next });
+    return { card: next, token };
+  }
+
+  async heartbeat(id: string, input: WorkboardHeartbeatInput): Promise<WorkboardCard> {
+    const ownerId = normalizeClaimOwner(input.ownerId);
+    const token = normalizeBoundedString(input.token, undefined, 160, "claim token");
+    const note = normalizeBoundedString(input.note, undefined, 400, "heartbeat note");
+    const existing = await this.get(id);
+    if (!existing) {
+      throw new Error(`card not found: ${id}`);
+    }
+    const claim = existing.metadata?.claim;
+    if (!claim) {
+      throw new Error("card is not claimed.");
+    }
+    assertCanMutateClaimedCard(existing, ownerId, token);
+    const now = Date.now();
+    const ttlMs =
+      claim.expiresAt && claim.expiresAt > claim.lastHeartbeatAt
+        ? claim.expiresAt - claim.lastHeartbeatAt
+        : DEFAULT_CLAIM_TTL_MS;
+    const comment = note ? { id: randomUUID(), body: note, createdAt: now } : undefined;
+    const next = removeUndefinedCardFields({
+      ...existing,
+      updatedAt: now,
+      metadata: omitEmptyMetadata({
+        ...existing.metadata,
+        claim: {
+          ...claim,
+          lastHeartbeatAt: now,
+          expiresAt: now + ttlMs,
+        },
+        comments: comment
+          ? [...(existing.metadata?.comments ?? []), comment].slice(-MAX_CARD_COMMENTS)
+          : existing.metadata?.comments,
+      }),
+      events: appendEvent(existing.events, createEvent("heartbeat", now)),
+    });
+    await this.store.register(next.id, { version: 1, card: next });
+    return next;
+  }
+
+  async releaseClaim(id: string, input: WorkboardHeartbeatInput = {}): Promise<WorkboardCard> {
+    const existing = await this.get(id);
+    if (!existing) {
+      throw new Error(`card not found: ${id}`);
+    }
+    const claim = existing.metadata?.claim;
+    if (!claim) {
+      throw new Error("card is not claimed.");
+    }
+    const ownerId = normalizeClaimOwner(input.ownerId ?? claim.ownerId);
+    const token = normalizeBoundedString(input.token, undefined, 160, "claim token");
+    assertCanMutateClaimedCard(existing, ownerId, token);
+    const now = Date.now();
+    const status =
+      input.status === undefined ? existing.status : normalizeStatus(input.status, existing.status);
+    const metadata = { ...existing.metadata };
+    delete metadata.claim;
+    const next = removeUndefinedCardFields({
+      ...existing,
+      status,
+      updatedAt: now,
+      metadata: omitEmptyMetadata(metadata),
+      events: appendEvent(existing.events, createEvent("released", now)),
+    });
+    await this.store.register(next.id, { version: 1, card: next });
+    return next;
   }
 
   static open(

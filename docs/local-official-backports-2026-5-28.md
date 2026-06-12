@@ -1197,6 +1197,15 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     and declares the tool contracts in the plugin manifest.
   - Claim/heartbeat/complete/block/dispatch tools, generated plugin inventory,
     and docs remain pending Workboard sub-slices.
+- `61031d1b1c` local Workboard claim lifecycle subset:
+  - Workboard storage now supports claiming a card, refreshing the claim
+    heartbeat with optional progress notes, and releasing the claim with an
+    optional next status.
+  - Matching gateway methods and optional agent tools are registered for
+    claim, heartbeat, and release while keeping complete/block/dispatch out of
+    this slice.
+  - Complete/block/dispatch flows, generated plugin inventory, and docs remain
+    pending Workboard sub-slices.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips

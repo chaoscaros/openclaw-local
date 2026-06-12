@@ -24,6 +24,9 @@ export type WorkboardEvent = {
     | "linked"
     | "comment_added"
     | "link_added"
+    | "claimed"
+    | "heartbeat"
+    | "released"
     | "proof_added"
     | "artifact_added";
   at: number;
@@ -190,6 +193,9 @@ function normalizeCardEvents(events: unknown[]): WorkboardEvent[] {
         event.kind === "linked" ||
         event.kind === "comment_added" ||
         event.kind === "link_added" ||
+        event.kind === "claimed" ||
+        event.kind === "heartbeat" ||
+        event.kind === "released" ||
         event.kind === "proof_added" ||
         event.kind === "artifact_added"
           ? event.kind

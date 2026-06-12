@@ -15,6 +15,9 @@ export const WORKBOARD_EVENT_KINDS = [
   "linked",
   "comment_added",
   "link_added",
+  "claimed",
+  "heartbeat",
+  "released",
   "proof_added",
   "artifact_added",
 ] as const;
@@ -77,11 +80,20 @@ export type WorkboardArtifact = {
   mimeType?: string;
 };
 
+export type WorkboardClaim = {
+  ownerId: string;
+  token: string;
+  claimedAt: number;
+  lastHeartbeatAt: number;
+  expiresAt?: number;
+};
+
 export type WorkboardMetadata = {
   comments?: WorkboardComment[];
   links?: WorkboardLink[];
   proof?: WorkboardProof[];
   artifacts?: WorkboardArtifact[];
+  claim?: WorkboardClaim;
 };
 
 export type WorkboardCard = {
