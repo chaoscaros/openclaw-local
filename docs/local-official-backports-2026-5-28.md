@@ -491,9 +491,9 @@ Local check before editing this lane:
 
 High-priority official changes to compare:
 
-- `86ed25af34` through `61031d1b1c`: workboard dashboard plugin, session-card
-  sync, card execution actions, metadata, events, localization, and opt-in
-  behavior.
+- Remaining `86ed25af34` through `61031d1b1c` Workboard sub-slices: Control UI
+  tab wiring, session-card sync, card execution actions, metadata, events,
+  localization, docs/inventory, and agent coordination tools.
 
 Local check before editing this lane:
 
@@ -1113,6 +1113,16 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - The local test uses the existing last-run-status enum value `error` instead
     of the official `unknown` status, because this branch does not expose
     `unknown` as a cron table status filter.
+- `86ed25af34` / `8477e39db7` local backend subset:
+  - The Workboard bundled plugin package is introduced with the initial
+    persisted card store, card gateway methods, local API/runtime barrels,
+    manifest metadata, and focused store/gateway tests.
+  - The local manifest includes the later official opt-in guard
+    `enabledByDefault: false` from the first Workboard slice so the new plugin
+    cannot silently replace or mask existing task-mode and Control UI flows.
+  - Control UI tab wiring, i18n, generated plugin inventory, docs, card
+    session-sync behavior, execution actions, metadata/events, and coordination
+    tools remain pending Workboard sub-slices.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips
