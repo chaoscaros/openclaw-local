@@ -945,6 +945,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `036298fbae` local equivalent:
   - Generated music downloads now honor configured media byte caps across shared
     asset downloads plus fal and MiniMax URL or inline audio outputs.
+- `4438be7f05` local equivalent:
+  - OpenAI, Gradium, and xAI generated speech downloads now honor configured
+    media byte caps for TTS and speech-provider synthesis paths.
 
 ## Validation Plan
 
