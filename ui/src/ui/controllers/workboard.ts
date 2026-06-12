@@ -17,7 +17,15 @@ export type WorkboardPriority = (typeof WORKBOARD_PRIORITIES)[number];
 
 export type WorkboardEvent = {
   id: string;
-  kind: "created" | "edited" | "moved" | "linked";
+  kind:
+    | "created"
+    | "edited"
+    | "moved"
+    | "linked"
+    | "comment_added"
+    | "link_added"
+    | "proof_added"
+    | "artifact_added";
   at: number;
   fromStatus?: WorkboardStatus;
   toStatus?: WorkboardStatus;
@@ -179,7 +187,11 @@ function normalizeCardEvents(events: unknown[]): WorkboardEvent[] {
         event.kind === "created" ||
         event.kind === "edited" ||
         event.kind === "moved" ||
-        event.kind === "linked"
+        event.kind === "linked" ||
+        event.kind === "comment_added" ||
+        event.kind === "link_added" ||
+        event.kind === "proof_added" ||
+        event.kind === "artifact_added"
           ? event.kind
           : null;
       if (!kind) {

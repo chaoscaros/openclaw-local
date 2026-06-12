@@ -108,6 +108,17 @@ describe("WorkboardStore", () => {
     });
     expect(commented.events?.at(-1)).toMatchObject({ kind: "comment_added" });
 
+    const linked = await store.addLink(card.id, {
+      type: "blocked_by",
+      targetCardId: "card-upstream",
+      title: "Blocked by upstream work",
+    });
+    expect(linked.metadata?.links?.[0]).toMatchObject({
+      type: "blocked_by",
+      targetCardId: "card-upstream",
+    });
+    expect(linked.events?.at(-1)).toMatchObject({ kind: "link_added" });
+
     const proven = await store.addProof(card.id, {
       status: "passed",
       command: "pnpm test extensions/workboard",
@@ -146,6 +157,28 @@ describe("WorkboardStore", () => {
     );
     await expect(store.get(card.id)).resolves.not.toMatchObject({
       metadata: { artifacts: [expect.objectContaining({ label: "missing target" })] },
+    });
+  });
+
+  it("caps retained links and rejects incomplete links atomically", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const card = await store.create({ title: "Retain links" });
+
+    let updated = card;
+    for (let index = 0; index < 55; index += 1) {
+      updated = await store.addLink(card.id, {
+        type: "relates_to",
+        targetCardId: `card-${index}`,
+      });
+    }
+
+    expect(updated.metadata?.links).toHaveLength(50);
+    expect(updated.metadata?.links?.[0]?.targetCardId).toBe("card-5");
+    await expect(store.addLink(card.id, { title: "missing target" })).rejects.toThrow(
+      /link targetCardId or url/,
+    );
+    await expect(store.get(card.id)).resolves.not.toMatchObject({
+      metadata: { links: [expect.objectContaining({ title: "missing target" })] },
     });
   });
 

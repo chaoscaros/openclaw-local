@@ -1166,6 +1166,13 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     mode behavior are unchanged.
   - Broader orchestration metadata, dependency links, coordination tools,
     generated plugin inventory, and docs remain pending Workboard sub-slices.
+- `a341ae27ec` local Workboard generic-link metadata subset:
+  - Workboard card storage now supports bounded generic links
+    (`blocks`, `blocked_by`, and `relates_to`) with matching append events.
+  - The Control UI Workboard controller preserves the expanded event kinds from
+    gateway responses without rendering them yet.
+  - Parent/child dependency promotion, dispatch, coordination tools, generated
+    plugin inventory, and docs remain pending Workboard sub-slices.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips

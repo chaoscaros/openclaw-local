@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  WORKBOARD_LINK_TYPES,
   WORKBOARD_PRIORITIES,
   WORKBOARD_PROOF_STATUSES,
   WORKBOARD_STATUSES,
@@ -8,6 +9,8 @@ import {
   type WorkboardComment,
   type WorkboardEvent,
   type WorkboardEventKind,
+  type WorkboardLink,
+  type WorkboardLinkType,
   type WorkboardMetadata,
   type WorkboardPriority,
   type WorkboardProof,
@@ -19,6 +22,7 @@ const POSITION_STEP = 1000;
 const MAX_CARDS = 2000;
 const MAX_CARD_EVENTS = 50;
 const MAX_CARD_COMMENTS = 50;
+const MAX_CARD_LINKS = 50;
 const MAX_CARD_PROOF = 40;
 const MAX_CARD_ARTIFACTS = 40;
 
@@ -50,6 +54,12 @@ export type WorkboardCardInput = {
 
 export type WorkboardCardPatch = Partial<WorkboardCardInput>;
 export type WorkboardCommentInput = { body?: unknown };
+export type WorkboardLinkInput = {
+  type?: unknown;
+  targetCardId?: unknown;
+  title?: unknown;
+  url?: unknown;
+};
 export type WorkboardProofInput = {
   status?: unknown;
   label?: unknown;
@@ -139,6 +149,13 @@ function normalizeProofStatus(
   throw new Error(`proof status must be one of: ${WORKBOARD_PROOF_STATUSES.join(", ")}.`);
 }
 
+function normalizeLinkType(value: unknown, fallback: WorkboardLinkType): WorkboardLinkType {
+  if (typeof value === "string" && WORKBOARD_LINK_TYPES.includes(value as WorkboardLinkType)) {
+    return value as WorkboardLinkType;
+  }
+  return fallback;
+}
+
 function normalizeLabels(value: unknown, fallback: string[] = []): string[] {
   if (value == null) {
     return fallback;
@@ -209,12 +226,29 @@ function removeUndefinedCardFields(card: WorkboardCard): WorkboardCard {
 
 function removeUndefinedMetadataFields(metadata: WorkboardMetadata): WorkboardMetadata {
   const next = { ...metadata };
-  for (const key of ["comments", "proof", "artifacts"] as const) {
+  for (const key of ["comments", "links", "proof", "artifacts"] as const) {
     if (!next[key]?.length) {
       delete next[key];
     }
   }
   return next;
+}
+
+function normalizeLinkInput(input: WorkboardLinkInput, now: number): WorkboardLink {
+  const targetCardId = normalizeBoundedString(input.targetCardId, undefined, 120, "link target");
+  const url = normalizeBoundedString(input.url, undefined, 2000, "link URL");
+  const title = normalizeBoundedString(input.title, undefined, 180, "link title");
+  if (!targetCardId && !url) {
+    throw new Error("link targetCardId or url is required.");
+  }
+  return {
+    id: randomUUID(),
+    type: normalizeLinkType(input.type, "relates_to"),
+    createdAt: now,
+    ...(targetCardId ? { targetCardId } : {}),
+    ...(title ? { title } : {}),
+    ...(url ? { url } : {}),
+  };
 }
 
 function omitEmptyMetadata(metadata: WorkboardMetadata): WorkboardMetadata | undefined {
@@ -484,6 +518,19 @@ export class WorkboardStore {
         comments: [...(existing.metadata?.comments ?? []), comment].slice(-MAX_CARD_COMMENTS),
       }),
       createEvent("comment_added", now),
+    );
+  }
+
+  async addLink(id: string, input: WorkboardLinkInput): Promise<WorkboardCard> {
+    const now = Date.now();
+    const link = normalizeLinkInput(input, now);
+    return await this.updateMetadata(
+      id,
+      (existing) => ({
+        ...existing.metadata,
+        links: [...(existing.metadata?.links ?? []), link].slice(-MAX_CARD_LINKS),
+      }),
+      createEvent("link_added", now),
     );
   }
 

@@ -14,15 +14,18 @@ export const WORKBOARD_EVENT_KINDS = [
   "moved",
   "linked",
   "comment_added",
+  "link_added",
   "proof_added",
   "artifact_added",
 ] as const;
 export const WORKBOARD_PROOF_STATUSES = ["passed", "failed", "skipped", "unknown"] as const;
+export const WORKBOARD_LINK_TYPES = ["blocks", "blocked_by", "relates_to"] as const;
 
 export type WorkboardStatus = (typeof WORKBOARD_STATUSES)[number];
 export type WorkboardPriority = (typeof WORKBOARD_PRIORITIES)[number];
 export type WorkboardEventKind = (typeof WORKBOARD_EVENT_KINDS)[number];
 export type WorkboardProofStatus = (typeof WORKBOARD_PROOF_STATUSES)[number];
+export type WorkboardLinkType = (typeof WORKBOARD_LINK_TYPES)[number];
 
 export type WorkboardEvent = {
   id: string;
@@ -38,6 +41,15 @@ export type WorkboardComment = {
   id: string;
   body: string;
   createdAt: number;
+};
+
+export type WorkboardLink = {
+  id: string;
+  type: WorkboardLinkType;
+  createdAt: number;
+  targetCardId?: string;
+  title?: string;
+  url?: string;
 };
 
 export type WorkboardProof = {
@@ -61,6 +73,7 @@ export type WorkboardArtifact = {
 
 export type WorkboardMetadata = {
   comments?: WorkboardComment[];
+  links?: WorkboardLink[];
   proof?: WorkboardProof[];
   artifacts?: WorkboardArtifact[];
 };
