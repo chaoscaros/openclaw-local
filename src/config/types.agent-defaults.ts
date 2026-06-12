@@ -407,7 +407,7 @@ export type AgentDefaultsConfig = {
     ackMaxChars?: number;
     /** Suppress tool error warning payloads during heartbeat runs. */
     suppressToolErrorWarnings?: boolean;
-    /** Run timeout in seconds for heartbeat agent turns. */
+    /** Run timeout in seconds for heartbeat agent turns. Unset uses agent default timeout or cadence capped at 600s. */
     timeoutSeconds?: number;
     /**
      * If true, run heartbeat turns with lightweight bootstrap context.

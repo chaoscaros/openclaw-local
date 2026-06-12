@@ -377,6 +377,11 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   orphan-tool-use helper is not present on this branch yet, so the local port
   protects the active transcript probe path instead of adding unused helper
   code.
+- `fa530f8028` local equivalent: unset heartbeat run timeouts now resolve to an
+  explicit per-run timeout using configured heartbeat timeout first, then the
+  global agent default timeout, otherwise the heartbeat cadence capped at 600
+  seconds. This prevents background heartbeat turns from inheriting the long
+  interactive agent default when no heartbeat timeout is configured.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

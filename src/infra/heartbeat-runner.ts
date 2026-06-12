@@ -165,6 +165,7 @@ function loadHeartbeatRunnerRuntime() {
 }
 
 const HEARTBEAT_ALWAYS_BUSY_LANES = [CommandLane.Cron, CommandLane.CronNested] as const;
+const DEFAULT_HEARTBEAT_TIMEOUT_SECONDS = 10 * 60;
 
 function hasQueuedWorkInLanes(
   lanes: readonly string[],
@@ -241,6 +242,29 @@ function resolveHeartbeatChannelPlugin(channel: string): ChannelPlugin | undefin
     (entry) => entry.plugin.id === channel,
   )?.plugin;
   return activePlugin ?? getChannelPlugin(channel as ChannelId);
+}
+
+function resolveHeartbeatTimeoutOverrideSeconds(
+  cfg: OpenClawConfig,
+  heartbeat?: HeartbeatConfig,
+): number {
+  if (typeof heartbeat?.timeoutSeconds === "number") {
+    return heartbeat.timeoutSeconds;
+  }
+  const agentDefaultTimeoutSeconds = cfg.agents?.defaults?.timeoutSeconds;
+  if (
+    typeof agentDefaultTimeoutSeconds === "number" &&
+    Number.isFinite(agentDefaultTimeoutSeconds)
+  ) {
+    return Math.max(1, Math.floor(agentDefaultTimeoutSeconds));
+  }
+  // Heartbeat wake dispatch waits for each run. Keep unset heartbeat turns
+  // tied to their cadence instead of inheriting the long interactive default.
+  const intervalMs = resolveHeartbeatIntervalMs(cfg, undefined, heartbeat);
+  if (!intervalMs) {
+    return DEFAULT_HEARTBEAT_TIMEOUT_SECONDS;
+  }
+  return Math.max(1, Math.min(DEFAULT_HEARTBEAT_TIMEOUT_SECONDS, Math.ceil(intervalMs / 1000)));
 }
 
 export { areHeartbeatsEnabled, setHeartbeatsEnabled };
@@ -1772,8 +1796,7 @@ export async function runHeartbeatOnce(opts: {
     await heartbeatTyping?.onReplyStart();
     const heartbeatModelOverride = normalizeOptionalString(heartbeat?.model);
     const suppressToolErrorWarnings = heartbeat?.suppressToolErrorWarnings === true;
-    const timeoutOverrideSeconds =
-      typeof heartbeat?.timeoutSeconds === "number" ? heartbeat.timeoutSeconds : undefined;
+    const timeoutOverrideSeconds = resolveHeartbeatTimeoutOverrideSeconds(cfg, heartbeat);
     const bootstrapContextMode: "lightweight" | undefined =
       heartbeat?.lightContext === true ? "lightweight" : undefined;
     const replyOpts = {
