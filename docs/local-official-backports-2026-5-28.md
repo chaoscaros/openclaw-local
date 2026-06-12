@@ -1000,6 +1000,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Memory Core dream narrative generation now briefly retries session message
     reads after a successful subagent run before writing fallback diary text,
     avoiding empty DREAMS.md entries when assistant text persistence lags.
+- `9be1699074` local equivalent:
+  - Setup finalize now reports keyless web search providers as ready instead of
+    warning that an API key is missing, while preserving credential warnings for
+    providers that require keys.
 
 ## Validation Plan
 
