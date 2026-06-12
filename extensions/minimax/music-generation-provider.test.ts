@@ -34,10 +34,11 @@ function mockMusicGenerationResponse(json: Record<string, unknown>): void {
     },
     release: vi.fn(async () => {}),
   });
-  fetchWithTimeoutMock.mockResolvedValue({
-    headers: new Headers({ "content-type": "audio/mpeg" }),
-    arrayBuffer: async () => Buffer.from("mp3-bytes"),
-  });
+  fetchWithTimeoutMock.mockResolvedValue(
+    new Response(Buffer.from("mp3-bytes"), {
+      headers: { "content-type": "audio/mpeg" },
+    }),
+  );
 }
 
 function mockCallArg(mock: { mock: { calls: unknown[][] } }, index = 0): Record<string, unknown> {
@@ -46,6 +47,18 @@ function mockCallArg(mock: { mock: { calls: unknown[][] } }, index = 0): Record<
     throw new Error(`expected mock call ${index}`);
   }
   return call[0] as Record<string, unknown>;
+}
+
+function streamedAudioResponse(bytes: string): Response {
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(bytes));
+        controller.close();
+      },
+    }),
+    { headers: { "content-type": "audio/mpeg" } },
+  );
 }
 
 describe("minimax music generation provider", () => {
@@ -119,6 +132,55 @@ describe("minimax music generation provider", () => {
       fetch,
     );
     expect(result.tracks[0]?.buffer.byteLength).toBeGreaterThan(0);
+  });
+
+  it("rejects generated music downloads that exceed the configured media cap", async () => {
+    postJsonRequestMock.mockResolvedValue({
+      response: {
+        json: async () => ({
+          data: {
+            audio: "https://example.com/too-large.mp3",
+          },
+          base_resp: { status_code: 0 },
+        }),
+      },
+      release: vi.fn(async () => {}),
+    });
+    fetchWithTimeoutMock.mockResolvedValueOnce(streamedAudioResponse("too-large"));
+
+    const provider = buildMinimaxMusicGenerationProvider();
+    await expect(
+      provider.generateMusic({
+        provider: "minimax",
+        model: "music-2.6",
+        prompt: "short track",
+        cfg: { agents: { defaults: { mediaMaxMb: 0.000001 } } },
+      }),
+    ).rejects.toThrow("MiniMax generated music download exceeds 1 bytes");
+  });
+
+  it("rejects inline generated music that exceeds the configured media cap before decoding", async () => {
+    postJsonRequestMock.mockResolvedValue({
+      response: {
+        json: async () => ({
+          data: {
+            audio: Buffer.from("too-large").toString("hex"),
+          },
+          base_resp: { status_code: 0 },
+        }),
+      },
+      release: vi.fn(async () => {}),
+    });
+
+    const provider = buildMinimaxMusicGenerationProvider();
+    await expect(
+      provider.generateMusic({
+        provider: "minimax",
+        model: "music-2.6",
+        prompt: "short track",
+        cfg: { agents: { defaults: { mediaMaxMb: 0.000001 } } },
+      }),
+    ).rejects.toThrow("MiniMax generated music download exceeds 1 bytes");
   });
 
   it("rejects instrumental requests that also include lyrics", async () => {

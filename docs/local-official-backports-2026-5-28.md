@@ -942,6 +942,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `79691d4858` local equivalent:
   - Provider binary response helpers now cap successful binary reads with the
     shared response limit reader before returning audio/binary payloads.
+- `036298fbae` local equivalent:
+  - Generated music downloads now honor configured media byte caps across shared
+    asset downloads plus fal and MiniMax URL or inline audio outputs.
 
 ## Validation Plan
 

@@ -2,6 +2,7 @@ import { extensionForMime } from "openclaw/plugin-sdk/media-mime";
 import type {
   GeneratedMusicAsset,
   MusicGenerationProvider,
+  MusicGenerationRequest,
 } from "openclaw/plugin-sdk/music-generation";
 import { isProviderApiKeyConfigured } from "openclaw/plugin-sdk/provider-auth";
 import { resolveApiKeyForProvider } from "openclaw/plugin-sdk/provider-auth-runtime";
@@ -11,11 +12,13 @@ import {
   postJsonRequest,
   resolveProviderHttpRequestConfig,
 } from "openclaw/plugin-sdk/provider-http";
+import { readResponseWithLimit } from "openclaw/plugin-sdk/response-limit-runtime";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
 
 const DEFAULT_MINIMAX_MUSIC_BASE_URL = "https://api.minimax.io";
 const DEFAULT_MINIMAX_MUSIC_MODEL = "music-2.6";
 const DEFAULT_TIMEOUT_MS = 120_000;
+const DEFAULT_GENERATED_MUSIC_MAX_BYTES = 16 * 1024 * 1024;
 
 type MinimaxBaseResp = {
   status_code?: number;
@@ -59,10 +62,26 @@ function assertMinimaxBaseResp(baseResp: MinimaxBaseResp | undefined, context: s
   );
 }
 
-function decodePossibleBinary(data: string): Buffer {
+function createGeneratedMusicTooLargeError(maxBytes: number): Error {
+  return new Error(`MiniMax generated music download exceeds ${maxBytes} bytes`);
+}
+
+function estimateBase64DecodedBytes(value: string): number {
+  const normalized = value.replace(/\s+/gu, "");
+  const padding = normalized.endsWith("==") ? 2 : normalized.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((normalized.length * 3) / 4) - padding);
+}
+
+function decodePossibleBinaryWithLimit(data: string, maxBytes: number): Buffer {
   const trimmed = data.trim();
   if (/^[0-9a-f]+$/iu.test(trimmed) && trimmed.length % 2 === 0) {
+    if (trimmed.length / 2 > maxBytes) {
+      throw createGeneratedMusicTooLargeError(maxBytes);
+    }
     return Buffer.from(trimmed, "hex");
+  }
+  if (estimateBase64DecodedBytes(trimmed) > maxBytes) {
+    throw createGeneratedMusicTooLargeError(maxBytes);
   }
   return Buffer.from(trimmed, "base64");
 }
@@ -83,10 +102,19 @@ function isLikelyRemoteUrl(value: string | undefined): boolean {
   return Boolean(trimmed && /^https?:\/\//iu.test(trimmed));
 }
 
+function resolveGeneratedMusicMaxBytes(req: MusicGenerationRequest): number {
+  const configured = req.cfg.agents?.defaults?.mediaMaxMb;
+  if (typeof configured === "number" && Number.isFinite(configured) && configured > 0) {
+    return Math.floor(configured * 1024 * 1024);
+  }
+  return DEFAULT_GENERATED_MUSIC_MAX_BYTES;
+}
+
 async function downloadTrackFromUrl(params: {
   url: string;
   timeoutMs?: number;
   fetchFn: typeof fetch;
+  maxBytes: number;
 }): Promise<GeneratedMusicAsset> {
   const response = await fetchProviderDownloadResponse({
     url: params.url,
@@ -99,7 +127,9 @@ async function downloadTrackFromUrl(params: {
   const mimeType = normalizeOptionalString(response.headers.get("content-type")) ?? "audio/mpeg";
   const ext = extensionForMime(mimeType)?.replace(/^\./u, "") || "mp3";
   return {
-    buffer: Buffer.from(await response.arrayBuffer()),
+    buffer: await readResponseWithLimit(response, params.maxBytes, {
+      onOverflow: ({ maxBytes }) => createGeneratedMusicTooLargeError(maxBytes),
+    }),
     mimeType,
     fileName: `track-1.${ext}`,
   };
@@ -212,16 +242,18 @@ function buildMinimaxMusicProvider(providerId: string): MusicGenerationProvider 
           (isLikelyRemoteUrl(audioCandidate) ? audioCandidate : undefined);
         const inlineAudio = isLikelyRemoteUrl(audioCandidate) ? undefined : audioCandidate;
         const lyrics = decodePossibleText(payload.lyrics ?? payload.data?.lyrics ?? "");
+        const maxGeneratedMusicBytes = resolveGeneratedMusicMaxBytes(req);
 
         const track = audioUrl
           ? await downloadTrackFromUrl({
               url: audioUrl,
               timeoutMs: req.timeoutMs,
               fetchFn,
+              maxBytes: maxGeneratedMusicBytes,
             })
           : inlineAudio
             ? {
-                buffer: decodePossibleBinary(inlineAudio),
+                buffer: decodePossibleBinaryWithLimit(inlineAudio, maxGeneratedMusicBytes),
                 mimeType: "audio/mpeg",
                 fileName: "track-1.mp3",
               }
