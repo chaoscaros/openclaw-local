@@ -1135,9 +1135,18 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - English tab/disabled-state copy, style import, navigation tests,
     refresh-active-tab coverage, and build validation are updated locally; full
     generated locale refresh remains a later sub-slice.
-  - Generated plugin inventory, docs, card session-sync behavior, execution
-    actions, metadata/events, and coordination tools remain pending Workboard
-    sub-slices.
+- `024cd0e4aa` / `e1f64a0dd0` local Workboard session-sync subset:
+  - Workboard cards can now link to existing sessions from the create flow, and
+    card lifecycle display derives running, review, and blocked states from
+    linked session status.
+  - Loaded cards sync status from session lifecycle with per-card de-dupe so a
+    repeated render does not repeatedly write the same card state.
+  - Starting a card handles failed initial session runs by moving the card to
+    blocked and surfacing the provider error, while stopping a linked card now
+    sends `runId` with `chat.abort` when available so it does not abort a
+    different run in the same session.
+  - Generated plugin inventory, docs, execution actions, metadata/events, and
+    coordination tools remain pending Workboard sub-slices.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips

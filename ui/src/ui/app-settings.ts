@@ -334,7 +334,7 @@ export async function refreshActiveTab(host: SettingsHost) {
       await loadUsage(app);
       return;
     case "workboard":
-      await loadConfig(app);
+      await Promise.all([loadConfig(app), loadSessions(app), loadAgents(app)]);
       return;
     case "sessions":
       await loadSessions(app);
