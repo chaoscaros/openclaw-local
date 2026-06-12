@@ -491,7 +491,6 @@ Local check before editing this lane:
 
 High-priority official changes to compare:
 
-- `13c1aa7fb9`: cron table filter e2e coverage.
 - `86ed25af34` through `61031d1b1c`: workboard dashboard plugin, session-card
   sync, card execution actions, metadata, events, localization, and opt-in
   behavior.
@@ -1107,6 +1106,13 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     filters, and filter changes for those fields trigger a list reload.
   - Control UI dev/e2e Vite setup pre-optimizes highlight.js CommonJS language
     modules used by markdown rendering.
+- `13c1aa7fb9` local equivalent:
+  - Control UI mocked Gateway e2e coverage now opens the Cron page, verifies the
+    default table filter request, then changes schedule kind and last run status
+    filters and asserts the resulting `cron.list` params.
+  - The local test uses the existing last-run-status enum value `error` instead
+    of the official `unknown` status, because this branch does not expose
+    `unknown` as a cron table status filter.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips
