@@ -1048,6 +1048,13 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Empty preflight compaction recovery now resets stale token state when
     compaction finds no real conversation messages, then retries instead of
     failing the run as an unrecoverable context overflow.
+- `689e8ec893` local equivalent:
+  - `sessions_spawn(runtime="acp")` now uses the existing
+    `tools.sessions_spawn.attachments` opt-in to validate image-only inline
+    attachments and forward them through the ACP gateway agent call.
+  - Gateway image attachment capability checks now bypass only confirmed ACP
+    sessions with ACP metadata, preventing ordinary sessions from spoofing
+    `acpTurnSource`.
 
 ## Validation Plan
 

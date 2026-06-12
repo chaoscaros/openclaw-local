@@ -1806,6 +1806,69 @@ describe("gateway agent handler", () => {
     expectStringFieldContains(logMeta, "error", "\n    at ");
   });
 
+  it("does not bypass image support check for non-ACP sessions with acpTurnSource", async () => {
+    primeMainAgentRun();
+    mocks.agentCommand.mockClear();
+    const respond = vi.fn();
+
+    await invokeAgent(
+      {
+        message: "describe this image",
+        agentId: "main",
+        sessionKey: "agent:main:main",
+        acpTurnSource: "manual_spawn",
+        idempotencyKey: "test-acp-image-bypass-guard",
+        attachments: [
+          {
+            type: "file",
+            mimeType: "image/png",
+            fileName: "test.png",
+            content: Buffer.from("fake-png-data").toString("base64"),
+          },
+        ],
+      },
+      { respond, reqId: "test-acp-image-bypass-guard" },
+    );
+
+    expect(mocks.agentCommand).not.toHaveBeenCalled();
+    const error = expectRespondError(respond, {});
+    expectStringFieldContains(error, "message", "does not accept image inputs");
+  });
+
+  it("does not bypass image support check for ACP-shaped sessions without ACP metadata", async () => {
+    mockMainSessionEntry({ sessionId: "existing-acp-shaped-session" });
+    mocks.updateSessionStore.mockResolvedValue(undefined);
+    mocks.agentCommand.mockResolvedValue({
+      payloads: [{ text: "ok" }],
+      meta: { durationMs: 100 },
+    });
+    mocks.agentCommand.mockClear();
+    const respond = vi.fn();
+
+    await invokeAgent(
+      {
+        message: "describe this image",
+        agentId: "main",
+        sessionKey: "agent:main:acp:missing-meta",
+        acpTurnSource: "manual_spawn",
+        idempotencyKey: "test-acp-image-metadata-bypass-guard",
+        attachments: [
+          {
+            type: "file",
+            mimeType: "image/png",
+            fileName: "test.png",
+            content: Buffer.from("fake-png-data").toString("base64"),
+          },
+        ],
+      },
+      { respond, reqId: "test-acp-image-metadata-bypass-guard" },
+    );
+
+    expect(mocks.agentCommand).not.toHaveBeenCalled();
+    const error = expectRespondError(respond, {});
+    expectStringFieldContains(error, "message", "does not accept image inputs");
+  });
+
   it("keeps model-run gateway prompts undecorated and forwards raw-run flags", async () => {
     setupNewYorkTimeConfig("2026-01-29T01:30:00.000Z");
     primeMainAgentRun({ cfg: mocks.loadConfigReturn });
