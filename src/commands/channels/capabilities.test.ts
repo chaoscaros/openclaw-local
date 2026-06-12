@@ -129,6 +129,13 @@ describe("channelsCapabilitiesCommand", () => {
     });
   });
 
+  it("rejects malformed timeout values", async () => {
+    await expect(
+      channelsCapabilitiesCommand({ channel: "slack", timeout: "1000ms" }, runtime as never),
+    ).rejects.toThrow("Invalid --timeout");
+    expect(listChannelPlugins).not.toHaveBeenCalled();
+  });
+
   it("prints Slack bot + user scopes when user token is configured", async () => {
     const plugin = buildPlugin({
       id: "slack",

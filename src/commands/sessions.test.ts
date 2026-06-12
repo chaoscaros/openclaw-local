@@ -345,7 +345,7 @@ describe("sessionsCommand", () => {
     );
     const { runtime, errors } = makeRuntime();
 
-    await expect(sessionsCommand({ store, active: "0" }, runtime)).rejects.toThrow("exit 1");
+    await expect(sessionsCommand({ store, active: "30abc" }, runtime)).rejects.toThrow("exit 1");
     expect(errors).toStrictEqual([
       "--active must be a positive number of minutes, for example --active 30.",
     ]);

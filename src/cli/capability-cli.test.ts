@@ -1535,6 +1535,26 @@ describe("capability cli", () => {
     expect(firstImageGenerationCall()?.timeoutMs).toBe(180000);
   });
 
+  it("rejects malformed image generation timeout values", async () => {
+    await expect(
+      runRegisteredCli({
+        register: registerCapabilityCli as (program: Command) => void,
+        argv: [
+          "capability",
+          "image",
+          "generate",
+          "--prompt",
+          "friendly lobster",
+          "--timeout-ms",
+          "180000ms",
+          "--json",
+        ],
+      }),
+    ).rejects.toThrow("exit 1");
+    expectRuntimeErrorContains("Invalid --timeout");
+    expect(mocks.generateImage).not.toHaveBeenCalled();
+  });
+
   it("passes image output format and generic background hints through to generation runtime", async () => {
     mocks.generateImage.mockResolvedValue({
       provider: "openai",

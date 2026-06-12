@@ -79,6 +79,36 @@ describe("native hook relay CLI", () => {
     expect(stderr.text()).toBe("err");
   });
 
+  it("rejects malformed timeout values before invoking the relay", async () => {
+    const callGateway = vi.fn();
+    const invokeBridge = vi.fn();
+    const stdout = createWritableTextBuffer();
+    const stderr = createWritableTextBuffer();
+
+    const exitCode = await runNativeHookRelayCli(
+      {
+        provider: "codex",
+        relayId: "relay-1",
+        event: "pre_tool_use",
+        timeout: "30abc",
+      },
+      {
+        stdin: createReadableTextStream("{}"),
+        stdout,
+        stderr,
+        invokeBridge: invokeBridge as never,
+        callGateway: callGateway as never,
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stdout.text()).toBe("");
+    expect(stderr.text()).toContain("invalid native hook timeout");
+    expect(stderr.text()).toContain("Invalid --timeout");
+    expect(invokeBridge).not.toHaveBeenCalled();
+    expect(callGateway).not.toHaveBeenCalled();
+  });
+
   it("renders unavailable output for legacy relay commands without a generation", async () => {
     const invokeBridge = vi.fn(async () => {
       throw new Error("generation must be non-empty string");

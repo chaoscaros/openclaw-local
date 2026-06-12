@@ -986,6 +986,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Comfy generated image, music, and video workflow outputs plus Vydra image,
     audio, and video assets now honor configured media byte caps during
     downloads.
+- `5f7e21e26a` local equivalent:
+  - CLI timeout and positive-integer options now reject malformed partial
+    numeric values instead of accepting truncated values, including native hook
+    relay timeout, channel status/capabilities timeout, media capability
+    `--timeout-ms`, and `sessions --active`.
 
 ## Validation Plan
 
