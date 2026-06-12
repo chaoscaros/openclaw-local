@@ -382,6 +382,11 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   global agent default timeout, otherwise the heartbeat cadence capped at 600
   seconds. This prevents background heartbeat turns from inheriting the long
   interactive agent default when no heartbeat timeout is configured.
+- `352396f487` local equivalent: iMessage direct SMS routes now preserve the
+  `sms:` service prefix through target parsing, outbound session routing,
+  inbound reply context `From`/`To`, and direct handle sends that rely on an SMS
+  account default. This keeps SMS approval replies on the originating SMS
+  conversation instead of falling back to `imessage:<phone>`.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

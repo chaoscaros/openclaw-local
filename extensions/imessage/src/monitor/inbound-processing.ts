@@ -27,6 +27,7 @@ import { evaluateSupplementalContextVisibility } from "openclaw/plugin-sdk/secur
 import { uniqueStrings } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { sanitizeTerminalText } from "openclaw/plugin-sdk/text-chunking";
 import { truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
+import { resolveIMessageAccount } from "../accounts.js";
 import { resolveIMessageConversationRoute } from "../conversation-route.js";
 import {
   isKnownFromMeIMessageMessageId,
@@ -891,7 +892,14 @@ export function buildIMessageInboundContext(params: {
     });
   }
 
-  const imessageTo = (decision.isGroup ? chatTarget : undefined) || `imessage:${decision.sender}`;
+  const imessageTo = decision.isGroup
+    ? chatTarget || `imessage:${decision.sender}`
+    : buildDirectIMessageReplyTarget({
+        cfg: params.cfg,
+        accountId: decision.route.accountId,
+        sender: decision.sender,
+      });
+  const imessageFrom = decision.isGroup ? `imessage:group:${chatId ?? "unknown"}` : imessageTo;
   const inboundHistory =
     !decision.isGroup && params.dmHistory?.inboundHistory
       ? params.dmHistory.inboundHistory
@@ -908,9 +916,7 @@ export function buildIMessageInboundContext(params: {
     InboundHistory: inboundHistory,
     RawBody: decision.bodyText,
     CommandBody: decision.bodyText,
-    From: decision.isGroup
-      ? `imessage:group:${chatId ?? "unknown"}`
-      : `imessage:${decision.sender}`,
+    From: imessageFrom,
     To: imessageTo,
     SessionKey: decision.route.sessionKey,
     AccountId: decision.route.accountId,
@@ -950,6 +956,15 @@ export function buildIMessageInboundContext(params: {
   });
 
   return { ctxPayload, fromLabel, chatTarget, imessageTo, inboundHistory };
+}
+
+function buildDirectIMessageReplyTarget(params: {
+  cfg: OpenClawConfig;
+  accountId?: string | null;
+  sender: string;
+}): string {
+  const account = resolveIMessageAccount({ cfg: params.cfg, accountId: params.accountId });
+  return account.config.service === "sms" ? `sms:${params.sender}` : `imessage:${params.sender}`;
 }
 
 function buildIMessageEchoScope(params: {

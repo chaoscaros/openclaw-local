@@ -265,4 +265,31 @@ describe("sendMessageIMessage receipts", () => {
     expect(result.messageId).toBe("ok");
     expect(result.receipt.platformMessageIds).toStrictEqual([]);
   });
+
+  it("uses configured SMS service for unprefixed direct handles", async () => {
+    const client = createClient({ guid: "p:0/sms-1" });
+
+    await sendMessageIMessage("+15551234567", "hello", {
+      config: {
+        channels: {
+          imessage: {
+            accounts: {
+              default: { service: "sms" },
+            },
+          },
+        },
+      },
+      client,
+    });
+
+    expect(client.request).toHaveBeenCalledWith(
+      "send",
+      expect.objectContaining({
+        service: "sms",
+        to: "+15551234567",
+        text: "hello",
+      }),
+      expect.any(Object),
+    );
+  });
 });

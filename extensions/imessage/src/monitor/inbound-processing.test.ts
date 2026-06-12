@@ -850,6 +850,66 @@ describe("buildIMessageInboundContext", () => {
     expect(ctxPayload.InboundHistory).toEqual([{ sender: "+15555550123", body: "previous" }]);
     expect(inboundHistory).toEqual([{ sender: "+15555550123", body: "previous" }]);
   });
+
+  it("preserves SMS direct reply routes for inbound contexts", async () => {
+    const cfg = {
+      channels: {
+        imessage: {
+          accounts: {
+            default: { service: "sms" },
+          },
+        },
+      },
+    } as OpenClawConfig;
+    const decision = await resolveIMessageInboundDecision({
+      cfg,
+      accountId: "default",
+      message: {
+        id: 12347,
+        guid: "p:0/GUID-current-sms",
+        sender: "+15555550123",
+        text: "/approve 1",
+        is_from_me: false,
+        is_group: false,
+      },
+      opts: undefined,
+      messageText: "/approve 1",
+      bodyText: "/approve 1",
+      allowFrom: ["*"],
+      groupAllowFrom: [],
+      groupPolicy: "open",
+      dmPolicy: "open",
+      storeAllowFrom: ["+15555550123"],
+      historyLimit: 0,
+      groupHistories: new Map(),
+      echoCache: undefined,
+      selfChatCache: undefined,
+      logVerbose: undefined,
+    });
+    expect(decision.kind).toBe("dispatch");
+    if (decision.kind !== "dispatch") {
+      return;
+    }
+
+    const { ctxPayload, imessageTo } = buildIMessageInboundContext({
+      cfg,
+      decision,
+      message: {
+        id: 12347,
+        guid: "p:0/GUID-current-sms",
+        sender: "+15555550123",
+        text: "/approve 1",
+        is_from_me: false,
+        is_group: false,
+      },
+      historyLimit: 0,
+      groupHistories: new Map(),
+    });
+
+    expect(imessageTo).toBe("sms:+15555550123");
+    expect(ctxPayload.To).toBe("sms:+15555550123");
+    expect(ctxPayload.From).toBe("sms:+15555550123");
+  });
 });
 
 describe("resolveIMessageInboundDecision command auth", () => {

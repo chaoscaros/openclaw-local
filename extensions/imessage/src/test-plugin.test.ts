@@ -95,6 +95,26 @@ describe("createIMessageTestPlugin", () => {
     expect(plugin.messaging?.normalizeTarget?.(prefixedHandle)).toBe("+442079460958");
   });
 
+  it("preserves configured SMS service in direct outbound session routes", () => {
+    const route = imessagePlugin.messaging?.resolveOutboundSessionRoute?.({
+      cfg: {
+        channels: {
+          imessage: {
+            accounts: {
+              default: { service: "sms" },
+            },
+          },
+        },
+      },
+      agentId: "main",
+      accountId: "default",
+      target: "+15551234567",
+    });
+
+    expect(route?.from).toBe("sms:+15551234567");
+    expect(route?.to).toBe("sms:+15551234567");
+  });
+
   it("declares durable final delivery capabilities", () => {
     expect(imessagePlugin.outbound?.deliveryCapabilities?.durableFinal).toStrictEqual({
       text: true,

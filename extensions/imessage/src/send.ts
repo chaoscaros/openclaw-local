@@ -24,6 +24,7 @@ import { rememberPersistedIMessageEcho } from "./monitor/persisted-echo-cache.js
 import {
   formatIMessageChatTarget,
   type IMessageService,
+  type IMessageTarget,
   normalizeIMessageHandle,
   parseIMessageTarget,
 } from "./targets.js";
@@ -145,6 +146,16 @@ function resolveOutboundMessageGuid(
     }
   }
   return null;
+}
+
+function resolveTargetService(target: IMessageTarget): IMessageService | undefined {
+  if (target.kind !== "handle") {
+    return undefined;
+  }
+  if (target.serviceExplicit || target.service !== "auto") {
+    return target.service;
+  }
+  return undefined;
 }
 
 function resolveOutboundEchoText(text: string, mediaContentType?: string): string | undefined {
@@ -440,8 +451,9 @@ export async function sendMessageIMessage(
   const target = parseIMessageTarget(opts.chatId ? formatIMessageChatTarget(opts.chatId) : to);
   const service =
     opts.service ??
-    (target.kind === "handle" ? target.service : undefined) ??
+    resolveTargetService(target) ??
     (account.config.service as IMessageService | undefined);
+  const timeoutMs = opts.timeoutMs ?? account.config.probeTimeoutMs;
   const region = opts.region?.trim() || account.config.region?.trim() || "US";
   const maxBytes =
     typeof opts.maxBytes === "number"
@@ -493,7 +505,7 @@ export async function sendMessageIMessage(
   const resolvedReplyToId = sanitizeReplyToId(opts.replyToId);
   const runCliJson =
     opts.runCliJson ??
-    ((args: readonly string[]) => runIMessageCliJson(cliPath, dbPath, args, opts.timeoutMs));
+    ((args: readonly string[]) => runIMessageCliJson(cliPath, dbPath, args, timeoutMs));
 
   if (filePath && !message.trim() && !resolvedReplyToId) {
     const attachmentResult = await trySendAttachmentForExplicitChat({
@@ -540,7 +552,7 @@ export async function sendMessageIMessage(
   const shouldClose = !opts.client;
   try {
     const result = await client.request<{ ok?: string }>("send", params, {
-      timeoutMs: opts.timeoutMs,
+      timeoutMs,
     });
     const resolvedId = resolveMessageId(result);
     const messageId = resolvedId ?? (result?.ok ? "ok" : "unknown");
