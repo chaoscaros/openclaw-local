@@ -1037,7 +1037,7 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - New-session initialization now clears stale subagent lifecycle fields
     (`startedAt`, `endedAt`, `runtimeMs`, and `status`) along with prompt and
     usage caches.
-- `5f88932806` partial local equivalent:
+- `5f88932806` local equivalent:
   - Session usage persistence now forwards `compactionTokensAfter` from reply
     and follow-up runs, prefers fresh final usage when present, and clears stale
     usage/cache/context-budget snapshots when a compaction token snapshot is
@@ -1045,8 +1045,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - `openclaw sessions cleanup --fix-missing` now also prunes empty/header-only
     transcript files while preserving current and legacy transcript rows that
     contain real message roles.
-  - Remaining official piece still needs separate review: empty preflight
-    compaction recovery in the embedded runner.
+  - Empty preflight compaction recovery now resets stale token state when
+    compaction finds no real conversation messages, then retries instead of
+    failing the run as an unrecoverable context overflow.
 
 ## Validation Plan
 
