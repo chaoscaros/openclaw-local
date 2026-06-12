@@ -1120,9 +1120,15 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - The local manifest includes the later official opt-in guard
     `enabledByDefault: false` from the first Workboard slice so the new plugin
     cannot silently replace or mask existing task-mode and Control UI flows.
-  - Control UI tab wiring, i18n, generated plugin inventory, docs, card
-    session-sync behavior, execution actions, metadata/events, and coordination
-    tools remain pending Workboard sub-slices.
+- `86ed25af34` local Control UI component subset:
+  - Workboard Control UI controller, view, styles, and focused tests are added
+    as independent files without mounting a new navigation tab yet.
+  - This gives the dashboard component a local test surface before the later
+    tab wiring, i18n, and task/session integration slices can expose it in the
+    app.
+  - Navigation/app render wiring, localization, generated plugin inventory,
+    docs, card session-sync behavior, execution actions, metadata/events, and
+    coordination tools remain pending Workboard sub-slices.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips
