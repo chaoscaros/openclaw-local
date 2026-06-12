@@ -996,6 +996,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     opening Gateway calls, keeps shared Gateway RPC defaults aligned with the
     CLI 30000 ms default, and validates `cron add --timeout-seconds` at the CLI
     boundary.
+- `cdb55b3edb` local equivalent:
+  - Memory Core dream narrative generation now briefly retries session message
+    reads after a successful subagent run before writing fallback diary text,
+    avoiding empty DREAMS.md entries when assistant text persistence lags.
 
 ## Validation Plan
 

@@ -97,6 +97,11 @@ const NARRATIVE_SYSTEM_PROMPT = [
 // worst case at one minute, well below the multi-minute stall the original
 // comment warned against.
 const NARRATIVE_TIMEOUT_MS = 60_000;
+const NARRATIVE_MESSAGE_FETCH_LIMIT = 5;
+// Subagent completion can resolve before the assistant message is fully
+// persisted into the session store. Poll briefly before deciding the narrative
+// is empty and falling back.
+const NARRATIVE_MESSAGE_SETTLE_DELAYS_MS = [50, 150, 300, 750] as const;
 const DREAMING_SESSION_KEY_PREFIX = "dreaming-narrative-";
 const DREAMING_TRANSCRIPT_RUN_MARKER = '"runId":"dreaming-narrative-';
 const DREAMING_ORPHAN_MIN_AGE_MS = 300_000;
@@ -342,6 +347,42 @@ export function extractNarrativeText(messages: unknown[]): string | null {
       if (text.length > 0) {
         return text;
       }
+    }
+  }
+  return null;
+}
+
+function waitForNarrativeMessagesToSettle(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
+async function readNarrativeText(params: {
+  subagent: SubagentSurface;
+  sessionKey: string;
+}): Promise<string | null> {
+  const { messages } = await params.subagent.getSessionMessages({
+    sessionKey: params.sessionKey,
+    limit: NARRATIVE_MESSAGE_FETCH_LIMIT,
+  });
+  return extractNarrativeText(messages);
+}
+
+async function readSettledNarrativeText(params: {
+  subagent: SubagentSurface;
+  sessionKey: string;
+}): Promise<string | null> {
+  const immediateNarrative = await readNarrativeText(params);
+  if (immediateNarrative) {
+    return immediateNarrative;
+  }
+
+  for (const delayMs of NARRATIVE_MESSAGE_SETTLE_DELAYS_MS) {
+    await waitForNarrativeMessagesToSettle(delayMs);
+    const narrative = await readNarrativeText(params);
+    if (narrative) {
+      return narrative;
     }
   }
   return null;
@@ -1037,12 +1078,10 @@ export async function generateAndAppendDreamNarrative(params: {
         return;
       }
 
-      const { messages } = await params.subagent.getSessionMessages({
+      const narrative = await readSettledNarrativeText({
+        subagent: params.subagent,
         sessionKey: successfulSessionKey,
-        limit: 5,
       });
-
-      const narrative = extractNarrativeText(messages);
       if (!narrative) {
         params.logger.warn(
           `memory-core: narrative generation produced no text for ${params.data.phase} phase; writing fallback diary entry.`,
