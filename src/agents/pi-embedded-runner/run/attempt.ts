@@ -2745,9 +2745,13 @@ export async function runEmbeddedAttempt(
       if (!session) {
         throw new Error("Embedded agent session missing");
       }
-      applySystemPromptOverrideToSession(session, systemPromptText);
       session.setActiveToolsByName(sessionToolAllowlist);
       const activeSession = session;
+      const setActiveSessionSystemPrompt = (nextSystemPrompt: string) => {
+        systemPromptText = nextSystemPrompt;
+        applySystemPromptOverrideToSession(activeSession, nextSystemPrompt);
+      };
+      setActiveSessionSystemPrompt(systemPromptText);
       installSessionEventWriteLock({
         session: activeSession,
         withSessionWriteLock: (operation) => sessionLockController.withSessionWriteLock(operation),
@@ -2767,8 +2771,7 @@ export async function runEmbeddedAttempt(
         // and queues; the empty system override prevents Pi from rebuilding the
         // normal OpenClaw agent/tool prompt when `session.prompt()` starts.
         activeSession.agent.reset();
-        applySystemPromptOverrideToSession(activeSession, "");
-        systemPromptText = "";
+        setActiveSessionSystemPrompt("");
       }
       if (typeof activeSession.agent.convertToLlm === "function") {
         const baseConvertToLlm = activeSession.agent.convertToLlm.bind(activeSession.agent);
@@ -3356,8 +3359,7 @@ export async function runEmbeddedAttempt(
       try {
         if (isRawModelRun) {
           activeSession.agent.reset();
-          applySystemPromptOverrideToSession(activeSession, "");
-          systemPromptText = "";
+          setActiveSessionSystemPrompt("");
           cacheTrace?.recordStage("session:raw-model-run", {
             messages: activeSession.messages,
             system: systemPromptText,
@@ -3434,11 +3436,12 @@ export async function runEmbeddedAttempt(
               hasSessionsYield: effectiveTools.some((tool) => tool.name === "sessions_yield"),
             });
             if (activeSubagentPromptAddition) {
-              systemPromptText = prependSystemPromptAddition({
-                systemPrompt: systemPromptText,
-                systemPromptAddition: activeSubagentPromptAddition,
-              });
-              applySystemPromptOverrideToSession(activeSession, systemPromptText);
+              setActiveSessionSystemPrompt(
+                prependSystemPromptAddition({
+                  systemPrompt: systemPromptText,
+                  systemPromptAddition: activeSubagentPromptAddition,
+                }),
+              );
             }
           }
 
@@ -3500,11 +3503,12 @@ export async function runEmbeddedAttempt(
                 preassemblyContextEngineMessagesForPrecheck;
             }
             if (assembled.systemPromptAddition) {
-              systemPromptText = prependSystemPromptAddition({
-                systemPrompt: systemPromptText,
-                systemPromptAddition: assembled.systemPromptAddition,
-              });
-              applySystemPromptOverrideToSession(activeSession, systemPromptText);
+              setActiveSessionSystemPrompt(
+                prependSystemPromptAddition({
+                  systemPrompt: systemPromptText,
+                  systemPromptAddition: assembled.systemPromptAddition,
+                }),
+              );
               log.debug(
                 `context engine: prepended system prompt addition (${assembled.systemPromptAddition.length} chars)`,
               );
@@ -3944,8 +3948,7 @@ export async function runEmbeddedAttempt(
           }
           const legacySystemPrompt = normalizeOptionalString(hookResult?.systemPrompt) ?? "";
           if (legacySystemPrompt) {
-            applySystemPromptOverrideToSession(activeSession, legacySystemPrompt);
-            systemPromptText = legacySystemPrompt;
+            setActiveSessionSystemPrompt(legacySystemPrompt);
             log.debug(`hooks: applied systemPrompt override (${legacySystemPrompt.length} chars)`);
           }
           const prependedOrAppendedSystemPrompt = composeSystemPromptWithHookContext({
@@ -3960,8 +3963,7 @@ export async function runEmbeddedAttempt(
           if (prependedOrAppendedSystemPrompt) {
             const prependSystemLen = hookResult?.prependSystemContext?.trim().length ?? 0;
             const appendSystemLen = hookResult?.appendSystemContext?.trim().length ?? 0;
-            applySystemPromptOverrideToSession(activeSession, prependedOrAppendedSystemPrompt);
-            systemPromptText = prependedOrAppendedSystemPrompt;
+            setActiveSessionSystemPrompt(prependedOrAppendedSystemPrompt);
             log.debug(
               `hooks: applied prependSystemContext/appendSystemContext (${prependSystemLen}+${appendSystemLen} chars)`,
             );
@@ -3972,8 +3974,7 @@ export async function runEmbeddedAttempt(
           model: runtimeInfo.model,
         });
         if (modelAwareSystemPrompt !== systemPromptText) {
-          applySystemPromptOverrideToSession(activeSession, modelAwareSystemPrompt);
-          systemPromptText = modelAwareSystemPrompt;
+          setActiveSessionSystemPrompt(modelAwareSystemPrompt);
         }
 
         if (cacheObservabilityEnabled) {
@@ -4122,8 +4123,7 @@ export async function runEmbeddedAttempt(
               appendSystemContext: runtimeSystemContext,
             });
             if (runtimeSystemPrompt) {
-              applySystemPromptOverrideToSession(activeSession, runtimeSystemPrompt);
-              systemPromptText = runtimeSystemPrompt;
+              setActiveSessionSystemPrompt(runtimeSystemPrompt);
             }
           }
           const runtimeContextForHook = promptSubmission.runtimeOnly

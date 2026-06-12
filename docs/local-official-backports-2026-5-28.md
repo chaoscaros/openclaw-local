@@ -441,7 +441,7 @@ Local check before editing this lane:
 
 High-priority official changes to compare:
 
-- `73cf516def`: preserve embedded base system prompts.
+- None remaining in this lane.
 
 Local check before editing this lane:
 
@@ -1044,6 +1044,13 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Context-engine loop ingestion projects marked model prompts back to the
     transcript text while provider assembly keeps the model-only context, and
     strips internal transcript markers before messages leave the guard.
+- `73cf516def` local equivalent:
+  - Embedded attempt and compaction sessions now select active tools before
+    reapplying the OpenClaw-owned base system prompt, so Pi's tool metadata
+    refresh cannot replace the embedded prompt with its default prompt.
+  - The local system-prompt compatibility layer now keeps Pi base prompt options
+    aligned with the exact OpenClaw prompt while preserving active tool metadata
+    already refreshed by the session runtime.
 - `d8641a661b` local equivalent:
   - Restart continuation queue entries now record the session id they were
     created for and fall back to a wake if the session rotated before delivery,

@@ -1132,8 +1132,8 @@ async function compactEmbeddedPiSessionDirectOnce(
             resourceLoader,
           });
           session = createdSession.session;
-          applySystemPromptOverrideToSession(session, buildSystemPromptOverride(thinkLevel)());
           session.setActiveToolsByName(sessionToolAllowlist);
+          applySystemPromptOverrideToSession(session, buildSystemPromptOverride(thinkLevel)());
           // Compaction builds the same embedded system prompt, so it must flow
           // through the same transport/payload shaping stack as normal turns.
           prepareCompactionSessionAgent({

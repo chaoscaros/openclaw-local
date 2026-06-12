@@ -13,6 +13,7 @@ vi.mock("../../tts/tts.js", () => ({
 
 type MutableSession = {
   _baseSystemPrompt?: string;
+  _baseSystemPromptOptions?: Record<string, unknown>;
   _rebuildSystemPrompt?: (toolNames: string[]) => string;
 };
 
@@ -68,6 +69,23 @@ describe("applySystemPromptOverrideToSession", () => {
   it("sets _rebuildSystemPrompt that returns the override", () => {
     const { mutable } = applyAndGetMutableSession("rebuild test");
     expect(mutable["_rebuildSystemPrompt"]?.(["tool1"])).toBe("rebuild test");
+  });
+
+  it("preserves current base prompt metadata while replacing the custom prompt", () => {
+    const { session } = createMockSession();
+    session["_baseSystemPromptOptions"] = {
+      selectedTools: ["read"],
+      toolSnippets: { read: "Read files" },
+      customPrompt: "old prompt",
+    };
+
+    applySystemPromptOverrideToSession(session as unknown as AgentSession, "new prompt");
+
+    expect(session["_baseSystemPromptOptions"]).toEqual({
+      selectedTools: ["read"],
+      toolSnippets: { read: "Read files" },
+      customPrompt: "new prompt",
+    });
   });
 });
 
