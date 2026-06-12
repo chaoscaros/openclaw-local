@@ -371,6 +371,12 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   consult mode still disables provider auto-response, final transcripts are
   recorded for echo detection, and assistant echo/control-like transcripts are
   no longer duplicated back into the realtime model.
+- `ae0a2ecf4d` local equivalent: Claude CLI transcript reuse probing now sorts
+  and caps `.claude/projects` directory scans at a bounded number of project
+  directories before checking for a matching session transcript. The official
+  orphan-tool-use helper is not present on this branch yet, so the local port
+  protects the active transcript probe path instead of adding unused helper
+  code.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 

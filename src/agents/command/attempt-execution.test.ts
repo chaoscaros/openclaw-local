@@ -419,6 +419,34 @@ describe("claudeCliSessionTranscriptHasContent", () => {
     ).toBe(true);
   });
 
+  it("bounds Claude project directory scans", async () => {
+    const projectsDir = path.join(tmpDir, ".claude", "projects");
+    await fs.mkdir(projectsDir, { recursive: true });
+    for (let i = 0; i < 128; i += 1) {
+      await fs.mkdir(path.join(projectsDir, `project-${String(i).padStart(3, "0")}`));
+    }
+    const lateProjectDir = path.join(projectsDir, "zz-late-project");
+    await fs.mkdir(lateProjectDir);
+    await fs.writeFile(
+      path.join(lateProjectDir, "late-session.jsonl"),
+      `${JSON.stringify({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "late reply" }],
+        },
+      })}\n`,
+      "utf-8",
+    );
+
+    expect(
+      await claudeCliSessionTranscriptHasContent({
+        sessionId: "late-session",
+        homeDir: tmpDir,
+      }),
+    ).toBe(false);
+  });
+
   it("rejects path-like session ids instead of escaping the Claude projects tree", async () => {
     await writeClaudeProjectFile("safe-session", "");
     expect(

@@ -17,6 +17,7 @@ import {
 /** Maximum number of JSONL records to inspect before giving up. */
 const SESSION_FILE_MAX_RECORDS = 500;
 const CLAUDE_PROJECTS_RELATIVE_DIR = path.join(".claude", "projects");
+const CLAUDE_CLI_PROJECT_SCAN_MAX_DIRS = 128;
 
 function normalizeClaudeCliSessionId(sessionId: string | undefined): string | undefined {
   const trimmed = sessionId?.trim();
@@ -93,10 +94,11 @@ export async function claudeCliSessionTranscriptHasContent(params: {
   } catch {
     return false;
   }
-  for (const entry of projectEntries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
+  const projectDirs = projectEntries
+    .filter((entry) => entry.isDirectory())
+    .toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .slice(0, CLAUDE_CLI_PROJECT_SCAN_MAX_DIRS);
+  for (const entry of projectDirs) {
     const candidate = path.join(projectsDir, entry.name, `${sessionId}.jsonl`);
     if (await jsonlFileHasAssistantMessage(candidate)) {
       return true;
