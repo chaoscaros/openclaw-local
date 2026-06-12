@@ -1,0 +1,92 @@
+import { describe, expect, it } from "vitest";
+import type { OpenClawPluginApi } from "../api.js";
+import { WorkboardStore, type WorkboardKeyedStore } from "./store.js";
+import { createWorkboardTools } from "./tools.js";
+
+function createMemoryStore(): WorkboardKeyedStore {
+  const entries = new Map<string, Awaited<ReturnType<WorkboardKeyedStore["lookup"]>>>();
+  return {
+    async register(key, value) {
+      entries.set(key, value);
+    },
+    async lookup(key) {
+      return entries.get(key);
+    },
+    async delete(key) {
+      return entries.delete(key);
+    },
+    async entries() {
+      return [...entries].flatMap(([key, value]) => (value ? [{ key, value }] : []));
+    },
+  };
+}
+
+function toolByName(tools: ReturnType<typeof createWorkboardTools>, name: string) {
+  const tool = tools.find((entry) => entry.name === name);
+  if (!tool) {
+    throw new Error(`missing tool: ${name}`);
+  }
+  return tool;
+}
+
+describe("createWorkboardTools", () => {
+  it("lists and reads Workboard cards", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const todo = await store.create({ title: "Write docs", status: "todo", agentId: "main" });
+    await store.create({ title: "Review tests", status: "review", agentId: "qa" });
+    const tools = createWorkboardTools({ api: {} as OpenClawPluginApi, store });
+
+    const list = await toolByName(tools, "workboard_list").execute("call-1", {
+      status: "todo",
+      agentId: "main",
+    });
+    expect(list.details).toMatchObject({
+      cards: [expect.objectContaining({ id: todo.id, title: "Write docs" })],
+    });
+
+    const read = await toolByName(tools, "workboard_read").execute("call-2", { id: todo.id });
+    expect(read.details).toMatchObject({
+      card: { id: todo.id, title: "Write docs" },
+    });
+  });
+
+  it("appends comments and proof through tools", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const card = await store.create({ title: "Capture proof" });
+    const tools = createWorkboardTools({ api: {} as OpenClawPluginApi, store });
+
+    const comment = await toolByName(tools, "workboard_comment").execute("call-1", {
+      id: card.id,
+      body: "Waiting on screenshots.",
+    });
+    expect(comment.details).toMatchObject({
+      card: {
+        metadata: {
+          comments: [expect.objectContaining({ body: "Waiting on screenshots." })],
+        },
+      },
+    });
+
+    const proof = await toolByName(tools, "workboard_proof").execute("call-2", {
+      id: card.id,
+      status: "passed",
+      command: "pnpm test extensions/workboard",
+    });
+    expect(proof.details).toMatchObject({
+      card: {
+        metadata: {
+          proof: [expect.objectContaining({ status: "passed" })],
+        },
+      },
+    });
+  });
+
+  it("reports missing cards from read tools", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const tools = createWorkboardTools({ api: {} as OpenClawPluginApi, store });
+
+    await expect(
+      toolByName(tools, "workboard_read").execute("call-1", { id: "missing" }),
+    ).rejects.toThrow("card not found: missing");
+  });
+});

@@ -1190,6 +1190,13 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Claim/heartbeat/complete/block/dispatch gateway methods, agent
     coordination tools, generated plugin inventory, and docs remain pending
     Workboard sub-slices.
+- `61031d1b1c` / `a341ae27ec` local Workboard minimal tool subset:
+  - The Workboard plugin now registers optional agent tools for listing cards,
+    reading a card, appending comments, and attaching proof metadata.
+  - The tool slice reuses the same Workboard store instance as gateway methods
+    and declares the tool contracts in the plugin manifest.
+  - Claim/heartbeat/complete/block/dispatch tools, generated plugin inventory,
+    and docs remain pending Workboard sub-slices.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips

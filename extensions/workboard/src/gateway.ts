@@ -34,11 +34,16 @@ function readPatch(params: Record<string, unknown>): Record<string, unknown> {
   return params;
 }
 
-export function registerWorkboardGatewayMethods(params: { api: OpenClawPluginApi }) {
+export function registerWorkboardGatewayMethods(params: {
+  api: OpenClawPluginApi;
+  store?: WorkboardStore;
+}) {
   const { api } = params;
-  const store = WorkboardStore.open((options) =>
-    api.runtime.state.openKeyedStore<PersistedWorkboardCard>(options),
-  );
+  const store =
+    params.store ??
+    WorkboardStore.open((options) =>
+      api.runtime.state.openKeyedStore<PersistedWorkboardCard>(options),
+    );
 
   api.registerGatewayMethod(
     "workboard.cards.list",

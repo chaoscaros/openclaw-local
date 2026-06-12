@@ -6,6 +6,28 @@
   },
   "name": "Workboard",
   "description": "Dashboard workboard for agent-owned issues and sessions.",
+  "contracts": {
+    "tools": [
+      "workboard_list",
+      "workboard_read",
+      "workboard_comment",
+      "workboard_proof"
+    ]
+  },
+  "toolMetadata": {
+    "workboard_list": {
+      "optional": true
+    },
+    "workboard_read": {
+      "optional": true
+    },
+    "workboard_comment": {
+      "optional": true
+    },
+    "workboard_proof": {
+      "optional": true
+    }
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
