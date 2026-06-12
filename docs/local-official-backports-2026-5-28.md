@@ -1181,6 +1181,15 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     bypass the dedicated API.
   - Dependency status promotion, dispatch, coordination tools, generated plugin
     inventory, and docs remain pending Workboard sub-slices.
+- `a341ae27ec` local Workboard metadata gateway subset:
+  - The Workboard gateway now exposes scoped write methods for comments,
+    generic links, dependency links, proof, and artifacts, backed by the bounded
+    store metadata primitives above.
+  - Gateway tests cover metadata append responses and dependency-link parameter
+    validation.
+  - Claim/heartbeat/complete/block/dispatch gateway methods, agent
+    coordination tools, generated plugin inventory, and docs remain pending
+    Workboard sub-slices.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips

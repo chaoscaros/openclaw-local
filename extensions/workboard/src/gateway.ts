@@ -107,4 +107,69 @@ export function registerWorkboardGatewayMethods(params: { api: OpenClawPluginApi
     },
     { scope: WRITE_SCOPE },
   );
+
+  api.registerGatewayMethod(
+    "workboard.cards.comment",
+    async ({ params: requestParams, respond }) => {
+      try {
+        respond(true, { card: await store.addComment(readId(requestParams), requestParams) });
+      } catch (error) {
+        respondError(respond, error);
+      }
+    },
+    { scope: WRITE_SCOPE },
+  );
+
+  api.registerGatewayMethod(
+    "workboard.cards.link",
+    async ({ params: requestParams, respond }) => {
+      try {
+        respond(true, { card: await store.addLink(readId(requestParams), requestParams) });
+      } catch (error) {
+        respondError(respond, error);
+      }
+    },
+    { scope: WRITE_SCOPE },
+  );
+
+  api.registerGatewayMethod(
+    "workboard.cards.linkDependency",
+    async ({ params: requestParams, respond }) => {
+      try {
+        const parentId = requestParams.parentId;
+        const childId = requestParams.childId;
+        if (typeof parentId !== "string" || typeof childId !== "string") {
+          throw new Error("parentId and childId are required.");
+        }
+        respond(true, { card: await store.linkCards(parentId, childId) });
+      } catch (error) {
+        respondError(respond, error);
+      }
+    },
+    { scope: WRITE_SCOPE },
+  );
+
+  api.registerGatewayMethod(
+    "workboard.cards.proof",
+    async ({ params: requestParams, respond }) => {
+      try {
+        respond(true, { card: await store.addProof(readId(requestParams), requestParams) });
+      } catch (error) {
+        respondError(respond, error);
+      }
+    },
+    { scope: WRITE_SCOPE },
+  );
+
+  api.registerGatewayMethod(
+    "workboard.cards.artifact",
+    async ({ params: requestParams, respond }) => {
+      try {
+        respond(true, { card: await store.addArtifact(readId(requestParams), requestParams) });
+      } catch (error) {
+        respondError(respond, error);
+      }
+    },
+    { scope: WRITE_SCOPE },
+  );
 }
