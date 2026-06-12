@@ -7,7 +7,7 @@ const managedChildren = new Set();
 const signalHandlers = new Map();
 
 /**
- * @param {string} signal
+ * @param {NodeJS.Signals} signal
  * @returns {number}
  */
 export function signalExitCode(signal) {
@@ -17,7 +17,7 @@ export function signalExitCode(signal) {
 
 /**
  * @param {import("node:child_process").ChildProcess} child
- * @param {string} [signal]
+ * @param {NodeJS.Signals} [signal]
  */
 function terminateManagedChild(child, signal = "SIGTERM") {
   if (!child.pid) {
@@ -110,8 +110,8 @@ export async function runManagedCommand({
 /**
  * @param {{
  *   child: import("node:child_process").ChildProcess;
- *   forceKillTimer: object | null;
- *   receivedSignal: string | null;
+ *   forceKillTimer: NodeJS.Timeout | null;
+ *   receivedSignal: NodeJS.Signals | null;
  * }} managedChild
  */
 function addManagedChild(managedChild) {
@@ -122,8 +122,8 @@ function addManagedChild(managedChild) {
 /**
  * @param {{
  *   child: import("node:child_process").ChildProcess;
- *   forceKillTimer: object | null;
- *   receivedSignal: string | null;
+ *   forceKillTimer: NodeJS.Timeout | null;
+ *   receivedSignal: NodeJS.Signals | null;
  * }} managedChild
  */
 function removeManagedChild(managedChild) {
@@ -152,7 +152,7 @@ function removeSignalHandlers() {
 }
 
 /**
- * @param {string} signal
+ * @param {NodeJS.Signals} signal
  */
 function forwardSignalToManagedChildren(signal) {
   for (const managedChild of managedChildren) {

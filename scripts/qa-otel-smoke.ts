@@ -8,6 +8,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 
 type CollectorMode = "local" | "docker";
@@ -111,6 +112,35 @@ const DISALLOWED_ATTRIBUTE_KEYS = new Set([
 ]);
 const DISALLOWED_BODY_NEEDLES = ["OTEL-QA-SECRET", "OTEL-QA-OK"];
 const COLLECTOR_OUTPUT_TAIL_BYTES = 16_000;
+const MAX_OTLP_COMPRESSED_BODY_BYTES = readPositiveIntegerEnv(
+  "OPENCLAW_QA_OTEL_MAX_COMPRESSED_BODY_BYTES",
+  2 * 1024 * 1024,
+);
+const MAX_OTLP_DECODED_BODY_BYTES = readPositiveIntegerEnv(
+  "OPENCLAW_QA_OTEL_MAX_DECODED_BODY_BYTES",
+  8 * 1024 * 1024,
+);
+const MAX_CAPTURED_BODY_TEXT_BYTES = readPositiveIntegerEnv(
+  "OPENCLAW_QA_OTEL_MAX_CAPTURED_BODY_TEXT_BYTES",
+  512 * 1024,
+);
+
+function readPositiveIntegerEnv(name: string, fallback: number): number {
+  const parsed = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function oversizedBodyError(
+  label: string,
+  actualBytes: number,
+  maxBytes: number,
+): Error & {
+  statusCode: number;
+} {
+  return Object.assign(new Error(`${label} exceeded ${maxBytes} bytes: ${actualBytes} bytes`), {
+    statusCode: 413,
+  });
+}
 
 function usage(): string {
   return `Usage: pnpm qa:otel:smoke [--collector local|docker] [--output-dir <path>] [--provider-mode <mode>] [--scenario <id>] [--model <ref>] [--alt-model <ref>]
@@ -179,10 +209,20 @@ function disallowedBodyNeedles(options: CliOptions): string[] {
   return [...needles];
 }
 
-async function readRequestBody(req: IncomingMessage): Promise<Buffer> {
+async function readRequestBody(
+  req: IncomingMessage,
+  maxBytes = MAX_OTLP_COMPRESSED_BODY_BYTES,
+): Promise<Buffer> {
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of req) {
-    chunks.push(Buffer.from(chunk));
+    const buffer = Buffer.from(chunk);
+    totalBytes += buffer.length;
+    if (totalBytes > maxBytes) {
+      req.destroy();
+      throw oversizedBodyError("compressed OTLP request body", totalBytes, maxBytes);
+    }
+    chunks.push(buffer);
   }
   return Buffer.concat(chunks);
 }
@@ -191,15 +231,66 @@ function headerValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function decodeRequestBody(body: Buffer, contentEncoding: string | undefined): Buffer {
+function decodeRequestBody(
+  body: Buffer,
+  contentEncoding: string | undefined,
+  maxBytes = MAX_OTLP_DECODED_BODY_BYTES,
+): Buffer {
   const normalizedEncoding = contentEncoding?.trim().toLowerCase();
+  if (body.length > maxBytes && (!normalizedEncoding || normalizedEncoding === "identity")) {
+    throw oversizedBodyError("OTLP request body", body.length, maxBytes);
+  }
   if (!normalizedEncoding || normalizedEncoding === "identity") {
     return body;
   }
   if (normalizedEncoding === "gzip") {
-    return gunzipSync(body);
+    let decoded: Buffer;
+    try {
+      decoded = gunzipSync(body, { maxOutputLength: maxBytes });
+    } catch (error) {
+      const code = (error as { code?: unknown }).code;
+      const message = error instanceof Error ? error.message : String(error);
+      if (code === "ERR_BUFFER_TOO_LARGE" || /maxOutputLength|larger than/u.test(message)) {
+        throw oversizedBodyError("decoded OTLP request body", maxBytes + 1, maxBytes);
+      }
+      throw error;
+    }
+    if (decoded.length > maxBytes) {
+      throw oversizedBodyError("decoded OTLP request body", decoded.length, maxBytes);
+    }
+    return decoded;
   }
   throw new Error(`unsupported OTLP content-encoding ${contentEncoding}`);
+}
+
+function appendCapturedBodyText(
+  capturedBodyText: Partial<Record<OtlpSignal, string[]>>,
+  signal: OtlpSignal,
+  body: Buffer,
+  maxBytes = MAX_CAPTURED_BODY_TEXT_BYTES,
+  disallowedNeedles: string[] = [],
+): void {
+  const currentEntries = capturedBodyText[signal] ?? [];
+  const leakEntries = currentEntries.filter((entry) => entry.startsWith("[detected leak needle] "));
+  const currentTail = currentEntries
+    .filter((entry) => !entry.startsWith("[detected leak needle] "))
+    .join("\n");
+  const bodyText = body.toString("utf8");
+  const next = currentTail ? `${currentTail}\n${bodyText}` : bodyText;
+  const buffer = Buffer.from(next);
+  const nextLeakEntries = [
+    ...leakEntries,
+    ...disallowedNeedles
+      .filter((needle) => bodyText.includes(needle))
+      .map((needle) => `[detected leak needle] ${needle}`),
+  ].slice(-20);
+  const tailEntry =
+    buffer.length > maxBytes
+      ? `[captured body text truncated to last ${maxBytes} bytes]\n${buffer
+          .subarray(buffer.length - maxBytes)
+          .toString("utf8")}`
+      : next;
+  capturedBodyText[signal] = [...nextLeakEntries, tailEntry];
 }
 
 function normalizeOtlpValue(value: OtlpAnyValue | undefined): string | number | boolean | string[] {
@@ -245,9 +336,12 @@ function spanAttributes(span: OtlpSpan): Record<string, string | number | boolea
 }
 
 class ProtoReader {
+  private readonly buffer: Uint8Array;
   private offset = 0;
 
-  constructor(private readonly buffer: Uint8Array) {}
+  constructor(buffer: Uint8Array) {
+    this.buffer = buffer;
+  }
 
   done(): boolean {
     return this.offset >= this.buffer.length;
@@ -575,7 +669,7 @@ function decodeLogRequest(body: Buffer): CapturedLogRecord[] {
   return records;
 }
 
-function startLocalOtlpReceiver() {
+function startLocalOtlpReceiver(disallowedBodyNeedles: string[] = []) {
   const capturedRequests: CapturedRequest[] = [];
   const capturedSpans: CapturedSpan[] = [];
   const capturedMetrics: CapturedMetric[] = [];
@@ -595,9 +689,30 @@ function startLocalOtlpReceiver() {
       return;
     }
 
-    const compressedBody = await readRequestBody(req);
     const contentEncoding = headerValue(req.headers["content-encoding"]);
-    const body = decodeRequestBody(compressedBody, contentEncoding);
+    let body: Buffer;
+    try {
+      const compressedBody = await readRequestBody(req);
+      body = decodeRequestBody(compressedBody, contentEncoding);
+    } catch (error) {
+      const statusCode =
+        typeof (error as { statusCode?: unknown }).statusCode === "number"
+          ? (error as { statusCode: number }).statusCode
+          : 400;
+      capturedRequests.push({
+        path: requestPath,
+        signal,
+        bytes: 0,
+        contentEncoding,
+        status: statusCode,
+        spanCount: 0,
+        metricCount: 0,
+        logCount: 0,
+      });
+      res.writeHead(statusCode, { "content-type": "text/plain" });
+      res.end(error instanceof Error ? error.message : String(error));
+      return;
+    }
     const spans = signal === "traces" ? decodeTraceRequest(body) : [];
     const metrics = signal === "metrics" ? decodeMetricRequest(body) : [];
     const logRecords = signal === "logs" ? decodeLogRequest(body) : [];
@@ -610,8 +725,7 @@ function startLocalOtlpReceiver() {
     if (logRecords.length > 0) {
       capturedLogRecords.push(...logRecords);
     }
-    capturedBodyText[signal] ??= [];
-    capturedBodyText[signal]?.push(body.toString("utf8"));
+    appendCapturedBodyText(capturedBodyText, signal, body, undefined, disallowedBodyNeedles);
     capturedRequests.push({
       path: requestPath,
       signal,
@@ -1079,7 +1193,7 @@ async function main() {
   }
 
   await mkdir(options.outputDir, { recursive: true });
-  const receiver = startLocalOtlpReceiver();
+  const receiver = startLocalOtlpReceiver(disallowedBodyNeedles(options));
   const port = await receiver.listen();
   process.stdout.write(
     `qa-otel-smoke: local OTLP receiver listening on http://127.0.0.1:${port}\n`,
@@ -1201,9 +1315,17 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  process.stderr.write(
-    `qa-otel-smoke: ${error instanceof Error ? error.stack || error.message : String(error)}\n`,
-  );
-  process.exitCode = 1;
-});
+export const testing = {
+  appendCapturedBodyText,
+  decodeRequestBody,
+  readRequestBody,
+};
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  main().catch((error) => {
+    process.stderr.write(
+      `qa-otel-smoke: ${error instanceof Error ? error.stack || error.message : String(error)}\n`,
+    );
+    process.exitCode = 1;
+  });
+}

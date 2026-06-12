@@ -96,7 +96,7 @@ export async function readBundledPluginAssetHooks(options = {}) {
     }
 
     hooks.push({
-      aliases: [...aliases].toSorted((left, right) => left.localeCompare(right)),
+      aliases: [...aliases].toSorted(),
       command,
       packageName: packageJson.name,
       phase,
