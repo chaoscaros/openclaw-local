@@ -491,7 +491,6 @@ Local check before editing this lane:
 
 High-priority official changes to compare:
 
-- `e9655b9fdc`: preserve session picker on empty search blur.
 - `13c1aa7fb9`: cron table filter e2e coverage.
 - `86ed25af34` through `61031d1b1c`: workboard dashboard plugin, session-card
   sync, card execution actions, metadata, events, localization, and opt-in
@@ -1108,6 +1107,15 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     filters, and filter changes for those fields trigger a list reload.
   - Control UI dev/e2e Vite setup pre-optimizes highlight.js CommonJS language
     modules used by markdown rendering.
+- `e9655b9fdc` reviewed, not directly applied:
+  - The official fix targets the newer chat session picker popover
+    (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips
+    empty-query blur searches so options remain clickable.
+  - This local branch still renders chat session selection as a native
+    `<select data-chat-session-select="true">` in `app-render.helpers`, with
+    no matching picker search state or blur handler. There is no equivalent
+    empty-search blur path to patch until that picker implementation is
+    backported.
 
 ## Validation Plan
 
