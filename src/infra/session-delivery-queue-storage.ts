@@ -55,6 +55,7 @@ export type QueuedSessionDeliveryPayload =
       messageId: string;
       route?: SessionDeliveryRoute;
       deliveryContext?: SessionDeliveryContext;
+      expectedSessionId?: string;
       idempotencyKey?: string;
     } & SessionDeliveryRetryPolicy);
 

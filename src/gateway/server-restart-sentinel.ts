@@ -254,46 +254,26 @@ async function deliverQueuedSessionDelivery(params: {
   deps: CliDeps;
   entry: QueuedSessionDelivery;
 }) {
-  const { cfg, storePath, canonicalKey } = loadSessionEntry(params.entry.sessionKey);
+  const { cfg, entry, storePath, canonicalKey } = loadSessionEntry(params.entry.sessionKey);
   const queuedDeliveryContext = resolveQueuedSessionDeliveryContext(params.entry);
 
   if (params.entry.kind === "systemEvent") {
-    enqueueSystemEvent(params.entry.text, {
-      sessionKey: canonicalKey,
-      ...(queuedDeliveryContext
-        ? {
-            deliveryContext: {
-              ...queuedDeliveryContext,
-            },
-          }
-        : {}),
-    });
-    requestHeartbeat({
-      source: "restart-sentinel",
-      intent: "immediate",
-      reason: "wake",
-      sessionKey: canonicalKey,
-    });
+    enqueueRestartSentinelWake(params.entry.text, canonicalKey, queuedDeliveryContext);
     return;
   }
 
   if (!params.entry.route) {
-    enqueueSystemEvent(params.entry.message, {
+    enqueueRestartSentinelWake(params.entry.message, canonicalKey, queuedDeliveryContext);
+    return;
+  }
+
+  if (params.entry.expectedSessionId && entry?.sessionId !== params.entry.expectedSessionId) {
+    log.warn("restart continuation skipped because the session changed before delivery", {
       sessionKey: canonicalKey,
-      ...(queuedDeliveryContext
-        ? {
-            deliveryContext: {
-              ...queuedDeliveryContext,
-            },
-          }
-        : {}),
+      expectedSessionId: params.entry.expectedSessionId,
+      currentSessionId: entry?.sessionId,
     });
-    requestHeartbeat({
-      source: "restart-sentinel",
-      intent: "immediate",
-      reason: "wake",
-      sessionKey: canonicalKey,
-    });
+    enqueueRestartSentinelWake(params.entry.message, canonicalKey, queuedDeliveryContext);
     return;
   }
 
@@ -416,6 +396,7 @@ function buildQueuedRestartContinuation(params: {
   continuation: RestartSentinelContinuation;
   route?: SessionDeliveryRoute;
   ts: number;
+  expectedSessionId?: string;
   deliveryContext?: {
     channel?: string;
     to?: string;
@@ -446,6 +427,7 @@ function buildQueuedRestartContinuation(params: {
     maxRetries: RESTART_CONTINUATION_BUSY_MAX_ATTEMPTS,
     ...(params.route ? { route: params.route } : {}),
     ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
+    ...(params.expectedSessionId ? { expectedSessionId: params.expectedSessionId } : {}),
     idempotencyKey,
   };
 }
@@ -623,6 +605,7 @@ async function loadRestartSentinelStartupTask(params: {
           continuation: payload.continuation,
           ts: payload.ts,
           route: continuationRoute,
+          expectedSessionId: entry?.sessionId,
           deliveryContext:
             resolvedTo && channel
               ? {

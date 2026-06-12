@@ -1030,6 +1030,13 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Embedded attempt cleanup now releases the session write lock before
     disposing session and MCP/LSP runtimes, so a hung teardown cannot hold the
     transcript lock.
+- `d8641a661b` local equivalent:
+  - Restart continuation queue entries now record the session id they were
+    created for and fall back to a wake if the session rotated before delivery,
+    avoiding stale continuation reuse after restart recovery.
+  - New-session initialization now clears stale subagent lifecycle fields
+    (`startedAt`, `endedAt`, `runtimeMs`, and `status`) along with prompt and
+    usage caches.
 
 ## Validation Plan
 

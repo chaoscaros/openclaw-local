@@ -766,6 +766,10 @@ describe("initSessionState RawBody", () => {
         totalTokens: 64_000,
         totalTokensFresh: false,
         contextTokens: 128_000,
+        startedAt: 100,
+        endedAt: 200,
+        runtimeMs: 100,
+        status: "done",
         contextBudgetStatus: {
           schemaVersion: 1,
           source: "pre-prompt-estimate",
@@ -817,6 +821,10 @@ describe("initSessionState RawBody", () => {
     expect(result.sessionEntry.totalTokens).toBeUndefined();
     expect(result.sessionEntry.contextTokens).toBeUndefined();
     expect(result.sessionEntry.contextBudgetStatus).toBeUndefined();
+    expect(result.sessionEntry.startedAt).toBeUndefined();
+    expect(result.sessionEntry.endedAt).toBeUndefined();
+    expect(result.sessionEntry.runtimeMs).toBeUndefined();
+    expect(result.sessionEntry.status).toBeUndefined();
 
     const store = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
       string,
@@ -825,12 +833,20 @@ describe("initSessionState RawBody", () => {
         totalTokens?: number;
         contextTokens?: number;
         contextBudgetStatus?: unknown;
+        startedAt?: number;
+        endedAt?: number;
+        runtimeMs?: number;
+        status?: string;
       }
     >;
     expect(store[sessionKey]?.skillsSnapshot).toBeUndefined();
     expect(store[sessionKey]?.totalTokens).toBeUndefined();
     expect(store[sessionKey]?.contextTokens).toBeUndefined();
     expect(store[sessionKey]?.contextBudgetStatus).toBeUndefined();
+    expect(store[sessionKey]?.startedAt).toBeUndefined();
+    expect(store[sessionKey]?.endedAt).toBeUndefined();
+    expect(store[sessionKey]?.runtimeMs).toBeUndefined();
+    expect(store[sessionKey]?.status).toBeUndefined();
   });
 
   it("drains stale system events when /new rotates an existing session", async () => {
