@@ -1016,6 +1016,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Builtin memory search now threads caller cancellation into embedding query
     operations, preventing timed-out tool calls from leaving provider requests
     running without a consumer.
+- `8ed5ea499d` local equivalent:
+  - Compaction-timeout recovery now trims pre-compaction and current snapshots
+    to a continuable tail before resuming, avoiding assistant-tailed snapshots
+    that cannot be continued after a timeout.
 
 ## Validation Plan
 
