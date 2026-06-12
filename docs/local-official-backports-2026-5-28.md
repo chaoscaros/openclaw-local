@@ -1126,9 +1126,18 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - This gives the dashboard component a local test surface before the later
     tab wiring, i18n, and task/session integration slices can expose it in the
     app.
-  - Navigation/app render wiring, localization, generated plugin inventory,
-    docs, card session-sync behavior, execution actions, metadata/events, and
-    coordination tools remain pending Workboard sub-slices.
+- `86ed25af34` / `8a04851fa0` local Workboard tab subset:
+  - The Control UI sidebar now includes a Workboard tab in the control group
+    without removing task or archive entries.
+  - The tab lazy-loads the Workboard view, loads config before render, and
+    passes `enabledByDefault: false` to plugin activation checks so the disabled
+    state remains the default until explicitly enabled.
+  - English tab/disabled-state copy, style import, navigation tests,
+    refresh-active-tab coverage, and build validation are updated locally; full
+    generated locale refresh remains a later sub-slice.
+  - Generated plugin inventory, docs, card session-sync behavior, execution
+    actions, metadata/events, and coordination tools remain pending Workboard
+    sub-slices.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips

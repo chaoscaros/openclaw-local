@@ -481,6 +481,11 @@ export const en: TranslationMap = {
       node: "Node",
     },
   },
+  workboard: {
+    disabledHelpStart: "Workboard is disabled. Enable",
+    enableConfigKey: "plugins.entries.workboard.enabled = true",
+    disabledHelpEnd: ", then reload this tab.",
+  },
   instances: {
     title: "Connected Instances",
     subtitle: "Presence beacons from the gateway and clients.",
@@ -511,6 +516,7 @@ export const en: TranslationMap = {
     agents: "Agents",
     activity: "Activity",
     overview: "Overview",
+    workboard: "Workboard",
     channels: "Channels",
     instances: "Instances",
     sessions: "Sessions",
@@ -535,6 +541,7 @@ export const en: TranslationMap = {
     agents: "Workspaces, tools, identities.",
     activity: "Browser-local tool activity summaries.",
     overview: "Status, entry points, health.",
+    workboard: "Agent work queue and session handoff.",
     channels: "Channels and settings.",
     instances: "Connected clients and nodes.",
     sessions: "Active sessions and defaults.",
