@@ -939,6 +939,9 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
 - `eb273a8a4a` local equivalent:
   - Brave web search and LLM-context API errors now use the shared bounded
     provider error-body reader instead of reading unbounded response text.
+- `79691d4858` local equivalent:
+  - Provider binary response helpers now cap successful binary reads with the
+    shared response limit reader before returning audio/binary payloads.
 
 ## Validation Plan
 
