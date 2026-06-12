@@ -234,7 +234,6 @@ async function resetNoRealConversationTokenSnapshot(params: {
     await updateSessionStoreEntry({
       storePath,
       sessionKey: params.sessionKey,
-      skipMaintenance: true,
       takeCacheOwnership: true,
       update: async () => ({
         totalTokens: 0,
