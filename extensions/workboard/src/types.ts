@@ -20,6 +20,7 @@ export const WORKBOARD_EVENT_KINDS = [
   "released",
   "completed",
   "blocked",
+  "dispatch",
   "proof_added",
   "artifact_added",
 ] as const;

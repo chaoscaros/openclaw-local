@@ -270,5 +270,12 @@ export function createWorkboardTools(params: {
         return jsonResult({ card: await store.block(id, record) });
       },
     },
+    {
+      name: "workboard_dispatch",
+      label: "Workboard Dispatch",
+      description: "Promote dependency-ready cards and reclaim expired Workboard claims.",
+      parameters: EmptyParamsSchema,
+      execute: async () => jsonResult(await store.dispatch()),
+    },
   ];
 }

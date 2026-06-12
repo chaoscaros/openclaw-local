@@ -59,6 +59,7 @@ describe("workboard gateway methods", () => {
       "workboard.cards.release",
       "workboard.cards.complete",
       "workboard.cards.block",
+      "workboard.cards.dispatch",
     ]);
     expect(methods.get("workboard.cards.list")?.opts).toEqual({ scope: "operator.read" });
     expect(methods.get("workboard.cards.create")?.opts).toEqual({ scope: "operator.write" });
@@ -312,6 +313,60 @@ describe("workboard gateway methods", () => {
         status: "blocked",
         metadata: { comments: [expect.objectContaining({ body: "Waiting." })] },
       },
+    });
+  });
+
+  it("dispatches dependency-ready cards through the gateway method", async () => {
+    type RegisteredMethod = {
+      handler: Parameters<OpenClawPluginApi["registerGatewayMethod"]>[1];
+      opts: Parameters<OpenClawPluginApi["registerGatewayMethod"]>[2];
+    };
+    const methods = new Map<string, RegisteredMethod>();
+    const api = {
+      runtime: {
+        state: {
+          openKeyedStore: vi.fn(() => createMemoryStore()),
+        },
+      },
+      registerGatewayMethod: vi.fn(
+        (method: string, handler: RegisteredMethod["handler"], opts: RegisteredMethod["opts"]) => {
+          methods.set(method, { handler, opts });
+        },
+      ),
+    } as unknown as OpenClawPluginApi;
+
+    registerWorkboardGatewayMethods({ api });
+
+    const parentRespond = vi.fn();
+    await methods.get("workboard.cards.create")?.handler({
+      params: { title: "Parent" },
+      respond: parentRespond,
+    } as never);
+    const parentId = parentRespond.mock.calls[0]?.[1]?.card.id;
+    const childRespond = vi.fn();
+    await methods.get("workboard.cards.create")?.handler({
+      params: { title: "Child", status: "backlog" },
+      respond: childRespond,
+    } as never);
+    const childId = childRespond.mock.calls[0]?.[1]?.card.id;
+    await methods.get("workboard.cards.linkDependency")?.handler({
+      params: { parentId, childId },
+      respond: vi.fn(),
+    } as never);
+    await methods.get("workboard.cards.complete")?.handler({
+      params: { id: parentId },
+      respond: vi.fn(),
+    } as never);
+
+    const dispatchRespond = vi.fn();
+    await methods.get("workboard.cards.dispatch")?.handler({
+      params: {},
+      respond: dispatchRespond,
+    } as never);
+
+    expect(dispatchRespond.mock.calls[0]?.[1]).toMatchObject({
+      promoted: [expect.objectContaining({ id: childId, status: "todo" })],
+      count: 1,
     });
   });
 });

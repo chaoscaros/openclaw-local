@@ -94,6 +94,11 @@ export type WorkboardCompleteInput = WorkboardHeartbeatInput & {
 export type WorkboardBlockInput = WorkboardHeartbeatInput & {
   reason?: unknown;
 };
+export type WorkboardDispatchResult = {
+  promoted: WorkboardCard[];
+  reclaimed: WorkboardCard[];
+  count: number;
+};
 
 function normalizeOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -381,6 +386,26 @@ function assertClaimScopeIfNeeded(card: WorkboardCard, input: WorkboardHeartbeat
   const ownerId = normalizeClaimOwner(input.ownerId);
   const token = normalizeBoundedString(input.token, undefined, 160, "claim token");
   assertCanMutateClaimedCard(card, ownerId, token);
+}
+
+function parentIds(card: WorkboardCard): string[] {
+  return (
+    card.metadata?.links
+      ?.filter((link) => link.type === "parent" && link.targetCardId)
+      .map((link) => link.targetCardId as string) ?? []
+  );
+}
+
+function shouldPromoteBlockedByParents(
+  card: WorkboardCard,
+  cardsById: ReadonlyMap<string, WorkboardCard>,
+): boolean {
+  const parents = parentIds(card);
+  return (
+    card.status === "backlog" &&
+    parents.length > 0 &&
+    parents.every((parentId) => cardsById.get(parentId)?.status === "done")
+  );
 }
 
 function createEvent(
@@ -856,6 +881,54 @@ export class WorkboardStore {
     });
     await this.store.register(next.id, { version: 1, card: next });
     return next;
+  }
+
+  async dispatch(now = Date.now()): Promise<WorkboardDispatchResult> {
+    const cards = await this.list();
+    const cardsById = new Map(cards.map((card) => [card.id, card]));
+    const promoted: WorkboardCard[] = [];
+    const reclaimed: WorkboardCard[] = [];
+    for (const card of cards) {
+      const claimExpired =
+        card.metadata?.claim?.expiresAt !== undefined && card.metadata.claim.expiresAt <= now;
+      if (claimExpired) {
+        const metadata = { ...card.metadata };
+        delete metadata.claim;
+        const next = removeUndefinedCardFields({
+          ...card,
+          status: card.status === "running" ? "blocked" : card.status,
+          updatedAt: now,
+          metadata: omitEmptyMetadata({
+            ...metadata,
+            comments: [
+              ...(metadata.comments ?? []),
+              {
+                id: randomUUID(),
+                body: "Claim expired before the next heartbeat.",
+                createdAt: now,
+              },
+            ].slice(-MAX_CARD_COMMENTS),
+          }),
+          events: appendEvent(card.events, createEvent("dispatch", now)),
+        });
+        await this.store.register(next.id, { version: 1, card: next });
+        cardsById.set(next.id, next);
+        reclaimed.push(next);
+        continue;
+      }
+      if (shouldPromoteBlockedByParents(card, cardsById)) {
+        const next = removeUndefinedCardFields({
+          ...card,
+          status: "todo",
+          updatedAt: now,
+          events: appendEvent(card.events, createEvent("dispatch", now)),
+        });
+        await this.store.register(next.id, { version: 1, card: next });
+        cardsById.set(next.id, next);
+        promoted.push(next);
+      }
+    }
+    return { promoted, reclaimed, count: promoted.length + reclaimed.length };
   }
 
   static open(

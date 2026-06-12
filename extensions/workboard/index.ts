@@ -23,6 +23,7 @@ export default definePluginEntry({
         "workboard_release",
         "workboard_complete",
         "workboard_block",
+        "workboard_dispatch",
       ],
       optional: true,
     });

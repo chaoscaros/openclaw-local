@@ -1213,6 +1213,14 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     complete and block.
   - Dispatch flows, generated plugin inventory, and docs remain pending
     Workboard sub-slices.
+- `61031d1b1c` local Workboard dispatch subset:
+  - Workboard storage now provides a bounded dispatch pass that promotes
+    backlog child cards once all parent cards are done and reclaims expired
+    running claims into blocked cards.
+  - Matching gateway method and optional agent tool are registered for
+    dispatch.
+  - Generated plugin inventory, docs, and the broader official diagnostics
+    model remain pending Workboard sub-slices.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips

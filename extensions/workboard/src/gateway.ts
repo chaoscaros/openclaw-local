@@ -237,4 +237,16 @@ export function registerWorkboardGatewayMethods(params: {
     },
     { scope: WRITE_SCOPE },
   );
+
+  api.registerGatewayMethod(
+    "workboard.cards.dispatch",
+    async ({ respond }) => {
+      try {
+        respond(true, await store.dispatch());
+      } catch (error) {
+        respondError(respond, error);
+      }
+    },
+    { scope: WRITE_SCOPE },
+  );
 }

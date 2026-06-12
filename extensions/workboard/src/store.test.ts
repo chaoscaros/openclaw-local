@@ -321,6 +321,39 @@ describe("WorkboardStore", () => {
     expect(blocked.events?.at(-1)).toMatchObject({ kind: "blocked" });
   });
 
+  it("dispatches dependency-ready and expired-claim cards", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const parent = await store.create({ title: "Parent" });
+    const child = await store.create({ title: "Child", status: "backlog" });
+    await store.linkCards(parent.id, child.id);
+    await store.complete(parent.id);
+
+    const running = await store.create({ title: "Expired run" });
+    await store.claim(running.id, {
+      ownerId: "agent-main",
+      token: "token-1",
+      ttlSeconds: 60,
+    });
+
+    const result = await store.dispatch(Date.now() + 120_000);
+
+    expect(result.count).toBe(2);
+    expect(result.promoted).toEqual([expect.objectContaining({ id: child.id, status: "todo" })]);
+    expect(result.reclaimed).toEqual([
+      expect.objectContaining({
+        id: running.id,
+        status: "blocked",
+        metadata: {
+          comments: [expect.objectContaining({ body: "Claim expired before the next heartbeat." })],
+        },
+      }),
+    ]);
+    await expect(store.get(running.id)).resolves.toMatchObject({
+      status: "blocked",
+    });
+    expect(result.reclaimed[0]?.metadata?.claim).toBeUndefined();
+  });
+
   it("rejects invalid status values", async () => {
     const store = new WorkboardStore(createMemoryStore());
     await expect(store.create({ title: "Bad card", status: "later" })).rejects.toThrow(

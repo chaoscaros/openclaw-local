@@ -16,7 +16,8 @@
       "workboard_heartbeat",
       "workboard_release",
       "workboard_complete",
-      "workboard_block"
+      "workboard_block",
+      "workboard_dispatch"
     ]
   },
   "toolMetadata": {
@@ -45,6 +46,9 @@
       "optional": true
     },
     "workboard_block": {
+      "optional": true
+    },
+    "workboard_dispatch": {
       "optional": true
     }
   },

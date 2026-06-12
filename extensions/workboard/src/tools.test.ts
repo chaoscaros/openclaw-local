@@ -154,6 +154,22 @@ describe("createWorkboardTools", () => {
     });
   });
 
+  it("dispatches dependency-ready cards through tools", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const parent = await store.create({ title: "Parent" });
+    const child = await store.create({ title: "Child", status: "backlog" });
+    await store.linkCards(parent.id, child.id);
+    await store.complete(parent.id);
+    const tools = createWorkboardTools({ api: {} as OpenClawPluginApi, store });
+
+    const result = await toolByName(tools, "workboard_dispatch").execute("call-1", {});
+
+    expect(result.details).toMatchObject({
+      promoted: [expect.objectContaining({ id: child.id, status: "todo" })],
+      count: 1,
+    });
+  });
+
   it("reports missing cards from read tools", async () => {
     const store = new WorkboardStore(createMemoryStore());
     const tools = createWorkboardTools({ api: {} as OpenClawPluginApi, store });
