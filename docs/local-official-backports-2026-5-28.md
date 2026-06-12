@@ -397,6 +397,10 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   declared under `config.env`. Raw substitution mode bypasses active/cache
   registry reuse and redacts plugin entry config from cache keys so resolved
   secrets do not leak into loader keys or reentry diagnostics.
+- `97a8c09b0a` local equivalent: current plugin metadata snapshots now keep a
+  slim per-config identity cache for the common no-explicit-env reuse path,
+  while preserving the local guard that still validates fingerprints when a
+  caller supplies an explicit env.
 
 ### Lane 1: Gateway, Codex, And Hook Relay
 
