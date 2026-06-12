@@ -17,6 +17,16 @@ discovery, native thread resume, native compaction, and app-server execution.
 OpenClaw still owns chat channels, session files, model selection, tools,
 approvals, media delivery, and the visible transcript mirror.
 
+For workspace bootstrap, native Codex turns receive `AGENTS.md` through Codex's
+own project-doc discovery and OpenClaw forwards agent/persona files as
+developer or collaboration instructions. `MEMORY.md` from the configured agent
+workspace is not pasted into turn input when memory tools are available for that
+workspace; the harness adds a small workspace-memory pointer and Codex should
+use `memory_search` or `memory_get` when durable memory is relevant. If tools
+are disabled, memory search is unavailable, or the active workspace differs from
+the agent memory workspace, `MEMORY.md` uses the normal bounded turn-context
+fallback.
+
 The harness is off by default. It is selected only when the `codex` plugin is
 enabled and the resolved model is a `codex/*` model, or when you explicitly
 force `embeddedHarness.runtime: "codex"` or `OPENCLAW_AGENT_RUNTIME=codex`.

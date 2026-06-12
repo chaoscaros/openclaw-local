@@ -104,11 +104,16 @@ Bootstrap files are trimmed and appended under **Project Context** so the model 
 - `MEMORY.md` when present, otherwise `memory.md` as a lowercase fallback
 
 All of these files are **injected into the context window** on every turn unless
-a file-specific gate applies. `HEARTBEAT.md` is omitted on normal runs when
-heartbeats are disabled for the default agent or
+a file-specific gate applies. Native Codex turns do not paste raw `MEMORY.md`
+from the configured agent workspace when memory tools are available for that
+workspace; they include a small memory pointer and use `memory_search` or
+`memory_get` on demand. If tools are disabled, memory search is unavailable, or
+the active workspace differs from the agent memory workspace, `MEMORY.md` uses
+the normal bounded turn-context path. `HEARTBEAT.md` is omitted on normal runs
+when heartbeats are disabled for the default agent or
 `agents.defaults.heartbeat.includeSystemPromptSection` is false. Keep injected
-files concise — especially `MEMORY.md`, which can grow over time and lead to
-unexpectedly high context usage and more frequent compaction.
+files concise — especially non-Codex `MEMORY.md`, which can grow over time and
+lead to unexpectedly high context usage and more frequent compaction.
 
 > **Note:** `memory/*.md` daily files are **not** part of the normal bootstrap
 > Project Context. On ordinary turns they are accessed on demand via the

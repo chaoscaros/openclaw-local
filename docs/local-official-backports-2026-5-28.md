@@ -209,6 +209,13 @@ extensions/codex-supervisor` currently stops before tests while pnpm tries
   exposes `maxPromotedSnippetTokens`, docs/schema/UI status parsing are aligned,
   and promotion markers now handle source paths containing spaces without
   duplicate appends.
+- `d93524d1cc` local equivalent: native Codex turns now route the configured
+  agent workspace root `MEMORY.md` through `memory_search`/`memory_get` when
+  those tools are available, replacing raw per-turn memory injection with a
+  small workspace-memory pointer. Tool routing falls back to bounded context
+  injection when tools are unavailable or the active workspace is not the agent
+  memory workspace, and prompt diagnostics report routed memory as raw but not
+  injected.
 - `a7d2d9c6df` local equivalent: `openclaw doctor --fix` now migrates legacy
   `memorySearch.provider: "auto"` values to explicit `openai` after moving
   top-level memory search config into agent defaults.
@@ -464,7 +471,7 @@ Local check before editing this lane:
 
 High-priority official changes to compare:
 
-- `d93524d1cc`: route Codex workspace memory through tools.
+- None remaining in this lane.
 
 Local check before editing this lane:
 

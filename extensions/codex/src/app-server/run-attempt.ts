@@ -34,7 +34,9 @@ import {
   runAgentHarnessLlmOutputHook,
   runHarnessContextEngineMaintenance,
   registerNativeHookRelay,
+  buildBootstrapContextForFiles,
   resolveBootstrapContextForRun,
+  resolveBootstrapFilesForRun,
   setActiveEmbeddedRun,
   supportsModelTools,
   runAgentCleanupStep,
@@ -46,7 +48,11 @@ import {
   type NativeHookRelayEvent,
   type NativeHookRelayRegistrationHandle,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
-import { markAuthProfileBlockedUntil, resolveAgentDir } from "openclaw/plugin-sdk/agent-runtime";
+import {
+  markAuthProfileBlockedUntil,
+  resolveAgentDir,
+  resolveAgentWorkspaceDir,
+} from "openclaw/plugin-sdk/agent-runtime";
 import {
   createDiagnosticTraceContextFromActiveScope,
   emitTrustedDiagnosticEvent,
@@ -251,6 +257,8 @@ const CODEX_WORKSPACE_DEVELOPER_CONTEXT_BASENAMES = new Set([
   ...CODEX_TURN_SCOPED_WORKSPACE_DEVELOPER_CONTEXT_BASENAMES,
 ]);
 const CODEX_HEARTBEAT_CONTEXT_BASENAME = "heartbeat.md";
+const CODEX_MEMORY_CONTEXT_BASENAME = "memory.md";
+const CODEX_MEMORY_TOOL_NAMES = new Set(["memory_search", "memory_get"]);
 const CODEX_NATIVE_HOOK_RELAY_EVENTS_WITH_APP_SERVER_APPROVALS =
   CODEX_NATIVE_HOOK_RELAY_EVENTS.filter((event) => event !== "permission_request");
 const CODEX_BOOTSTRAP_CONTEXT_ORDER = new Map<string, number>([
@@ -269,8 +277,11 @@ type OpenClawCodingToolsOptions = NonNullable<
 type OpenClawCodingToolsFactory =
   (typeof import("openclaw/plugin-sdk/agent-harness"))["createOpenClawCodingTools"];
 type OpenClawDynamicTool = ReturnType<OpenClawCodingToolsFactory>[number];
-type CodexBootstrapContext = Awaited<ReturnType<typeof resolveBootstrapContextForRun>>;
-type CodexBootstrapFile = CodexBootstrapContext["bootstrapFiles"][number];
+type CodexBootstrapFile = Awaited<ReturnType<typeof resolveBootstrapFilesForRun>>[number];
+type CodexBootstrapContext = {
+  bootstrapFiles: CodexBootstrapFile[];
+  contextFiles: EmbeddedContextFile[];
+};
 type CodexSystemPromptReport = NonNullable<EmbeddedRunAttemptResult["systemPromptReport"]>;
 type CodexToolReportEntry = CodexSystemPromptReport["tools"]["entries"][number];
 type CodexWorkspaceBootstrapContext = CodexBootstrapContext & {
@@ -278,6 +289,10 @@ type CodexWorkspaceBootstrapContext = CodexBootstrapContext & {
   developerInstructionFiles?: EmbeddedContextFile[];
   turnScopedDeveloperInstructionFiles?: EmbeddedContextFile[];
   heartbeatReferenceFiles?: EmbeddedContextFile[];
+  memoryReferenceFiles?: EmbeddedContextFile[];
+  memoryToolRoutedBootstrapFiles?: CodexBootstrapFile[];
+  memoryToolNames?: string[];
+  memoryToolRouted?: boolean;
   promptContext?: string;
   developerInstructions?: string;
   turnScopedDeveloperInstructions?: string;
@@ -1335,12 +1350,14 @@ export async function runCodexAppServerAttempt(
     historyMessages =
       (await readMirroredSessionHistoryMessages(activeSessionFile)) ?? historyMessages;
   }
+  const memoryToolNames = getCodexWorkspaceMemoryToolNames(toolBridge.availableSpecs);
   const workspaceBootstrapContext = await buildCodexWorkspaceBootstrapContext({
     params,
     resolvedWorkspace,
     effectiveWorkspace,
     sessionKey: contextSessionKey,
     sessionAgentId,
+    memoryToolNames,
   });
   const baseDeveloperInstructions = joinPresentSections(
     buildDeveloperInstructions(params, {
@@ -1352,6 +1369,10 @@ export async function runCodexAppServerAttempt(
     params,
     skillsPrompt: params.skillsSnapshot?.prompt,
     workspacePromptContext: workspaceBootstrapContext.promptContext,
+    workspaceMemoryReference: renderCodexWorkspaceMemoryReference({
+      files: workspaceBootstrapContext.memoryReferenceFiles ?? [],
+      toolNames: workspaceBootstrapContext.memoryToolNames,
+    }),
   });
   let promptText = params.prompt;
   let developerInstructions = baseDeveloperInstructions;
@@ -5540,9 +5561,17 @@ async function buildCodexWorkspaceBootstrapContext(params: {
   effectiveWorkspace: string;
   sessionKey: string;
   sessionAgentId: string;
+  memoryToolNames: readonly string[];
 }): Promise<CodexWorkspaceBootstrapContext> {
   try {
-    const bootstrapContext = await resolveBootstrapContextForRun({
+    const memoryToolsAvailable =
+      params.memoryToolNames.length > 0 &&
+      canRouteCodexWorkspaceMemoryThroughTools({
+        config: params.params.config,
+        agentId: params.params.agentId ?? params.sessionAgentId,
+        workspaceDir: params.effectiveWorkspace,
+      });
+    const bootstrapFiles = await resolveBootstrapFilesForRun({
       workspaceDir: params.resolvedWorkspace,
       config: params.params.config,
       sessionKey: params.sessionKey,
@@ -5552,14 +5581,45 @@ async function buildCodexWorkspaceBootstrapContext(params: {
       contextMode: params.params.bootstrapContextMode,
       runKind: params.params.bootstrapContextRunKind,
     });
-    const contextFiles = bootstrapContext.contextFiles.map((file) =>
+    const memoryToolRoutedBootstrapFiles = memoryToolsAvailable
+      ? selectCodexWorkspaceMemoryReferenceFiles({
+          bootstrapFiles,
+          workspaceDir: params.resolvedWorkspace,
+        })
+      : [];
+    const memoryReferenceFiles = memoryToolRoutedBootstrapFiles.map((file) =>
+      remapCodexContextFilePath({
+        file: toCodexEmbeddedContextFile(file),
+        sourceWorkspaceDir: params.resolvedWorkspace,
+        targetWorkspaceDir: params.effectiveWorkspace,
+      }),
+    );
+    const contextFiles = buildBootstrapContextForFiles(
+      memoryToolsAvailable
+        ? bootstrapFiles.filter(
+            (file) =>
+              !isCodexWorkspaceRootMemoryBootstrapFile({
+                file,
+                workspaceDir: params.resolvedWorkspace,
+              }),
+          )
+        : bootstrapFiles,
+      {
+        config: params.params.config,
+        agentId: params.params.agentId ?? params.sessionAgentId,
+        warn: (message) => embeddedAgentLog.warn(message),
+      },
+    ).map((file) =>
       remapCodexContextFilePath({
         file,
         sourceWorkspaceDir: params.resolvedWorkspace,
         targetWorkspaceDir: params.effectiveWorkspace,
       }),
     );
-    const promptContextFiles = selectCodexWorkspacePromptContextFiles(contextFiles);
+    const promptContextFiles = selectCodexWorkspacePromptContextFiles(contextFiles, {
+      excludeMemory: memoryToolsAvailable,
+      memoryWorkspaceDir: params.effectiveWorkspace,
+    });
     const developerInstructionFiles = shouldInjectCodexOpenClawPromptContext(params.params)
       ? selectCodexWorkspaceInheritedDeveloperInstructionFiles(contextFiles)
       : [];
@@ -5570,12 +5630,16 @@ async function buildCodexWorkspaceBootstrapContext(params: {
       : [];
     const heartbeatReferenceFiles = selectCodexWorkspaceHeartbeatReferenceFiles(contextFiles);
     return {
-      ...bootstrapContext,
+      bootstrapFiles,
       contextFiles,
       promptContextFiles,
       developerInstructionFiles,
       turnScopedDeveloperInstructionFiles,
       heartbeatReferenceFiles,
+      memoryReferenceFiles,
+      memoryToolRoutedBootstrapFiles,
+      memoryToolNames: [...params.memoryToolNames],
+      memoryToolRouted: memoryToolsAvailable,
       promptContext: renderCodexWorkspaceBootstrapPromptContext(promptContextFiles),
       developerInstructions:
         renderCodexWorkspaceThreadDeveloperInstructions(developerInstructionFiles),
@@ -5632,6 +5696,9 @@ function buildCodexSystemPromptReport(params: {
         ...(params.workspaceBootstrapContext.developerInstructionFiles ?? []),
         ...(params.workspaceBootstrapContext.turnScopedDeveloperInstructionFiles ?? []),
       ],
+      memoryToolRoutedBootstrapFiles:
+        params.workspaceBootstrapContext.memoryToolRoutedBootstrapFiles ?? [],
+      memoryToolRouted: params.workspaceBootstrapContext.memoryToolRouted === true,
     }),
     skills: {
       promptChars: skillsPrompt.length,
@@ -5749,10 +5816,18 @@ function buildCodexBootstrapInjectionStats(params: {
   bootstrapFiles: CodexBootstrapFile[];
   injectedFiles: EmbeddedContextFile[];
   developerInstructionFiles?: EmbeddedContextFile[];
+  memoryToolRoutedBootstrapFiles?: CodexBootstrapFile[];
+  memoryToolRouted?: boolean;
 }): CodexSystemPromptReport["injectedWorkspaceFiles"] {
   const injectedIndex = indexCodexContextFileContent(params.injectedFiles);
   const developerInstructionIndex = indexCodexContextFileContent(
     params.developerInstructionFiles ?? [],
+  );
+  const memoryToolRoutedPaths = new Set(
+    (params.memoryToolRoutedBootstrapFiles ?? [])
+      .map((file) => readNonEmptyString(file.path))
+      .filter(isNonEmptyString)
+      .map(normalizeCodexContextFilePath),
   );
   return params.bootstrapFiles.map((file) => {
     const fileName = readNonEmptyString(file.name);
@@ -5760,11 +5835,16 @@ function buildCodexBootstrapInjectionStats(params: {
     const displayName = (fileName ?? getCodexContextFileDisplayBasename(pathValue)) || pathValue;
     const baseName = getCodexContextFileBasename(pathValue || fileName || "");
     const rawChars = file.missing ? 0 : (file.content ?? "").trimEnd().length;
-    const injected =
-      readCodexIndexedContextFileContent(injectedIndex, pathValue, fileName) ??
-      readCodexIndexedContextFileContent(developerInstructionIndex, pathValue, fileName);
-    let injectedChars = injected?.length ?? 0;
-    let truncated = !file.missing && injectedChars < rawChars;
+    const memoryToolRoutedFile =
+      baseName === CODEX_MEMORY_CONTEXT_BASENAME &&
+      params.memoryToolRouted === true &&
+      memoryToolRoutedPaths.has(normalizeCodexContextFilePath(pathValue));
+    const injected = memoryToolRoutedFile
+      ? undefined
+      : (readCodexIndexedContextFileContent(injectedIndex, pathValue, fileName) ??
+        readCodexIndexedContextFileContent(developerInstructionIndex, pathValue, fileName));
+    let injectedChars = memoryToolRoutedFile ? 0 : (injected?.length ?? 0);
+    let truncated = memoryToolRoutedFile ? false : !file.missing && injectedChars < rawChars;
     if (injected === undefined) {
       if (CODEX_NATIVE_PROJECT_DOC_BASENAMES.has(baseName)) {
         injectedChars = rawChars;
@@ -5861,6 +5941,7 @@ function buildCodexOpenClawPromptContext(params: {
   params: EmbeddedRunAttemptParams;
   skillsPrompt?: string;
   workspacePromptContext?: string;
+  workspaceMemoryReference?: string;
 }): string | undefined {
   if (!shouldInjectCodexOpenClawPromptContext(params.params)) {
     return undefined;
@@ -5869,6 +5950,7 @@ function buildCodexOpenClawPromptContext(params: {
     params.skillsPrompt?.trim()
       ? ["## OpenClaw Skills", "", params.skillsPrompt.trim()].join("\n")
       : undefined,
+    params.workspaceMemoryReference?.trim() ? params.workspaceMemoryReference.trim() : undefined,
     params.workspacePromptContext?.trim()
       ? ["## OpenClaw Workspace Context", "", params.workspacePromptContext.trim()].join("\n")
       : undefined,
@@ -5935,7 +6017,9 @@ function renderCodexWorkspaceBootstrapPromptContext(
 
 function selectCodexWorkspacePromptContextFiles(
   contextFiles: EmbeddedContextFile[],
+  options: { excludeMemory?: boolean; memoryWorkspaceDir?: string } = {},
 ): EmbeddedContextFile[] {
+  const excludeMemory = options.excludeMemory ?? true;
   return contextFiles
     .filter((file) => {
       const baseName = getCodexContextFileBasename(file.path);
@@ -5944,6 +6028,11 @@ function selectCodexWorkspacePromptContextFiles(
         !CODEX_NATIVE_PROJECT_DOC_BASENAMES.has(baseName) &&
         !CODEX_WORKSPACE_DEVELOPER_CONTEXT_BASENAMES.has(baseName) &&
         baseName !== CODEX_HEARTBEAT_CONTEXT_BASENAME &&
+        (!excludeMemory ||
+          !isCodexWorkspaceRootMemoryContextFile({
+            file,
+            workspaceDir: options.memoryWorkspaceDir,
+          })) &&
         !isMissingCodexBootstrapContextFile(file)
       );
     })
@@ -6054,8 +6143,119 @@ function renderCodexWorkspaceHeartbeatReference(files: EmbeddedContextFile[]): s
   return lines.join("\n").trim();
 }
 
+function selectCodexWorkspaceMemoryReferenceFiles(params: {
+  bootstrapFiles: CodexBootstrapFile[];
+  workspaceDir: string;
+}): CodexBootstrapFile[] {
+  return params.bootstrapFiles
+    .filter((file) => {
+      return (
+        isCodexWorkspaceRootMemoryBootstrapFile({
+          file,
+          workspaceDir: params.workspaceDir,
+        }) &&
+        !file.missing &&
+        (file.content ?? "").trim().length > 0
+      );
+    })
+    .toSorted(compareCodexBootstrapFiles);
+}
+
+function renderCodexWorkspaceMemoryReference(params: {
+  files: EmbeddedContextFile[];
+  toolNames?: readonly string[];
+}): string | undefined {
+  if (params.files.length === 0) {
+    return undefined;
+  }
+  const toolNames = params.toolNames?.length
+    ? params.toolNames
+    : Array.from(CODEX_MEMORY_TOOL_NAMES);
+  const lines = [
+    "## OpenClaw Workspace Memory",
+    "",
+    `MEMORY.md exists in the active agent workspace. OpenClaw does not paste its contents into native Codex turns; use ${toolNames.join(" or ")} when durable memory is relevant and the tools are available.`,
+    "",
+  ];
+  for (const file of params.files) {
+    lines.push(`- ${file.path}`);
+  }
+  return lines.join("\n").trim();
+}
+
+function hasCodexWorkspaceMemoryTools(tools: readonly { name: string }[]): boolean {
+  return getCodexWorkspaceMemoryToolNames(tools).length > 0;
+}
+
+function getCodexWorkspaceMemoryToolNames(tools: readonly { name: string }[]): string[] {
+  const availableToolNames = new Set(tools.map((tool) => normalizeCodexDynamicToolName(tool.name)));
+  return Array.from(CODEX_MEMORY_TOOL_NAMES).filter((name) => availableToolNames.has(name));
+}
+
+function canRouteCodexWorkspaceMemoryThroughTools(params: {
+  config: EmbeddedRunAttemptParams["config"] | undefined;
+  agentId: string;
+  workspaceDir: string;
+}): boolean {
+  if (!params.config) {
+    return false;
+  }
+  return isSameCodexWorkspacePath(
+    resolveAgentWorkspaceDir(params.config, params.agentId),
+    params.workspaceDir,
+  );
+}
+
 function isMissingCodexBootstrapContextFile(file: EmbeddedContextFile): boolean {
   return file.content.trimStart().startsWith("[MISSING] Expected at:");
+}
+
+function toCodexEmbeddedContextFile(file: CodexBootstrapFile): EmbeddedContextFile {
+  return {
+    path: readNonEmptyString(file.path) ?? readNonEmptyString(file.name) ?? "",
+    content: file.content ?? "",
+  };
+}
+
+function isCodexWorkspaceRootMemoryBootstrapFile(params: {
+  file: CodexBootstrapFile;
+  workspaceDir: string;
+}): boolean {
+  return isCodexWorkspaceRootMemoryPath({
+    filePath: readNonEmptyString(params.file.path) ?? readNonEmptyString(params.file.name) ?? "",
+    workspaceDir: params.workspaceDir,
+  });
+}
+
+function isCodexWorkspaceRootMemoryContextFile(params: {
+  file: EmbeddedContextFile;
+  workspaceDir?: string;
+}): boolean {
+  if (!params.workspaceDir) {
+    return false;
+  }
+  return isCodexWorkspaceRootMemoryPath({
+    filePath: params.file.path,
+    workspaceDir: params.workspaceDir,
+  });
+}
+
+function isCodexWorkspaceRootMemoryPath(params: {
+  filePath: string;
+  workspaceDir: string;
+}): boolean {
+  const filePath = params.filePath.trim();
+  if (!filePath) {
+    return false;
+  }
+  const absolutePath = path.isAbsolute(filePath)
+    ? path.resolve(filePath)
+    : path.resolve(params.workspaceDir, filePath);
+  return absolutePath === path.join(path.resolve(params.workspaceDir), "MEMORY.md");
+}
+
+function isSameCodexWorkspacePath(left: string, right: string): boolean {
+  return path.resolve(left) === path.resolve(right);
 }
 
 function remapCodexContextFilePath(params: {
@@ -6102,6 +6302,13 @@ function compareCodexContextFiles(left: EmbeddedContextFile, right: EmbeddedCont
   return leftPath.localeCompare(rightPath);
 }
 
+function compareCodexBootstrapFiles(left: CodexBootstrapFile, right: CodexBootstrapFile): number {
+  return compareCodexContextFiles(
+    toCodexEmbeddedContextFile(left),
+    toCodexEmbeddedContextFile(right),
+  );
+}
+
 function normalizeCodexContextFilePath(filePath: string): string {
   return filePath.trim().replaceAll("\\", "/").toLowerCase();
 }
@@ -6112,6 +6319,10 @@ function getCodexContextFileDisplayBasename(filePath: string): string {
 
 function getCodexContextFileBasename(filePath: string): string {
   return normalizeCodexContextFilePath(filePath).split("/").pop() ?? "";
+}
+
+function normalizeCodexDynamicToolName(name: string): string {
+  return name.trim().toLowerCase();
 }
 
 async function mirrorTranscriptBestEffort(params: {
@@ -6350,6 +6561,10 @@ export const testing = {
   handleDynamicToolCallWithTimeout,
   isInvalidCodexImagePayloadError,
   buildCodexSystemPromptReport,
+  buildCodexWorkspaceBootstrapContext,
+  renderCodexWorkspaceMemoryReference,
+  hasCodexWorkspaceMemoryTools,
+  getCodexWorkspaceMemoryToolNames,
   remapCodexContextFilePath,
   resolveDynamicToolCallTimeoutMs,
   resolveCodexStartupTimeoutMs,
