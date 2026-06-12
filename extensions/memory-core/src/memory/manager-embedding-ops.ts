@@ -115,11 +115,24 @@ export function resolveMemoryIndexConcurrency(params: {
 export async function runEmbeddingOperationWithTimeout<T>(params: {
   timeoutMs: number;
   message: string;
+  signal?: AbortSignal;
   run: (signal: AbortSignal) => Promise<T>;
 }): Promise<T> {
   const controller = new AbortController();
+  const abortFromCaller = () => {
+    controller.abort(params.signal?.reason ?? new Error("memory embedding operation aborted"));
+  };
+  if (params.signal?.aborted) {
+    abortFromCaller();
+  } else {
+    params.signal?.addEventListener("abort", abortFromCaller, { once: true });
+  }
   if (!Number.isFinite(params.timeoutMs) || params.timeoutMs <= 0) {
-    return await params.run(controller.signal);
+    try {
+      return await params.run(controller.signal);
+    } finally {
+      params.signal?.removeEventListener("abort", abortFromCaller);
+    }
   }
   let timer: NodeJS.Timeout | null = null;
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -137,6 +150,7 @@ export async function runEmbeddingOperationWithTimeout<T>(params: {
     if (timer) {
       clearTimeout(timer);
     }
+    params.signal?.removeEventListener("abort", abortFromCaller);
   }
 }
 
@@ -422,7 +436,7 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerSyncOps {
     });
   }
 
-  protected async embedQueryWithTimeout(text: string): Promise<number[]> {
+  protected async embedQueryWithTimeout(text: string, signal?: AbortSignal): Promise<number[]> {
     const provider = this.provider;
     if (!provider) {
       throw new Error("Cannot embed query in FTS-only mode (no embedding provider)");
@@ -433,6 +447,7 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerSyncOps {
       return await runEmbeddingOperationWithTimeout({
         timeoutMs,
         message: `memory embeddings query timed out after ${Math.round(timeoutMs / 1000)}s`,
+        signal,
         run: async (signal) => await provider.embedQuery(text, { signal }),
       });
     } catch (err) {

@@ -104,6 +104,27 @@ describe("memory embedding timeout abort", () => {
       }),
     ).rejects.toThrow("memory embeddings batch timed out after 0s");
   });
+
+  it("forwards caller aborts to the provider operation", async () => {
+    const controller = new AbortController();
+    let signalSeen: AbortSignal | undefined;
+    const runPromise = runEmbeddingOperationWithTimeout({
+      timeoutMs: 60_000,
+      message: "memory embeddings query timed out after 60s",
+      signal: controller.signal,
+      run: async (signal) => {
+        signalSeen = signal;
+        return await new Promise<number[]>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+      },
+    });
+
+    controller.abort(new Error("caller stopped waiting"));
+
+    await expect(runPromise).rejects.toThrow("caller stopped waiting");
+    expect(signalSeen?.aborted).toBe(true);
+  });
 });
 
 describe("memory index concurrency resolution", () => {

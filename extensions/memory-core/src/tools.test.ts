@@ -86,6 +86,43 @@ describe("memory_search unavailable payloads", () => {
     });
   });
 
+  it("passes the memory_search deadline signal to the manager", async () => {
+    let signalSeen: AbortSignal | undefined;
+    setMemorySearchImpl(async (opts) => {
+      signalSeen = opts?.signal;
+      return [];
+    });
+
+    const tool = createMemorySearchToolOrThrow();
+    await tool.execute("deadline-signal", { query: "hello" });
+
+    expect(signalSeen).toBeInstanceOf(AbortSignal);
+    expect(signalSeen?.aborted).toBe(false);
+  });
+
+  it("returns the stable timeout payload and aborts abandoned search work", async () => {
+    vi.useFakeTimers();
+    let signalSeen: AbortSignal | undefined;
+    setMemorySearchImpl(async (opts) => {
+      signalSeen = opts?.signal;
+      return await new Promise(() => undefined);
+    });
+
+    const tool = createMemorySearchToolOrThrow();
+    const resultPromise = tool.execute("deadline-timeout", { query: "hello" });
+
+    await vi.advanceTimersByTimeAsync(15_000);
+    const result = await resultPromise;
+
+    expect(signalSeen?.aborted).toBe(true);
+    expectUnavailableMemorySearchDetails(result.details, {
+      error: "memory_search timed out after 15s",
+      warning: "Memory search is unavailable due to an embedding/provider error.",
+      action: "Check embedding provider configuration and retry memory_search.",
+    });
+    vi.useRealTimers();
+  });
+
   it("rejects fractional maxResults before searching", async () => {
     const tool = createMemorySearchToolOrThrow();
     await expect(

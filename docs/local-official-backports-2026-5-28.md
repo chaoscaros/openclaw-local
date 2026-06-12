@@ -1004,6 +1004,18 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Setup finalize now reports keyless web search providers as ready instead of
     warning that an API key is missing, while preserving credential warnings for
     providers that require keys.
+- `047785eb30` reviewed, not applied:
+  - The official patch reports a shared SQLite storage path from `cron.status`.
+    This local branch still stores cron config in `cron/jobs.json` and split
+    runtime state in `cron/jobs-state.json`, with no matching
+    `openclaw.sqlite` cron state helper. Do not hard-port the status field
+    until the local cron storage model is migrated.
+- `8d72cb9401` local equivalent:
+  - `memory_search` now runs under a bounded deadline that returns the stable
+    timeout unavailable payload and aborts abandoned manager search work.
+  - Builtin memory search now threads caller cancellation into embedding query
+    operations, preventing timed-out tool calls from leaving provider requests
+    running without a consumer.
 
 ## Validation Plan
 
