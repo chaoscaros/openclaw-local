@@ -1020,6 +1020,12 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
   - Compaction-timeout recovery now trims pre-compaction and current snapshots
     to a continuable tail before resuming, avoiding assistant-tailed snapshots
     that cannot be continued after a timeout.
+- `960117259d` local equivalent:
+  - Post-run session persistence now uses the effective rotated OpenClaw
+    session id and transcript file when compaction rotation reports a
+    `sessionFile`.
+  - CLI backend session ids remain provider metadata and no longer overwrite
+    the top-level OpenClaw session identity.
 
 ## Validation Plan
 
