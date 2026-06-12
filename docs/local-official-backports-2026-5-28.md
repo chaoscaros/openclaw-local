@@ -1042,9 +1042,11 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     and follow-up runs, prefers fresh final usage when present, and clears stale
     usage/cache/context-budget snapshots when a compaction token snapshot is
     the only fresh context signal.
-  - Remaining official pieces still need separate review: empty preflight
-    compaction recovery in the embedded runner and header-only transcript
-    cleanup semantics.
+  - `openclaw sessions cleanup --fix-missing` now also prunes empty/header-only
+    transcript files while preserving current and legacy transcript rows that
+    contain real message roles.
+  - Remaining official piece still needs separate review: empty preflight
+    compaction recovery in the embedded runner.
 
 ## Validation Plan
 
