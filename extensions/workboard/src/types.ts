@@ -19,7 +19,13 @@ export const WORKBOARD_EVENT_KINDS = [
   "artifact_added",
 ] as const;
 export const WORKBOARD_PROOF_STATUSES = ["passed", "failed", "skipped", "unknown"] as const;
-export const WORKBOARD_LINK_TYPES = ["blocks", "blocked_by", "relates_to"] as const;
+export const WORKBOARD_LINK_TYPES = [
+  "parent",
+  "child",
+  "blocks",
+  "blocked_by",
+  "relates_to",
+] as const;
 
 export type WorkboardStatus = (typeof WORKBOARD_STATUSES)[number];
 export type WorkboardPriority = (typeof WORKBOARD_PRIORITIES)[number];

@@ -182,6 +182,38 @@ describe("WorkboardStore", () => {
     });
   });
 
+  it("links parent and child cards through the dependency API", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const parent = await store.create({ title: "Parent work" });
+    const child = await store.create({ title: "Child work" });
+
+    const linkedChild = await store.linkCards(parent.id, child.id);
+    const linkedParent = await store.get(parent.id);
+
+    expect(linkedChild.metadata?.links).toEqual([
+      expect.objectContaining({ type: "parent", targetCardId: parent.id }),
+    ]);
+    expect(linkedParent?.metadata?.links).toEqual([
+      expect.objectContaining({ type: "child", targetCardId: child.id }),
+    ]);
+    expect(linkedChild.events?.at(-1)).toMatchObject({ kind: "link_added" });
+
+    const linkedAgain = await store.linkCards(parent.id, child.id);
+    expect(
+      linkedAgain.metadata?.links?.filter((link) => link.targetCardId === parent.id),
+    ).toHaveLength(1);
+  });
+
+  it("keeps dependency links behind linkCards", async () => {
+    const store = new WorkboardStore(createMemoryStore());
+    const card = await store.create({ title: "Dependency guard" });
+
+    await expect(
+      store.addLink(card.id, { type: "parent", targetCardId: "parent-card" }),
+    ).rejects.toThrow(/linkCards/);
+    await expect(store.linkCards(card.id, card.id)).rejects.toThrow(/cannot depend on itself/);
+  });
+
   it("rejects invalid status values", async () => {
     const store = new WorkboardStore(createMemoryStore());
     await expect(store.create({ title: "Bad card", status: "later" })).rejects.toThrow(

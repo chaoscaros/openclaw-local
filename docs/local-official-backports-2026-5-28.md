@@ -1173,6 +1173,14 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     gateway responses without rendering them yet.
   - Parent/child dependency promotion, dispatch, coordination tools, generated
     plugin inventory, and docs remain pending Workboard sub-slices.
+- `a341ae27ec` local Workboard dependency-link subset:
+  - Workboard card storage now supports a dedicated `linkCards(parent, child)`
+    dependency API that writes bounded reciprocal parent/child links and
+    rejects self-dependencies.
+  - Generic `addLink` rejects parent/child types so dependency links cannot
+    bypass the dedicated API.
+  - Dependency status promotion, dispatch, coordination tools, generated plugin
+    inventory, and docs remain pending Workboard sub-slices.
 - `e9655b9fdc` reviewed, not directly applied:
   - The official fix targets the newer chat session picker popover
     (`chatSessionPickerQuery` / `applyChatSessionPickerSearch`) and skips

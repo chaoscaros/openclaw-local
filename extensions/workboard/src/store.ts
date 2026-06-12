@@ -251,6 +251,28 @@ function normalizeLinkInput(input: WorkboardLinkInput, now: number): WorkboardLi
   };
 }
 
+function createCardLink(type: WorkboardLinkType, targetCardId: string, now: number): WorkboardLink {
+  return {
+    id: randomUUID(),
+    type,
+    targetCardId,
+    createdAt: now,
+  };
+}
+
+function upsertCardLink(
+  links: readonly WorkboardLink[] | undefined,
+  link: WorkboardLink,
+): WorkboardLink[] {
+  const next = [
+    ...(links ?? []).filter(
+      (existing) => !(existing.type === link.type && existing.targetCardId === link.targetCardId),
+    ),
+    link,
+  ];
+  return next.slice(-MAX_CARD_LINKS);
+}
+
 function omitEmptyMetadata(metadata: WorkboardMetadata): WorkboardMetadata | undefined {
   const next = removeUndefinedMetadataFields(metadata);
   return Object.keys(next).length > 0 ? next : undefined;
@@ -524,6 +546,9 @@ export class WorkboardStore {
   async addLink(id: string, input: WorkboardLinkInput): Promise<WorkboardCard> {
     const now = Date.now();
     const link = normalizeLinkInput(input, now);
+    if (link.type === "parent" || link.type === "child") {
+      throw new Error("parent and child dependency links must use linkCards.");
+    }
     return await this.updateMetadata(
       id,
       (existing) => ({
@@ -532,6 +557,44 @@ export class WorkboardStore {
       }),
       createEvent("link_added", now),
     );
+  }
+
+  async linkCards(parentId: string, childId: string): Promise<WorkboardCard> {
+    const parent = await this.get(parentId);
+    if (!parent) {
+      throw new Error(`card not found: ${parentId}`);
+    }
+    const child = await this.get(childId);
+    if (!child) {
+      throw new Error(`card not found: ${childId}`);
+    }
+    if (parent.id === child.id) {
+      throw new Error("card cannot depend on itself.");
+    }
+    const now = Date.now();
+    const parentLink = createCardLink("parent", parent.id, now);
+    const childLink = createCardLink("child", child.id, now);
+    const nextParent = removeUndefinedCardFields({
+      ...parent,
+      updatedAt: now,
+      metadata: omitEmptyMetadata({
+        ...parent.metadata,
+        links: upsertCardLink(parent.metadata?.links, childLink),
+      }),
+      events: appendEvent(parent.events, createEvent("link_added", now)),
+    });
+    const nextChild = removeUndefinedCardFields({
+      ...child,
+      updatedAt: now,
+      metadata: omitEmptyMetadata({
+        ...child.metadata,
+        links: upsertCardLink(child.metadata?.links, parentLink),
+      }),
+      events: appendEvent(child.events, createEvent("link_added", now)),
+    });
+    await this.store.register(nextParent.id, { version: 1, card: nextParent });
+    await this.store.register(nextChild.id, { version: 1, card: nextChild });
+    return nextChild;
   }
 
   async addProof(id: string, input: WorkboardProofInput): Promise<WorkboardCard> {
