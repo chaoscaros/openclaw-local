@@ -1026,6 +1026,10 @@ extensions/codex-supervisor` passed 4 test files / 40 tests. Plain
     `sessionFile`.
   - CLI backend session ids remain provider metadata and no longer overwrite
     the top-level OpenClaw session identity.
+- `0dbdaf98ea` local equivalent:
+  - Embedded attempt cleanup now releases the session write lock before
+    disposing session and MCP/LSP runtimes, so a hung teardown cannot hold the
+    transcript lock.
 
 ## Validation Plan
 
