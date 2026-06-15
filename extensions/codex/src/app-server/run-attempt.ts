@@ -6321,10 +6321,6 @@ function getCodexContextFileBasename(filePath: string): string {
   return normalizeCodexContextFilePath(filePath).split("/").pop() ?? "";
 }
 
-function normalizeCodexDynamicToolName(name: string): string {
-  return name.trim().toLowerCase();
-}
-
 async function mirrorTranscriptBestEffort(params: {
   params: EmbeddedRunAttemptParams;
   agentId?: string;
